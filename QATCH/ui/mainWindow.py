@@ -12,7 +12,7 @@ from collections import deque
 from time import localtime, mktime, strftime, strptime, time
 from typing import List, Optional
 from xml.dom import minidom
-
+import time
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
@@ -2632,7 +2632,7 @@ class MainWindow(QtWidgets.QMainWindow):
         not_resize = self._plt4.sizePolicy()
         not_resize.setHorizontalStretch(1)
         self._plt4.setSizePolicy(not_resize)
-
+        self._init_plot_curves()
         if self._plt1 is None and not Constants.plot_show_phase is False:
             self._configure_add_phase()
 
@@ -3429,9 +3429,1062 @@ class MainWindow(QtWidgets.QMainWindow):
     # Updates and redraws the graphics in the plot.
     ###########################################################################
 
-    def _update_plot(self):
+    # def _update_plot(self):
 
-        # This function is connected to the timeout signal of a QTimer
+    #     # This function is connected to the timeout signal of a QTimer
+    #     self.worker.consume_logger()
+    #     self.worker.consume_queue0()
+    #     self.worker.consume_queue1()
+    #     self.worker.consume_queue2()
+    #     self.worker.consume_queue3()
+    #     self.worker.consume_queue4()
+    #     self.worker.consume_queue5()
+    #     self.worker.consume_queue6()
+
+    #     labelbar = "Status: Unknown"
+
+    #     # MEASUREMENT: dynamic frequency and dissipation labels at run-time
+    #     ###################################################################
+    #     if self._get_source() == OperationType.measurement:
+    #         self._readFREQ = self.worker.get_value0_buffer(0)
+    #         vector1 = self.worker.get_d1_buffer(0)
+    #         vector2 = self.worker.get_d2_buffer(0)
+    #         vectortemp = self.worker.get_d3_buffer(0)
+    #         vectoramb = self.worker.get_d4_buffer(0)
+
+    #         if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+    #             snapshot = WorkerSnapshot(
+    #                 self.worker.get_t1_buffer(0),
+    #                 self.worker.get_d1_buffer(0),
+    #                 self.worker.get_d2_buffer(0),
+    #             )
+    #             self.worker._forecaster_in.put(snapshot)
+    #             if not self.worker._forecaster_out.empty():
+    #                 try:
+    #                     pred_int, _, display_msg = self.worker._forecaster_out.get()
+    #                     if display_msg is not None:
+    #                         self._fill_display_msg = display_msg
+
+    #                     is_drop_applied = all(self._drop_applied)
+
+    #                     # Gate all fill-classifier messages behind drop application.
+    #                     # Before the drop is confirmed, mirror the dry/drop status instead.
+    #                     if not is_drop_applied:
+    #                         if not self._last_dry_status:
+    #                             status_msg = self._last_dry_msg
+    #                             ui_step = 0
+    #                         else:
+    #                             status_msg = "Add sample"
+    #                             ui_step = 0
+    #                         if hasattr(self.ControlsWin.ui1, "run_controls"):
+    #                             self.ControlsWin.ui1.run_controls.update_progress(
+    #                                 ui_step, 5, status_msg
+    #                             )
+    #                     else:
+    #                         ui_step = 0
+    #                         status_msg = "Unknown"
+    #                         if pred_int == -1:
+    #                             status_msg = "Sample detected"
+    #                             ui_step = 1
+    #                             if not self._drop_epoch_sent:
+    #                                 drop_epoch = float(self.worker.get_t1_buffer(0)[0])
+    #                                 self.worker._forecaster_in.put(DropEpochSignal(drop_epoch))
+    #                                 self._drop_epoch_sent = True
+    #                         elif pred_int == 0:
+    #                             status_msg = "Filling started"
+    #                             ui_step = 2
+    #                         elif pred_int == 1:
+    #                             status_msg = "Filling"
+    #                             ui_step = 3
+    #                         elif pred_int == 2:
+    #                             status_msg = "Almost full"
+    #                             ui_step = 4
+    #                         elif pred_int == 3:
+    #                             status_msg = "Complete, stop"
+    #                             ui_step = 5
+    #                             self._fill_display_msg = "Data Ready, Stop"
+
+    #                         if hasattr(self.ControlsWin.ui1, "run_controls"):
+    #                             self.ControlsWin.ui1.run_controls.update_progress(
+    #                                 ui_step, 5, status_msg
+    #                             )
+    #                 except Exception as e:
+    #                     Log.e(TAG, f"Error retrieving fill status: {e}")
+
+    #         (
+    #             self._ser_error1,
+    #             self._ser_error2,
+    #             self._ser_error3,
+    #             self._ser_error4,
+    #             self._ser_control,
+    #             self._ser_err_usb,
+    #         ) = self.worker.get_ser_error()
+
+    #         if self._ser_err_usb > 0:
+    #             if self.worker.is_running():
+    #                 Log.i(
+    #                     TAG,
+    #                     "Port closed without stopping the capture, application will stop...",
+    #                 )
+    #                 self.stop()
+    #             PopUp.warning(self, Constants.app_title, "Warning: Disconnected Device!")
+    #         if not self.worker.is_running():
+    #             self.stop()
+
+    #         if vectortemp.any():
+    #             # TEMPERATURE: Update TEC temperature and power (if running)
+    #             ############################################################
+    #             if self.tecWorker._tec_locked:
+    #                 self.tecWorker._tec_temp = vectortemp[0]
+    #                 self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
+    #                 sp = self.tecWorker._tec_setpoint
+    #                 pv = self.tecWorker._tec_temp
+    #                 op = self.tecWorker._tec_power
+    #                 if sp == 0.00:
+    #                     sp = 0.25
+    #                 if op == 0:
+    #                     new_l1 = "[AUTO-OFF ERROR]" if np.isnan(pv) else "[AUTO-OFF TIMEOUT]"
+    #                 else:
+    #                     new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(pv, sp, op)
+    #                 self.ControlsWin.ui1.lTemp.setText(new_l1)
+    #                 bgcolor = "yellow"
+    #                 if op == 0:
+    #                     bgcolor = "red" if np.isnan(pv) else "yellow"
+    #                 elif abs(pv - sp) <= 1.0:
+    #                     bgcolor = "lightgreen"
+    #                 self.ControlsWin.ui1.lTemp.setStyleSheet("background-color: {}".format(bgcolor))
+    #                 self.ControlsWin.ui1.lTemp.repaint()
+
+    #         if vector1.any():
+    #             # progressbar
+    #             if self._ser_control <= Constants.environment:
+    #                 self._completed = self._ser_control * 2
+
+    #             if vector1[0] == 0 and not self._ser_error1 and not self._ser_error2:
+    #                 label1 = "processing..."
+    #                 label2 = "processing..."
+    #                 label3 = "processing..."
+    #                 labelstatus = "Processing"
+    #                 self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                     "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
+    #                 )  # ff8000
+    #                 color_err = "#333333"
+    #                 labelbar = "Please wait, processing early data..."
+
+    #             elif vector1[0] == 0 and (self._ser_error1 or self._ser_error2):
+    #                 if self._ser_error1 and self._ser_error2:
+    #                     label1 = ""
+    #                     label2 = ""
+    #                     label3 = ""
+    #                     labelstatus = "Warning"
+    #                     color_err = "#ff0000"
+    #                     labelbar = "Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found"
+    #                     self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                         "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #                     )
+    #                 elif self._ser_error1:
+    #                     label1 = ""
+    #                     label2 = ""
+    #                     label3 = ""
+    #                     labelstatus = "Warning"
+    #                     color_err = "#ff0000"
+    #                     labelbar = "Warning: unable to apply half-power bandwidth method, lower cut-off frequency (left side) not found"
+    #                     self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                         "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #                     )
+    #                 elif self._ser_error2:
+    #                     label1 = ""
+    #                     label2 = ""
+    #                     label3 = ""
+    #                     labelstatus = "Warning"
+    #                     color_err = "#ff0000"
+    #                     labelbar = "Warning: unable to apply half-power bandwidth method, upper cut-off frequency (right side) not found"
+    #                     self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                         "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #                     )
+    #             else:
+    #                 if (
+    #                     not self._ser_error1
+    #                     and not self._ser_error2
+    #                     and not self._ser_error3
+    #                     and not self._ser_error4
+    #                 ):
+    #                     if not self._reference_flag:
+    #                         d1 = float("{0:.2f}".format(vector1[0]))
+    #                         d2 = float("{0:.4f}".format(vector2[0] * 1e6))
+    #                         d3 = float("{0:.2f}".format(vectortemp[0]))
+    #                     else:
+    #                         a1 = vector1[0] - self._reference_value_frequency[0]
+    #                         a2 = vector2[0] - self._reference_value_dissipation[0]
+    #                         d1 = float("{0:.2f}".format(a1))
+    #                         d2 = float("{0:.4f}".format(a2 * 1e6))
+    #                         d3 = float("{0:.2f}".format(vectortemp[0]))
+    #                     if not vector2[0] in (
+    #                         Constants.max_dissipation_1st_mode,
+    #                         Constants.max_dissipation_3rd_mode,
+    #                         Constants.max_dissipation_5th_mode,
+    #                     ):
+    #                         label1 = str(d1) + " Hz"
+    #                         label2 = str(d2) + "e-06"
+    #                         label3 = str(d3) + " °C"
+    #                         labelstatus = "Monitoring"
+    #                         color_err = "#008000"
+    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                             "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
+    #                         )
+
+    #                         if not all(self._drop_applied):
+    #                             for i, p in enumerate(self._plt2_arr):
+    #                                 if p is None:
+    #                                     self._drop_applied[i] = True
+    #                                     self._run_finished[i] = True
+    #                                     continue
+    #                                 try:
+    #                                     vector0 = self.worker.get_t2_buffer(i)
+    #                                     time_running = vector0[0]
+    #                                     if time_running == 0:
+    #                                         labelbar = "Waiting for start..."
+    #                                         continue
+    #                                     if time_running < 3.0:
+    #                                         labelbar = "Capturing data... Calibrating baselines for first 3 seconds... please wait..."
+    #                                         # next(x for x,y in list(vector0) if y <= 1.0)
+    #                                         idx = int(len(list(vector0)) / 3)
+    #                                         if idx > 0:
+    #                                             self._baseline_freq_avg = np.average(vector1[:-idx])
+    #                                             self._baseline_freq_noise = np.amax(
+    #                                                 vector1[:-idx]
+    #                                             ) - np.amin(vector1[:-idx])
+    #                                             self._baseline_diss_avg = np.average(vector2[:-idx])
+    #                                             self._baseline_diss_noise = np.amax(
+    #                                                 vector2[:-idx]
+    #                                             ) - np.amin(vector2[:-idx])
+    #                                     else:
+    #                                         labelbar = "Capturing data... Apply drop when ready..."
+    #                                         # Directional gate: a drop should NOT drive RF upward beyond the positive noise band.
+    #                                         # We allow negative excursions (expected) but reject large positive spikes.
+    #                                         delta_f = (
+    #                                             vector1[0] - self._baseline_freq_avg
+    #                                         )  # RF change (Hz)
+    #                                         delta_d = (
+    #                                             vector2[0] - self._baseline_diss_avg
+    #                                         )  # Dissipation change
+
+    #                                         freq_ok = delta_f <= (
+    #                                             10.0 * self._baseline_freq_noise
+    #                                         )  # one-sided, directional
+    #                                         diss_ok = delta_d >= (
+    #                                             10.0 * self._baseline_diss_noise
+    #                                         )  # must increase
+
+    #                                         if freq_ok and diss_ok:
+    #                                             self._drop_applied[i] = True
+    #                                 except Exception as e:
+    #                                     Log.e(
+    #                                         "Error 'calibrating baselines' for drop detection. Apply drop when ready."
+    #                                     )
+    #                                     Log.d("ERROR DETAILS:", str(e))
+    #                                     self._drop_applied[i] = True
+    #                         else:
+    #                             labelbar = 'Capturing data... Drop applied! Wait for exit... Press "Stop" when run is finished.'
+
+    #                     else:
+    #                         label1 = str(d1) + " Hz"
+    #                         label2 = "-"
+    #                         label3 = str(d3) + " °C"
+    #                         labelstatus = "Warning"
+    #                         color_err = "#ff8000"
+    #                         labelbar = (
+    #                             "Warning: sensor dissipation calculation is not considered accurate above "
+    #                             + str("{0:.0f}e-06".format(vector2[0] * 1e6))
+    #                             + " for the this mode"
+    #                         )
+    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                             "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
+    #                         )
+    #                 else:
+    #                     if self._ser_error1 and self._ser_error2:
+    #                         label1 = "-"
+    #                         label2 = "-"
+    #                         label3 = "-"
+    #                         labelstatus = "Warning"
+    #                         color_err = "#ff0000"
+    #                         labelbar = "Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found"
+    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #                         )
+    #                     elif self._ser_error1:
+    #                         label1 = "-"
+    #                         label2 = "-"
+    #                         label3 = "-"
+    #                         labelstatus = "Warning"
+    #                         color_err = "#ff0000"
+    #                         peak_name = " "
+    #                         if self._ser_error1 == 1:
+    #                             peak_name = " upper "
+    #                         if self._ser_error1 == 2:
+    #                             peak_name = " lower "
+    #                         labelbar = "Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (left) allows".format(
+    #                             peak_name
+    #                         )
+    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #                         )
+    #                     elif self._ser_error2:
+    #                         label1 = "-"
+    #                         label2 = "-"
+    #                         label3 = "-"
+    #                         labelstatus = "Warning"
+    #                         color_err = "#ff0000"
+    #                         peak_name = " "
+    #                         if self._ser_error1 == 1:
+    #                             peak_name = " upper "
+    #                         if self._ser_error1 == 2:
+    #                             peak_name = " lower "
+    #                         labelbar = "Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (right) allows".format(
+    #                             peak_name
+    #                         )
+    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #                         )
+    #                     elif self._ser_error3:
+    #                         label1 = "-"
+    #                         label2 = "-"
+    #                         label3 = "-"
+    #                         labelstatus = "Warning"
+    #                         color_err = "#ff0000"
+    #                         labelbar = "Warning: failed to construct sine wave, approximating reconstruction with derivatives only"
+    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #                         )
+    #                     elif self._ser_error4:
+    #                         label1 = "-"
+    #                         label2 = "-"
+    #                         label3 = "-"
+    #                         labelstatus = "Warning"
+    #                         color_err = "#ff0000"
+    #                         labelbar = "Warning: failed to reconstruct signal wave, unable to apply noise correction reconstruction"
+    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #                         )
+
+    #             label8 = str(int(self._readFREQ[self._readFREQ.size // 2])) + " Hz"
+    #             self.InfoWin.ui3.info6.setText(
+    #                 "<font color=#0000ff > Frequency Value </font>" + label8
+    #             )
+    #             label7 = str(int(self._readFREQ[0])) + " Hz"
+    #             self.InfoWin.ui3.info3.setText(
+    #                 "<font color=#0000ff > Start Frequency </font>" + label7
+    #             )
+    #             label6 = str(int(self._readFREQ[-1])) + " Hz"
+    #             self.InfoWin.ui3.info4.setText(
+    #                 "<font color=#0000ff > Stop Frequency </font>" + label6
+    #             )
+    #             label5 = str(int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
+    #             self.InfoWin.ui3.info4a.setText(
+    #                 "<font color=#0000ff > Frequency Range </font>" + label5
+    #             )
+    #             label4 = str(int(self._readFREQ[1] - self._readFREQ[0])) + " Hz"
+    #             self.InfoWin.ui3.info5.setText("<font color=#0000ff > Sample Rate </font>" + label4)
+
+    #             self.InfoWin.ui3.l6a.setText("<font color=#0000ff > Temperature </font>" + label3)
+    #             self.InfoWin.ui3.l6.setText("<font color=#0000ff > Dissipation </font>" + label2)
+    #             self.InfoWin.ui3.l7.setText(
+    #                 "<font color=#0000ff > Resonance Frequency </font>" + label1
+    #             )
+    #             self.ControlsWin.ui1.infostatus.setText(
+    #                 "<font color=#333333 > Program Status </font>" + labelstatus
+    #             )
+    #             self.ControlsWin.ui1.infobar.setText(
+    #                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+    #                     color_err, labelbar
+    #                 )
+    #             )
+    #             # progressbar
+    #             self.ControlsWin.ui1.run_progress_bar.setValue(int((self._ser_control / 10) % 100))
+
+    #     # CALIBRATION: dynamic info in infobar at run-time
+    #     ##################################################
+    #     elif self._get_source() == OperationType.calibration:
+    #         if not hasattr(self, "_calib_progress_dlg") or self._calib_progress_dlg is None:
+    #             self._create_calibration_progress_dialog()
+    #             QtWidgets.QApplication.processEvents()
+    #         stop_flag = 0
+    #         self.ControlsWin.ui1.pButton_Stop.setEnabled(False)
+    #         vector1 = self.worker.get_value1_buffer(0)
+    #         vector1_any = 1 if vector1.any() else 0
+    #         # vector2[0] and vector3[0] flag error
+    #         vector2 = self.worker.get_t3_buffer(0)
+    #         vector3 = self.worker.get_d3_buffer(0)
+
+    #         label1 = "not available"
+    #         label2 = "not available"
+    #         label3 = "not available"
+    #         labelstatus = "Calibration Processing"
+    #         color_err = "#333333"
+    #         labelbar = "The operation will take a few seconds to complete... please wait..."
+    #         self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #             "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
+    #         )
+
+    #         if not self.worker.is_running():
+    #             stop_flag = 1
+
+    #         # progressbar calculations
+    #         error1, error2, error3, on_sample, _, _ = self.worker.get_ser_error()
+    #         if on_sample < Constants.calibration_default_samples:
+    #             self._completed = (on_sample / Constants.calibration_default_samples) * 100
+
+    #         ###########################################
+    #         # calibration buffer empty
+    #         if vector1_any == 0 and vector3[0] == 1:
+    #             label1 = "not available"
+    #             label2 = "not available"
+    #             label3 = "not available"
+    #             color_err = "#ff0000"
+    #             labelstatus = "Calibration Warning"
+    #             self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                 "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #             )
+    #             labelbar = "Initialize Warning: empty buffer! Please, repeat the Initialize after disconnecting/reconnecting Device!"
+    #             stop_flag = 1
+    #         # calibration buffer empty and ValueError from the serial port
+    #         elif vector1_any == 0 and vector2[0] == 1:
+    #             label1 = "not available"
+    #             label2 = "not available"
+    #             label3 = "not available"
+    #             color_err = "#ff0000"
+    #             labelstatus = "Calibration Warning"
+    #             self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                 "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #             )
+    #             labelbar = "Initialize Warning: empty buffer/ValueError! Please, repeat the Initialize after disconnecting/reconnecting Device!"
+    #             stop_flag = 1
+    #         # calibration buffer not empty
+    #         elif vector1_any != 0:
+    #             label1 = "not available"
+    #             label2 = "not available"
+    #             label3 = "not available"
+    #             labelstatus = "Calibration Processing"
+    #             color_err = "#333333"
+    #             labelbar = "The operation will take a few seconds to complete... please wait..."
+    #             if vector2[0] == 0 and vector3[0] == 0:
+    #                 labelstatus = "Calibration Success"
+    #                 self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                     "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
+    #                 )
+    #                 color_err = "#008000"
+    #                 labelbar = 'Initialize Success for baseline correction! Ready to measure. Press "Start" then apply drop.'
+    #                 stop_flag = 1
+
+    #             elif vector2[0] == 1 or vector3[0] == 1:
+    #                 color_err = "#ff0000"
+    #                 labelstatus = "Calibration Warning"
+    #                 self.ControlsWin.ui1.infostatus.setStyleSheet(
+    #                     "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    #                 )
+    #                 if vector2[0] == 1:
+    #                     labelbar = "Initialize Warning: ValueError or generic error during signal acquisition. Please, repeat the Initialize"
+    #                     stop_flag = 1
+    #                 elif vector3[0] == 1:
+    #                     labelbar = "Initialize Warning: unable to identify fundamental peak or apply peak detection algorithm. Please, repeat the Initialize!"
+    #                     stop_flag = 1
+    #         self.ControlsWin.ui1.run_progress_bar.setValue(
+    #             0 if stop_flag else int(self._completed + 1)
+    #         )  # dwight ver const was 10
+    #         self.InfoWin.ui3.l6a.setText("<font color=#0000ff>  Temperature </font>" + label3)
+    #         self.InfoWin.ui3.l6.setText("<font color=#0000ff>  Dissipation </font>" + label2)
+    #         self.InfoWin.ui3.l7.setText(
+    #             "<font color=#0000ff>  Resonance Frequency </font>" + label1
+    #         )
+    #         self.ControlsWin.ui1.infostatus.setText(
+    #             "<font color=#333333> Program Status </font>" + labelstatus
+    #         )
+    #         self.ControlsWin.ui1.infobar.setText(
+    #             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+    #                 color_err, labelbar
+    #             )
+    #         )
+
+    #         progress_val = 0 if stop_flag else int(self._completed + 1)
+    #         if hasattr(self, "_calib_progress_dlg") and self._calib_progress_dlg is not None:
+    #             self._calib_progress_dlg.setValue(progress_val)
+    #             self._calib_progress_dlg.setLabelText(f"{labelstatus}\n{labelbar}")
+    #         if stop_flag == 1:
+    #             self.stop_flag += 1
+    #             if isinstance(self.worker._port, str) or self.stop_flag >= len(self.worker._port):
+    #                 self._timer_plot.stop()
+    #                 self._enable_ui(True)
+    #                 self.worker.stop()
+    #                 if (
+    #                     hasattr(self, "_calib_progress_dlg")
+    #                     and self._calib_progress_dlg is not None
+    #                 ):
+    #                     self._calib_progress_dlg.close()
+    #                     self._calib_progress_dlg = None
+    #     ############################################################################################################################
+    #     # REFERENCE SET
+    #     ############################################################################################################################
+    #     if self._reference_flag:
+    #         for i, p in enumerate(self._plt2_arr):
+    #             if p is None:
+    #                 continue
+    #             p.setLabel(
+    #                 "left",
+    #                 "Resonance Frequency",
+    #                 units="Hz",
+    #                 color=Constants.plot_colors[6],
+    #                 **{"font-size": "10pt"},
+    #             )
+    #             p.setLabel(
+    #                 "right",
+    #                 "Dissipation",
+    #                 units="",
+    #                 color=Constants.plot_colors[7],
+    #                 **{"font-size": "10pt"},
+    #             )
+    #             # save back to global, otherwise local gets trashed
+    #             self._plt2_arr[i] = p
+    #         self.InfoWin.ui3.inforef1.setText(
+    #             "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1
+    #         )
+    #         self.InfoWin.ui3.inforef2.setText(
+    #             "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2
+    #         )
+
+    #         ###################################################################
+    #         # Amplitude and phase multiple Plot
+    #         def updateViews1():
+    #             for i, p in enumerate(self._plt0_arr):
+    #                 if p is None:
+    #                     continue
+    #                 p.clear()
+    #                 self._plt0_arr[i] = p
+    #             if not self._plt1 is None:
+    #                 Log.w("Phase is no longer supported with multiplex software.")
+    #                 return
+    #                 self._plt1.clear()
+    #                 self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
+    #                 self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
+
+    #         # updates for multiple plot y-axes
+    #         updateViews1()
+    #         for i, p in enumerate(self._plt0_arr):
+    #             if p is None:
+    #                 continue
+    #             # p.vb.sigResized.connect(updateViews1)
+    #             p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+    #             p.enableAutoRange(axis="x", enable=True)
+    #             p.enableAutoRange(axis="y", enable=True)
+    #             p.plot(
+    #                 x=self.worker.get_value0_buffer(i),
+    #                 y=self.worker.get_value1_buffer(i),
+    #                 pen=Constants.plot_colors[0],
+    #             )
+    #             # save back to global, otherwise local gets trashed
+    #             self._plt0_arr[i] = p
+    #         if not self._plt1 is None:
+    #             Log.w("Phase is no longer supported with multiplex software.")
+    #             # self._plt1.addItem(pg.PlotCurveItem(x=self._readFREQ,y=self.worker.get_value2_buffer(i),pen=Constants.plot_colors[1]))
+
+    #         ###################################################################
+    #         # Resonance frequency and dissipation multiple Plot
+    #         def updateViews2():
+    #             for i, p in enumerate(self._plt3_arr):
+    #                 if p is None:
+    #                     continue
+    #                 _p2 = self._plt2_arr[i]
+    #                 _p2.clear()
+    #                 p.clear()
+    #                 p.setGeometry(_p2.vb.sceneBoundingRect())
+    #                 p.linkedViewChanged(_p2.vb, p.XAxis)
+    #                 # save back to global, otherwise local gets trashed
+    #                 self._plt2_arr[i] = _p2
+    #                 # save back to global, otherwise local gets trashed
+    #                 self._plt3_arr[i] = p
+
+    #         # updates for multiple plot y-axes
+    #         updateViews2()
+
+    #         for i, p in enumerate(self._plt2_arr):
+    #             if p is None:
+    #                 continue
+    #             # p.vb.sigResized.connect(updateViews2)
+    #             self._vector_1 = (
+    #                 np.array(self.worker.get_d1_buffer(i)) - self._reference_value_frequency[i]
+    #             )
+    #             p.plot(
+    #                 x=self.worker.get_t1_buffer(i),
+    #                 y=self._vector_1,
+    #                 pen=Constants.plot_colors[6],
+    #             )  # 2
+
+    #             # Prevent the user from zooming/panning out of this specified region
+    #             if self._get_source() == OperationType.measurement:
+    #                 p.setLimits(
+    #                     yMax=self._vector_reference_frequency[i][-1],
+    #                     yMin=self._vector_reference_frequency[i][0],
+    #                     minYRange=5,
+    #                 )
+    #                 p.enableAutoRange(axis="x", enable=True)
+    #                 p.enableAutoRange(axis="y", enable=True)
+
+    #             # save back to global, otherwise local gets trashed
+    #             self._plt2_arr[i] = p
+
+    #         for i, p in enumerate(self._plt3_arr):
+    #             if p is None:
+    #                 continue
+    #             self._vector_2 = (
+    #                 np.array(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
+    #             )
+    #             p.addItem(
+    #                 pg.PlotCurveItem(
+    #                     self.worker.get_t2_buffer(i),
+    #                     self._vector_2,
+    #                     pen=Constants.plot_colors[7],
+    #                 )
+    #             )
+
+    #             # Prevent the user from zooming/panning out of this specified region
+    #             if self._get_source() == OperationType.measurement:
+    #                 p.setLimits(
+    #                     yMax=self._vector_reference_dissipation[i][-1],
+    #                     yMin=self._vector_reference_dissipation[i][0],
+    #                     minYRange=1e-7,
+    #                 )
+    #                 p.enableAutoRange(axis="x", enable=True)
+    #                 p.enableAutoRange(axis="y", enable=True)
+
+    #             # save back to global, otherwise local gets trashed
+    #             self._plt3_arr[i] = p
+
+    #         # Prevent the user from zooming/panning out of this specified region
+    #         if self._get_source() == OperationType.measurement:
+    #             self._plt4.setLimits(yMax=50, yMin=-10)
+    #             self._plt4.enableAutoRange(axis="x", enable=True)
+    #             self._plt4.enableAutoRange(axis="y", enable=True)
+
+    #         ###################################################################
+    #         # Temperature plot
+    #         self._plt4.clear()
+    #         self._plt4.plot(
+    #             x=self.worker.get_t3_buffer(i),
+    #             y=self.worker.get_d3_buffer(i),
+    #             pen=Constants.plot_colors[4],
+    #         )
+    #         # self._plt4.addItem(pg.PlotCurveItem(self.worker.get_t3_buffer(i),self.worker.get_d4_buffer(i),pen=Constants.plot_colors[1])) # hide ambient
+
+    #     ###########################################################################################################################
+    #     # REFERENCE NOT SET
+    #     ###########################################################################################################################
+    #     else:
+    #         for i, p in enumerate(self._plt2_arr):
+    #             if p is None:
+    #                 continue
+    #             p.setLabel(
+    #                 "left",
+    #                 "Resonance Frequency",
+    #                 units="Hz",
+    #                 color=Constants.plot_colors[2],
+    #                 **{"font-size": "10pt"},
+    #             )
+    #             p.setLabel(
+    #                 "right",
+    #                 "Dissipation",
+    #                 units="",
+    #                 color=Constants.plot_colors[3],
+    #                 **{"font-size": "10pt"},
+    #             )
+    #             self._plt2_arr[i] = p
+    #         self.InfoWin.ui3.inforef1.setText(
+    #             "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1
+    #         )
+    #         self.InfoWin.ui3.inforef2.setText(
+    #             "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2
+    #         )
+
+    #         # limit number of display points to last num
+    #         numPoints = 12000
+
+    #         ###################################################################
+    #         # Amplitude and phase multiple Plot
+    #         def updateViews1():
+    #             for i, p in enumerate(self._plt0_arr):
+    #                 if p is None:
+    #                     continue
+    #                 p.clear()
+    #                 self._plt0_arr[i] = p
+    #             if not self._plt1 is None:
+    #                 Log.w("Phase is no longer supported with multiplex software.")
+    #                 return
+    #                 self._plt1.clear()
+    #                 self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
+    #                 self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
+
+    #         # updates for multiple plot y-axes
+    #         updateViews1()
+    #         self._amps = {}  # empty dict for showing combined amplitudes
+    #         for i, p in enumerate(self._plt0_arr):
+    #             if p is None:
+    #                 continue
+    #             _plt2 = self._plt2_arr[i]
+    #             _plt3 = self._plt3_arr[i]
+    #             self._readFREQ = self.worker.get_value0_buffer(i)
+    #             vector1 = self.worker.get_d1_buffer(i)
+
+    #             if self._get_source() == OperationType.measurement and self.multiplex_plots > 1:
+    #                 self._amps[i] = self.worker.get_value1_buffer(i)
+    #             else:
+    #                 # p.vb.sigResized.connect(updateViews1)
+    #                 p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+    #                 p.enableAutoRange(axis="x", enable=True)
+    #                 p.enableAutoRange(axis="y", enable=True)
+    #                 p.plot(
+    #                     x=self._readFREQ,
+    #                     y=self.worker.get_value1_buffer(i),
+    #                     pen=Constants.plot_colors[0],
+    #                 )
+    #             if not self._plt1 is None:
+    #                 Log.w("Phase is no longer supported with multiplex software.")
+    #                 # self._plt1.addItem(pg.PlotCurveItem(x=self._readFREQ,y=self.worker.get_value2_buffer(i),pen=Constants.plot_colors[1]))
+
+    #             if self._get_source() == OperationType.measurement:
+    #                 ###################################################################
+    #                 # Resonance frequency and dissipation multiple Plot
+    #                 def updateViews2(_plt2, _plt3):
+    #                     _plt2.clear()
+    #                     _plt3.clear()
+    #                     _plt3.setGeometry(_plt2.vb.sceneBoundingRect())
+    #                     _plt3.linkedViewChanged(_plt2.vb, _plt3.XAxis)
+
+    #                 # updates for multiple plot y-axes
+    #                 updateViews2(_plt2, _plt3)
+    #                 # _plt2.vb.sigResized.connect(updateViews2)
+    #                 _plt2.plot(
+    #                     x=self.worker.get_t1_buffer(i)[:numPoints],
+    #                     y=self.worker.get_d1_buffer(i)[:numPoints],
+    #                     pen=Constants.plot_colors[2],
+    #                 )
+
+    #                 # Add apply drop message to those still pending drop
+    #                 try:
+    #                     if self._text4[i] is None:
+    #                         # 'size' and 'bold' retained when calling 'setText()'
+    #                         self._text4[i] = pg.LabelItem(size="11pt", bold=True)
+    #                         self._text4[i].setParentItem(_plt2.graphicsItem())
+    #                         self._text4[i].anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
+    #                     elif not self._drop_applied[i]:
+    #                         vector0 = self.worker.get_t2_buffer(i)
+    #                         time_running = vector0[0]
+    #                         if time_running == 0:
+    #                             labelbar = "Waiting for start..."
+    #                             continue
+    #                         dissipation_vector = self.worker.get_d2_buffer(i)
+    #                         rf_vector = self.worker.get_d1_buffer(i)
+    #                         relative_time = self.worker.get_t1_buffer(i)
+    #                         dry_status, dry_msg = self.dry_detect[i].update(
+    #                             resonance_frequency=rf_vector,
+    #                             dissipation=dissipation_vector,
+    #                             relative_time=relative_time,
+    #                         )
+    #                         if i == 0:
+    #                             self._last_dry_msg = dry_msg
+    #                             self._last_dry_status = dry_status
+    #                         if not dry_status:
+    #                             # Set and signal all receivers that new time is available (if unset)
+    #                             with self._sensorDriedTimeValue.get_lock():
+    #                                 # For multiplex, take the most recent (latest) dry time
+    #                                 if self._sensorDriedTimes[i] == 0.0:
+    #                                     self._sensorDriedTimes[i] = time_running
+    #                                     # set on each and every trigger for multiplex:
+    #                                     self._sensorDriedTimeValue.value = self._sensorDriedTimes[i]
+
+    #                             self._text4[i].setText(dry_msg, color=(0, 0, 200))
+    #                             self._baselinedata[i] = [
+    #                                 [
+    #                                     np.amin(self.worker.get_d1_buffer(i)[:numPoints]),
+    #                                     np.amax(self.worker.get_d1_buffer(i)[:numPoints]),
+    #                                 ],
+    #                                 [
+    #                                     np.amin(self.worker.get_d2_buffer(i)[:numPoints]),
+    #                                     np.amax(self.worker.get_d2_buffer(i)[:numPoints]),
+    #                                 ],
+    #                             ]
+    #                         else:
+    #                             self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
+    #                     else:
+    #                         # Drop has been applied — show any latched fill-classifier message on the plot.
+    #                         # This is the only place _fill_display_msg can realistically arrive since
+    #                         # extended-fill events occur well after drop application.
+    #                         if self._fill_display_msg and self._text4[i] is not None:
+    #                             self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
+    #                         time_running = _plt2.getViewBox().viewRange()[0][1]
+    #                         current_y_range = [
+    #                             _plt2.getViewBox().viewRange()[1],
+    #                             _plt3.viewRange()[1],
+    #                         ]
+    #                         current_deltas = np.diff(current_y_range)[:, 0]
+    #                         last_y_deltas = np.diff(self._last_y_range[i])[:, 0]
+    #                         baseline_deltas = np.diff(self._baselinedata[i])[:, 0]
+    #                         # self._last_y_range[i] != current_y_range:
+    #                         if any(np.subtract(current_deltas, last_y_deltas) > baseline_deltas):
+    #                             self._last_y_range[i] = current_y_range
+    #                             self._last_y_delta[i] = time_running
+    #                             self._run_finished[i] = False
+    #                             # Only blank the label if no fill warning is currently showing.
+    #                             # If _fill_display_msg is latched, blanking here causes a one-frame
+    #                             # flicker since the fill message is re-applied on the very next tick.
+    #                             if not self._fill_display_msg:
+    #                                 self._text4[i].setText(" ")
+    #                         elif (
+    #                             time_running - self._last_y_delta[i] > 10.0
+    #                             and not self._run_finished[i]
+    #                         ):
+    #                             self._run_finished[i] = True
+    #                             Log.d(
+    #                                 f"The dataset on Plot {i} appears to have finished (Y-Axis stablized for 10 seconds)"
+    #                             )
+    #                             # TODO 2024-05-24: (Temporary) Disable showing "Press Stop" on UI until accuracy is improved
+    #                             # if all(self._run_finished):
+    #                             #     status_text = 'Press \"Stop\"'
+    #                             # else:
+    #                             #     status_text = "Run Complete, waiting on other channels..."
+    #                             # self._text4[i].setText(status_text, color=(200, 0, 0)) # range unchanging / probably finished
+
+    #                         # Set and signal all receivers that new time is available (if unset)
+    #                         with self._dropAppliedTimeValue.get_lock():
+    #                             # For multiplex, take the first (earliest) drop time
+    #                             if self._dropAppliedTimes[i] == 0.0:
+    #                                 self._dropAppliedTimes[i] = time_running
+    #                             if self._dropAppliedTimeValue.value == 0.0:
+    #                                 # only set on first trigger for multiplex:
+    #                                 self._dropAppliedTimeValue.value = time_running
+
+    #                 except Exception as e:
+    #                     import traceback
+
+    #                     Log.e("Error handling plot status label text!")
+    #                     Log.e(e)
+    #                     Log.e("PlotStatus", traceback.format_exc())
+
+    #                 # Prevent the user from zooming/panning out of this specified region
+    #                 if self._get_source() == OperationType.measurement:
+    #                     _ymin = np.amin(vector1)
+    #                     _ymax = np.amax(vector1)
+    #                     _yrange = _ymax - _ymin
+    #                     if _yrange < Constants.plot_min_range_freq:
+    #                         _yavg = int(np.average(vector1))
+    #                         _ymin = _yavg - (Constants.plot_min_range_freq / 2)
+    #                         _ymax = _yavg + (Constants.plot_min_range_freq / 2)
+
+    #                     # Apply padding to _plt2 range to match that of _plt3
+    #                     _ymin -= Constants.default_plot_padding * _yrange
+    #                     _ymax += Constants.default_plot_padding * _yrange
+
+    #                     _plt2.setLimits(
+    #                         yMax=_ymax,
+    #                         yMin=_ymin,
+    #                         minYRange=Constants.plot_min_range_freq,
+    #                     )  # remove maxYRange limit
+    #                     _plt3.setLimits(
+    #                         yMax=(self._readFREQ[-1] - self._readFREQ[0]) / self._readFREQ[0],
+    #                         yMin=0,
+    #                         minYRange=Constants.plot_min_range_diss,
+    #                     )
+
+    #                     _plt2.enableAutoRange(axis="x", enable=True)
+    #                     _plt3.enableAutoRange(axis="x", enable=True)
+
+    #                     _plt2.enableAutoRange(axis="y", enable=True)
+    #                     _plt3.enableAutoRange(axis="y", enable=True)
+
+    #                 _plt3.addItem(
+    #                     pg.PlotCurveItem(
+    #                         self.worker.get_t2_buffer(i)[:numPoints],
+    #                         self.worker.get_d2_buffer(i)[:numPoints],
+    #                         pen=Constants.plot_colors[3],
+    #                     )
+    #                 )
+
+    #             # save back to global, otherwise local gets trashed
+    #             self._plt0_arr[i] = p
+    #             # save back to global, otherwise local gets trashed
+    #             self._plt2_arr[i] = _plt2
+    #             # save back to global, otherwise local gets trashed
+    #             self._plt3_arr[i] = _plt3
+
+    #             # Prevent the user from zooming/panning out of this specified region
+    #             if self._get_source() == OperationType.measurement:
+    #                 self._plt4.setLimits(yMax=50, yMin=-10, minYRange=0.5)
+    #                 self._plt4.enableAutoRange(axis="x", enable=True)
+    #                 self._plt4.enableAutoRange(axis="y", enable=True)
+
+    #         if self._get_source() == OperationType.measurement and self.multiplex_plots > 1:
+    #             # get the largest values for each index
+    #             i = 0  # first Amplitude plot is the main one
+    #             combined_amps = self._amps[i]
+    #             for a in range(1, len(self._amps)):
+    #                 combined_amps = np.maximum(combined_amps, self._amps[a])
+    #             p = self._plt0_arr[i]
+    #             p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+    #             p.enableAutoRange(axis="x", enable=True)
+    #             p.enableAutoRange(axis="y", enable=True)
+    #             p.plot(x=self._readFREQ, y=combined_amps, pen=Constants.plot_colors[0])
+    #             self.labels = []
+    #             for j in range(len(self._amps)):
+    #                 am = np.argmax(self._amps[j])
+    #                 item = pg.TextItem(text=str(j + 1), color=(0, 0, 0), anchor=(0, 1))
+    #                 item.setPos(self._readFREQ[am], combined_amps[am])
+    #                 self.labels.append(item)
+    #                 p.addItem(self.labels[j])
+    #             # save back to global, otherwise local gets trashed
+    #             self._plt0_arr[i] = p
+
+    #         ###################################################################
+    #         # Temperature plot
+    #         self._plt4.clear()
+    #         self._plt4.plot(
+    #             x=self.worker.get_t3_buffer(0)[:numPoints],
+    #             y=self.worker.get_d3_buffer(0)[:numPoints],
+    #             pen=Constants.plot_colors[4],
+    #         )
+    #         # self._plt4.addItem(pg.PlotCurveItem(self.worker.get_t3_buffer(i),self.worker.get_d4_buffer(i),pen=Constants.plot_colors[1])) # hide ambient
+
+    ###########################################################################################################################################
+    def _init_plot_curves(self) -> None:
+        n = len(self._plt0_arr)
+
+        # Per-channel curve slots
+        self._ci_amp: list[pg.PlotCurveItem | None] = [None] * n
+        self._ci_freq: list[pg.PlotCurveItem | None] = [None] * n
+        self._ci_diss: list[pg.PlotCurveItem | None] = [None] * n
+
+        # Safely resolve the ViewBox whether p2 is a PlotWidget, PlotItem, or already a ViewBox
+        def resolve_vb(obj):
+            if obj is None:
+                return None
+            # If it's a PlotWidget
+            if hasattr(obj, "getPlotItem"):
+                obj = obj.getPlotItem()
+            # If it's a GraphicsLayoutWidget
+            elif hasattr(obj, "getItem"):
+                try:
+                    obj = obj.getItem(0, 0)
+                except Exception:
+                    pass
+            # If we've reached the PlotItem layer
+            if hasattr(obj, "getViewBox"):
+                return obj.getViewBox()
+            if hasattr(obj, "vb"):
+                return obj.vb
+            # Otherwise, it's likely already the raw ViewBox
+            return obj
+
+        for i in range(n):
+            p0 = self._plt0_arr[i]
+            p2 = self._plt2_arr[i]
+            p3 = self._plt3_arr[i]
+
+            if p0 is None or p2 is None or p3 is None:
+                continue
+
+            # Safely extract the ViewBoxes regardless of Qt Designer configuration
+            vb2 = resolve_vb(p2)
+            vb3 = resolve_vb(p3)
+
+            # Only attempt ViewBox signal wiring if both resolved correctly —
+            # a failed resolve must NOT prevent curve items from being created below
+            if isinstance(vb2, pg.ViewBox) and isinstance(vb3, pg.ViewBox):
+
+                # 1. Forcefully sever any ghost links on both raw widgets and resolved ViewBoxes
+                for obj in (p2, p3, vb2, vb3):
+                    if obj is None:
+                        continue
+                    try:
+                        obj.setXLink(None)
+                        obj.setYLink(None)
+                    except (AttributeError, RuntimeError):
+                        pass
+
+                # 2. Manually sync the overlay geometry
+                def link_geometry(sender=None, vb_main=vb2, vb_overlay=vb3):
+                    def _do_sync(vm=vb_main, vo=vb_overlay):
+                        try:
+                            vo.setGeometry(vm.sceneBoundingRect())
+                            vo.linkedViewChanged(vm, vo.XAxis)
+                        except RuntimeError:
+                            pass  # Object deleted during a restart; safely ignore
+                    QtCore.QTimer.singleShot(0, _do_sync)
+
+                # 3. Manually sync the panning/zooming of the X-Axis
+                def sync_x_axis(sender, new_range, vb_overlay=vb3):
+                    try:
+                        vb_overlay.setXRange(new_range[0], new_range[1], padding=0)
+                    except (RuntimeError, TypeError):
+                        pass  # Deleted object or wrong type; safely ignore
+
+                # 4. Connect the signals (with safety disconnects for soft restarts)
+                try:
+                    vb2.sigResized.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
+                vb2.sigResized.connect(link_geometry)
+
+                try:
+                    vb2.sigXRangeChanged.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
+                vb2.sigXRangeChanged.connect(sync_x_axis)
+
+            else:
+                Log.w(
+                    TAG,
+                    f"Channel {i}: could not resolve ViewBoxes for p2/p3 — "
+                    f"skipping X-axis sync wiring (curves will still be created).",
+                )
+
+            # ── Amplitude ────────────────────────────────────────────────────
+            # Curve items are always created regardless of ViewBox resolution
+            ci_amp = pg.PlotCurveItem(
+                pen=Constants.plot_colors[0],
+            )
+            p0.addItem(ci_amp)
+            self._ci_amp[i] = ci_amp
+
+            # ── Resonance frequency ──────────────────────────────────────────
+            ci_freq = pg.PlotCurveItem(
+                pen=Constants.plot_colors[2],
+            )
+            p2.addItem(ci_freq)
+            self._ci_freq[i] = ci_freq
+
+            # ── Dissipation ──────────────────────────────────────────────────
+            ci_diss = pg.PlotCurveItem(
+                pen=Constants.plot_colors[3],
+            )
+            p3.addItem(ci_diss)
+            self._ci_diss[i] = ci_diss
+
+        # ── Temperature ───────────────────────────────────────────────────────
+        self._ci_temp = pg.PlotCurveItem(
+            pen=Constants.plot_colors[4],
+            clipToView=True,
+            skipFiniteCheck=True,
+        )
+        self._plt4.addItem(self._ci_temp)
+
+        # Combined-amplitude curve for multiplex mode (channel 0 plot)
+        self._ci_amp_combined: pg.PlotCurveItem | None = None
+        if self.multiplex_plots > 1 and self._plt0_arr[0] is not None:
+            ci_combined = pg.PlotCurveItem(
+                pen=Constants.plot_colors[0],
+                skipFiniteCheck=True,
+            )
+            self._plt0_arr[0].addItem(ci_combined)
+            self._ci_amp_combined = ci_combined
+
+    def _consume_worker_queues(self) -> None:
+        # Drain worker queues
         self.worker.consume_logger()
         self.worker.consume_queue0()
         self.worker.consume_queue1()
@@ -3441,914 +4494,893 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.consume_queue5()
         self.worker.consume_queue6()
 
-        labelbar = "Status: Unknown"
+    def _update_plot(self) -> None:
+        # Pull fresh data from all worker queues
+        self._consume_worker_queues()
+        source = self._get_source()
 
-        # MEASUREMENT: dynamic frequency and dissipation labels at run-time
-        ###################################################################
-        if self._get_source() == OperationType.measurement:
-            self._readFREQ = self.worker.get_value0_buffer(0)
-            vector1 = self.worker.get_d1_buffer(0)
-            vector2 = self.worker.get_d2_buffer(0)
-            vectortemp = self.worker.get_d3_buffer(0)
-            vectoramb = self.worker.get_d4_buffer(0)
+        # Update status labels / progress / error indicators
+        if source == OperationType.measurement:
+            self._update_measurement_ui()
+        elif source == OperationType.calibration:
+            self._update_calibration_ui()
+        else:
+            Log.e(TAG, f"Unsupported operation type for plotting: {source}")
 
-            if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+        # Redraw plots (reference-mode vs. absolute-mode)
+        if self._reference_flag:
+            self._draw_plots_reference()
+        else:
+            self._draw_plots_no_reference()
+
+    def _update_measurement_ui(self) -> None:
+        # Runtime measurement vectors
+        self._readFREQ = self.worker.get_value0_buffer(0)
+        vector1 = self.worker.get_d1_buffer(0)
+        vector2 = self.worker.get_d2_buffer(0)
+        vectortemp = self.worker.get_d3_buffer(0)
+
+        # Fill status handling
+        if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+            self._update_fill_classifier(vector1, vector2)
+
+        # Serial errors and USB disconnect handling
+        (
+            self._ser_error1,
+            self._ser_error2,
+            self._ser_error3,
+            self._ser_error4,
+            self._ser_control,
+            self._ser_err_usb,
+        ) = self.worker.get_ser_error()
+
+        if self._ser_err_usb > 0:
+            if self.worker.is_running():
+                Log.i(TAG, "Port closed wihtout stopping - application will stop.")
+                self.stop()
+            PopUp.warning(self, Constants.app_title, "WARNING: Disconnected Device!")
+
+        if not self.worker.is_running():
+            self.stop()
+
+        # TEC temperature and power handling
+        if vectortemp.any():
+            self._update_tec_display(vectortemp)
+
+        if not vector1.any():
+            return  # Nothing to display
+
+        # Progress bar handling
+        if self._ser_control <= Constants.environment:
+            self._completed = self._ser_control * 2
+        self.ControlsWin.ui1.run_progress_bar.setValue(int((self._ser_control / 10) % 100))
+
+        # Create data label strings
+        label1, label2, label3, labelstatus, color_err, labelbar = self._build_measurement_labels(
+            vector1, vector2, vectortemp
+        )
+
+        # Frequency info panel handling
+        self._update_freq_info_panel(label1, label2, label3)
+
+        # Stats and infobar widget handling
+        self.ControlsWin.ui1.infostatus.setText(
+            "<font color=#333333> Program Status </font>" + labelstatus
+        )
+        self.ControlsWin.ui1.infobar.setText(
+            "<font color=#0000ff> Infobar </font>"
+            "<font color={color}>{bar}</font>".format(color=color_err, bar=labelbar)
+        )
+
+    def _update_calibration_ui(self) -> None:
+        # Calibration progress dialog handling
+        if not hasattr(self, "_calib_progress_dlg") or self._calib_progress_dlg is None:
+            self._create_calibration_progress_dialog()
+            QtWidgets.QApplication.processEvents()
+
+        stop_flag = 0
+        self.ControlsWin.ui1.pButton_Stop.setEnabled(False)
+
+        vector1 = self.worker.get_value1_buffer(0)
+        vector1_any = 1 if vector1.any() else 0
+        vector2 = self.worker.get_t3_buffer(0)
+        vector3 = self.worker.get_d3_buffer(0)
+
+        labelstatus = "Calibration Processing"
+        color_err = "#333333"
+        labelbar = "The operation will take a few seconds to complete… please wait…"
+        self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_YELLOW)
+
+        if not self.worker.is_running():
+            stop_flag = 1
+
+        # Progress handling
+        _, _, _, on_sample, _, _ = self.worker.get_ser_error()
+        if on_sample < Constants.calibration_default_samples:
+            self._completed = (on_sample / Constants.calibration_default_samples) * 100
+
+        # Determine calibration state
+        if vector1_any == 0 and vector3[0] == 1:
+            labelstatus, color_err, labelbar = (
+                "Calibration Warning",
+                "#ff0000",
+                "Initialize Warning: empty buffer! Please repeat Initialize after "
+                "disconnecting/reconnecting Device!",
+            )
+            self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_RED)
+            stop_flag = 1
+
+        elif vector1_any == 0 and vector2[0] == 1:
+            labelstatus, color_err, labelbar = (
+                "Calibration Warning",
+                "#ff0000",
+                "Initialize Warning: empty buffer/ValueError! Please repeat Initialize after "
+                "disconnecting/reconnecting Device!",
+            )
+            self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_RED)
+            stop_flag = 1
+
+        elif vector1_any != 0:
+            if vector2[0] == 0 and vector3[0] == 0:
+                labelstatus = "Calibration Success"
+                color_err = "#008000"
+                labelbar = 'Initialize Success for baseline correction! Ready to measure. Press "Start" then apply drop.'
+                self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
+                stop_flag = 1
+            elif vector2[0] == 1:
+                labelstatus, color_err, stop_flag = "Calibration Warning", "#ff0000", 1
+                labelbar = (
+                    "Initialize Warning: ValueError or generic error during signal acquisition. "
+                    "Please repeat the Initialize."
+                )
+                self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_RED)
+            elif vector3[0] == 1:
+                labelstatus, color_err, stop_flag = "Calibration Warning", "#ff0000", 1
+                labelbar = (
+                    "Initialize Warning: unable to identify fundamental peak or apply peak "
+                    "detection algorithm. Please repeat the Initialize!"
+                )
+                self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_RED)
+
+        progress_val = 0 if stop_flag else int(self._completed + 1)
+        self.ControlsWin.ui1.run_progress_bar.setValue(progress_val)
+
+        ui3 = self.InfoWin.ui3
+        ui3.l6a.setText("<font color=#0000ff>  Temperature </font>not available")
+        ui3.l6.setText("<font color=#0000ff>  Dissipation </font>not available")
+        ui3.l7.setText("<font color=#0000ff>  Resonance Frequency </font>not available")
+        self.ControlsWin.ui1.infostatus.setText(
+            "<font color=#333333> Program Status </font>" + labelstatus
+        )
+        self.ControlsWin.ui1.infobar.setText(
+            "<font color=#0000ff> Infobar </font>"
+            "<font color={color}>{bar}</font>".format(color=color_err, bar=labelbar)
+        )
+
+        if hasattr(self, "_calib_progress_dlg") and self._calib_progress_dlg is not None:
+            self._calib_progress_dlg.setValue(progress_val)
+            self._calib_progress_dlg.setLabelText(f"{labelstatus}\n{labelbar}")
+
+        if stop_flag:
+            self.stop_flag += 1
+            if isinstance(self.worker._port, str) or self.stop_flag >= len(self.worker._port):
+                self._timer_plot.stop()
+                self._enable_ui(True)
+                self.worker.stop()
+                if hasattr(self, "_calib_progress_dlg") and self._calib_progress_dlg is not None:
+                    self._calib_progress_dlg.close()
+                    self._calib_progress_dlg = None
+
+    def _update_fill_classifier(
+        self,
+        vector1: np.ndarray,
+        vector2: np.ndarray,
+    ) -> None:
+        """Push a snapshot to the fill-forecaster and process any result."""
+        now = time.time()
+        if now - getattr(self, "_last_forecaster_push_time", 0.0) > 0.2:
+            self._last_forecaster_push_time = now
+
+            # Optional but recommended: check if the queue is empty before pushing
+            # to prevent backlog if the worker gets completely stuck.
+            if self.worker._forecaster_in.empty():
+                TAIL = 500
+
                 snapshot = WorkerSnapshot(
-                    self.worker.get_t1_buffer(0),
-                    self.worker.get_d1_buffer(0),
-                    self.worker.get_d2_buffer(0),
+                    self.worker.get_t1_buffer(0)[-TAIL:],
+                    vector1[-TAIL:],
+                    vector2[-TAIL:],
                 )
                 self.worker._forecaster_in.put(snapshot)
-                if not self.worker._forecaster_out.empty():
-                    try:
-                        pred_int, _, display_msg = self.worker._forecaster_out.get()
-                        if display_msg is not None:
-                            self._fill_display_msg = display_msg
 
-                        is_drop_applied = all(self._drop_applied)
+        # Keep checking the output queue at the full GUI speed
+        if self.worker._forecaster_out.empty():
+            return
 
-                        # Gate all fill-classifier messages behind drop application.
-                        # Before the drop is confirmed, mirror the dry/drop status instead.
-                        if not is_drop_applied:
-                            if not self._last_dry_status:
-                                status_msg = self._last_dry_msg
-                                ui_step = 0
-                            else:
-                                status_msg = "Add sample"
-                                ui_step = 0
-                            if hasattr(self.ControlsWin.ui1, "run_controls"):
-                                self.ControlsWin.ui1.run_controls.update_progress(
-                                    ui_step, 5, status_msg
-                                )
-                        else:
-                            ui_step = 0
-                            status_msg = "Unknown"
-                            if pred_int == -1:
-                                status_msg = "Sample detected"
-                                ui_step = 1
-                                if not self._drop_epoch_sent:
-                                    drop_epoch = float(self.worker.get_t1_buffer(0)[0])
-                                    self.worker._forecaster_in.put(DropEpochSignal(drop_epoch))
-                                    self._drop_epoch_sent = True
-                            elif pred_int == 0:
-                                status_msg = "Filling started"
-                                ui_step = 2
-                            elif pred_int == 1:
-                                status_msg = "Filling"
-                                ui_step = 3
-                            elif pred_int == 2:
-                                status_msg = "Almost full"
-                                ui_step = 4
-                            elif pred_int == 3:
-                                status_msg = "Complete, stop"
-                                ui_step = 5
-                                self._fill_display_msg = "Data Ready, Stop"
+        try:
+            pred_int, _, display_msg = self.worker._forecaster_out.get()
+            if display_msg is not None:
+                self._fill_display_msg = display_msg
 
-                            if hasattr(self.ControlsWin.ui1, "run_controls"):
-                                self.ControlsWin.ui1.run_controls.update_progress(
-                                    ui_step, 5, status_msg
-                                )
-                    except Exception as e:
-                        Log.e(TAG, f"Error retrieving fill status: {e}")
+            is_drop_applied = all(self._drop_applied)
 
-            (
-                self._ser_error1,
-                self._ser_error2,
-                self._ser_error3,
-                self._ser_error4,
-                self._ser_control,
-                self._ser_err_usb,
-            ) = self.worker.get_ser_error()
-
-            if self._ser_err_usb > 0:
-                if self.worker.is_running():
-                    Log.i(
-                        TAG,
-                        "Port closed without stopping the capture, application will stop...",
-                    )
-                    self.stop()
-                PopUp.warning(self, Constants.app_title, "Warning: Disconnected Device!")
-            if not self.worker.is_running():
-                self.stop()
-
-            if vectortemp.any():
-                # TEMPERATURE: Update TEC temperature and power (if running)
-                ############################################################
-                if self.tecWorker._tec_locked:
-                    self.tecWorker._tec_temp = vectortemp[0]
-                    self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
-                    sp = self.tecWorker._tec_setpoint
-                    pv = self.tecWorker._tec_temp
-                    op = self.tecWorker._tec_power
-                    if sp == 0.00:
-                        sp = 0.25
-                    if op == 0:
-                        new_l1 = "[AUTO-OFF ERROR]" if np.isnan(pv) else "[AUTO-OFF TIMEOUT]"
-                    else:
-                        new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(pv, sp, op)
-                    self.ControlsWin.ui1.lTemp.setText(new_l1)
-                    bgcolor = "yellow"
-                    if op == 0:
-                        bgcolor = "red" if np.isnan(pv) else "yellow"
-                    elif abs(pv - sp) <= 1.0:
-                        bgcolor = "lightgreen"
-                    self.ControlsWin.ui1.lTemp.setStyleSheet("background-color: {}".format(bgcolor))
-                    self.ControlsWin.ui1.lTemp.repaint()
-
-            if vector1.any():
-                # progressbar
-                if self._ser_control <= Constants.environment:
-                    self._completed = self._ser_control * 2
-
-                if vector1[0] == 0 and not self._ser_error1 and not self._ser_error2:
-                    label1 = "processing..."
-                    label2 = "processing..."
-                    label3 = "processing..."
-                    labelstatus = "Processing"
-                    self.ControlsWin.ui1.infostatus.setStyleSheet(
-                        "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
-                    )  # ff8000
-                    color_err = "#333333"
-                    labelbar = "Please wait, processing early data..."
-
-                elif vector1[0] == 0 and (self._ser_error1 or self._ser_error2):
-                    if self._ser_error1 and self._ser_error2:
-                        label1 = ""
-                        label2 = ""
-                        label3 = ""
-                        labelstatus = "Warning"
-                        color_err = "#ff0000"
-                        labelbar = "Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found"
-                        self.ControlsWin.ui1.infostatus.setStyleSheet(
-                            "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                        )
-                    elif self._ser_error1:
-                        label1 = ""
-                        label2 = ""
-                        label3 = ""
-                        labelstatus = "Warning"
-                        color_err = "#ff0000"
-                        labelbar = "Warning: unable to apply half-power bandwidth method, lower cut-off frequency (left side) not found"
-                        self.ControlsWin.ui1.infostatus.setStyleSheet(
-                            "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                        )
-                    elif self._ser_error2:
-                        label1 = ""
-                        label2 = ""
-                        label3 = ""
-                        labelstatus = "Warning"
-                        color_err = "#ff0000"
-                        labelbar = "Warning: unable to apply half-power bandwidth method, upper cut-off frequency (right side) not found"
-                        self.ControlsWin.ui1.infostatus.setStyleSheet(
-                            "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                        )
+            if not is_drop_applied:
+                # Mirror dry/drop status before the drop is confirmed
+                if not self._last_dry_status:
+                    status_msg, ui_step = self._last_dry_msg, 0
                 else:
-                    if (
-                        not self._ser_error1
-                        and not self._ser_error2
-                        and not self._ser_error3
-                        and not self._ser_error4
-                    ):
-                        if not self._reference_flag:
-                            d1 = float("{0:.2f}".format(vector1[0]))
-                            d2 = float("{0:.4f}".format(vector2[0] * 1e6))
-                            d3 = float("{0:.2f}".format(vectortemp[0]))
-                        else:
-                            a1 = vector1[0] - self._reference_value_frequency[0]
-                            a2 = vector2[0] - self._reference_value_dissipation[0]
-                            d1 = float("{0:.2f}".format(a1))
-                            d2 = float("{0:.4f}".format(a2 * 1e6))
-                            d3 = float("{0:.2f}".format(vectortemp[0]))
-                        if not vector2[0] in (
-                            Constants.max_dissipation_1st_mode,
-                            Constants.max_dissipation_3rd_mode,
-                            Constants.max_dissipation_5th_mode,
-                        ):
-                            label1 = str(d1) + " Hz"
-                            label2 = str(d2) + "e-06"
-                            label3 = str(d3) + " °C"
-                            labelstatus = "Monitoring"
-                            color_err = "#008000"
-                            self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
-                            )
+                    status_msg, ui_step = "Add sample", 0
+            else:
+                ui_step, status_msg = Constants._FILL_STATE_MAP.get(pred_int, (0, "Unknown"))
 
-                            if not all(self._drop_applied):
-                                for i, p in enumerate(self._plt2_arr):
-                                    if p is None:
-                                        self._drop_applied[i] = True
-                                        self._run_finished[i] = True
-                                        continue
-                                    try:
-                                        vector0 = self.worker.get_t2_buffer(i)
-                                        time_running = vector0[0]
-                                        if time_running == 0:
-                                            labelbar = "Waiting for start..."
-                                            continue
-                                        if time_running < 3.0:
-                                            labelbar = "Capturing data... Calibrating baselines for first 3 seconds... please wait..."
-                                            # next(x for x,y in list(vector0) if y <= 1.0)
-                                            idx = int(len(list(vector0)) / 3)
-                                            if idx > 0:
-                                                self._baseline_freq_avg = np.average(vector1[:-idx])
-                                                self._baseline_freq_noise = np.amax(
-                                                    vector1[:-idx]
-                                                ) - np.amin(vector1[:-idx])
-                                                self._baseline_diss_avg = np.average(vector2[:-idx])
-                                                self._baseline_diss_noise = np.amax(
-                                                    vector2[:-idx]
-                                                ) - np.amin(vector2[:-idx])
-                                        else:
-                                            labelbar = "Capturing data... Apply drop when ready..."
-                                            # Directional gate: a drop should NOT drive RF upward beyond the positive noise band.
-                                            # We allow negative excursions (expected) but reject large positive spikes.
-                                            delta_f = (
-                                                vector1[0] - self._baseline_freq_avg
-                                            )  # RF change (Hz)
-                                            delta_d = (
-                                                vector2[0] - self._baseline_diss_avg
-                                            )  # Dissipation change
+                if pred_int == -1 and not self._drop_epoch_sent:
+                    drop_epoch = float(self.worker.get_t1_buffer(0)[0])
+                    self.worker._forecaster_in.put(DropEpochSignal(drop_epoch))
+                    self._drop_epoch_sent = True
 
-                                            freq_ok = delta_f <= (
-                                                10.0 * self._baseline_freq_noise
-                                            )  # one-sided, directional
-                                            diss_ok = delta_d >= (
-                                                10.0 * self._baseline_diss_noise
-                                            )  # must increase
+                if pred_int == 3:
+                    self._fill_display_msg = "Data Ready, Stop"
 
-                                            if freq_ok and diss_ok:
-                                                self._drop_applied[i] = True
-                                    except Exception as e:
-                                        Log.e(
-                                            "Error 'calibrating baselines' for drop detection. Apply drop when ready."
-                                        )
-                                        Log.d("ERROR DETAILS:", str(e))
-                                        self._drop_applied[i] = True
-                            else:
-                                labelbar = 'Capturing data... Drop applied! Wait for exit... Press "Stop" when run is finished.'
+            if hasattr(self.ControlsWin.ui1, "run_controls"):
+                self.ControlsWin.ui1.run_controls.update_progress(ui_step, 5, status_msg)
 
-                        else:
-                            label1 = str(d1) + " Hz"
-                            label2 = "-"
-                            label3 = str(d3) + " °C"
-                            labelstatus = "Warning"
-                            color_err = "#ff8000"
-                            labelbar = (
-                                "Warning: sensor dissipation calculation is not considered accurate above "
-                                + str("{0:.0f}e-06".format(vector2[0] * 1e6))
-                                + " for the this mode"
-                            )
-                            self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
-                            )
-                    else:
-                        if self._ser_error1 and self._ser_error2:
-                            label1 = "-"
-                            label2 = "-"
-                            label3 = "-"
-                            labelstatus = "Warning"
-                            color_err = "#ff0000"
-                            labelbar = "Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found"
-                            self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                            )
-                        elif self._ser_error1:
-                            label1 = "-"
-                            label2 = "-"
-                            label3 = "-"
-                            labelstatus = "Warning"
-                            color_err = "#ff0000"
-                            peak_name = " "
-                            if self._ser_error1 == 1:
-                                peak_name = " upper "
-                            if self._ser_error1 == 2:
-                                peak_name = " lower "
-                            labelbar = "Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (left) allows".format(
-                                peak_name
-                            )
-                            self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                            )
-                        elif self._ser_error2:
-                            label1 = "-"
-                            label2 = "-"
-                            label3 = "-"
-                            labelstatus = "Warning"
-                            color_err = "#ff0000"
-                            peak_name = " "
-                            if self._ser_error1 == 1:
-                                peak_name = " upper "
-                            if self._ser_error1 == 2:
-                                peak_name = " lower "
-                            labelbar = "Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (right) allows".format(
-                                peak_name
-                            )
-                            self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                            )
-                        elif self._ser_error3:
-                            label1 = "-"
-                            label2 = "-"
-                            label3 = "-"
-                            labelstatus = "Warning"
-                            color_err = "#ff0000"
-                            labelbar = "Warning: failed to construct sine wave, approximating reconstruction with derivatives only"
-                            self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                            )
-                        elif self._ser_error4:
-                            label1 = "-"
-                            label2 = "-"
-                            label3 = "-"
-                            labelstatus = "Warning"
-                            color_err = "#ff0000"
-                            labelbar = "Warning: failed to reconstruct signal wave, unable to apply noise correction reconstruction"
-                            self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                            )
+        except Exception as e:
+            Log.e(TAG, f"Error retrieving fill status: {e}")
 
-                label8 = str(int(self._readFREQ[self._readFREQ.size // 2])) + " Hz"
-                self.InfoWin.ui3.info6.setText(
-                    "<font color=#0000ff > Frequency Value </font>" + label8
-                )
-                label7 = str(int(self._readFREQ[0])) + " Hz"
-                self.InfoWin.ui3.info3.setText(
-                    "<font color=#0000ff > Start Frequency </font>" + label7
-                )
-                label6 = str(int(self._readFREQ[-1])) + " Hz"
-                self.InfoWin.ui3.info4.setText(
-                    "<font color=#0000ff > Stop Frequency </font>" + label6
-                )
-                label5 = str(int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
-                self.InfoWin.ui3.info4a.setText(
-                    "<font color=#0000ff > Frequency Range </font>" + label5
-                )
-                label4 = str(int(self._readFREQ[1] - self._readFREQ[0])) + " Hz"
-                self.InfoWin.ui3.info5.setText("<font color=#0000ff > Sample Rate </font>" + label4)
+    def _update_tec_display(self, vectortemp: np.ndarray) -> None:
+        """Refresh the TEC temperature label when TEC is active."""
+        if not self.tecWorker._tec_locked:
+            return
+        self.tecWorker._tec_temp = vectortemp[0]
+        self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
+        pv = self.tecWorker._tec_temp
+        sp = self.tecWorker._tec_setpoint or 0.25
+        op = self.tecWorker._tec_power
 
-                self.InfoWin.ui3.l6a.setText("<font color=#0000ff > Temperature </font>" + label3)
-                self.InfoWin.ui3.l6.setText("<font color=#0000ff > Dissipation </font>" + label2)
-                self.InfoWin.ui3.l7.setText(
-                    "<font color=#0000ff > Resonance Frequency </font>" + label1
-                )
-                self.ControlsWin.ui1.infostatus.setText(
-                    "<font color=#333333 > Program Status </font>" + labelstatus
-                )
-                self.ControlsWin.ui1.infobar.setText(
-                    "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-                        color_err, labelbar
-                    )
-                )
-                # progressbar
-                self.ControlsWin.ui1.run_progress_bar.setValue(int((self._ser_control / 10) % 100))
+        if op == 0:
+            label = "[AUTO-OFF ERROR]" if np.isnan(pv) else "[AUTO-OFF TIMEOUT]"
+            bgcolor = "red" if np.isnan(pv) else "yellow"
+        else:
+            label = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(pv, sp, op)
+            bgcolor = "lightgreen" if abs(pv - sp) <= 1.0 else "yellow"
 
-        # CALIBRATION: dynamic info in infobar at run-time
-        ##################################################
-        elif self._get_source() == OperationType.calibration:
-            if not hasattr(self, "_calib_progress_dlg") or self._calib_progress_dlg is None:
-                self._create_calibration_progress_dialog()
-                QtWidgets.QApplication.processEvents()
-            stop_flag = 0
-            self.ControlsWin.ui1.pButton_Stop.setEnabled(False)
-            vector1 = self.worker.get_value1_buffer(0)
-            vector1_any = 1 if vector1.any() else 0
-            # vector2[0] and vector3[0] flag error
-            vector2 = self.worker.get_t3_buffer(0)
-            vector3 = self.worker.get_d3_buffer(0)
+        lbl = self.ControlsWin.ui1.lTemp
+        lbl.setText(label)
+        lbl.setStyleSheet(f"background-color: {bgcolor}")
+        lbl.repaint()
 
-            label1 = "not available"
-            label2 = "not available"
-            label3 = "not available"
-            labelstatus = "Calibration Processing"
-            color_err = "#333333"
-            labelbar = "The operation will take a few seconds to complete... please wait..."
-            self.ControlsWin.ui1.infostatus.setStyleSheet(
-                "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
+    def _build_measurement_labels(
+        self,
+        vector1: np.ndarray,
+        vector2: np.ndarray,
+        vectortemp: np.ndarray,
+    ) -> tuple[str, str, str, str, str, str]:
+        """
+        Return (label1, label2, label3, labelstatus, color_err, labelbar)
+        based on the current error flags and data vectors.
+        """
+        e1, e2, e3, e4 = (
+            self._ser_error1,
+            self._ser_error2,
+            self._ser_error3,
+            self._ser_error4,
+        )
+        ui = self.ControlsWin.ui1
+
+        #  Early-data processing state
+        if vector1[0] == 0 and not e1 and not e2:
+            ui.infostatus.setStyleSheet(Constants._CSS_YELLOW)
+            return (
+                "processing...",
+                "processing...",
+                "processing...",
+                "Processing",
+                "#333333",
+                "Please wait, processing early data…",
             )
 
-            if not self.worker.is_running():
-                stop_flag = 1
-
-            # progressbar calculations
-            error1, error2, error3, on_sample, _, _ = self.worker.get_ser_error()
-            if on_sample < Constants.calibration_default_samples:
-                self._completed = (on_sample / Constants.calibration_default_samples) * 100
-
-            ###########################################
-            # calibration buffer empty
-            if vector1_any == 0 and vector3[0] == 1:
-                label1 = "not available"
-                label2 = "not available"
-                label3 = "not available"
-                color_err = "#ff0000"
-                labelstatus = "Calibration Warning"
-                self.ControlsWin.ui1.infostatus.setStyleSheet(
-                    "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                )
-                labelbar = "Initialize Warning: empty buffer! Please, repeat the Initialize after disconnecting/reconnecting Device!"
-                stop_flag = 1
-            # calibration buffer empty and ValueError from the serial port
-            elif vector1_any == 0 and vector2[0] == 1:
-                label1 = "not available"
-                label2 = "not available"
-                label3 = "not available"
-                color_err = "#ff0000"
-                labelstatus = "Calibration Warning"
-                self.ControlsWin.ui1.infostatus.setStyleSheet(
-                    "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                )
-                labelbar = "Initialize Warning: empty buffer/ValueError! Please, repeat the Initialize after disconnecting/reconnecting Device!"
-                stop_flag = 1
-            # calibration buffer not empty
-            elif vector1_any != 0:
-                label1 = "not available"
-                label2 = "not available"
-                label3 = "not available"
-                labelstatus = "Calibration Processing"
-                color_err = "#333333"
-                labelbar = "The operation will take a few seconds to complete... please wait..."
-                if vector2[0] == 0 and vector3[0] == 0:
-                    labelstatus = "Calibration Success"
-                    self.ControlsWin.ui1.infostatus.setStyleSheet(
-                        "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
-                    )
-                    color_err = "#008000"
-                    labelbar = 'Initialize Success for baseline correction! Ready to measure. Press "Start" then apply drop.'
-                    stop_flag = 1
-
-                elif vector2[0] == 1 or vector3[0] == 1:
-                    color_err = "#ff0000"
-                    labelstatus = "Calibration Warning"
-                    self.ControlsWin.ui1.infostatus.setStyleSheet(
-                        "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-                    )
-                    if vector2[0] == 1:
-                        labelbar = "Initialize Warning: ValueError or generic error during signal acquisition. Please, repeat the Initialize"
-                        stop_flag = 1
-                    elif vector3[0] == 1:
-                        labelbar = "Initialize Warning: unable to identify fundamental peak or apply peak detection algorithm. Please, repeat the Initialize!"
-                        stop_flag = 1
-            self.ControlsWin.ui1.run_progress_bar.setValue(
-                0 if stop_flag else int(self._completed + 1)
-            )  # dwight ver const was 10
-            self.InfoWin.ui3.l6a.setText("<font color=#0000ff>  Temperature </font>" + label3)
-            self.InfoWin.ui3.l6.setText("<font color=#0000ff>  Dissipation </font>" + label2)
-            self.InfoWin.ui3.l7.setText(
-                "<font color=#0000ff>  Resonance Frequency </font>" + label1
-            )
-            self.ControlsWin.ui1.infostatus.setText(
-                "<font color=#333333> Program Status </font>" + labelstatus
-            )
-            self.ControlsWin.ui1.infobar.setText(
-                "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-                    color_err, labelbar
-                )
+        #  Errors when value is zero
+        if vector1[0] == 0 and (e1 or e2):
+            ui.infostatus.setStyleSheet(Constants._CSS_RED)
+            return (
+                "",
+                "",
+                "",
+                "Warning",
+                "#ff0000",
+                _bandwidth_error_msg(e1, e2),
             )
 
-            progress_val = 0 if stop_flag else int(self._completed + 1)
-            if hasattr(self, "_calib_progress_dlg") and self._calib_progress_dlg is not None:
-                self._calib_progress_dlg.setValue(progress_val)
-                self._calib_progress_dlg.setLabelText(f"{labelstatus}\n{labelbar}")
-            if stop_flag == 1:
-                self.stop_flag += 1
-                if isinstance(self.worker._port, str) or self.stop_flag >= len(self.worker._port):
-                    self._timer_plot.stop()
-                    self._enable_ui(True)
-                    self.worker.stop()
-                    if (
-                        hasattr(self, "_calib_progress_dlg")
-                        and self._calib_progress_dlg is not None
-                    ):
-                        self._calib_progress_dlg.close()
-                        self._calib_progress_dlg = None
-        ############################################################################################################################
-        # REFERENCE SET
-        ############################################################################################################################
-        if self._reference_flag:
-            for i, p in enumerate(self._plt2_arr):
-                if p is None:
-                    continue
-                p.setLabel(
-                    "left",
-                    "Resonance Frequency",
-                    units="Hz",
-                    color=Constants.plot_colors[6],
-                    **{"font-size": "10pt"},
-                )
-                p.setLabel(
-                    "right",
-                    "Dissipation",
-                    units="",
-                    color=Constants.plot_colors[7],
-                    **{"font-size": "10pt"},
-                )
-                # save back to global, otherwise local gets trashed
-                self._plt2_arr[i] = p
-            self.InfoWin.ui3.inforef1.setText(
-                "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1
-            )
-            self.InfoWin.ui3.inforef2.setText(
-                "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2
+        #  =Normal data handling
+        if not e1 and not e2 and not e3 and not e4:
+            return self._build_normal_labels(vector1, vector2, vectortemp)
+
+        # Error handling
+        ui.infostatus.setStyleSheet(Constants._CSS_RED)
+        return (
+            "-",
+            "-",
+            "-",
+            "Warning",
+            "#ff0000",
+            _serial_error_message(e1, e2, e3, e4),
+        )
+
+    def _build_normal_labels(
+        self,
+        vector1: np.ndarray,
+        vector2: np.ndarray,
+        vectortemp: np.ndarray,
+    ) -> tuple[str, str, str, str, str, str]:
+        """Labels for the clean (no-error) measurement path."""
+        if not self._reference_flag:
+            d1 = float("{0:.2f}".format(vector1[0]))
+            d2 = float("{0:.4f}".format(vector2[0] * 1e6))
+            d3 = float("{0:.2f}".format(vectortemp[0]))
+        else:
+            d1 = float("{0:.2f}".format(vector1[0] - self._reference_value_frequency[0]))
+            d2 = float("{0:.4f}".format((vector2[0] - self._reference_value_dissipation[0]) * 1e6))
+            d3 = float("{0:.2f}".format(vectortemp[0]))
+
+        _max_diss = (
+            Constants.max_dissipation_1st_mode,
+            Constants.max_dissipation_3rd_mode,
+            Constants.max_dissipation_5th_mode,
+        )
+        if vector2[0] in _max_diss:
+            self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
+            return (
+                f"{d1} Hz",
+                "-",
+                f"{d3} °C",
+                "Warning",
+                "#ff8000",
+                (
+                    "Warning: sensor dissipation calculation is not considered accurate above "
+                    + "{0:.0f}e-06".format(vector2[0] * 1e6)
+                    + " for this mode"
+                ),
             )
 
-            ###################################################################
-            # Amplitude and phase multiple Plot
-            def updateViews1():
-                for i, p in enumerate(self._plt0_arr):
-                    if p is None:
-                        continue
-                    p.clear()
-                    self._plt0_arr[i] = p
-                if not self._plt1 is None:
-                    Log.w("Phase is no longer supported with multiplex software.")
-                    return
-                    self._plt1.clear()
-                    self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
-                    self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
+        self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
+        labelbar = self._build_drop_status_label()
+        return (
+            f"{d1} Hz",
+            f"{d2}e-06",
+            f"{d3} °C",
+            "Monitoring",
+            "#008000",
+            labelbar,
+        )
 
-            # updates for multiple plot y-axes
-            updateViews1()
-            for i, p in enumerate(self._plt0_arr):
-                if p is None:
-                    continue
-                # p.vb.sigResized.connect(updateViews1)
-                p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
-                p.enableAutoRange(axis="x", enable=True)
-                p.enableAutoRange(axis="y", enable=True)
-                p.plot(
+    def _build_drop_status_label(self) -> str:
+        """Return the infobar text that describes drop-application progress."""
+        if all(self._drop_applied):
+            return 'Capturing data… Drop applied! Wait for exit… Press "Stop" when run is finished.'
+
+        for i, p in enumerate(self._plt2_arr):
+            if p is None:
+                self._drop_applied[i] = True
+                self._run_finished[i] = True
+                continue
+            try:
+                vector0 = self.worker.get_t2_buffer(i)
+                time_running = vector0[0]
+                if time_running == 0:
+                    return "Waiting for start…"
+                if time_running < 3.0:
+                    self._calibrate_baselines(i, time_running)
+                    return "Capturing data… Calibrating baselines for first 3 seconds… please wait…"
+                # Directional gate: drop drives RF negative and dissipation positive
+                delta_f = self.worker.get_d1_buffer(0)[0] - self._baseline_freq_avg
+                delta_d = self.worker.get_d2_buffer(0)[0] - self._baseline_diss_avg
+                freq_ok = delta_f <= 10.0 * self._baseline_freq_noise
+                diss_ok = delta_d >= 10.0 * self._baseline_diss_noise
+                if freq_ok and diss_ok:
+                    self._drop_applied[i] = True
+            except Exception as e:
+                Log.e("Error calibrating baselines for drop detection - applying drop flag.")
+                Log.d("ERROR DETAILS:", str(e))
+                self._drop_applied[i] = True
+
+        return "Capturing data… Apply drop when ready…"
+
+    def _calibrate_baselines(self, i: int, time_running: float) -> None:
+        """Update baseline stats from the earliest third of the current buffer."""
+        v1 = self.worker.get_d1_buffer(0)
+        v2 = self.worker.get_d2_buffer(0)
+        idx = int(len(v1) / 3)
+        if idx > 0:
+            self._baseline_freq_avg = np.average(v1[:-idx])
+            self._baseline_freq_noise = np.amax(v1[:-idx]) - np.amin(v1[:-idx])
+            self._baseline_diss_avg = np.average(v2[:-idx])
+            self._baseline_diss_noise = np.amax(v2[:-idx]) - np.amin(v2[:-idx])
+
+    def _update_freq_info_panel(
+        self,
+        label1: str,
+        label2: str,
+        label3: str,
+    ) -> None:
+        """Refresh the frequency info-window panel."""
+        rf = self._readFREQ
+        ui = self.InfoWin.ui3
+        _h = "<font color=#0000ff> {title} </font>"
+
+        ui.info6.setText(_h.format(title="Frequency Value") + str(int(rf[rf.size // 2])) + " Hz")
+        ui.info3.setText(_h.format(title="Start Frequency") + str(int(rf[0])) + " Hz")
+        ui.info4.setText(_h.format(title="Stop Frequency") + str(int(rf[-1])) + " Hz")
+        ui.info4a.setText(_h.format(title="Frequency Range") + str(int(rf[-1] - rf[0])) + " Hz")
+        ui.info5.setText(_h.format(title="Sample Rate") + str(int(rf[1] - rf[0])) + " Hz")
+        ui.l6a.setText(_h.format(title="Temperature") + label3)
+        ui.l6.setText(_h.format(title="Dissipation") + label2)
+        ui.l7.setText(_h.format(title="Resonance Frequency") + label1)
+
+    def _update_reference_axis_labels(self) -> None:
+        for i, p in enumerate(self._plt2_arr):
+            if p is None:
+                continue
+            p.setLabel(
+                "left",
+                "Resonance Frequency",
+                units="Hz",
+                color=Constants.plot_colors[6],
+                **{"font-size": "10pt"},
+            )
+            p.setLabel(
+                "right",
+                "Dissipation",
+                units="",
+                color=Constants.plot_colors[7],
+                **{"font-size": "10pt"},
+            )
+            self._plt2_arr[i] = p
+
+        ui3 = self.InfoWin.ui3
+        ui3.inforef1.setText("<font color=#0000ff > Ref. Frequency </font>" + self._labelref1)
+        ui3.inforef2.setText("<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2)
+
+    def _draw_amplitude_plots_reference(self) -> None:
+        """Update amplitude curves in reference mode."""
+        for i, p in enumerate(self._plt0_arr):
+            if p is None:
+                continue
+            p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+            p.enableAutoRange(axis="x", enable=True)
+            p.enableAutoRange(axis="y", enable=True)
+            ci = self._ci_amp[i]
+            if ci is not None:
+                ci.setData(
                     x=self.worker.get_value0_buffer(i),
                     y=self.worker.get_value1_buffer(i),
-                    pen=Constants.plot_colors[0],
                 )
-                # save back to global, otherwise local gets trashed
-                self._plt0_arr[i] = p
-            if not self._plt1 is None:
-                Log.w("Phase is no longer supported with multiplex software.")
-                # self._plt1.addItem(pg.PlotCurveItem(x=self._readFREQ,y=self.worker.get_value2_buffer(i),pen=Constants.plot_colors[1]))
+            self._plt0_arr[i] = p
 
-            ###################################################################
-            # Resonance frequency and dissipation multiple Plot
-            def updateViews2():
-                for i, p in enumerate(self._plt3_arr):
-                    if p is None:
-                        continue
-                    _p2 = self._plt2_arr[i]
-                    _p2.clear()
-                    p.clear()
-                    p.setGeometry(_p2.vb.sceneBoundingRect())
-                    p.linkedViewChanged(_p2.vb, p.XAxis)
-                    # save back to global, otherwise local gets trashed
-                    self._plt2_arr[i] = _p2
-                    # save back to global, otherwise local gets trashed
-                    self._plt3_arr[i] = p
+    def _draw_freq_diss_plots_reference(self) -> None:
+        """Update frequency and dissipation curves in reference mode."""
+        is_measurement = self._get_source() == OperationType.measurement
 
-            # updates for multiple plot y-axes
-            updateViews2()
+        for i, p2 in enumerate(self._plt2_arr):
+            if p2 is None:
+                continue
+            p3 = self._plt3_arr[i]
 
-            for i, p in enumerate(self._plt2_arr):
-                if p is None:
-                    continue
-                # p.vb.sigResized.connect(updateViews2)
-                self._vector_1 = (
-                    np.array(self.worker.get_d1_buffer(i)) - self._reference_value_frequency[i]
+            # Frequency (reference-subtracted)
+            self._vector_1 = (
+                np.asarray(self.worker.get_d1_buffer(i)) - self._reference_value_frequency[i]
+            )
+            ci_freq = self._ci_freq[i]
+            if ci_freq is not None:
+                ci_freq.setData(x=self.worker.get_t1_buffer(i), y=self._vector_1)
+
+            if is_measurement:
+                p2.setLimits(
+                    yMax=self._vector_reference_frequency[i][-1],
+                    yMin=self._vector_reference_frequency[i][0],
+                    minYRange=5,
                 )
-                p.plot(
-                    x=self.worker.get_t1_buffer(i),
-                    y=self._vector_1,
-                    pen=Constants.plot_colors[6],
-                )  # 2
+                # p2.enableAutoRange(axis="x", enable=True)
+                # p2.enableAutoRange(axis="y", enable=True)
 
-                # Prevent the user from zooming/panning out of this specified region
-                if self._get_source() == OperationType.measurement:
-                    p.setLimits(
-                        yMax=self._vector_reference_frequency[i][-1],
-                        yMin=self._vector_reference_frequency[i][0],
-                        minYRange=5,
-                    )
-                    p.enableAutoRange(axis="x", enable=True)
-                    p.enableAutoRange(axis="y", enable=True)
+            self._plt2_arr[i] = p2
 
-                # save back to global, otherwise local gets trashed
-                self._plt2_arr[i] = p
+            # Dissipation (reference-subtracted)
+            self._vector_2 = (
+                np.asarray(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
+            )
+            ci_diss = self._ci_diss[i]
+            if ci_diss is not None:
+                # Switch to reference-mode pen colour on first reference set
+                ci_diss.setPen(Constants.plot_colors[7])
+                ci_diss.setData(x=self.worker.get_t2_buffer(i), y=self._vector_2)
 
-            for i, p in enumerate(self._plt3_arr):
-                if p is None:
-                    continue
-                self._vector_2 = (
-                    np.array(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
+            if is_measurement:
+                p3.setLimits(
+                    yMax=self._vector_reference_dissipation[i][-1],
+                    yMin=self._vector_reference_dissipation[i][0],
+                    minYRange=1e-7,
                 )
-                p.addItem(
-                    pg.PlotCurveItem(
-                        self.worker.get_t2_buffer(i),
-                        self._vector_2,
-                        pen=Constants.plot_colors[7],
-                    )
-                )
+                p3.enableAutoRange(axis="x", enable=True)
+                p3.enableAutoRange(axis="y", enable=True)
 
-                # Prevent the user from zooming/panning out of this specified region
-                if self._get_source() == OperationType.measurement:
-                    p.setLimits(
-                        yMax=self._vector_reference_dissipation[i][-1],
-                        yMin=self._vector_reference_dissipation[i][0],
-                        minYRange=1e-7,
-                    )
-                    p.enableAutoRange(axis="x", enable=True)
-                    p.enableAutoRange(axis="y", enable=True)
+            self._plt3_arr[i] = p3
 
-                # save back to global, otherwise local gets trashed
-                self._plt3_arr[i] = p
+        if is_measurement:
+            self._plt4.setLimits(yMax=50, yMin=-10)
+            self._plt4.enableAutoRange(axis="x", enable=True)
+            self._plt4.enableAutoRange(axis="y", enable=True)
 
-            # Prevent the user from zooming/panning out of this specified region
-            if self._get_source() == OperationType.measurement:
-                self._plt4.setLimits(yMax=50, yMin=-10)
+    def _draw_plots_reference(self) -> None:
+        """Redraw all plots when a reference baseline has been set."""
+        self._update_reference_axis_labels()
+        self._draw_amplitude_plots_reference()
+        self._draw_freq_diss_plots_reference()
+        self._draw_temperature_plot()
+
+    def _draw_plots_no_reference(self) -> None:
+        """Redraw all plots in absolute (no reference) mode."""
+        self._update_no_reference_axis_labels()
+        self._draw_amplitude_plots_no_reference()
+        self._draw_temperature_plot()
+
+    def _update_no_reference_axis_labels(self) -> None:
+        for i, p in enumerate(self._plt2_arr):
+            if p is None:
+                continue
+            p.setLabel(
+                "left",
+                "Resonance Frequency",
+                units="Hz",
+                color=Constants.plot_colors[2],
+                **{"font-size": "10pt"},
+            )
+            p.setLabel(
+                "right",
+                "Dissipation",
+                units="",
+                color=Constants.plot_colors[3],
+                **{"font-size": "10pt"},
+            )
+            self._plt2_arr[i] = p
+
+        ui3 = self.InfoWin.ui3
+        ui3.inforef1.setText("<font color=#0000ff > Ref. Frequency </font>" + self._labelref1)
+        ui3.inforef2.setText("<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2)
+
+    def _draw_amplitude_plots_no_reference(self) -> None:
+        """
+        For each channel: update amplitude plot, then (if in measurement
+        mode) update frequency / dissipation plots and handle drop detection.
+        """
+        n = Constants._NUM_DISPLAY_POINTS
+        src = self._get_source()
+        is_measurement = src == OperationType.measurement
+        is_multiplex = is_measurement and self.multiplex_plots > 1
+
+        amps: dict[int, np.ndarray] = {}
+
+        for i, p0 in enumerate(self._plt0_arr):
+            if p0 is None:
+                continue
+
+            p2 = self._plt2_arr[i]
+            p3 = self._plt3_arr[i]
+
+            self._readFREQ = self.worker.get_value0_buffer(i)
+            vector1 = self.worker.get_d1_buffer(i)
+            amp_buffer = self.worker.get_value1_buffer(i)
+
+            if is_multiplex:
+                # Collect; combined plot is drawn after the loop
+                amps[i] = amp_buffer
+            else:
+                p0.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+                p0.enableAutoRange(axis="x", enable=True)
+                p0.enableAutoRange(axis="y", enable=True)
+                ci = self._ci_amp[i]
+                if ci is not None:
+                    ci.setData(x=self._readFREQ, y=amp_buffer)
+
+            if is_measurement and p2 is not None and p3 is not None:
+                self._draw_freq_diss_channel(i, p2, p3, vector1, n)
+
+            self._plt0_arr[i] = p0
+            self._plt2_arr[i] = p2
+            self._plt3_arr[i] = p3
+
+            if is_measurement:
+                self._plt4.setLimits(yMax=50, yMin=-10, minYRange=0.5)
                 self._plt4.enableAutoRange(axis="x", enable=True)
                 self._plt4.enableAutoRange(axis="y", enable=True)
 
-            ###################################################################
-            # Temperature plot
-            self._plt4.clear()
-            self._plt4.plot(
-                x=self.worker.get_t3_buffer(i),
-                y=self.worker.get_d3_buffer(i),
-                pen=Constants.plot_colors[4],
-            )
-            # self._plt4.addItem(pg.PlotCurveItem(self.worker.get_t3_buffer(i),self.worker.get_d4_buffer(i),pen=Constants.plot_colors[1])) # hide ambient
+        # ── Combined amplitude for multiplex ────────────────────────────
+        if is_multiplex and amps:
+            self._draw_combined_amplitude(amps)
 
-        ###########################################################################################################################
-        # REFERENCE NOT SET
-        ###########################################################################################################################
+    def _draw_freq_diss_channel(
+        self,
+        i: int,
+        p2: pg.PlotWidget,
+        p3: pg.ViewBox,
+        vector1: np.ndarray,
+        n: int,
+    ) -> None:
+        """
+        Update the frequency and dissipation curves for channel `i` and
+        manage the drop-detection overlay label.
+        """
+        # ── Sync dissipation ViewBox geometry every tick (primary sync during run) ─
+        # This is essential — vb3 has no geometry until explicitly set here.
+        # The deferred sigResized callback in _init_plot_curves handles post-stop
+        # resize, but this per-tick call is what positions vb3 correctly during run.
+        p3.setGeometry(p2.getViewBox().sceneBoundingRect())
+        p3.linkedViewChanged(p2.getViewBox(), p3.XAxis)
+
+        # ── Frequency curve ──────────────────────────────────────────────
+        ci_freq = self._ci_freq[i]
+        if ci_freq is not None:
+            ci_freq.setData(
+                x=self.worker.get_t1_buffer(i)[:n],
+                y=self.worker.get_d1_buffer(i)[:n],
+            )
+
+        # ── Dissipation curve ────────────────────────────────────────────
+        ci_diss = self._ci_diss[i]
+        if ci_diss is not None:
+            ci_diss.setPen(Constants.plot_colors[3])
+            ci_diss.setData(
+                x=self.worker.get_t2_buffer(i)[:n],
+                y=self.worker.get_d2_buffer(i)[:n],
+            )
+
+        x_data = self.worker.get_t1_buffer(i)[:n]
+        if x_data.size > 0:
+            x_min, x_max = float(x_data[0]), float(x_data[-1])
+            x_range = x_max - x_min
+            if x_range == 0:
+                x_range = 1.0
+            x_pad = x_range * Constants.default_plot_padding
+
+            p2.setXRange(x_min - x_pad, x_max + x_pad, padding=0)
+
+        self._apply_freq_limits(i, p2, vector1)
+
+        # ── Let Dissipation Auto-Range its Y-Axis ──
+        p3.setLimits(
+            yMax=(self._readFREQ[-1] - self._readFREQ[0]) / self._readFREQ[0],
+            yMin=0,
+            minYRange=Constants.plot_min_range_diss,
+        )
+        p3.enableAutoRange(axis="y", enable=True)
+
+        self._handle_drop_overlay(i, p2, p3)
+
+    def _apply_freq_limits(self, i: int, p2: pg.PlotWidget, vector1: np.ndarray) -> None:
+        if not vector1.size:
+            return
+
+        _ymin = float(np.amin(vector1))
+        _ymax = float(np.amax(vector1))
+        _yrange = _ymax - _ymin
+
+        if _yrange < Constants.plot_min_range_freq:
+            _yavg = float(np.average(vector1))
+            _ymin = _yavg - Constants.plot_min_range_freq / 2
+            _ymax = _yavg + Constants.plot_min_range_freq / 2
+            _yrange = Constants.plot_min_range_freq
+
+        pad = Constants.default_plot_padding * _yrange
+
+        final_y_min = _ymin - pad
+        final_y_max = _ymax + pad
+        p2.setLimits(
+            yMax=final_y_max,
+            yMin=final_y_min,
+            minYRange=Constants.plot_min_range_freq,
+        )
+        p2.enableAutoRange(axis="y", enable=True)
+
+    def _handle_drop_overlay(
+        self,
+        i: int,
+        p2: pg.PlotWidget,
+        p3: pg.ViewBox,
+    ) -> None:
+        """
+        Manage the on-plot text label that guides the operator through the
+        drop-application and fill-monitoring workflow.
+        """
+        n = Constants._NUM_DISPLAY_POINTS
+        try:
+            # Lazy-create the LabelItem the first time
+            if self._text4[i] is None:
+                lbl = pg.LabelItem(size="11pt", bold=True)
+                lbl.setParentItem(p2.graphicsItem())
+                lbl.anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
+                self._text4[i] = lbl
+                return  # nothing to show on the very first tick
+
+            if not self._drop_applied[i]:
+                self._update_pre_drop_label(i, p2)
+
+            else:
+                self._update_post_drop_label(i, p2, p3)
+
+        except Exception:
+            import traceback
+
+            Log.e("Error handling plot status label text!")
+            Log.e("PlotStatus", traceback.format_exc())
+
+    def _update_pre_drop_label(self, i: int, p2: pg.PlotWidget) -> None:  # noqa: ARG002
+        """Show dry-detection status or 'Apply drop now!' before drop."""
+        vector0 = self.worker.get_t2_buffer(i)
+        time_running = vector0[0]
+        if time_running == 0:
+            return
+
+        dissipation_vector = self.worker.get_d2_buffer(i)
+        rf_vector = self.worker.get_d1_buffer(i)
+        relative_time = self.worker.get_t1_buffer(i)
+
+        dry_status, dry_msg = self.dry_detect[i].update(
+            resonance_frequency=rf_vector,
+            dissipation=dissipation_vector,
+            relative_time=relative_time,
+        )
+        if i == 0:
+            self._last_dry_msg = dry_msg
+            self._last_dry_status = dry_status
+
+        if not dry_status:
+            # Sensor still wet – latch the earliest dry time for this channel
+            with self._sensorDriedTimeValue.get_lock():
+                if self._sensorDriedTimes[i] == 0.0:
+                    self._sensorDriedTimes[i] = time_running
+                    self._sensorDriedTimeValue.value = self._sensorDriedTimes[i]
+
+            self._text4[i].setText(dry_msg, color=(0, 0, 200))
+            n = Constants._NUM_DISPLAY_POINTS
+            self._baselinedata[i] = [
+                [
+                    np.amin(self.worker.get_d1_buffer(i)[:n]),
+                    np.amax(self.worker.get_d1_buffer(i)[:n]),
+                ],
+                [
+                    np.amin(self.worker.get_d2_buffer(i)[:n]),
+                    np.amax(self.worker.get_d2_buffer(i)[:n]),
+                ],
+            ]
         else:
-            for i, p in enumerate(self._plt2_arr):
-                if p is None:
-                    continue
-                p.setLabel(
-                    "left",
-                    "Resonance Frequency",
-                    units="Hz",
-                    color=Constants.plot_colors[2],
-                    **{"font-size": "10pt"},
-                )
-                p.setLabel(
-                    "right",
-                    "Dissipation",
-                    units="",
-                    color=Constants.plot_colors[3],
-                    **{"font-size": "10pt"},
-                )
-                self._plt2_arr[i] = p
-            self.InfoWin.ui3.inforef1.setText(
-                "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1
+            self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
+
+    def _update_post_drop_label(
+        self,
+        i: int,
+        p2: pg.PlotWidget,
+        p3: pg.ViewBox,
+    ) -> None:
+        """Manage the overlay label and run-finished detection after drop."""
+        # Show any latched fill-classifier message
+        if self._fill_display_msg and self._text4[i] is not None:
+            self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
+
+        time_running = p2.getViewBox().viewRange()[0][1]
+        current_y_range = [p2.getViewBox().viewRange()[1], p3.viewRange()[1]]
+        current_deltas = np.diff(current_y_range)[:, 0]
+        last_y_deltas = np.diff(self._last_y_range[i])[:, 0]
+        baseline_deltas = np.diff(self._baselinedata[i])[:, 0]
+
+        if any(np.subtract(current_deltas, last_y_deltas) > baseline_deltas):
+            self._last_y_range[i] = current_y_range
+            self._last_y_delta[i] = time_running
+            self._run_finished[i] = False
+            if not self._fill_display_msg:
+                self._text4[i].setText(" ")
+
+        elif time_running - self._last_y_delta[i] > 10.0 and not self._run_finished[i]:
+            self._run_finished[i] = True
+            Log.d(f"Plot {i}: Y-axis stabilised for 10 s – run appears finished.")
+
+        # Latch earliest drop-applied time for multiplex
+        with self._dropAppliedTimeValue.get_lock():
+            if self._dropAppliedTimes[i] == 0.0:
+                self._dropAppliedTimes[i] = time_running
+            if self._dropAppliedTimeValue.value == 0.0:
+                self._dropAppliedTimeValue.value = time_running
+
+    def _draw_combined_amplitude(self, amps: dict[int, np.ndarray]) -> None:
+        combined = amps[0].copy()
+        for k in range(1, len(amps)):
+            if k in amps:
+                combined = np.maximum(combined, amps[k])
+
+        p0 = self._plt0_arr[0]
+
+        if self._ci_amp_combined is not None:
+            self._ci_amp_combined.setData(x=self._readFREQ, y=combined)
+
+        # Initialize the pool if it doesn't exist
+        if not hasattr(self, "_multiplex_peak_labels"):
+            self._multiplex_peak_labels = []
+
+        # Ensure we have enough labels in the pool
+        while len(self._multiplex_peak_labels) < len(amps):
+            item = pg.TextItem(color=(0, 0, 0), anchor=(0, 1))
+            p0.addItem(item)
+            self._multiplex_peak_labels.append(item)
+
+        # Update positions and text, hide unused ones
+        for idx, (j, amp) in enumerate(amps.items()):
+            am = int(np.argmax(amp))
+            item = self._multiplex_peak_labels[idx]
+            item.setText(str(j + 1))
+            item.setPos(self._readFREQ[am], combined[am])
+            item.setVisible(True)
+
+        # Hide any extras in the pool if the number of channels drops
+        for idx in range(len(amps), len(self._multiplex_peak_labels)):
+            self._multiplex_peak_labels[idx].setVisible(False)
+
+    def _draw_temperature_plot(self) -> None:
+        """Update the temperature curve; called from both reference/no-reference paths."""
+        n = Constants._NUM_DISPLAY_POINTS
+        if self._ci_temp is not None:
+            self._ci_temp.setData(
+                x=self.worker.get_t3_buffer(0)[:n],
+                y=self.worker.get_d3_buffer(0)[:n],
             )
-            self.InfoWin.ui3.inforef2.setText(
-                "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2
+
+    def _bandwidth_error_msg(error1: int, error2: int) -> str:
+        """Return the appropriate bandwidth-method warning string."""
+        if error1 and error2:
+            return (
+                "Warning: unable to apply half-power bandwidth method, "
+                "lower and upper cut-off frequency not found"
             )
-
-            # limit number of display points to last num
-            numPoints = 12000
-
-            ###################################################################
-            # Amplitude and phase multiple Plot
-            def updateViews1():
-                for i, p in enumerate(self._plt0_arr):
-                    if p is None:
-                        continue
-                    p.clear()
-                    self._plt0_arr[i] = p
-                if not self._plt1 is None:
-                    Log.w("Phase is no longer supported with multiplex software.")
-                    return
-                    self._plt1.clear()
-                    self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
-                    self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
-
-            # updates for multiple plot y-axes
-            updateViews1()
-            self._amps = {}  # empty dict for showing combined amplitudes
-            for i, p in enumerate(self._plt0_arr):
-                if p is None:
-                    continue
-                _plt2 = self._plt2_arr[i]
-                _plt3 = self._plt3_arr[i]
-                self._readFREQ = self.worker.get_value0_buffer(i)
-                vector1 = self.worker.get_d1_buffer(i)
-
-                if self._get_source() == OperationType.measurement and self.multiplex_plots > 1:
-                    self._amps[i] = self.worker.get_value1_buffer(i)
-                else:
-                    # p.vb.sigResized.connect(updateViews1)
-                    p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
-                    p.enableAutoRange(axis="x", enable=True)
-                    p.enableAutoRange(axis="y", enable=True)
-                    p.plot(
-                        x=self._readFREQ,
-                        y=self.worker.get_value1_buffer(i),
-                        pen=Constants.plot_colors[0],
-                    )
-                if not self._plt1 is None:
-                    Log.w("Phase is no longer supported with multiplex software.")
-                    # self._plt1.addItem(pg.PlotCurveItem(x=self._readFREQ,y=self.worker.get_value2_buffer(i),pen=Constants.plot_colors[1]))
-
-                if self._get_source() == OperationType.measurement:
-                    ###################################################################
-                    # Resonance frequency and dissipation multiple Plot
-                    def updateViews2(_plt2, _plt3):
-                        _plt2.clear()
-                        _plt3.clear()
-                        _plt3.setGeometry(_plt2.vb.sceneBoundingRect())
-                        _plt3.linkedViewChanged(_plt2.vb, _plt3.XAxis)
-
-                    # updates for multiple plot y-axes
-                    updateViews2(_plt2, _plt3)
-                    # _plt2.vb.sigResized.connect(updateViews2)
-                    _plt2.plot(
-                        x=self.worker.get_t1_buffer(i)[:numPoints],
-                        y=self.worker.get_d1_buffer(i)[:numPoints],
-                        pen=Constants.plot_colors[2],
-                    )
-
-                    # Add apply drop message to those still pending drop
-                    try:
-                        if self._text4[i] is None:
-                            # 'size' and 'bold' retained when calling 'setText()'
-                            self._text4[i] = pg.LabelItem(size="11pt", bold=True)
-                            self._text4[i].setParentItem(_plt2.graphicsItem())
-                            self._text4[i].anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
-                        elif not self._drop_applied[i]:
-                            vector0 = self.worker.get_t2_buffer(i)
-                            time_running = vector0[0]
-                            if time_running == 0:
-                                labelbar = "Waiting for start..."
-                                continue
-                            dissipation_vector = self.worker.get_d2_buffer(i)
-                            rf_vector = self.worker.get_d1_buffer(i)
-                            relative_time = self.worker.get_t1_buffer(i)
-                            dry_status, dry_msg = self.dry_detect[i].update(
-                                resonance_frequency=rf_vector,
-                                dissipation=dissipation_vector,
-                                relative_time=relative_time,
-                            )
-                            if i == 0:
-                                self._last_dry_msg = dry_msg
-                                self._last_dry_status = dry_status
-                            if not dry_status:
-                                # Set and signal all receivers that new time is available (if unset)
-                                with self._sensorDriedTimeValue.get_lock():
-                                    # For multiplex, take the most recent (latest) dry time
-                                    if self._sensorDriedTimes[i] == 0.0:
-                                        self._sensorDriedTimes[i] = time_running
-                                        # set on each and every trigger for multiplex:
-                                        self._sensorDriedTimeValue.value = self._sensorDriedTimes[i]
-
-                                self._text4[i].setText(dry_msg, color=(0, 0, 200))
-                                self._baselinedata[i] = [
-                                    [
-                                        np.amin(self.worker.get_d1_buffer(i)[:numPoints]),
-                                        np.amax(self.worker.get_d1_buffer(i)[:numPoints]),
-                                    ],
-                                    [
-                                        np.amin(self.worker.get_d2_buffer(i)[:numPoints]),
-                                        np.amax(self.worker.get_d2_buffer(i)[:numPoints]),
-                                    ],
-                                ]
-                            else:
-                                self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
-                        else:
-                            # Drop has been applied — show any latched fill-classifier message on the plot.
-                            # This is the only place _fill_display_msg can realistically arrive since
-                            # extended-fill events occur well after drop application.
-                            if self._fill_display_msg and self._text4[i] is not None:
-                                self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
-                            time_running = _plt2.getViewBox().viewRange()[0][1]
-                            current_y_range = [
-                                _plt2.getViewBox().viewRange()[1],
-                                _plt3.viewRange()[1],
-                            ]
-                            current_deltas = np.diff(current_y_range)[:, 0]
-                            last_y_deltas = np.diff(self._last_y_range[i])[:, 0]
-                            baseline_deltas = np.diff(self._baselinedata[i])[:, 0]
-                            # self._last_y_range[i] != current_y_range:
-                            if any(np.subtract(current_deltas, last_y_deltas) > baseline_deltas):
-                                self._last_y_range[i] = current_y_range
-                                self._last_y_delta[i] = time_running
-                                self._run_finished[i] = False
-                                # Only blank the label if no fill warning is currently showing.
-                                # If _fill_display_msg is latched, blanking here causes a one-frame
-                                # flicker since the fill message is re-applied on the very next tick.
-                                if not self._fill_display_msg:
-                                    self._text4[i].setText(" ")
-                            elif (
-                                time_running - self._last_y_delta[i] > 10.0
-                                and not self._run_finished[i]
-                            ):
-                                self._run_finished[i] = True
-                                Log.d(
-                                    f"The dataset on Plot {i} appears to have finished (Y-Axis stablized for 10 seconds)"
-                                )
-                                # TODO 2024-05-24: (Temporary) Disable showing "Press Stop" on UI until accuracy is improved
-                                # if all(self._run_finished):
-                                #     status_text = 'Press \"Stop\"'
-                                # else:
-                                #     status_text = "Run Complete, waiting on other channels..."
-                                # self._text4[i].setText(status_text, color=(200, 0, 0)) # range unchanging / probably finished
-
-                            # Set and signal all receivers that new time is available (if unset)
-                            with self._dropAppliedTimeValue.get_lock():
-                                # For multiplex, take the first (earliest) drop time
-                                if self._dropAppliedTimes[i] == 0.0:
-                                    self._dropAppliedTimes[i] = time_running
-                                if self._dropAppliedTimeValue.value == 0.0:
-                                    # only set on first trigger for multiplex:
-                                    self._dropAppliedTimeValue.value = time_running
-
-                    except Exception as e:
-                        import traceback
-
-                        Log.e("Error handling plot status label text!")
-                        Log.e(e)
-                        Log.e("PlotStatus", traceback.format_exc())
-
-                    # Prevent the user from zooming/panning out of this specified region
-                    if self._get_source() == OperationType.measurement:
-                        _ymin = np.amin(vector1)
-                        _ymax = np.amax(vector1)
-                        _yrange = _ymax - _ymin
-                        if _yrange < Constants.plot_min_range_freq:
-                            _yavg = int(np.average(vector1))
-                            _ymin = _yavg - (Constants.plot_min_range_freq / 2)
-                            _ymax = _yavg + (Constants.plot_min_range_freq / 2)
-
-                        # Apply padding to _plt2 range to match that of _plt3
-                        _ymin -= Constants.default_plot_padding * _yrange
-                        _ymax += Constants.default_plot_padding * _yrange
-
-                        _plt2.setLimits(
-                            yMax=_ymax,
-                            yMin=_ymin,
-                            minYRange=Constants.plot_min_range_freq,
-                        )  # remove maxYRange limit
-                        _plt3.setLimits(
-                            yMax=(self._readFREQ[-1] - self._readFREQ[0]) / self._readFREQ[0],
-                            yMin=0,
-                            minYRange=Constants.plot_min_range_diss,
-                        )
-
-                        _plt2.enableAutoRange(axis="x", enable=True)
-                        _plt3.enableAutoRange(axis="x", enable=True)
-
-                        _plt2.enableAutoRange(axis="y", enable=True)
-                        _plt3.enableAutoRange(axis="y", enable=True)
-
-                    _plt3.addItem(
-                        pg.PlotCurveItem(
-                            self.worker.get_t2_buffer(i)[:numPoints],
-                            self.worker.get_d2_buffer(i)[:numPoints],
-                            pen=Constants.plot_colors[3],
-                        )
-                    )
-
-                # save back to global, otherwise local gets trashed
-                self._plt0_arr[i] = p
-                # save back to global, otherwise local gets trashed
-                self._plt2_arr[i] = _plt2
-                # save back to global, otherwise local gets trashed
-                self._plt3_arr[i] = _plt3
-
-                # Prevent the user from zooming/panning out of this specified region
-                if self._get_source() == OperationType.measurement:
-                    self._plt4.setLimits(yMax=50, yMin=-10, minYRange=0.5)
-                    self._plt4.enableAutoRange(axis="x", enable=True)
-                    self._plt4.enableAutoRange(axis="y", enable=True)
-
-            if self._get_source() == OperationType.measurement and self.multiplex_plots > 1:
-                # get the largest values for each index
-                i = 0  # first Amplitude plot is the main one
-                combined_amps = self._amps[i]
-                for a in range(1, len(self._amps)):
-                    combined_amps = np.maximum(combined_amps, self._amps[a])
-                p = self._plt0_arr[i]
-                p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
-                p.enableAutoRange(axis="x", enable=True)
-                p.enableAutoRange(axis="y", enable=True)
-                p.plot(x=self._readFREQ, y=combined_amps, pen=Constants.plot_colors[0])
-                self.labels = []
-                for j in range(len(self._amps)):
-                    am = np.argmax(self._amps[j])
-                    item = pg.TextItem(text=str(j + 1), color=(0, 0, 0), anchor=(0, 1))
-                    item.setPos(self._readFREQ[am], combined_amps[am])
-                    self.labels.append(item)
-                    p.addItem(self.labels[j])
-                # save back to global, otherwise local gets trashed
-                self._plt0_arr[i] = p
-
-            ###################################################################
-            # Temperature plot
-            self._plt4.clear()
-            self._plt4.plot(
-                x=self.worker.get_t3_buffer(0)[:numPoints],
-                y=self.worker.get_d3_buffer(0)[:numPoints],
-                pen=Constants.plot_colors[4],
+        if error1:
+            return (
+                "Warning: unable to apply half-power bandwidth method, "
+                "lower cut-off frequency (left side) not found"
             )
-            # self._plt4.addItem(pg.PlotCurveItem(self.worker.get_t3_buffer(i),self.worker.get_d4_buffer(i),pen=Constants.plot_colors[1])) # hide ambient
+        if error2:
+            return (
+                "Warning: unable to apply half-power bandwidth method, "
+                "upper cut-off frequency (right side) not found"
+            )
+        return ""
+
+    def _serial_error_message(e1: int, e2: int, e3: int, e4: int) -> str:
+        """Return the infobar message for serial tracking errors."""
+        if e1 and e2:
+            return (
+                "Warning: unable to apply half-power bandwidth method, "
+                "lower and upper cut-off frequency not found"
+            )
+        if e1:
+            peak = {1: " upper ", 2: " lower "}.get(e1, " ")
+            return (
+                f"Warning: unable to track the{peak}peak frequency, "
+                "it has drifted more than maximum drift (left) allows"
+            )
+        if e2:
+            # BUG FIX: original code checked e1 again here – should be e2
+            peak = {1: " upper ", 2: " lower "}.get(e2, " ")
+            return (
+                f"Warning: unable to track the{peak}peak frequency, "
+                "it has drifted more than maximum drift (right) allows"
+            )
+        if e3:
+            return (
+                "Warning: failed to construct sine wave, "
+                "approximating reconstruction with derivatives only"
+            )
+        if e4:
+            return (
+                "Warning: failed to reconstruct signal wave, "
+                "unable to apply noise correction reconstruction"
+            )
+        return ""
 
     ###########################################################################################################################################
 
@@ -7190,4 +8222,5 @@ class DryingDetection:
         #     return np.inf
         # return np.power(float(np.nanmean(arr)), 2) / sigma
         sigma = float(np.nanstd(arr))
+        return sigma
         return sigma
