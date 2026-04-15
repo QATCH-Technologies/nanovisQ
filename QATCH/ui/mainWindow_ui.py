@@ -949,10 +949,16 @@ class Ui_Login(object):
         """
         valid, infos = UserProfiles().session_info()
         if not valid:  # user check required, but no user signed in
-            Log.w(f"User session has expired.")
-            Log.i("Please sign in to continue.")
-            self.parent.ControlsWin.set_user_profile()  # prompt for sign-in
-            # self.parent.LoginWin.ui5.error_expired()
+            if self.parent.ControlsWin.userrole == UserRoles.NONE:
+                # User explicitly signed out already — sign-in screen is visible,
+                # no popup needed.  Let the timer lapse without restarting.
+                Log.d("Hourly session check: user already signed out, skipping prompt.")
+            else:
+                # User was signed in but session expired unexpectedly.
+                Log.w(f"User session has expired.")
+                Log.i("Please sign in to continue.")
+                self.parent.ControlsWin.set_user_profile()  # prompt for sign-in
+                # self.parent.LoginWin.ui5.error_expired()
         else:
             Log.d("User session is still valid at the hourly check.")
             self._sessionTimer.start()  # check again in another hour
