@@ -4359,27 +4359,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ci_freq: list[pg.PlotCurveItem | None] = [None] * n
         self._ci_diss: list[pg.PlotCurveItem | None] = [None] * n
 
-        # Safely resolve the ViewBox whether p2 is a PlotWidget, PlotItem, or already a ViewBox
-        def resolve_vb(obj):
-            if obj is None:
-                return None
-            # If it's a PlotWidget
-            if hasattr(obj, "getPlotItem"):
-                obj = obj.getPlotItem()
-            # If it's a GraphicsLayoutWidget
-            elif hasattr(obj, "getItem"):
-                try:
-                    obj = obj.getItem(0, 0)
-                except Exception:
-                    pass
-            # If we've reached the PlotItem layer
-            if hasattr(obj, "getViewBox"):
-                return obj.getViewBox()
-            if hasattr(obj, "vb"):
-                return obj.vb
-            # Otherwise, it's likely already the raw ViewBox
-            return obj
-
         for i in range(n):
             p0 = self._plt0_arr[i]
             p2 = self._plt2_arr[i]
@@ -4388,15 +4367,31 @@ class MainWindow(QtWidgets.QMainWindow):
             if p0 is None or p2 is None or p3 is None:
                 continue
 
-            # Safely extract the ViewBoxes regardless of Qt Designer configuration
-            vb2 = resolve_vb(p2)
-            vb3 = resolve_vb(p3)
+            # ── Extract the ViewBoxes directly ───────────────────────────────
+            # p2 is a PlotItem (from addPlot) → its ViewBox is p2.getViewBox()
+            # p3 is already a raw pg.ViewBox (created at _configure_plot time)
+            vb2 = None
+            try:
+                vb2 = p2.getViewBox()
+            except (AttributeError, RuntimeError):
+                pass
+            vb3 = p3  # p3 *is* the overlay ViewBox
 
-            # Only attempt ViewBox signal wiring if both resolved correctly —
-            # a failed resolve must NOT prevent curve items from being created below
-            if isinstance(vb2, pg.ViewBox) and isinstance(vb3, pg.ViewBox):
+            # Duck-type check: verify both objects have the signals and
+            # methods we need, rather than relying on isinstance which can
+            # fail across pyqtgraph import paths or version differences.
+            can_wire = (
+                vb2 is not None
+                and vb3 is not None
+                and hasattr(vb2, "sigResized")
+                and hasattr(vb2, "sigXRangeChanged")
+                and hasattr(vb2, "sceneBoundingRect")
+                and hasattr(vb3, "setGeometry")
+                and hasattr(vb3, "linkedViewChanged")
+            )
 
-                # 1. Forcefully sever any ghost links on both raw widgets and resolved ViewBoxes
+            if can_wire:
+                # 1. Sever ghost links on both raw widgets and resolved ViewBoxes
                 for obj in (p2, p3, vb2, vb3):
                     if obj is None:
                         continue
@@ -4406,41 +4401,54 @@ class MainWindow(QtWidgets.QMainWindow):
                     except (AttributeError, RuntimeError):
                         pass
 
-                # 2. Manually sync the overlay geometry
+                # 2. Geometry sync — executed directly (no deferred timer) so
+                #    sceneBoundingRect() reads the correct rect at signal time
                 def link_geometry(sender=None, vb_main=vb2, vb_overlay=vb3):
-                    def _do_sync(vm=vb_main, vo=vb_overlay):
-                        try:
-                            vo.setGeometry(vm.sceneBoundingRect())
-                            vo.linkedViewChanged(vm, vo.XAxis)
-                        except RuntimeError:
-                            pass  # Object deleted during a restart; safely ignore
-                    QtCore.QTimer.singleShot(0, _do_sync)
+                    try:
+                        vb_overlay.setGeometry(vb_main.sceneBoundingRect())
+                        vb_overlay.linkedViewChanged(vb_main, vb_overlay.XAxis)
+                    except RuntimeError:
+                        pass  # Object deleted during a restart; safely ignore
 
-                # 3. Manually sync the panning/zooming of the X-Axis
+                # 3. X-axis pan/zoom sync
                 def sync_x_axis(sender, new_range, vb_overlay=vb3):
                     try:
                         vb_overlay.setXRange(new_range[0], new_range[1], padding=0)
                     except (RuntimeError, TypeError):
                         pass  # Deleted object or wrong type; safely ignore
 
-                # 4. Connect the signals (with safety disconnects for soft restarts)
-                try:
-                    vb2.sigResized.disconnect()
-                except (TypeError, RuntimeError):
-                    pass
+                # 4. TARGETED disconnect — only remove OUR previous handler,
+                #    preserving pyqtgraph's internal signal connections
+                prev_geo = getattr(self, f"_link_geometry_{i}", None)
+                if prev_geo is not None:
+                    try:
+                        vb2.sigResized.disconnect(prev_geo)
+                    except (TypeError, RuntimeError):
+                        pass
+                prev_sync = getattr(self, f"_sync_x_axis_{i}", None)
+                if prev_sync is not None:
+                    try:
+                        vb2.sigXRangeChanged.disconnect(prev_sync)
+                    except (TypeError, RuntimeError):
+                        pass
+
+                # 5. Connect and store refs for future targeted disconnect
                 vb2.sigResized.connect(link_geometry)
-
-                try:
-                    vb2.sigXRangeChanged.disconnect()
-                except (TypeError, RuntimeError):
-                    pass
                 vb2.sigXRangeChanged.connect(sync_x_axis)
+                setattr(self, f"_link_geometry_{i}", link_geometry)
+                setattr(self, f"_sync_x_axis_{i}", sync_x_axis)
 
+                Log.d(
+                    TAG,
+                    f"Channel {i}: dissipation overlay ViewBox wired to "
+                    f"sigResized + sigXRangeChanged.",
+                )
             else:
                 Log.w(
                     TAG,
-                    f"Channel {i}: could not resolve ViewBoxes for p2/p3 — "
-                    f"skipping X-axis sync wiring (curves will still be created).",
+                    f"Channel {i}: could not wire ViewBoxes for p2/p3 — "
+                    f"vb2={type(vb2).__name__}, vb3={type(vb3).__name__}, "
+                    f"can_wire={can_wire}. Skipping overlay sync.",
                 )
 
             # ── Amplitude ────────────────────────────────────────────────────
