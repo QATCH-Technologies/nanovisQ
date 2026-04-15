@@ -61,6 +61,7 @@ class Ui_Export(QtWidgets.QWidget):
         self.tabs = QtWidgets.QTabWidget()
         self.tab1 = QtWidgets.QWidget()
         self.tab2 = QtWidgets.QWidget()
+        self.tabRecover = QtWidgets.QWidget()
         self.tabAdv = QtWidgets.QWidget()
         self.tab3 = QtWidgets.QWidget()
         # self.tabs.resize(300,200)
@@ -68,6 +69,7 @@ class Ui_Export(QtWidgets.QWidget):
         # Add tabs
         self.tabs.addTab(self.tab1, "Import")
         self.tabs.addTab(self.tab2, "Export")
+        self.tabs.addTab(self.tabRecover, "Recover")
         self.tabs.addTab(self.tabAdv, "Advanced")
         self.tabs.addTab(self.tab3, "History")
 
@@ -373,6 +375,16 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox3.setCheckable(False)
         self.groupbox3.setChecked(False)
         self.groupbox3.setLayout(exportGridLayout)
+
+        ### BEGIN: Recover tab init
+
+        recover_layout = QtWidgets.QVBoxLayout()
+        coming_soon = QtWidgets.QLabel("<h1 style='color: #FF0000;'>COMING SOON!</h1>")
+        coming_soon.setAlignment(QtCore.Qt.AlignCenter)
+        recover_layout.addWidget(coming_soon)
+        self.tabRecover.setLayout(recover_layout)
+
+        ### BEGIN: Advanced tab init
 
         layout_h3 = QtWidgets.QVBoxLayout()
         erase_notice = QtWidgets.QLabel(
