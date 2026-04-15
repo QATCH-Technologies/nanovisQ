@@ -266,6 +266,9 @@ double freq_factor = 1.0;
 // use Ambient temperature to correct external K-probe temperature readings
 // NOTE: This correction only applies during active measurement runs
 #define USE_TEMP_CORRECTION true
+// Temperature correction method
+#define TEMP_CORRECT_METHOD 'E'
+// These parameters only apply to Method A:
 #define TEMP_CORRECT_COOLDOWN_INTERVAL (1000 * 60 * 2)
 #define TEMP_CORRECT_COOLDOWN_DELTA 0.25
 #else
@@ -401,8 +404,10 @@ float temperature = NAN;
 float ambient = NAN;
 
 #if USE_TEMP_CORRECTION
+#if TEMP_CORRECT_METHOD == 'A'
 float starting_ambient = NAN;
 unsigned long temp_correct_adjust_delta_at = 0; // time to auto-adjust (after last run stop)
+#endif
 #endif
 
 // Create servo object for POGO lid
@@ -1716,9 +1721,11 @@ void QATCH_loop()
         client->printf("LAST DRIFT: %i\n", drift_TS); // this must be printed as a signed value
         getSystemTime(true);                          // reports NOW DRIFT
 #if USE_TEMP_CORRECTION
+#if TEMP_CORRECT_METHOD == 'A'
         client->printf("CORR. TEMP: %f\n", starting_ambient);
         client->printf("CORR. TIME: %u\n", temp_correct_adjust_delta_at);
         client->printf("         n: %u\n", n);
+#endif
 #endif
       }
       return;
@@ -2060,10 +2067,26 @@ void QATCH_loop()
         // NOTE: This is always an instantaneous read, no averaging
         // Thus, we do not need to use a temporary temperature to
         // apply the ambient temperature correction to the reading.
+#if TEMP_CORRECT_METHOD == 'A'
         if (!isnan(starting_ambient)) // active
         {
-          temperature -= (ambient - starting_ambient);
+          if (ambient > starting_ambient)
+            temperature -= (ambient - starting_ambient) * 0.65;
+          // else, do nothing; only apply correction if positive delta
         }
+#endif
+#if TEMP_CORRECT_METHOD == 'B'
+        temperature = temperature - (0.04 * ambient);
+#endif
+#if TEMP_CORRECT_METHOD == 'C'
+        temperature = temperature + (0.1359 * ambient) - 4.93;
+#endif
+#if TEMP_CORRECT_METHOD == 'D'
+        temperature = temperature - (0.2766 * ambient) + 6.8581;
+#endif
+#if TEMP_CORRECT_METHOD == 'E'
+        temperature = temperature - (0.6689 * ambient) + 16.627;
+#endif
 #endif
       }
       if (max31855.getType())
@@ -2404,6 +2427,7 @@ void QATCH_loop()
       ledWrite(LED_SEGMENT_DP, HIGH);
       max31855.useOffsetM(true);
 #if USE_TEMP_CORRECTION
+#if TEMP_CORRECT_METHOD == 'A'
       if (l298nhb.active())
       {
         if (temp_correct_adjust_delta_at == 0) // only if NOT in cooldown from prior run
@@ -2417,6 +2441,7 @@ void QATCH_loop()
           Serial.println(starting_ambient);
         }
       }
+#endif
 #endif
       return;
     }
@@ -2844,6 +2869,7 @@ void QATCH_loop()
 #if USE_MAX31855
         float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
+#if TEMP_CORRECT_METHOD == 'A'
         // check for auto-off, adjust and/or stop if due
         temp_correct_adjust(false);
         if (!isnan(starting_ambient)) // active
@@ -2854,12 +2880,27 @@ void QATCH_loop()
             Serial.print(temp_temp);
             Serial.println(" -> ");
           }
-          temp_temp -= (ambient - starting_ambient);
+          if (ambient > starting_ambient)
+            temp_temp -= (ambient - starting_ambient) * 0.65;
+          // else, do nothing; only apply correction if positive delta
           if (DEBUG)
           {
             Serial.println(temp_temp);
           }
         }
+#endif
+#if TEMP_CORRECT_METHOD == 'B'
+        temp_temp = temp_temp - (0.04 * ambient);
+#endif
+#if TEMP_CORRECT_METHOD == 'C'
+        temp_temp = temp_temp + (0.1359 * ambient) - 4.93;
+#endif
+#if TEMP_CORRECT_METHOD == 'D'
+        temp_temp = temp_temp - (0.2766 * ambient) + 6.8581;
+#endif
+#if TEMP_CORRECT_METHOD == 'E'
+        temp_temp = temp_temp - (0.6689 * ambient) + 16.627;
+#endif
 #endif
         if (isnan(temperature))
           temperature = temp_temp;
@@ -3374,6 +3415,7 @@ void QATCH_loop()
 #if USE_MAX31855
       float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
+#if TEMP_CORRECT_METHOD == 'A'
       // check for auto-off, adjust and/or stop if due
       temp_correct_adjust(false);
       if (!isnan(starting_ambient)) // active
@@ -3384,12 +3426,27 @@ void QATCH_loop()
           Serial.print(temp_temp);
           Serial.println(" -> ");
         }
-        temp_temp -= (ambient - starting_ambient);
+        if (ambient > starting_ambient)
+          temp_temp -= (ambient - starting_ambient) * 0.65;
+        // else, do nothing; only apply correction if positive delta
         if (DEBUG)
         {
           Serial.println(temp_temp);
         }
       }
+#endif
+#if TEMP_CORRECT_METHOD == 'B'
+      temp_temp = temp_temp - (0.04 * ambient);
+#endif
+#if TEMP_CORRECT_METHOD == 'C'
+      temp_temp = temp_temp + (0.1359 * ambient) - 4.93;
+#endif
+#if TEMP_CORRECT_METHOD == 'D'
+      temp_temp = temp_temp - (0.2766 * ambient) + 6.8581;
+#endif
+#if TEMP_CORRECT_METHOD == 'E'
+      temp_temp = temp_temp - (0.6689 * ambient) + 16.627;
+#endif
 #endif
       if (isnan(temperature))
         temperature = temp_temp;
@@ -3597,6 +3654,7 @@ void QATCH_loop()
 #if USE_MAX31855
       float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
+#if TEMP_CORRECT_METHOD == 'A'
       // check for auto-off, adjust and/or stop if due
       temp_correct_adjust(false);
       if (!isnan(starting_ambient)) // active
@@ -3607,12 +3665,27 @@ void QATCH_loop()
           Serial.print(temp_temp);
           Serial.println(" -> ");
         }
-        temp_temp -= (ambient - starting_ambient);
+        if (ambient > starting_ambient)
+          temp_temp -= (ambient - starting_ambient) * 0.65;
+        // else, do nothing; only apply correction if positive delta
         if (DEBUG)
         {
           Serial.println(temp_temp);
         }
       }
+#endif
+#if TEMP_CORRECT_METHOD == 'B'
+      temp_temp = temp_temp - (0.04 * ambient);
+#endif
+#if TEMP_CORRECT_METHOD == 'C'
+      temp_temp = temp_temp + (0.1359 * ambient) - 4.93;
+#endif
+#if TEMP_CORRECT_METHOD == 'D'
+      temp_temp = temp_temp - (0.2766 * ambient) + 6.8581;
+#endif
+#if TEMP_CORRECT_METHOD == 'E'
+      temp_temp = temp_temp - (0.6689 * ambient) + 16.627;
+#endif
 #endif
       if (isnan(temperature))
         temperature = temp_temp;
@@ -4115,6 +4188,7 @@ void stopStreaming(void)
   n = 0;
   max31855.useOffsetM(false);
 #if USE_TEMP_CORRECTION
+#if TEMP_CORRECT_METHOD == 'A'
   if (l298nhb.active() && !isnan(starting_ambient))
   {
     temp_correct_adjust_delta_at = millis() + TEMP_CORRECT_COOLDOWN_INTERVAL; // calculate time to next adjust
@@ -4128,6 +4202,7 @@ void stopStreaming(void)
       Serial.printf("CORRECTION adjust @ t = %u\n", temp_correct_adjust_delta_at);
     }
   }
+#endif
 #endif
 }
 
@@ -4316,7 +4391,8 @@ void temp_correct_adjust(bool force_off)
   return; // skip it
 #endif
 
-          // check for auto-off, adjust and/or stop if due
+#if TEMP_CORRECT_METHOD == 'A'
+  // check for auto-off, adjust and/or stop if due
   if ((force_off) || (last_temp >
                           temp_correct_adjust_delta_at &&
                       temp_correct_adjust_delta_at != 0))
@@ -4359,6 +4435,7 @@ void temp_correct_adjust(bool force_off)
       starting_ambient = NAN;
     }
   }
+#endif
 }
 
 /************************** ILI9341 ****************************/
