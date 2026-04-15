@@ -143,6 +143,7 @@
 #define POGO_SERVO_2_PIN 8
 #define POGO_BTN_LED_PIN 35
 #define POGO_BUTTON_PIN_N 36 // active low
+#define POGO_LID_SW_PIN_N 37 // active low
 
 /*********************** DEFINE CONSTANTS **********************/
 
@@ -415,8 +416,10 @@ bool pogo_pressed_flag = false; // true if POGO movement is queued
 unsigned long lastInterruptHitTime = 0;
 const unsigned long debounceDelay = 100; // debounce delay in ms
 
-// Create variables for POGO lid servo, button and LED
+// Create variables for POGO lid servo, button, LED and switch
 bool pogo_lid_opened = false; // true if POGO lid is opened
+bool pogo_sw_exists = false;  // flag for switch hw existence
+uint8_t pogo_switch_pos = 0;  // position where switch activated
 
 // HW-agnostic interface pointer:
 // For TEENSY36: always the Serial port
@@ -1051,6 +1054,9 @@ void QATCH_setup()
     pinMode(POGO_BUTTON_PIN_N, INPUT_PULLUP);
     pinMode(POGO_BTN_LED_PIN, OUTPUT);
     digitalWrite(POGO_BTN_LED_PIN, HIGH);
+
+    // Configure lid switch pin
+    pinMode(POGO_LID_SW_PIN_N, INPUT_PULLUP);
 
     // Attach POGO button interrupt - triggers on FALLING and RISING edge (button press on LOW)
     attachInterrupt(digitalPinToInterrupt(POGO_BUTTON_PIN_N), pogo_button_ISR, CHANGE);
@@ -2266,6 +2272,13 @@ void QATCH_loop()
               atoi(pid[2]), atoi(pid[3]),
               atoi(pid[4]));
         }
+      }
+      else if (message_str.substring(4, 10) == "SWITCH")
+      {
+        int lid_limit = digitalRead(POGO_LID_SW_PIN_N);
+        client->printf("LID SWITCH: %sPRESSED (%u)\n",
+                       lid_limit ? "NOT " : "",
+                       lid_limit);
       }
       return;
     }
@@ -4189,6 +4202,13 @@ void pogo_button_pressed(bool init)
                                                      : 0;
     int dir2 = (end2 > start2) ? 1 : (end2 < start2) ? -1
                                                      : 0;
+
+    if (pogo_switch_pos != 0 && pogo_sw_exists) {
+      uint8_t distance = abs(start1 - end1);
+      start1 = pogo_switch_pos;
+      end1 = dir1 ? start1 + distance : 0;
+    }
+
     int pos1 = start1;
     int pos2 = start2;
     bool done1 = false, done2 = false;
@@ -4196,6 +4216,9 @@ void pogo_button_pressed(bool init)
     {
       if (DEBUG)
         client->printf("Servo1 to %i, Servo2 to %i\n", pos1, pos2);
+      if (dir1 == -1 && digitalRead(POGO_LID_SW_PIN_N) == LOW) {
+        pogo_sw_exists = done1 = done2 = true;  // abort early
+      }
       if (!done1)
         pogoServo1.write(pos1);
       if (!done2)
@@ -4216,6 +4239,7 @@ void pogo_button_pressed(bool init)
           pos2 += dir2;
       }
     }
+    pogo_switch_pos = pos1;  // store position for next time
   };
 
   // Move pogo servos to target(s)
@@ -4292,7 +4316,7 @@ void temp_correct_adjust(bool force_off)
   return; // skip it
 #endif
 
-  // check for auto-off, adjust and/or stop if due
+          // check for auto-off, adjust and/or stop if due
   if ((force_off) || (last_temp >
                           temp_correct_adjust_delta_at &&
                       temp_correct_adjust_delta_at != 0))
