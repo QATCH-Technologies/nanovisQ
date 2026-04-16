@@ -1,4 +1,5 @@
-import datetime
+# import datetime
+from datetime import datetime, timezone, timedelta, date
 import hashlib
 import logging
 import multiprocessing
@@ -1160,7 +1161,7 @@ class Rename_Output_Files(QtCore.QObject):
                         encryption=pyzipper.WZ_AES,
                     ) as zf:
                         # Add a protected file to the zip archive
-                        friendly_name = f"{run_directory} ({datetime.date.today()})"
+                        friendly_name = f"{run_directory} ({date.today()})"
                         zf.comment = friendly_name.encode()  # run name
 
                         enabled, error, expires = UserProfiles.checkDevMode()
@@ -1648,7 +1649,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             Log.e("ERROR:", e)
             captured = os.path.getctime(data_path)
-            captured = datetime.datetime.fromtimestamp(captured)
+            captured = datetime.fromtimestamp(captured, timezone.utc)
             captured = captured.strftime("%Y-%m-%d")  # %H:%M:%S")
         self.AnalyzeProc.text_Created.setText("Loaded: {} ({})".format(data_folder, captured))
         if hasattr(self.AnalyzeProc, "_batched_runs") and self.AnalyzeProc._batched_runs:
@@ -2454,189 +2455,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._calib_progress_dlg.show()
 
     ###########################################################################
-    # Configures specific elements of the PyQtGraph plots.
-    ###########################################################################
-
-    def _configure_plot(self):
-
-        ###############################################################################
-        #  Provides a date-time aware axis
-        ###############################################################################
-        class DateAxis(AxisItem):
-            def __init__(self, *args, **kwargs):
-                super(DateAxis, self).__init__(*args, **kwargs)
-
-            def tickStrings(self, values, scale, spacing):
-                try:
-                    # If less than 1 hour: display as "MM:SS" format.
-                    # If equal or over 1 hour: display as "HH:MM:SS".
-                    z = [
-                        (
-                            datetime.datetime.utcfromtimestamp(float(value)).strftime("%M:%S")
-                            if datetime.datetime.utcfromtimestamp(float(value)).strftime("%H")
-                            == "00"
-                            else datetime.datetime.utcfromtimestamp(float(value)).strftime(
-                                "%H:%M:%S"
-                            )
-                        )
-                        for value in values
-                    ]
-                except:
-                    z = ""
-                return z
-
-        # ----------------------------------------------------------------------
-        # set background color
-        self.PlotsWin.ui2.plt.setBackground(background="#FFFFFF")
-        self.PlotsWin.ui2.pltB.setBackground(background="#FFFFFF")
-
-        # ----------------------------------------------------------------------
-        # defines the graph title
-        title1 = "Plot: Amplitude"
-        title2 = "Plot: Resonance Frequency / Dissipation"
-        title3 = "Plot: Temperature"
-        # --------------------------------------------------------------------------------------------------------------
-        # Configures elements of the PyQtGraph plots: amplitude
-        self.PlotsWin.ui2.plt.setAntialiasing(True)
-        self.PlotsWin.ui2.pltB.setAntialiasing(True)
-        for i, p in enumerate(self._plt0_arr):
-            if i >= self.multiplex_plots:
-                # save back to global, otherwise local gets trashed
-                self._plt0_arr[i] = None
-                continue
-            span = 1
-            visible = True
-            x = int(i % 2)  # 0 -> 0     1 -> 1      2 -> 0      3 -> 1
-            y = int(i / 2) + 1  # 0 -> 0     1 -> 0      2 -> 1      3 -> 1
-            if self._get_source() == OperationType.measurement:
-                visible = True if i == 0 else False
-                if i == 0:
-                    span = 2
-                    y = 0
-            p = self.PlotsWin.ui2.plt.addPlot(
-                col=x,
-                row=y,
-                colspan=span,
-                title=title1
-                + (
-                    f" {i + 1}"
-                    if not self.has_active_multi_port()
-                    else f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
-                ),
-                **{"font-size": "10pt"},
-            )
-            p.showGrid(x=True, y=True)
-            p.setVisible(visible)
-            p.setLabel("bottom", "Frequency", units="Hz")
-            p.setLabel(
-                "left",
-                "Amplitude",
-                units="dB",
-                color=Constants.plot_colors[0],
-                **{"font-size": "10pt"},
-            )
-            # set size policy for show/hide
-            not_resize = p.sizePolicy()
-            not_resize.setHorizontalStretch(1)
-            p.setSizePolicy(not_resize)
-            # save back to global, otherwise local gets trashed
-            self._plt0_arr[i] = p
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Configures elements of the PyQtGraph plots: resonance
-        self._yaxis = []
-        self._xaxis = []
-        for i, p in enumerate(self._plt2_arr):
-            if i >= self.multiplex_plots:
-                # save back to global, otherwise local gets trashed
-                self._plt2_arr[i] = None
-                continue
-            x = int(i % 2)  # 0 -> 0     1 -> 1      2 -> 0      3 -> 1
-            y = int(i / 2)  # 0 -> 0     1 -> 0      2 -> 1      3 -> 1
-            self._yaxis.append(AxisItem(orientation="left"))
-            self._xaxis.append(DateAxis(orientation="bottom"))
-            p = self.PlotsWin.ui2.pltB.addPlot(
-                col=x,
-                row=y,
-                title=title2
-                + (
-                    f" {i + 1}"
-                    if not self.has_active_multi_port()
-                    else f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
-                ),
-                **{"font-size": "12pt"},
-                axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
-            )
-            p.showGrid(x=True, y=True)
-            p.setLabel("bottom", "Time", units="s")
-            p.setLabel(
-                "left",
-                "Resonance Frequency",
-                units="Hz",
-                color=Constants.plot_colors[2],
-                **{"font-size": "10pt"},
-            )
-            # save back to global, otherwise local gets trashed
-            self._plt2_arr[i] = p
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Configures elements of the PyQtGraph plots: Multiple Plot resonance frequency and dissipation
-        for i, p in enumerate(self._plt3_arr):
-            if i >= self.multiplex_plots:
-                # save back to global, otherwise local gets trashed
-                self._plt3_arr[i] = None
-                continue
-            _p2 = self._plt2_arr[i]
-            p = pg.ViewBox()
-            _p2.showAxis("right")
-            _p2.scene().addItem(p)
-            _p2.getAxis("right").setGrid(False)
-            _p2.getAxis("right").linkToView(p)
-            p.setXLink(_p2)
-            _p2.enableAutoRange(axis="y", enable=True)
-            p.enableAutoRange(axis="y", enable=True)
-            _p2.setLabel("bottom", "Time", units="s")
-            _p2.setLabel(
-                "right",
-                "Dissipation",
-                units="",
-                color=Constants.plot_colors[3],
-                **{"font-size": "10pt"},
-            )
-            # save back to global, otherwise local gets trashed
-            self._plt2_arr[i] = _p2
-            # save back to global, otherwise local gets trashed
-            self._plt3_arr[i] = p
-
-        self._annotate_welcome_text()
-
-        # -----------------------------------------------------------------------------------------------------------------
-        # Configures elements of the PyQtGraph plots: temperature
-        self._plt4 = self.PlotsWin.ui2.plt.addPlot(
-            row=3,
-            col=0,
-            colspan=2,
-            title=title3,
-            axisItems={"bottom": DateAxis(orientation="bottom")},
-        )
-        self._plt4.showGrid(x=True, y=True)
-        self._plt4.setLabel("bottom", "Time", units="s")
-        self._plt4.setLabel(
-            "left",
-            "Temperature",
-            units="°C",
-            color=Constants.plot_colors[4],
-            **{"font-size": "10pt"},
-        )
-        # set size policy for show/hide
-        not_resize = self._plt4.sizePolicy()
-        not_resize.setHorizontalStretch(1)
-        self._plt4.setSizePolicy(not_resize)
-        self._init_plot_curves()
-        if self._plt1 is None and not Constants.plot_show_phase is False:
-            self._configure_add_phase()
-
-    ###########################################################################
     # Configures text comment and info
     ###########################################################################
 
@@ -3429,929 +3247,213 @@ class MainWindow(QtWidgets.QMainWindow):
     # Updates and redraws the graphics in the plot.
     ###########################################################################
 
-    # def _update_plot(self):
+    def _configure_plot(self):
+        """Initializes and configures the layout for all PyQtGraph plots.
 
-    #     # This function is connected to the timeout signal of a QTimer
-    #     self.worker.consume_logger()
-    #     self.worker.consume_queue0()
-    #     self.worker.consume_queue1()
-    #     self.worker.consume_queue2()
-    #     self.worker.consume_queue3()
-    #     self.worker.consume_queue4()
-    #     self.worker.consume_queue5()
-    #     self.worker.consume_queue6()
+        This method sets up the visual environment for several plot types, including
+        Amplitude, Resonance Frequency, Dissipation, and Temperature. It handles
+        multiplexed plot logic, applies consistent styling (colors, fonts, grids),
+        and defines an internal axis class for timestamp formatting.
 
-    #     labelbar = "Status: Unknown"
+        The configuration includes:
+            - Background color settings.
+            - Grid and label formatting for Hz, dB, and Celsius.
+            - Dynamic layout positioning (row/column spans) based on the operation type.
+            - Linking secondary Y-axes for multi-axis plots.
+        """
 
-    #     # MEASUREMENT: dynamic frequency and dissipation labels at run-time
-    #     ###################################################################
-    #     if self._get_source() == OperationType.measurement:
-    #         self._readFREQ = self.worker.get_value0_buffer(0)
-    #         vector1 = self.worker.get_d1_buffer(0)
-    #         vector2 = self.worker.get_d2_buffer(0)
-    #         vectortemp = self.worker.get_d3_buffer(0)
-    #         vectoramb = self.worker.get_d4_buffer(0)
+        class DateAxis(AxisItem):
+            """Internal axis item for formatting timestamps into human-readable strings.
 
-    #         if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-    #             snapshot = WorkerSnapshot(
-    #                 self.worker.get_t1_buffer(0),
-    #                 self.worker.get_d1_buffer(0),
-    #                 self.worker.get_d2_buffer(0),
-    #             )
-    #             self.worker._forecaster_in.put(snapshot)
-    #             if not self.worker._forecaster_out.empty():
-    #                 try:
-    #                     pred_int, _, display_msg = self.worker._forecaster_out.get()
-    #                     if display_msg is not None:
-    #                         self._fill_display_msg = display_msg
+            Inherits from pyqtgraph.AxisItem to override the tick label generation,
+            providing context-aware time formats.
+            """
 
-    #                     is_drop_applied = all(self._drop_applied)
+            def __init__(self, *args, **kwargs):
+                """Initializes the DateAxis with standard AxisItem arguments."""
+                super(DateAxis, self).__init__(*args, **kwargs)
 
-    #                     # Gate all fill-classifier messages behind drop application.
-    #                     # Before the drop is confirmed, mirror the dry/drop status instead.
-    #                     if not is_drop_applied:
-    #                         if not self._last_dry_status:
-    #                             status_msg = self._last_dry_msg
-    #                             ui_step = 0
-    #                         else:
-    #                             status_msg = "Add sample"
-    #                             ui_step = 0
-    #                         if hasattr(self.ControlsWin.ui1, "run_controls"):
-    #                             self.ControlsWin.ui1.run_controls.update_progress(
-    #                                 ui_step, 5, status_msg
-    #                             )
-    #                     else:
-    #                         ui_step = 0
-    #                         status_msg = "Unknown"
-    #                         if pred_int == -1:
-    #                             status_msg = "Sample detected"
-    #                             ui_step = 1
-    #                             if not self._drop_epoch_sent:
-    #                                 drop_epoch = float(self.worker.get_t1_buffer(0)[0])
-    #                                 self.worker._forecaster_in.put(DropEpochSignal(drop_epoch))
-    #                                 self._drop_epoch_sent = True
-    #                         elif pred_int == 0:
-    #                             status_msg = "Filling started"
-    #                             ui_step = 2
-    #                         elif pred_int == 1:
-    #                             status_msg = "Filling"
-    #                             ui_step = 3
-    #                         elif pred_int == 2:
-    #                             status_msg = "Almost full"
-    #                             ui_step = 4
-    #                         elif pred_int == 3:
-    #                             status_msg = "Complete, stop"
-    #                             ui_step = 5
-    #                             self._fill_display_msg = "Data Ready, Stop"
+            def tickStrings(self, values, scale, spacing):
+                """Converts epoch timestamps into formatted time strings.
 
-    #                         if hasattr(self.ControlsWin.ui1, "run_controls"):
-    #                             self.ControlsWin.ui1.run_controls.update_progress(
-    #                                 ui_step, 5, status_msg
-    #                             )
-    #                 except Exception as e:
-    #                     Log.e(TAG, f"Error retrieving fill status: {e}")
+                Args:
+                    values (list[float]): The raw numerical values of the ticks.
+                    scale (float): Scale factor applied to the values.
+                    spacing (float): The spacing between ticks.
 
-    #         (
-    #             self._ser_error1,
-    #             self._ser_error2,
-    #             self._ser_error3,
-    #             self._ser_error4,
-    #             self._ser_control,
-    #             self._ser_err_usb,
-    #         ) = self.worker.get_ser_error()
+                Returns:
+                    list[str]: Formatted strings. If the time is within the first hour
+                        of the day (UTC), it returns 'MM:SS'. Otherwise, it returns
+                        'HH:MM:SS'. Returns an empty string on error.
+                """
+                try:
+                    # If less than 1 hour: display as "MM:SS" format.
+                    # If equal or over 1 hour: display as "HH:MM:SS".
+                    z = []
+                    for value in values:
+                        dt = datetime.fromtimestamp(float(value), timezone.utc)
+                        z.append(dt.strftime("%M:%S" if dt.hour == 0 else "%H:%M:%S"))
+                    return z
+                except Exception:
+                    return ""
 
-    #         if self._ser_err_usb > 0:
-    #             if self.worker.is_running():
-    #                 Log.i(
-    #                     TAG,
-    #                     "Port closed without stopping the capture, application will stop...",
-    #                 )
-    #                 self.stop()
-    #             PopUp.warning(self, Constants.app_title, "Warning: Disconnected Device!")
-    #         if not self.worker.is_running():
-    #             self.stop()
+        # Set plot background color to white.
+        self.PlotsWin.ui2.plt.setBackground(background="#FFFFFF")
+        self.PlotsWin.ui2.pltB.setBackground(background="#FFFFFF")
 
-    #         if vectortemp.any():
-    #             # TEMPERATURE: Update TEC temperature and power (if running)
-    #             ############################################################
-    #             if self.tecWorker._tec_locked:
-    #                 self.tecWorker._tec_temp = vectortemp[0]
-    #                 self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
-    #                 sp = self.tecWorker._tec_setpoint
-    #                 pv = self.tecWorker._tec_temp
-    #                 op = self.tecWorker._tec_power
-    #                 if sp == 0.00:
-    #                     sp = 0.25
-    #                 if op == 0:
-    #                     new_l1 = "[AUTO-OFF ERROR]" if np.isnan(pv) else "[AUTO-OFF TIMEOUT]"
-    #                 else:
-    #                     new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(pv, sp, op)
-    #                 self.ControlsWin.ui1.lTemp.setText(new_l1)
-    #                 bgcolor = "yellow"
-    #                 if op == 0:
-    #                     bgcolor = "red" if np.isnan(pv) else "yellow"
-    #                 elif abs(pv - sp) <= 1.0:
-    #                     bgcolor = "lightgreen"
-    #                 self.ControlsWin.ui1.lTemp.setStyleSheet("background-color: {}".format(bgcolor))
-    #                 self.ControlsWin.ui1.lTemp.repaint()
+        # Grabbed from the original plot titles, but modified to include multiplex suffixes if applicable.
+        title_amplitude = "Plot: Amplitude"
+        title_resonance_dissipation = "Plot: Resonance Frequency / Dissipation"
+        title_temperature = "Plot: Temperature"
+        get_suffix = lambda i: (
+            f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
+            if self.has_active_multi_port()
+            else f" {i + 1}"
+        )
 
-    #         if vector1.any():
-    #             # progressbar
-    #             if self._ser_control <= Constants.environment:
-    #                 self._completed = self._ser_control * 2
+        # Configures elements of the PyQtGraph plots: amplitude
+        self.PlotsWin.ui2.plt.setAntialiasing(True)
+        self.PlotsWin.ui2.pltB.setAntialiasing(True)
 
-    #             if vector1[0] == 0 and not self._ser_error1 and not self._ser_error2:
-    #                 label1 = "processing..."
-    #                 label2 = "processing..."
-    #                 label3 = "processing..."
-    #                 labelstatus = "Processing"
-    #                 self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                     "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
-    #                 )  # ff8000
-    #                 color_err = "#333333"
-    #                 labelbar = "Please wait, processing early data..."
+        for i in range(len(self._plt0_arr)):
+            if i >= self.multiplex_plots:
+                self._plt0_arr[i] = None
+                continue
 
-    #             elif vector1[0] == 0 and (self._ser_error1 or self._ser_error2):
-    #                 if self._ser_error1 and self._ser_error2:
-    #                     label1 = ""
-    #                     label2 = ""
-    #                     label3 = ""
-    #                     labelstatus = "Warning"
-    #                     color_err = "#ff0000"
-    #                     labelbar = "Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found"
-    #                     self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                         "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #                     )
-    #                 elif self._ser_error1:
-    #                     label1 = ""
-    #                     label2 = ""
-    #                     label3 = ""
-    #                     labelstatus = "Warning"
-    #                     color_err = "#ff0000"
-    #                     labelbar = "Warning: unable to apply half-power bandwidth method, lower cut-off frequency (left side) not found"
-    #                     self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                         "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #                     )
-    #                 elif self._ser_error2:
-    #                     label1 = ""
-    #                     label2 = ""
-    #                     label3 = ""
-    #                     labelstatus = "Warning"
-    #                     color_err = "#ff0000"
-    #                     labelbar = "Warning: unable to apply half-power bandwidth method, upper cut-off frequency (right side) not found"
-    #                     self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                         "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #                     )
-    #             else:
-    #                 if (
-    #                     not self._ser_error1
-    #                     and not self._ser_error2
-    #                     and not self._ser_error3
-    #                     and not self._ser_error4
-    #                 ):
-    #                     if not self._reference_flag:
-    #                         d1 = float("{0:.2f}".format(vector1[0]))
-    #                         d2 = float("{0:.4f}".format(vector2[0] * 1e6))
-    #                         d3 = float("{0:.2f}".format(vectortemp[0]))
-    #                     else:
-    #                         a1 = vector1[0] - self._reference_value_frequency[0]
-    #                         a2 = vector2[0] - self._reference_value_dissipation[0]
-    #                         d1 = float("{0:.2f}".format(a1))
-    #                         d2 = float("{0:.4f}".format(a2 * 1e6))
-    #                         d3 = float("{0:.2f}".format(vectortemp[0]))
-    #                     if not vector2[0] in (
-    #                         Constants.max_dissipation_1st_mode,
-    #                         Constants.max_dissipation_3rd_mode,
-    #                         Constants.max_dissipation_5th_mode,
-    #                     ):
-    #                         label1 = str(d1) + " Hz"
-    #                         label2 = str(d2) + "e-06"
-    #                         label3 = str(d3) + " °C"
-    #                         labelstatus = "Monitoring"
-    #                         color_err = "#008000"
-    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                             "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
-    #                         )
+            span, visible = 1, True
+            x, y = i % 2, (i // 2) + 1
 
-    #                         if not all(self._drop_applied):
-    #                             for i, p in enumerate(self._plt2_arr):
-    #                                 if p is None:
-    #                                     self._drop_applied[i] = True
-    #                                     self._run_finished[i] = True
-    #                                     continue
-    #                                 try:
-    #                                     vector0 = self.worker.get_t2_buffer(i)
-    #                                     time_running = vector0[0]
-    #                                     if time_running == 0:
-    #                                         labelbar = "Waiting for start..."
-    #                                         continue
-    #                                     if time_running < 3.0:
-    #                                         labelbar = "Capturing data... Calibrating baselines for first 3 seconds... please wait..."
-    #                                         # next(x for x,y in list(vector0) if y <= 1.0)
-    #                                         idx = int(len(list(vector0)) / 3)
-    #                                         if idx > 0:
-    #                                             self._baseline_freq_avg = np.average(vector1[:-idx])
-    #                                             self._baseline_freq_noise = np.amax(
-    #                                                 vector1[:-idx]
-    #                                             ) - np.amin(vector1[:-idx])
-    #                                             self._baseline_diss_avg = np.average(vector2[:-idx])
-    #                                             self._baseline_diss_noise = np.amax(
-    #                                                 vector2[:-idx]
-    #                                             ) - np.amin(vector2[:-idx])
-    #                                     else:
-    #                                         labelbar = "Capturing data... Apply drop when ready..."
-    #                                         # Directional gate: a drop should NOT drive RF upward beyond the positive noise band.
-    #                                         # We allow negative excursions (expected) but reject large positive spikes.
-    #                                         delta_f = (
-    #                                             vector1[0] - self._baseline_freq_avg
-    #                                         )  # RF change (Hz)
-    #                                         delta_d = (
-    #                                             vector2[0] - self._baseline_diss_avg
-    #                                         )  # Dissipation change
+            if self._get_source() == OperationType.measurement:
+                visible = i == 0
+                if i == 0:
+                    span, y = 2, 0
 
-    #                                         freq_ok = delta_f <= (
-    #                                             10.0 * self._baseline_freq_noise
-    #                                         )  # one-sided, directional
-    #                                         diss_ok = delta_d >= (
-    #                                             10.0 * self._baseline_diss_noise
-    #                                         )  # must increase
+            plot_layout = self.PlotsWin.ui2.plt.addPlot(
+                col=x,
+                row=y,
+                colspan=span,
+                title=title_amplitude + get_suffix(i),
+                **{"font-size": "10pt"},
+            )
+            plot_layout.showGrid(x=True, y=True)
+            plot_layout.setVisible(visible)
+            plot_layout.setLabel("bottom", "Frequency", units="Hz")
+            plot_layout.setLabel(
+                "left",
+                "Amplitude",
+                units="dB",
+                color=Constants.plot_colors[0],
+                **{"font-size": "10pt"},
+            )
 
-    #                                         if freq_ok and diss_ok:
-    #                                             self._drop_applied[i] = True
-    #                                 except Exception as e:
-    #                                     Log.e(
-    #                                         "Error 'calibrating baselines' for drop detection. Apply drop when ready."
-    #                                     )
-    #                                     Log.d("ERROR DETAILS:", str(e))
-    #                                     self._drop_applied[i] = True
-    #                         else:
-    #                             labelbar = 'Capturing data... Drop applied! Wait for exit... Press "Stop" when run is finished.'
+            # Set size policy for show/hide for Resonance Frequency/Dissipation plots.
+            not_resize = plot_layout.sizePolicy()
+            not_resize.setHorizontalStretch(1)
+            plot_layout.setSizePolicy(not_resize)
 
-    #                     else:
-    #                         label1 = str(d1) + " Hz"
-    #                         label2 = "-"
-    #                         label3 = str(d3) + " °C"
-    #                         labelstatus = "Warning"
-    #                         color_err = "#ff8000"
-    #                         labelbar = (
-    #                             "Warning: sensor dissipation calculation is not considered accurate above "
-    #                             + str("{0:.0f}e-06".format(vector2[0] * 1e6))
-    #                             + " for the this mode"
-    #                         )
-    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                             "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
-    #                         )
-    #                 else:
-    #                     if self._ser_error1 and self._ser_error2:
-    #                         label1 = "-"
-    #                         label2 = "-"
-    #                         label3 = "-"
-    #                         labelstatus = "Warning"
-    #                         color_err = "#ff0000"
-    #                         labelbar = "Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found"
-    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #                         )
-    #                     elif self._ser_error1:
-    #                         label1 = "-"
-    #                         label2 = "-"
-    #                         label3 = "-"
-    #                         labelstatus = "Warning"
-    #                         color_err = "#ff0000"
-    #                         peak_name = " "
-    #                         if self._ser_error1 == 1:
-    #                             peak_name = " upper "
-    #                         if self._ser_error1 == 2:
-    #                             peak_name = " lower "
-    #                         labelbar = "Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (left) allows".format(
-    #                             peak_name
-    #                         )
-    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #                         )
-    #                     elif self._ser_error2:
-    #                         label1 = "-"
-    #                         label2 = "-"
-    #                         label3 = "-"
-    #                         labelstatus = "Warning"
-    #                         color_err = "#ff0000"
-    #                         peak_name = " "
-    #                         if self._ser_error1 == 1:
-    #                             peak_name = " upper "
-    #                         if self._ser_error1 == 2:
-    #                             peak_name = " lower "
-    #                         labelbar = "Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (right) allows".format(
-    #                             peak_name
-    #                         )
-    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #                         )
-    #                     elif self._ser_error3:
-    #                         label1 = "-"
-    #                         label2 = "-"
-    #                         label3 = "-"
-    #                         labelstatus = "Warning"
-    #                         color_err = "#ff0000"
-    #                         labelbar = "Warning: failed to construct sine wave, approximating reconstruction with derivatives only"
-    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #                         )
-    #                     elif self._ser_error4:
-    #                         label1 = "-"
-    #                         label2 = "-"
-    #                         label3 = "-"
-    #                         labelstatus = "Warning"
-    #                         color_err = "#ff0000"
-    #                         labelbar = "Warning: failed to reconstruct signal wave, unable to apply noise correction reconstruction"
-    #                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                             "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #                         )
+            self._plt0_arr[i] = plot_layout
 
-    #             label8 = str(int(self._readFREQ[self._readFREQ.size // 2])) + " Hz"
-    #             self.InfoWin.ui3.info6.setText(
-    #                 "<font color=#0000ff > Frequency Value </font>" + label8
-    #             )
-    #             label7 = str(int(self._readFREQ[0])) + " Hz"
-    #             self.InfoWin.ui3.info3.setText(
-    #                 "<font color=#0000ff > Start Frequency </font>" + label7
-    #             )
-    #             label6 = str(int(self._readFREQ[-1])) + " Hz"
-    #             self.InfoWin.ui3.info4.setText(
-    #                 "<font color=#0000ff > Stop Frequency </font>" + label6
-    #             )
-    #             label5 = str(int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
-    #             self.InfoWin.ui3.info4a.setText(
-    #                 "<font color=#0000ff > Frequency Range </font>" + label5
-    #             )
-    #             label4 = str(int(self._readFREQ[1] - self._readFREQ[0])) + " Hz"
-    #             self.InfoWin.ui3.info5.setText("<font color=#0000ff > Sample Rate </font>" + label4)
+        # Configures elements of the PyQtGraph plots: Resonance Frequency/Dissipation
+        self._yaxis = []
+        self._xaxis = []
+        for i in range(len(self._plt2_arr)):
+            if i >= self.multiplex_plots:
+                self._plt2_arr[i] = None
+                continue
 
-    #             self.InfoWin.ui3.l6a.setText("<font color=#0000ff > Temperature </font>" + label3)
-    #             self.InfoWin.ui3.l6.setText("<font color=#0000ff > Dissipation </font>" + label2)
-    #             self.InfoWin.ui3.l7.setText(
-    #                 "<font color=#0000ff > Resonance Frequency </font>" + label1
-    #             )
-    #             self.ControlsWin.ui1.infostatus.setText(
-    #                 "<font color=#333333 > Program Status </font>" + labelstatus
-    #             )
-    #             self.ControlsWin.ui1.infobar.setText(
-    #                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-    #                     color_err, labelbar
-    #                 )
-    #             )
-    #             # progressbar
-    #             self.ControlsWin.ui1.run_progress_bar.setValue(int((self._ser_control / 10) % 100))
+            x, y = i % 2, i // 2
+            self._yaxis.append(AxisItem(orientation="left"))
+            self._xaxis.append(DateAxis(orientation="bottom"))
 
-    #     # CALIBRATION: dynamic info in infobar at run-time
-    #     ##################################################
-    #     elif self._get_source() == OperationType.calibration:
-    #         if not hasattr(self, "_calib_progress_dlg") or self._calib_progress_dlg is None:
-    #             self._create_calibration_progress_dialog()
-    #             QtWidgets.QApplication.processEvents()
-    #         stop_flag = 0
-    #         self.ControlsWin.ui1.pButton_Stop.setEnabled(False)
-    #         vector1 = self.worker.get_value1_buffer(0)
-    #         vector1_any = 1 if vector1.any() else 0
-    #         # vector2[0] and vector3[0] flag error
-    #         vector2 = self.worker.get_t3_buffer(0)
-    #         vector3 = self.worker.get_d3_buffer(0)
+            plot_layout = self.PlotsWin.ui2.pltB.addPlot(
+                col=x,
+                row=y,
+                title=title_resonance_dissipation + get_suffix(i),
+                **{"font-size": "12pt"},
+                axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
+            )
+            plot_layout.showGrid(x=True, y=True)
+            plot_layout.setLabel("bottom", "Time", units="s")
+            plot_layout.setLabel(
+                "left",
+                "Resonance Frequency",
+                units="Hz",
+                color=Constants.plot_colors[2],
+                **{"font-size": "10pt"},
+            )
 
-    #         label1 = "not available"
-    #         label2 = "not available"
-    #         label3 = "not available"
-    #         labelstatus = "Calibration Processing"
-    #         color_err = "#333333"
-    #         labelbar = "The operation will take a few seconds to complete... please wait..."
-    #         self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #             "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
-    #         )
+            self._plt2_arr[i] = plot_layout
 
-    #         if not self.worker.is_running():
-    #             stop_flag = 1
+        # Configures elements of the PyQtGraph plots: Multiple Plot Resonance Frequency/Dissipation.
+        for i in range(len(self._plt3_arr)):
+            if i >= self.multiplex_plots:
+                self._plt3_arr[i] = None
+                continue
 
-    #         # progressbar calculations
-    #         error1, error2, error3, on_sample, _, _ = self.worker.get_ser_error()
-    #         if on_sample < Constants.calibration_default_samples:
-    #             self._completed = (on_sample / Constants.calibration_default_samples) * 100
+            multi_plot = self._plt2_arr[i]
+            plot_layout = pg.ViewBox()
+            multi_plot.showAxis("right")
+            multi_plot.scene().addItem(plot_layout)
+            multi_plot.getAxis("right").setGrid(False)
+            multi_plot.getAxis("right").linkToView(plot_layout)
+            plot_layout.setXLink(multi_plot)
+            multi_plot.enableAutoRange(axis="y", enable=True)
+            plot_layout.enableAutoRange(axis="y", enable=True)
+            multi_plot.setLabel("bottom", "Time", units="s")
+            multi_plot.setLabel(
+                "right",
+                "Dissipation",
+                units="",
+                color=Constants.plot_colors[3],
+                **{"font-size": "10pt"},
+            )
 
-    #         ###########################################
-    #         # calibration buffer empty
-    #         if vector1_any == 0 and vector3[0] == 1:
-    #             label1 = "not available"
-    #             label2 = "not available"
-    #             label3 = "not available"
-    #             color_err = "#ff0000"
-    #             labelstatus = "Calibration Warning"
-    #             self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                 "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #             )
-    #             labelbar = "Initialize Warning: empty buffer! Please, repeat the Initialize after disconnecting/reconnecting Device!"
-    #             stop_flag = 1
-    #         # calibration buffer empty and ValueError from the serial port
-    #         elif vector1_any == 0 and vector2[0] == 1:
-    #             label1 = "not available"
-    #             label2 = "not available"
-    #             label3 = "not available"
-    #             color_err = "#ff0000"
-    #             labelstatus = "Calibration Warning"
-    #             self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                 "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #             )
-    #             labelbar = "Initialize Warning: empty buffer/ValueError! Please, repeat the Initialize after disconnecting/reconnecting Device!"
-    #             stop_flag = 1
-    #         # calibration buffer not empty
-    #         elif vector1_any != 0:
-    #             label1 = "not available"
-    #             label2 = "not available"
-    #             label3 = "not available"
-    #             labelstatus = "Calibration Processing"
-    #             color_err = "#333333"
-    #             labelbar = "The operation will take a few seconds to complete... please wait..."
-    #             if vector2[0] == 0 and vector3[0] == 0:
-    #                 labelstatus = "Calibration Success"
-    #                 self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                     "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
-    #                 )
-    #                 color_err = "#008000"
-    #                 labelbar = 'Initialize Success for baseline correction! Ready to measure. Press "Start" then apply drop.'
-    #                 stop_flag = 1
+            # Since multi_plot is a reference to self._plt2_arr[i], we don't strictly need to re-save it,
+            # but keeping to ensure exact behavior matching:
+            self._plt2_arr[i] = multi_plot
+            self._plt3_arr[i] = plot_layout
 
-    #             elif vector2[0] == 1 or vector3[0] == 1:
-    #                 color_err = "#ff0000"
-    #                 labelstatus = "Calibration Warning"
-    #                 self.ControlsWin.ui1.infostatus.setStyleSheet(
-    #                     "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
-    #                 )
-    #                 if vector2[0] == 1:
-    #                     labelbar = "Initialize Warning: ValueError or generic error during signal acquisition. Please, repeat the Initialize"
-    #                     stop_flag = 1
-    #                 elif vector3[0] == 1:
-    #                     labelbar = "Initialize Warning: unable to identify fundamental peak or apply peak detection algorithm. Please, repeat the Initialize!"
-    #                     stop_flag = 1
-    #         self.ControlsWin.ui1.run_progress_bar.setValue(
-    #             0 if stop_flag else int(self._completed + 1)
-    #         )  # dwight ver const was 10
-    #         self.InfoWin.ui3.l6a.setText("<font color=#0000ff>  Temperature </font>" + label3)
-    #         self.InfoWin.ui3.l6.setText("<font color=#0000ff>  Dissipation </font>" + label2)
-    #         self.InfoWin.ui3.l7.setText(
-    #             "<font color=#0000ff>  Resonance Frequency </font>" + label1
-    #         )
-    #         self.ControlsWin.ui1.infostatus.setText(
-    #             "<font color=#333333> Program Status </font>" + labelstatus
-    #         )
-    #         self.ControlsWin.ui1.infobar.setText(
-    #             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-    #                 color_err, labelbar
-    #             )
-    #         )
+        self._annotate_welcome_text()
 
-    #         progress_val = 0 if stop_flag else int(self._completed + 1)
-    #         if hasattr(self, "_calib_progress_dlg") and self._calib_progress_dlg is not None:
-    #             self._calib_progress_dlg.setValue(progress_val)
-    #             self._calib_progress_dlg.setLabelText(f"{labelstatus}\n{labelbar}")
-    #         if stop_flag == 1:
-    #             self.stop_flag += 1
-    #             if isinstance(self.worker._port, str) or self.stop_flag >= len(self.worker._port):
-    #                 self._timer_plot.stop()
-    #                 self._enable_ui(True)
-    #                 self.worker.stop()
-    #                 if (
-    #                     hasattr(self, "_calib_progress_dlg")
-    #                     and self._calib_progress_dlg is not None
-    #                 ):
-    #                     self._calib_progress_dlg.close()
-    #                     self._calib_progress_dlg = None
-    #     ############################################################################################################################
-    #     # REFERENCE SET
-    #     ############################################################################################################################
-    #     if self._reference_flag:
-    #         for i, p in enumerate(self._plt2_arr):
-    #             if p is None:
-    #                 continue
-    #             p.setLabel(
-    #                 "left",
-    #                 "Resonance Frequency",
-    #                 units="Hz",
-    #                 color=Constants.plot_colors[6],
-    #                 **{"font-size": "10pt"},
-    #             )
-    #             p.setLabel(
-    #                 "right",
-    #                 "Dissipation",
-    #                 units="",
-    #                 color=Constants.plot_colors[7],
-    #                 **{"font-size": "10pt"},
-    #             )
-    #             # save back to global, otherwise local gets trashed
-    #             self._plt2_arr[i] = p
-    #         self.InfoWin.ui3.inforef1.setText(
-    #             "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1
-    #         )
-    #         self.InfoWin.ui3.inforef2.setText(
-    #             "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2
-    #         )
+        # Configures elements of the PyQtGraph plots: Temperature.
+        self._plt4 = self.PlotsWin.ui2.plt.addPlot(
+            row=3,
+            col=0,
+            colspan=2,
+            title=title_temperature,
+            axisItems={"bottom": DateAxis(orientation="bottom")},
+        )
+        self._plt4.showGrid(x=True, y=True)
+        self._plt4.setLabel("bottom", "Time", units="s")
+        self._plt4.setLabel(
+            "left",
+            "Temperature",
+            units="°C",
+            color=Constants.plot_colors[4],
+            **{"font-size": "10pt"},
+        )
 
-    #         ###################################################################
-    #         # Amplitude and phase multiple Plot
-    #         def updateViews1():
-    #             for i, p in enumerate(self._plt0_arr):
-    #                 if p is None:
-    #                     continue
-    #                 p.clear()
-    #                 self._plt0_arr[i] = p
-    #             if not self._plt1 is None:
-    #                 Log.w("Phase is no longer supported with multiplex software.")
-    #                 return
-    #                 self._plt1.clear()
-    #                 self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
-    #                 self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
+        # Set size policy for show/hide for temperature plot.
+        not_resize = self._plt4.sizePolicy()
+        not_resize.setHorizontalStretch(1)
+        self._plt4.setSizePolicy(not_resize)
 
-    #         # updates for multiple plot y-axes
-    #         updateViews1()
-    #         for i, p in enumerate(self._plt0_arr):
-    #             if p is None:
-    #                 continue
-    #             # p.vb.sigResized.connect(updateViews1)
-    #             p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
-    #             p.enableAutoRange(axis="x", enable=True)
-    #             p.enableAutoRange(axis="y", enable=True)
-    #             p.plot(
-    #                 x=self.worker.get_value0_buffer(i),
-    #                 y=self.worker.get_value1_buffer(i),
-    #                 pen=Constants.plot_colors[0],
-    #             )
-    #             # save back to global, otherwise local gets trashed
-    #             self._plt0_arr[i] = p
-    #         if not self._plt1 is None:
-    #             Log.w("Phase is no longer supported with multiplex software.")
-    #             # self._plt1.addItem(pg.PlotCurveItem(x=self._readFREQ,y=self.worker.get_value2_buffer(i),pen=Constants.plot_colors[1]))
+        self._init_plot_curves()
+        if self._plt1 is None and not Constants.plot_show_phase is False:
+            self._configure_add_phase()
 
-    #         ###################################################################
-    #         # Resonance frequency and dissipation multiple Plot
-    #         def updateViews2():
-    #             for i, p in enumerate(self._plt3_arr):
-    #                 if p is None:
-    #                     continue
-    #                 _p2 = self._plt2_arr[i]
-    #                 _p2.clear()
-    #                 p.clear()
-    #                 p.setGeometry(_p2.vb.sceneBoundingRect())
-    #                 p.linkedViewChanged(_p2.vb, p.XAxis)
-    #                 # save back to global, otherwise local gets trashed
-    #                 self._plt2_arr[i] = _p2
-    #                 # save back to global, otherwise local gets trashed
-    #                 self._plt3_arr[i] = p
-
-    #         # updates for multiple plot y-axes
-    #         updateViews2()
-
-    #         for i, p in enumerate(self._plt2_arr):
-    #             if p is None:
-    #                 continue
-    #             # p.vb.sigResized.connect(updateViews2)
-    #             self._vector_1 = (
-    #                 np.array(self.worker.get_d1_buffer(i)) - self._reference_value_frequency[i]
-    #             )
-    #             p.plot(
-    #                 x=self.worker.get_t1_buffer(i),
-    #                 y=self._vector_1,
-    #                 pen=Constants.plot_colors[6],
-    #             )  # 2
-
-    #             # Prevent the user from zooming/panning out of this specified region
-    #             if self._get_source() == OperationType.measurement:
-    #                 p.setLimits(
-    #                     yMax=self._vector_reference_frequency[i][-1],
-    #                     yMin=self._vector_reference_frequency[i][0],
-    #                     minYRange=5,
-    #                 )
-    #                 p.enableAutoRange(axis="x", enable=True)
-    #                 p.enableAutoRange(axis="y", enable=True)
-
-    #             # save back to global, otherwise local gets trashed
-    #             self._plt2_arr[i] = p
-
-    #         for i, p in enumerate(self._plt3_arr):
-    #             if p is None:
-    #                 continue
-    #             self._vector_2 = (
-    #                 np.array(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
-    #             )
-    #             p.addItem(
-    #                 pg.PlotCurveItem(
-    #                     self.worker.get_t2_buffer(i),
-    #                     self._vector_2,
-    #                     pen=Constants.plot_colors[7],
-    #                 )
-    #             )
-
-    #             # Prevent the user from zooming/panning out of this specified region
-    #             if self._get_source() == OperationType.measurement:
-    #                 p.setLimits(
-    #                     yMax=self._vector_reference_dissipation[i][-1],
-    #                     yMin=self._vector_reference_dissipation[i][0],
-    #                     minYRange=1e-7,
-    #                 )
-    #                 p.enableAutoRange(axis="x", enable=True)
-    #                 p.enableAutoRange(axis="y", enable=True)
-
-    #             # save back to global, otherwise local gets trashed
-    #             self._plt3_arr[i] = p
-
-    #         # Prevent the user from zooming/panning out of this specified region
-    #         if self._get_source() == OperationType.measurement:
-    #             self._plt4.setLimits(yMax=50, yMin=-10)
-    #             self._plt4.enableAutoRange(axis="x", enable=True)
-    #             self._plt4.enableAutoRange(axis="y", enable=True)
-
-    #         ###################################################################
-    #         # Temperature plot
-    #         self._plt4.clear()
-    #         self._plt4.plot(
-    #             x=self.worker.get_t3_buffer(i),
-    #             y=self.worker.get_d3_buffer(i),
-    #             pen=Constants.plot_colors[4],
-    #         )
-    #         # self._plt4.addItem(pg.PlotCurveItem(self.worker.get_t3_buffer(i),self.worker.get_d4_buffer(i),pen=Constants.plot_colors[1])) # hide ambient
-
-    #     ###########################################################################################################################
-    #     # REFERENCE NOT SET
-    #     ###########################################################################################################################
-    #     else:
-    #         for i, p in enumerate(self._plt2_arr):
-    #             if p is None:
-    #                 continue
-    #             p.setLabel(
-    #                 "left",
-    #                 "Resonance Frequency",
-    #                 units="Hz",
-    #                 color=Constants.plot_colors[2],
-    #                 **{"font-size": "10pt"},
-    #             )
-    #             p.setLabel(
-    #                 "right",
-    #                 "Dissipation",
-    #                 units="",
-    #                 color=Constants.plot_colors[3],
-    #                 **{"font-size": "10pt"},
-    #             )
-    #             self._plt2_arr[i] = p
-    #         self.InfoWin.ui3.inforef1.setText(
-    #             "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1
-    #         )
-    #         self.InfoWin.ui3.inforef2.setText(
-    #             "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2
-    #         )
-
-    #         # limit number of display points to last num
-    #         numPoints = 12000
-
-    #         ###################################################################
-    #         # Amplitude and phase multiple Plot
-    #         def updateViews1():
-    #             for i, p in enumerate(self._plt0_arr):
-    #                 if p is None:
-    #                     continue
-    #                 p.clear()
-    #                 self._plt0_arr[i] = p
-    #             if not self._plt1 is None:
-    #                 Log.w("Phase is no longer supported with multiplex software.")
-    #                 return
-    #                 self._plt1.clear()
-    #                 self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
-    #                 self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
-
-    #         # updates for multiple plot y-axes
-    #         updateViews1()
-    #         self._amps = {}  # empty dict for showing combined amplitudes
-    #         for i, p in enumerate(self._plt0_arr):
-    #             if p is None:
-    #                 continue
-    #             _plt2 = self._plt2_arr[i]
-    #             _plt3 = self._plt3_arr[i]
-    #             self._readFREQ = self.worker.get_value0_buffer(i)
-    #             vector1 = self.worker.get_d1_buffer(i)
-
-    #             if self._get_source() == OperationType.measurement and self.multiplex_plots > 1:
-    #                 self._amps[i] = self.worker.get_value1_buffer(i)
-    #             else:
-    #                 # p.vb.sigResized.connect(updateViews1)
-    #                 p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
-    #                 p.enableAutoRange(axis="x", enable=True)
-    #                 p.enableAutoRange(axis="y", enable=True)
-    #                 p.plot(
-    #                     x=self._readFREQ,
-    #                     y=self.worker.get_value1_buffer(i),
-    #                     pen=Constants.plot_colors[0],
-    #                 )
-    #             if not self._plt1 is None:
-    #                 Log.w("Phase is no longer supported with multiplex software.")
-    #                 # self._plt1.addItem(pg.PlotCurveItem(x=self._readFREQ,y=self.worker.get_value2_buffer(i),pen=Constants.plot_colors[1]))
-
-    #             if self._get_source() == OperationType.measurement:
-    #                 ###################################################################
-    #                 # Resonance frequency and dissipation multiple Plot
-    #                 def updateViews2(_plt2, _plt3):
-    #                     _plt2.clear()
-    #                     _plt3.clear()
-    #                     _plt3.setGeometry(_plt2.vb.sceneBoundingRect())
-    #                     _plt3.linkedViewChanged(_plt2.vb, _plt3.XAxis)
-
-    #                 # updates for multiple plot y-axes
-    #                 updateViews2(_plt2, _plt3)
-    #                 # _plt2.vb.sigResized.connect(updateViews2)
-    #                 _plt2.plot(
-    #                     x=self.worker.get_t1_buffer(i)[:numPoints],
-    #                     y=self.worker.get_d1_buffer(i)[:numPoints],
-    #                     pen=Constants.plot_colors[2],
-    #                 )
-
-    #                 # Add apply drop message to those still pending drop
-    #                 try:
-    #                     if self._text4[i] is None:
-    #                         # 'size' and 'bold' retained when calling 'setText()'
-    #                         self._text4[i] = pg.LabelItem(size="11pt", bold=True)
-    #                         self._text4[i].setParentItem(_plt2.graphicsItem())
-    #                         self._text4[i].anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
-    #                     elif not self._drop_applied[i]:
-    #                         vector0 = self.worker.get_t2_buffer(i)
-    #                         time_running = vector0[0]
-    #                         if time_running == 0:
-    #                             labelbar = "Waiting for start..."
-    #                             continue
-    #                         dissipation_vector = self.worker.get_d2_buffer(i)
-    #                         rf_vector = self.worker.get_d1_buffer(i)
-    #                         relative_time = self.worker.get_t1_buffer(i)
-    #                         dry_status, dry_msg = self.dry_detect[i].update(
-    #                             resonance_frequency=rf_vector,
-    #                             dissipation=dissipation_vector,
-    #                             relative_time=relative_time,
-    #                         )
-    #                         if i == 0:
-    #                             self._last_dry_msg = dry_msg
-    #                             self._last_dry_status = dry_status
-    #                         if not dry_status:
-    #                             # Set and signal all receivers that new time is available (if unset)
-    #                             with self._sensorDriedTimeValue.get_lock():
-    #                                 # For multiplex, take the most recent (latest) dry time
-    #                                 if self._sensorDriedTimes[i] == 0.0:
-    #                                     self._sensorDriedTimes[i] = time_running
-    #                                     # set on each and every trigger for multiplex:
-    #                                     self._sensorDriedTimeValue.value = self._sensorDriedTimes[i]
-
-    #                             self._text4[i].setText(dry_msg, color=(0, 0, 200))
-    #                             self._baselinedata[i] = [
-    #                                 [
-    #                                     np.amin(self.worker.get_d1_buffer(i)[:numPoints]),
-    #                                     np.amax(self.worker.get_d1_buffer(i)[:numPoints]),
-    #                                 ],
-    #                                 [
-    #                                     np.amin(self.worker.get_d2_buffer(i)[:numPoints]),
-    #                                     np.amax(self.worker.get_d2_buffer(i)[:numPoints]),
-    #                                 ],
-    #                             ]
-    #                         else:
-    #                             self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
-    #                     else:
-    #                         # Drop has been applied — show any latched fill-classifier message on the plot.
-    #                         # This is the only place _fill_display_msg can realistically arrive since
-    #                         # extended-fill events occur well after drop application.
-    #                         if self._fill_display_msg and self._text4[i] is not None:
-    #                             self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
-    #                         time_running = _plt2.getViewBox().viewRange()[0][1]
-    #                         current_y_range = [
-    #                             _plt2.getViewBox().viewRange()[1],
-    #                             _plt3.viewRange()[1],
-    #                         ]
-    #                         current_deltas = np.diff(current_y_range)[:, 0]
-    #                         last_y_deltas = np.diff(self._last_y_range[i])[:, 0]
-    #                         baseline_deltas = np.diff(self._baselinedata[i])[:, 0]
-    #                         # self._last_y_range[i] != current_y_range:
-    #                         if any(np.subtract(current_deltas, last_y_deltas) > baseline_deltas):
-    #                             self._last_y_range[i] = current_y_range
-    #                             self._last_y_delta[i] = time_running
-    #                             self._run_finished[i] = False
-    #                             # Only blank the label if no fill warning is currently showing.
-    #                             # If _fill_display_msg is latched, blanking here causes a one-frame
-    #                             # flicker since the fill message is re-applied on the very next tick.
-    #                             if not self._fill_display_msg:
-    #                                 self._text4[i].setText(" ")
-    #                         elif (
-    #                             time_running - self._last_y_delta[i] > 10.0
-    #                             and not self._run_finished[i]
-    #                         ):
-    #                             self._run_finished[i] = True
-    #                             Log.d(
-    #                                 f"The dataset on Plot {i} appears to have finished (Y-Axis stablized for 10 seconds)"
-    #                             )
-    #                             # TODO 2024-05-24: (Temporary) Disable showing "Press Stop" on UI until accuracy is improved
-    #                             # if all(self._run_finished):
-    #                             #     status_text = 'Press \"Stop\"'
-    #                             # else:
-    #                             #     status_text = "Run Complete, waiting on other channels..."
-    #                             # self._text4[i].setText(status_text, color=(200, 0, 0)) # range unchanging / probably finished
-
-    #                         # Set and signal all receivers that new time is available (if unset)
-    #                         with self._dropAppliedTimeValue.get_lock():
-    #                             # For multiplex, take the first (earliest) drop time
-    #                             if self._dropAppliedTimes[i] == 0.0:
-    #                                 self._dropAppliedTimes[i] = time_running
-    #                             if self._dropAppliedTimeValue.value == 0.0:
-    #                                 # only set on first trigger for multiplex:
-    #                                 self._dropAppliedTimeValue.value = time_running
-
-    #                 except Exception as e:
-    #                     import traceback
-
-    #                     Log.e("Error handling plot status label text!")
-    #                     Log.e(e)
-    #                     Log.e("PlotStatus", traceback.format_exc())
-
-    #                 # Prevent the user from zooming/panning out of this specified region
-    #                 if self._get_source() == OperationType.measurement:
-    #                     _ymin = np.amin(vector1)
-    #                     _ymax = np.amax(vector1)
-    #                     _yrange = _ymax - _ymin
-    #                     if _yrange < Constants.plot_min_range_freq:
-    #                         _yavg = int(np.average(vector1))
-    #                         _ymin = _yavg - (Constants.plot_min_range_freq / 2)
-    #                         _ymax = _yavg + (Constants.plot_min_range_freq / 2)
-
-    #                     # Apply padding to _plt2 range to match that of _plt3
-    #                     _ymin -= Constants.default_plot_padding * _yrange
-    #                     _ymax += Constants.default_plot_padding * _yrange
-
-    #                     _plt2.setLimits(
-    #                         yMax=_ymax,
-    #                         yMin=_ymin,
-    #                         minYRange=Constants.plot_min_range_freq,
-    #                     )  # remove maxYRange limit
-    #                     _plt3.setLimits(
-    #                         yMax=(self._readFREQ[-1] - self._readFREQ[0]) / self._readFREQ[0],
-    #                         yMin=0,
-    #                         minYRange=Constants.plot_min_range_diss,
-    #                     )
-
-    #                     _plt2.enableAutoRange(axis="x", enable=True)
-    #                     _plt3.enableAutoRange(axis="x", enable=True)
-
-    #                     _plt2.enableAutoRange(axis="y", enable=True)
-    #                     _plt3.enableAutoRange(axis="y", enable=True)
-
-    #                 _plt3.addItem(
-    #                     pg.PlotCurveItem(
-    #                         self.worker.get_t2_buffer(i)[:numPoints],
-    #                         self.worker.get_d2_buffer(i)[:numPoints],
-    #                         pen=Constants.plot_colors[3],
-    #                     )
-    #                 )
-
-    #             # save back to global, otherwise local gets trashed
-    #             self._plt0_arr[i] = p
-    #             # save back to global, otherwise local gets trashed
-    #             self._plt2_arr[i] = _plt2
-    #             # save back to global, otherwise local gets trashed
-    #             self._plt3_arr[i] = _plt3
-
-    #             # Prevent the user from zooming/panning out of this specified region
-    #             if self._get_source() == OperationType.measurement:
-    #                 self._plt4.setLimits(yMax=50, yMin=-10, minYRange=0.5)
-    #                 self._plt4.enableAutoRange(axis="x", enable=True)
-    #                 self._plt4.enableAutoRange(axis="y", enable=True)
-
-    #         if self._get_source() == OperationType.measurement and self.multiplex_plots > 1:
-    #             # get the largest values for each index
-    #             i = 0  # first Amplitude plot is the main one
-    #             combined_amps = self._amps[i]
-    #             for a in range(1, len(self._amps)):
-    #                 combined_amps = np.maximum(combined_amps, self._amps[a])
-    #             p = self._plt0_arr[i]
-    #             p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
-    #             p.enableAutoRange(axis="x", enable=True)
-    #             p.enableAutoRange(axis="y", enable=True)
-    #             p.plot(x=self._readFREQ, y=combined_amps, pen=Constants.plot_colors[0])
-    #             self.labels = []
-    #             for j in range(len(self._amps)):
-    #                 am = np.argmax(self._amps[j])
-    #                 item = pg.TextItem(text=str(j + 1), color=(0, 0, 0), anchor=(0, 1))
-    #                 item.setPos(self._readFREQ[am], combined_amps[am])
-    #                 self.labels.append(item)
-    #                 p.addItem(self.labels[j])
-    #             # save back to global, otherwise local gets trashed
-    #             self._plt0_arr[i] = p
-
-    #         ###################################################################
-    #         # Temperature plot
-    #         self._plt4.clear()
-    #         self._plt4.plot(
-    #             x=self.worker.get_t3_buffer(0)[:numPoints],
-    #             y=self.worker.get_d3_buffer(0)[:numPoints],
-    #             pen=Constants.plot_colors[4],
-    #         )
-    #         # self._plt4.addItem(pg.PlotCurveItem(self.worker.get_t3_buffer(i),self.worker.get_d4_buffer(i),pen=Constants.plot_colors[1])) # hide ambient
-
-    ###########################################################################################################################################
     def _init_plot_curves(self) -> None:
+        """Initializes plot curves and synchronizes multiple Y-axis ViewBoxes.
+
+        This method performs three primary tasks:
+        1.  Curve Allocation by creating and storing `PlotCurveItem` instances for
+            Amplitude, Frequency, Dissipation, and Temperature data.
+        2.  ViewBox Synchronization by manually linking the geometry and X-axis range
+            of the primary plot (`p2`) with the overlay plot (`p3`).
+        3.  Signal Management by disconnecting legacy signal handlers to prevent
+            memory leaks or multiple-triggering during re-initialization, then
+            connects fresh handlers for resizing and zooming.
+        """
         n = len(self._plt0_arr)
 
         # Per-channel curve slots
@@ -4367,15 +3469,14 @@ class MainWindow(QtWidgets.QMainWindow):
             if p0 is None or p2 is None or p3 is None:
                 continue
 
-            # ── Extract the ViewBoxes directly ───────────────────────────────
-            # p2 is a PlotItem (from addPlot) → its ViewBox is p2.getViewBox()
-            # p3 is already a raw pg.ViewBox (created at _configure_plot time)
+            # NOTE: p2 is a PlotItem (from addPlot) its ViewBox is p2.getViewBox()
+            # NOTE: p3 is already a raw pg.ViewBox (created at _configure_plot time)
             vb2 = None
             try:
                 vb2 = p2.getViewBox()
             except (AttributeError, RuntimeError):
                 pass
-            vb3 = p3  # p3 *is* the overlay ViewBox
+            vb3 = p3  # p3 is the overlay ViewBox
 
             # Duck-type check: verify both objects have the signals and
             # methods we need, rather than relying on isinstance which can
@@ -4391,7 +3492,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
 
             if can_wire:
-                # 1. Sever ghost links on both raw widgets and resolved ViewBoxes
+                # Sever ghost links on both raw widgets and resolved ViewBoxes
                 for obj in (p2, p3, vb2, vb3):
                     if obj is None:
                         continue
@@ -4401,8 +3502,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     except (AttributeError, RuntimeError):
                         pass
 
-                # 2. Geometry sync — executed directly (no deferred timer) so
-                #    sceneBoundingRect() reads the correct rect at signal time
+                # Sync geometry by directly executing so `sceneBoundingRect()` reads the
+                # correct `rect` sync at signal time.
                 def link_geometry(sender=None, vb_main=vb2, vb_overlay=vb3):
                     try:
                         vb_overlay.setGeometry(vb_main.sceneBoundingRect())
@@ -4410,15 +3511,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     except RuntimeError:
                         pass  # Object deleted during a restart; safely ignore
 
-                # 3. X-axis pan/zoom sync
+                # X-axis pan/zoom sync
                 def sync_x_axis(sender, new_range, vb_overlay=vb3):
                     try:
                         vb_overlay.setXRange(new_range[0], new_range[1], padding=0)
                     except (RuntimeError, TypeError):
-                        pass  # Deleted object or wrong type; safely ignore
+                        pass
 
-                # 4. TARGETED disconnect — only remove OUR previous handler,
-                #    preserving pyqtgraph's internal signal connections
+                # Only remove previous handler preserving `pyqtgraph` internal
+                # signal connections.
                 prev_geo = getattr(self, f"_link_geometry_{i}", None)
                 if prev_geo is not None:
                     try:
@@ -4432,48 +3533,53 @@ class MainWindow(QtWidgets.QMainWindow):
                     except (TypeError, RuntimeError):
                         pass
 
-                # 5. Connect and store refs for future targeted disconnect
+                # Connect and store refs for future disconnects
                 vb2.sigResized.connect(link_geometry)
                 vb2.sigXRangeChanged.connect(sync_x_axis)
                 setattr(self, f"_link_geometry_{i}", link_geometry)
                 setattr(self, f"_sync_x_axis_{i}", sync_x_axis)
 
-                Log.d(
-                    TAG,
-                    f"Channel {i}: dissipation overlay ViewBox wired to "
-                    f"sigResized + sigXRangeChanged.",
-                )
             else:
                 Log.w(
                     TAG,
-                    f"Channel {i}: could not wire ViewBoxes for p2/p3 — "
+                    f"Channel {i}: could not wire ViewBoxes for p2/p3: "
                     f"vb2={type(vb2).__name__}, vb3={type(vb3).__name__}, "
                     f"can_wire={can_wire}. Skipping overlay sync.",
                 )
 
-            # ── Amplitude ────────────────────────────────────────────────────
-            # Curve items are always created regardless of ViewBox resolution
+            # Amplitude Plot Handling
             ci_amp = pg.PlotCurveItem(
                 pen=Constants.plot_colors[0],
             )
             p0.addItem(ci_amp)
             self._ci_amp[i] = ci_amp
 
-            # ── Resonance frequency ──────────────────────────────────────────
+            # Resonance Frequency Plot Handling
             ci_freq = pg.PlotCurveItem(
                 pen=Constants.plot_colors[2],
+                autoDownsample=True,
+                downsampleMethod="peak",
+                skipFiniteCheck=True,
             )
             p2.addItem(ci_freq)
             self._ci_freq[i] = ci_freq
 
-            # ── Dissipation ──────────────────────────────────────────────────
+            # Dissipation Plot Handling
             ci_diss = pg.PlotCurveItem(
                 pen=Constants.plot_colors[3],
+                autoDownsample=True,
+                downsampleMethod="peak",
+                skipFiniteCheck=True,
             )
             p3.addItem(ci_diss)
             self._ci_diss[i] = ci_diss
 
-        # ── Temperature ───────────────────────────────────────────────────────
+            try:
+                p3.enableAutoRange(axis="y", enable=True)
+            except (AttributeError, RuntimeError):
+                pass
+
+        # Temperature Plot Handling
         self._ci_temp = pg.PlotCurveItem(
             pen=Constants.plot_colors[4],
             clipToView=True,
@@ -4481,7 +3587,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self._plt4.addItem(self._ci_temp)
 
-        # Combined-amplitude curve for multiplex mode (channel 0 plot)
+        # Combined-amplitude curve for multiplex mode
         self._ci_amp_combined: pg.PlotCurveItem | None = None
         if self.multiplex_plots > 1 and self._plt0_arr[0] is not None:
             ci_combined = pg.PlotCurveItem(
@@ -4492,7 +3598,22 @@ class MainWindow(QtWidgets.QMainWindow):
             self._ci_amp_combined = ci_combined
 
     def _consume_worker_queues(self) -> None:
-        # Drain worker queues
+        """Drains all data and logging queues from the worker thread.
+
+        This method triggers the consumption of multiple ring buffers managed
+        by the worker. It ensures that logs and data across all channels (0-6) are
+        processed and synchronized from the background thread to the main application.
+
+        Buffers consumed include:
+            - `consume_logger`.
+            - `consume_queue0`
+            - `consume_queue1`
+            - `consume_queue2`
+            - `consume_queue3`
+            - `consume_queue4`
+            - `consume_queue5`
+            - `consume_queue6`.
+        """
         self.worker.consume_logger()
         self.worker.consume_queue0()
         self.worker.consume_queue1()
@@ -4503,11 +3624,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.consume_queue6()
 
     def _update_plot(self) -> None:
-        # Pull fresh data from all worker queues
+        """Manages the update of the UI plotting.
+
+        This is the primary entry point for the plotting refresh cycle. It flushes
+        the background worker queues, updates contextual UI elements (labels,
+        progress bars) based on the current operation type, and triggers the
+        actual redrawing of the plot curves.
+
+        The update flow follows three stages:
+            1.  Data Ingestion calls `_consume_worker_queues` to pull data
+                from background buffers.
+            2.  State Synchronization updates UI components specific to
+                either `measurement` or `calibration` modes.
+            3.  Visual Rendering executes the drawing logic, branching
+                based on whether a reference comparison (`_reference_flag`)
+                is currently active.
+
+        Raises:
+            None: Internal errors are logged via `Log.e` but do not propagate.
+        """
+        # Pull fresh data from all buffers.
         self._consume_worker_queues()
         source = self._get_source()
 
-        # Update status labels / progress / error indicators
+        # Update status labels / progress / error indicators.
         if source == OperationType.measurement:
             self._update_measurement_ui()
         elif source == OperationType.calibration:
@@ -4515,22 +3655,63 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             Log.e(TAG, f"Unsupported operation type for plotting: {source}")
 
-        # Redraw plots (reference-mode vs. absolute-mode)
+        # Redraw plots given the reference mode flag.
         if self._reference_flag:
             self._draw_plots_reference()
         else:
             self._draw_plots_no_reference()
 
+    def _draw_plots_reference(self) -> None:
+        """Redraws the entire plotting dashboard using reference-subtracted data.
+
+        This method acts as the master coordinator for visual updates when the
+        application is in "Reference Mode." It ensures that axis labels,
+        amplitude curves, time-series resonance/dissipation curves, and
+        temperature data are all synchronized and rendered relative to the
+        established baseline.
+
+        Note:
+            This method is only invoked when `self._reference_flag` is True,
+            typically after a user has performed a "Baseline" or "Reference"
+            capture.
+        """
+        self._update_reference_axis_labels()
+        self._draw_amplitude_plots_reference()
+        self._draw_freq_diss_plots_reference()
+        self._draw_temperature_plot()
+
+    def _draw_plots_no_reference(self) -> None:
+        """Redraws the entire plotting dashboard using absolute data values.
+
+        This method serves as the master coordinator for visual updates when the
+        application is in standard (absolute) mode. It ensures that all plots
+        reflect the raw signal data without baseline subtraction.
+
+        Note:
+            This method is the default drawing routine and is invoked whenever
+            `self._reference_flag` is False.
+        """
+        self._update_no_reference_axis_labels()
+        self._draw_amplitude_plots_no_reference()
+        self._draw_temperature_plot()
+
     def _update_measurement_ui(self) -> None:
+        """Updates the measurement-specific UI components with the latest data.
+
+        This method handles the high-level logic for refreshing the user interface
+        during an active measurement session. It retrieves buffered data from the
+        worker, checks for hardware/communication errors, updates the TEC display,
+        and manages progress bars and status labels.
+        """
         # Runtime measurement vectors
         self._readFREQ = self.worker.get_value0_buffer(0)
-        vector1 = self.worker.get_d1_buffer(0)
-        vector2 = self.worker.get_d2_buffer(0)
-        vectortemp = self.worker.get_d3_buffer(0)
+        data_resonance_frequency = self.worker.get_d1_buffer(0)
+        data_dissipation = self.worker.get_d2_buffer(0)
+        data_temperature = self.worker.get_d3_buffer(0)
 
         # Fill status handling
         if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-            self._update_fill_classifier(vector1, vector2)
+            self._update_fill_classifier(data_resonance_frequency, data_dissipation)
 
         # Serial errors and USB disconnect handling
         (
@@ -4552,11 +3733,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.stop()
 
         # TEC temperature and power handling
-        if vectortemp.any():
-            self._update_tec_display(vectortemp)
+        if data_temperature.any():
+            self._update_tec_display(data_temperature)
 
-        if not vector1.any():
-            return  # Nothing to display
+        if not data_resonance_frequency.any():
+            return
 
         # Progress bar handling
         if self._ser_control <= Constants.environment:
@@ -4564,110 +3745,123 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.run_progress_bar.setValue(int((self._ser_control / 10) % 100))
 
         # Create data label strings
-        label1, label2, label3, labelstatus, color_err, labelbar = self._build_measurement_labels(
-            vector1, vector2, vectortemp
+        (
+            label_resonance_frequency,
+            label_dissipation,
+            label_temperature,
+            label_status,
+            color_err,
+            label_bar,
+        ) = self._build_measurement_labels(
+            data_resonance_frequency, data_dissipation, data_temperature
         )
 
         # Frequency info panel handling
-        self._update_freq_info_panel(label1, label2, label3)
+        self._update_freq_info_panel(
+            label_resonance_frequency, label_dissipation, label_temperature
+        )
 
         # Stats and infobar widget handling
         self.ControlsWin.ui1.infostatus.setText(
-            "<font color=#333333> Program Status </font>" + labelstatus
+            "<font color=#333333> Program Status </font>" + label_status
         )
         self.ControlsWin.ui1.infobar.setText(
             "<font color=#0000ff> Infobar </font>"
-            "<font color={color}>{bar}</font>".format(color=color_err, bar=labelbar)
+            "<font color={color}>{bar}</font>".format(color=color_err, bar=label_bar)
         )
 
     def _update_calibration_ui(self) -> None:
+        """Manages UI state transitions during device calibration.
+
+        This method handles the synchronization between the background calibration
+        process and the user interface. It manages a modal progress dialog,
+        evaluates buffer data for success or error conditions, and updates status
+        indicators with color-coded feedback.
+        """
         # Calibration progress dialog handling
-        if not hasattr(self, "_calib_progress_dlg") or self._calib_progress_dlg is None:
+        if getattr(self, "_calib_progress_dlg", None) is None:
             self._create_calibration_progress_dialog()
             QtWidgets.QApplication.processEvents()
 
         stop_flag = 0
         self.ControlsWin.ui1.pButton_Stop.setEnabled(False)
+        phase = 1 if self.worker.get_value1_buffer(0).any() else 0
+        time_temperature = self.worker.get_t3_buffer(0)
+        data_temperature = self.worker.get_d3_buffer(0)
 
-        vector1 = self.worker.get_value1_buffer(0)
-        vector1_any = 1 if vector1.any() else 0
-        vector2 = self.worker.get_t3_buffer(0)
-        vector3 = self.worker.get_d3_buffer(0)
-
-        labelstatus = "Calibration Processing"
-        color_err = "#333333"
-        labelbar = "The operation will take a few seconds to complete… please wait…"
-        self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_YELLOW)
+        # Default UI state (Processing)
+        label_status, color_err = "Calibration Processing", "#333333"
+        label_bar = "The operation will take a few seconds to complete… please wait…"
+        css_style = Constants._CSS_YELLOW
 
         if not self.worker.is_running():
             stop_flag = 1
 
         # Progress handling
-        _, _, _, on_sample, _, _ = self.worker.get_ser_error()
+        on_sample = self.worker.get_ser_error()[3]
         if on_sample < Constants.calibration_default_samples:
             self._completed = (on_sample / Constants.calibration_default_samples) * 100
 
-        # Determine calibration state
-        if vector1_any == 0 and vector3[0] == 1:
-            labelstatus, color_err, labelbar = (
-                "Calibration Warning",
-                "#ff0000",
-                "Initialize Warning: empty buffer! Please repeat Initialize after "
-                "disconnecting/reconnecting Device!",
-            )
-            self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_RED)
-            stop_flag = 1
+        # Determine calibration state and compress repetitive assignments
+        time_temp_err = time_temperature[0] == 1
+        temperature_err = data_temperature[0] == 1
+        is_warning = False
 
-        elif vector1_any == 0 and vector2[0] == 1:
-            labelstatus, color_err, labelbar = (
-                "Calibration Warning",
-                "#ff0000",
-                "Initialize Warning: empty buffer/ValueError! Please repeat Initialize after "
-                "disconnecting/reconnecting Device!",
-            )
-            self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_RED)
-            stop_flag = 1
-
-        elif vector1_any != 0:
-            if vector2[0] == 0 and vector3[0] == 0:
-                labelstatus = "Calibration Success"
-                color_err = "#008000"
-                labelbar = 'Initialize Success for baseline correction! Ready to measure. Press "Start" then apply drop.'
-                self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
+        # TODO: Label bars need to be propogated to the latest iteration of the calibration dialog
+        # instead of to the infobar which has been deprecated.
+        if phase == 0 and temperature_err:
+            label_bar = "Initialize Warning: empty buffer! Please repeat Initialize after disconnecting/reconnecting Device!"
+            is_warning = True
+        elif phase == 0 and time_temp_err:
+            label_bar = "Initialize Warning: empty buffer/ValueError! Please repeat Initialize after disconnecting/reconnecting Device!"
+            is_warning = True
+        elif phase != 0:
+            if not time_temp_err and not temperature_err:
+                label_status, color_err, css_style = (
+                    "Calibration Success",
+                    "#008000",
+                    Constants._CSS_GREEN,
+                )
+                label_bar = 'Initialize Success for baseline correction! Ready to measure. Press "Start" then apply drop.'
                 stop_flag = 1
-            elif vector2[0] == 1:
-                labelstatus, color_err, stop_flag = "Calibration Warning", "#ff0000", 1
-                labelbar = (
-                    "Initialize Warning: ValueError or generic error during signal acquisition. "
-                    "Please repeat the Initialize."
-                )
-                self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_RED)
-            elif vector3[0] == 1:
-                labelstatus, color_err, stop_flag = "Calibration Warning", "#ff0000", 1
-                labelbar = (
-                    "Initialize Warning: unable to identify fundamental peak or apply peak "
-                    "detection algorithm. Please repeat the Initialize!"
-                )
-                self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_RED)
+            elif time_temp_err:
+                label_bar = "Initialize Warning: ValueError or generic error during signal acquisition. Please repeat the Initialize."
+                is_warning = True
+            elif temperature_err:
+                label_bar = "Initialize Warning: unable to identify fundamental peak or apply peak detection algorithm. Please repeat the Initialize!"
+                is_warning = True
 
+        if is_warning:
+            label_status, color_err, css_style = (
+                "Calibration Warning",
+                "#ff0000",
+                Constants._CSS_RED,
+            )
+            stop_flag = 1
+
+        self.ControlsWin.ui1.infostatus.setStyleSheet(css_style)
+
+        # Update Progress Values
         progress_val = 0 if stop_flag else int(self._completed + 1)
         self.ControlsWin.ui1.run_progress_bar.setValue(progress_val)
 
-        ui3 = self.InfoWin.ui3
-        ui3.l6a.setText("<font color=#0000ff>  Temperature </font>not available")
-        ui3.l6.setText("<font color=#0000ff>  Dissipation </font>not available")
-        ui3.l7.setText("<font color=#0000ff>  Resonance Frequency </font>not available")
+        # Update UI Text labels
+        layout_info_win = self.InfoWin.ui3
+        layout_info_win.l6a.setText("<font color=#0000ff>  Temperature </font>not available")
+        layout_info_win.l6.setText("<font color=#0000ff>  Dissipation </font>not available")
+        layout_info_win.l7.setText("<font color=#0000ff>  Resonance Frequency </font>not available")
+
         self.ControlsWin.ui1.infostatus.setText(
-            "<font color=#333333> Program Status </font>" + labelstatus
+            f"<font color=#333333> Program Status </font>{label_status}"
         )
         self.ControlsWin.ui1.infobar.setText(
-            "<font color=#0000ff> Infobar </font>"
-            "<font color={color}>{bar}</font>".format(color=color_err, bar=labelbar)
+            f"<font color=#0000ff> Infobar </font><font color={color_err}>{label_bar}</font>"
         )
 
-        if hasattr(self, "_calib_progress_dlg") and self._calib_progress_dlg is not None:
+        # Update and conditionally close Dialog
+        if getattr(self, "_calib_progress_dlg", None) is not None:
             self._calib_progress_dlg.setValue(progress_val)
-            self._calib_progress_dlg.setLabelText(f"{labelstatus}\n{labelbar}")
+            self._calib_progress_dlg.setLabelText(f"{label_status}\n{label_bar}")
 
         if stop_flag:
             self.stop_flag += 1
@@ -4675,33 +3869,53 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._timer_plot.stop()
                 self._enable_ui(True)
                 self.worker.stop()
-                if hasattr(self, "_calib_progress_dlg") and self._calib_progress_dlg is not None:
+                if getattr(self, "_calib_progress_dlg", None) is not None:
                     self._calib_progress_dlg.close()
                     self._calib_progress_dlg = None
 
     def _update_fill_classifier(
         self,
-        vector1: np.ndarray,
-        vector2: np.ndarray,
+        data_resonance_frequency: np.ndarray,
+        data_dissipation: np.ndarray,
     ) -> None:
-        """Push a snapshot to the fill-forecaster and process any result."""
+        """Manages communication with the multiprocess fill-status classifier.
+
+        This method handles a rate-limited push-pull mechanism to update the
+        fill-state classification without blocking the main UI thread. It sends
+        recent snapshots of data to a background process and updates the UI
+        based on received predictions.
+
+        Things to note:
+            - Rate ingestion checks are 200ms since the last push.
+            If the input queue is empty it sends the last 500 samples of time,
+            frequency, and dissipation to the worker (done for latency mismatch
+            reasons).
+            - Results are processed by draining the output queue from the worker
+            containing fill state and status messages.
+
+        Args:
+            data_resonance_frequency (np.ndarray): The current buffer of
+                resonance frequency values.
+            data_dissipation (np.ndarray): The current buffer of
+                dissipation values.
+        """
         now = time.time()
+
+        # Check rate-limit; update timestamp if ready
         if now - getattr(self, "_last_forecaster_push_time", 0.0) > 0.2:
             self._last_forecaster_push_time = now
 
-            # Optional but recommended: check if the queue is empty before pushing
-            # to prevent backlog if the worker gets completely stuck.
+            # Only push if queue is empty to prevent backlog
             if self.worker._forecaster_in.empty():
-                TAIL = 500
-
-                snapshot = WorkerSnapshot(
-                    self.worker.get_t1_buffer(0)[-TAIL:],
-                    vector1[-TAIL:],
-                    vector2[-TAIL:],
+                self.worker._forecaster_in.put(
+                    WorkerSnapshot(
+                        self.worker.get_t1_buffer(0)[-500:],
+                        data_resonance_frequency[-500:],
+                        data_dissipation[-500:],
+                    )
                 )
-                self.worker._forecaster_in.put(snapshot)
 
-        # Keep checking the output queue at the full GUI speed
+        # Keep checking the output queue.
         if self.worker._forecaster_out.empty():
             return
 
@@ -4710,23 +3924,19 @@ class MainWindow(QtWidgets.QMainWindow):
             if display_msg is not None:
                 self._fill_display_msg = display_msg
 
-            is_drop_applied = all(self._drop_applied)
-
-            if not is_drop_applied:
+            if not all(self._drop_applied):
                 # Mirror dry/drop status before the drop is confirmed
-                if not self._last_dry_status:
-                    status_msg, ui_step = self._last_dry_msg, 0
-                else:
-                    status_msg, ui_step = "Add sample", 0
+                status_msg = "Add sample" if self._last_dry_status else self._last_dry_msg
+                ui_step = 0
             else:
                 ui_step, status_msg = Constants._FILL_STATE_MAP.get(pred_int, (0, "Unknown"))
 
                 if pred_int == -1 and not self._drop_epoch_sent:
-                    drop_epoch = float(self.worker.get_t1_buffer(0)[0])
-                    self.worker._forecaster_in.put(DropEpochSignal(drop_epoch))
+                    self.worker._forecaster_in.put(
+                        DropEpochSignal(float(self.worker.get_t1_buffer(0)[0]))
+                    )
                     self._drop_epoch_sent = True
-
-                if pred_int == 3:
+                elif pred_int == 3:
                     self._fill_display_msg = "Data Ready, Stop"
 
             if hasattr(self.ControlsWin.ui1, "run_controls"):
@@ -4735,48 +3945,78 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             Log.e(TAG, f"Error retrieving fill status: {e}")
 
-    def _update_tec_display(self, vectortemp: np.ndarray) -> None:
-        """Refresh the TEC temperature label when TEC is active."""
+    def _update_tec_display(self, data_temperature: np.ndarray) -> None:
+        """Refreshes the TEC status label and styling.
+
+        This method updates the UI to reflect the current state of the TEC hardware.
+        It calculates the delta between the process value and the setpoint,
+        updating the label text and background color to provide immediate visual
+        feedback on thermal stability or error states.
+
+        Args:
+            data_temperature (np.ndarray): Array containing the latest temperature
+                readings; index 0 is used as the current process value.
+        """
         if not self.tecWorker._tec_locked:
             return
-        self.tecWorker._tec_temp = vectortemp[0]
+        self.tecWorker._tec_temp = data_temperature[0]
         self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
-        pv = self.tecWorker._tec_temp
-        sp = self.tecWorker._tec_setpoint or 0.25
-        op = self.tecWorker._tec_power
+        tec_temperature = self.tecWorker._tec_temp
+        tec_set_point = self.tecWorker._tec_setpoint or 0.25
+        tec_power = self.tecWorker._tec_power
 
-        if op == 0:
-            label = "[AUTO-OFF ERROR]" if np.isnan(pv) else "[AUTO-OFF TIMEOUT]"
-            bgcolor = "red" if np.isnan(pv) else "yellow"
+        if tec_power == 0:
+            is_err = np.isnan(tec_temperature)
+            label = "[AUTO-OFF ERROR]" if is_err else "[AUTO-OFF TIMEOUT]"
+            bgcolor = "red" if is_err else "yellow"
         else:
-            label = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(pv, sp, op)
-            bgcolor = "lightgreen" if abs(pv - sp) <= 1.0 else "yellow"
+            label = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(
+                tec_temperature, tec_set_point, tec_power
+            )
+            bgcolor = "lightgreen" if abs(tec_temperature - tec_set_point) <= 1.0 else "yellow"
 
-        lbl = self.ControlsWin.ui1.lTemp
-        lbl.setText(label)
-        lbl.setStyleSheet(f"background-color: {bgcolor}")
-        lbl.repaint()
+        tec_label = self.ControlsWin.ui1.lTemp
+        tec_label.setText(label)
+        tec_label.setStyleSheet(f"background-color: {bgcolor}")
+        tec_label.repaint()
 
     def _build_measurement_labels(
         self,
-        vector1: np.ndarray,
-        vector2: np.ndarray,
-        vectortemp: np.ndarray,
+        data_resonance_frequency: np.ndarray,
+        data_dissipation: np.ndarray,
+        data_temperature: np.ndarray,
     ) -> tuple[str, str, str, str, str, str]:
+        """Constructs formatted string labels and UI metadata based on measurement state.
+
+        This method evaluates the current data buffers and error flags to determine
+        the visual state of the application. It branches between early-data
+        processing, normal operation, and various error conditions (bandwidth
+        or serial errors).
+
+        Args:
+            data_resonance_frequency (np.ndarray): The buffer containing frequency data.
+            data_dissipation (np.ndarray): The buffer containing dissipation data.
+            data_temperature (np.ndarray): The buffer containing temperature data.
+
+        Returns:
+            tuple[str, str, str, str, str, str]: A collection of UI strings in the following order:
+                - label_resonance_frequency (str): Formatted frequency value.
+                - label_dissipation (str): Formatted dissipation value.
+                - label_temperature (str): Formatted temperature value.
+                - status_title (str): The high-level status (e.g., "Processing", "Warning").
+                - hex_color (str): The color code for the status text.
+                - info_message (str): A descriptive message for the user.
+
+        Side Effects:
+            Updates the stylesheet of `self.ControlsWin.ui1.infostatus` to match
+            the current state (Yellow for processing, Red for errors).
         """
-        Return (label1, label2, label3, labelstatus, color_err, labelbar)
-        based on the current error flags and data vectors.
-        """
-        e1, e2, e3, e4 = (
-            self._ser_error1,
-            self._ser_error2,
-            self._ser_error3,
-            self._ser_error4,
-        )
+
+        e1, e2, e3, e4 = self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4
         ui = self.ControlsWin.ui1
 
-        #  Early-data processing state
-        if vector1[0] == 0 and not e1 and not e2:
+        # Early-data processing state
+        if data_resonance_frequency[0] == 0 and not (e1 or e2):
             ui.infostatus.setStyleSheet(Constants._CSS_YELLOW)
             return (
                 "processing...",
@@ -4787,105 +4027,128 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Please wait, processing early data…",
             )
 
-        #  Errors when value is zero
-        if vector1[0] == 0 and (e1 or e2):
-            ui.infostatus.setStyleSheet(Constants._CSS_RED)
-            return (
-                "",
-                "",
-                "",
-                "Warning",
-                "#ff0000",
-                _bandwidth_error_msg(e1, e2),
+        # Normal data handling (strictly no errors)
+        if not any((e1, e2, e3, e4)):
+            return self._build_normal_labels(
+                data_resonance_frequency, data_dissipation, data_temperature
             )
 
-        #  =Normal data handling
-        if not e1 and not e2 and not e3 and not e4:
-            return self._build_normal_labels(vector1, vector2, vectortemp)
-
-        # Error handling
+        # Error states
         ui.infostatus.setStyleSheet(Constants._CSS_RED)
-        return (
-            "-",
-            "-",
-            "-",
-            "Warning",
-            "#ff0000",
-            _serial_error_message(e1, e2, e3, e4),
-        )
+
+        if data_resonance_frequency[0] == 0 and (e1 or e2):
+            return ("", "", "", "Warning", "#ff0000", self._bandwidth_error_msg(e1, e2))
+
+        return ("-", "-", "-", "Warning", "#ff0000", self._serial_error_message(e1, e2, e3, e4))
 
     def _build_normal_labels(
         self,
-        vector1: np.ndarray,
-        vector2: np.ndarray,
-        vectortemp: np.ndarray,
+        data_resonance_frequency: np.ndarray,
+        data_dissipation: np.ndarray,
+        data_temperature: np.ndarray,
     ) -> tuple[str, str, str, str, str, str]:
-        """Labels for the clean (no-error) measurement path."""
-        if not self._reference_flag:
-            d1 = float("{0:.2f}".format(vector1[0]))
-            d2 = float("{0:.4f}".format(vector2[0] * 1e6))
-            d3 = float("{0:.2f}".format(vectortemp[0]))
-        else:
-            d1 = float("{0:.2f}".format(vector1[0] - self._reference_value_frequency[0]))
-            d2 = float("{0:.4f}".format((vector2[0] - self._reference_value_dissipation[0]) * 1e6))
-            d3 = float("{0:.2f}".format(vectortemp[0]))
+        """Generates formatted UI labels for the error-free measurement path.
 
+        This method calculates relative values by comparing current data against
+        stored reference baselines (if the reference flag is active). It also
+        performs a bounds-check on dissipation to ensure the sensor's physical
+        limits are not exceeded for the current mode.
+
+        Args:
+            data_resonance_frequency (np.ndarray): The current raw frequency buffer.
+            data_dissipation (np.ndarray): The current raw dissipation buffer.
+            data_temperature (np.ndarray): The current raw temperature buffer.
+
+        Returns:
+            tuple[str, str, str, str, str, str]: A collection of UI strings including:
+                - frequency_label (str): Frequency delta in 'Hz'.
+                - dissipation_label (str): Dissipation delta in 'e-06' units.
+                - temperature_label (str): Current temperature in '°C'.
+                - status_title (str): "Monitoring" or "Warning".
+                - hex_color (str): Green for normal monitoring or Orange for accuracy warnings.
+                - info_message (str): Drop status or a specific dissipation accuracy warning.
+        """
+        # Determine baseline offsets inline
+        ref_resonance_frequency = (
+            self._reference_value_frequency[0] if self._reference_flag else 0.0
+        )
+        ref_dissipation = self._reference_value_dissipation[0] if self._reference_flag else 0.0
+
+        d_resonance_frequency = float(
+            f"{data_resonance_frequency[0] - ref_resonance_frequency:.2f}"
+        )
+        d_dissipation = float(f"{(data_dissipation[0] - ref_dissipation) * 1e6:.4f}")
+        d_temperature = float(f"{data_temperature[0]:.2f}")
+
+        self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
+
+        # Check for max dissipation warning bounds
         _max_diss = (
             Constants.max_dissipation_1st_mode,
             Constants.max_dissipation_3rd_mode,
             Constants.max_dissipation_5th_mode,
         )
-        if vector2[0] in _max_diss:
-            self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
+
+        if data_dissipation[0] in _max_diss:
             return (
-                f"{d1} Hz",
+                f"{d_resonance_frequency} Hz",
                 "-",
-                f"{d3} °C",
+                f"{d_temperature} °C",
                 "Warning",
                 "#ff8000",
-                (
-                    "Warning: sensor dissipation calculation is not considered accurate above "
-                    + "{0:.0f}e-06".format(vector2[0] * 1e6)
-                    + " for this mode"
-                ),
+                f"Warning: sensor dissipation calculation is not considered accurate above {data_dissipation[0] * 1e6:.0f}e-06 for this mode",
             )
 
-        self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
-        labelbar = self._build_drop_status_label()
+        # Standard Monitoring Return
         return (
-            f"{d1} Hz",
-            f"{d2}e-06",
-            f"{d3} °C",
+            f"{d_resonance_frequency} Hz",
+            f"{d_dissipation}e-06",
+            f"{d_temperature} °C",
             "Monitoring",
             "#008000",
-            labelbar,
+            self._build_drop_status_label(),
         )
 
     def _build_drop_status_label(self) -> str:
-        """Return the infobar text that describes drop-application progress."""
+        """Determines and returns the status message for drop application and baseline calibration.
+
+        This method manages the logic for the initial seconds of a measurement run.
+        Baseline calibration is performed during the first 3 seconds, followed by monitoring for the
+        application of the drop. The method checks for specific directional shifts in the resonance
+        frequency and dissipation to confirm drop application, while also handling any
+        exceptions that may arise during this process.
+
+        Returns:
+            str: A user-facing status message indicating whether the system is
+                waiting for a start, calibrating, ready for a drop, or capturing
+                data post-drop.
+        """
         if all(self._drop_applied):
             return 'Capturing data… Drop applied! Wait for exit… Press "Stop" when run is finished.'
 
         for i, p in enumerate(self._plt2_arr):
             if p is None:
-                self._drop_applied[i] = True
-                self._run_finished[i] = True
+                self._drop_applied[i] = self._run_finished[i] = True
                 continue
+
             try:
-                vector0 = self.worker.get_t2_buffer(i)
-                time_running = vector0[0]
+                time_running = self.worker.get_t2_buffer(i)[0]
+
                 if time_running == 0:
                     return "Waiting for start…"
                 if time_running < 3.0:
                     self._calibrate_baselines(i, time_running)
                     return "Capturing data… Calibrating baselines for first 3 seconds… please wait…"
+
                 # Directional gate: drop drives RF negative and dissipation positive
                 delta_f = self.worker.get_d1_buffer(0)[0] - self._baseline_freq_avg
                 delta_d = self.worker.get_d2_buffer(0)[0] - self._baseline_diss_avg
-                freq_ok = delta_f <= 10.0 * self._baseline_freq_noise
-                diss_ok = delta_d >= 10.0 * self._baseline_diss_noise
-                if freq_ok and diss_ok:
+
+                if delta_f <= (10.0 * self._baseline_freq_noise) and delta_d >= (
+                    10.0 * self._baseline_diss_noise
+                ):
                     self._drop_applied[i] = True
+
             except Exception as e:
                 Log.e("Error calibrating baselines for drop detection - applying drop flag.")
                 Log.d("ERROR DETAILS:", str(e))
@@ -4894,401 +4157,523 @@ class MainWindow(QtWidgets.QMainWindow):
         return "Capturing data… Apply drop when ready…"
 
     def _calibrate_baselines(self, i: int, time_running: float) -> None:
-        """Update baseline stats from the earliest third of the current buffer."""
+        """Calculates baseline statistical benchmarks from the initial data buffer.
+
+        This method samples the first two-thirds of the current data buffer to
+        establish noise and average baselines for resonance frequency and
+        dissipation. These values are used as a reference point to detect
+        significant signal deviations, such as those caused by a sample drop
+        application.
+
+        The math:
+            - The arithmetic mean of the sample segment.
+            - The range (max - min or ptp) of the segment,
+              used here as a proxy for the system noise floor.
+
+        Args:
+            i (int): The index of the plot or channel being calibrated.
+            time_running (float): The elapsed time of the current run in seconds.
+
+        Note:
+            To ensure the baseline represents the state before a drop is applied,
+            the method truncates the final third of the buffer (via `[:-idx]`),
+            focusing only on the earliest samples collected.
+        """
         v1 = self.worker.get_d1_buffer(0)
-        v2 = self.worker.get_d2_buffer(0)
-        idx = int(len(v1) / 3)
-        if idx > 0:
-            self._baseline_freq_avg = np.average(v1[:-idx])
-            self._baseline_freq_noise = np.amax(v1[:-idx]) - np.amin(v1[:-idx])
-            self._baseline_diss_avg = np.average(v2[:-idx])
-            self._baseline_diss_noise = np.amax(v2[:-idx]) - np.amin(v2[:-idx])
+        idx = len(v1) // 3
+        if idx <= 0:
+            return
+        s1 = v1[:-idx]
+        s2 = self.worker.get_d2_buffer(0)[:-idx]
+
+        self._baseline_freq_avg = np.average(s1)
+        self._baseline_freq_noise = np.ptp(s1)
+
+        self._baseline_diss_avg = np.average(s2)
+        self._baseline_diss_noise = np.ptp(s2)
 
     def _update_freq_info_panel(
         self,
-        label1: str,
-        label2: str,
-        label3: str,
+        label_resonance_frequency: str,
+        label_dissipation: str,
+        label_temperature: str,
     ) -> None:
-        """Refresh the frequency info-window panel."""
+        """Updates the auxiliary information panel with real-time frequency and sensor metrics.
+
+        This method extracts specific values from the `_readFREQ` buffer and combines
+        them with formatted measurement labels to populate the `InfoWin` (ui3) layout.
+        It calculates hardware-level parameters like span and sample rate while
+        displaying the current environmental and resonance states.
+
+        Args:
+            label_resonance_frequency (str): The pre-formatted resonance frequency
+                string (including units).
+            label_dissipation (str): The pre-formatted dissipation string
+                (including units).
+            label_temperature (str): The pre-formatted temperature string
+                (including units).
+        """
         rf = self._readFREQ
-        ui = self.InfoWin.ui3
+        layout_ui = self.InfoWin.ui3
         _h = "<font color=#0000ff> {title} </font>"
 
-        ui.info6.setText(_h.format(title="Frequency Value") + str(int(rf[rf.size // 2])) + " Hz")
-        ui.info3.setText(_h.format(title="Start Frequency") + str(int(rf[0])) + " Hz")
-        ui.info4.setText(_h.format(title="Stop Frequency") + str(int(rf[-1])) + " Hz")
-        ui.info4a.setText(_h.format(title="Frequency Range") + str(int(rf[-1] - rf[0])) + " Hz")
-        ui.info5.setText(_h.format(title="Sample Rate") + str(int(rf[1] - rf[0])) + " Hz")
-        ui.l6a.setText(_h.format(title="Temperature") + label3)
-        ui.l6.setText(_h.format(title="Dissipation") + label2)
-        ui.l7.setText(_h.format(title="Resonance Frequency") + label1)
+        layout_ui.info6.setText(
+            _h.format(title="Frequency Value") + str(int(rf[rf.size // 2])) + " Hz"
+        )
+        layout_ui.info3.setText(_h.format(title="Start Frequency") + str(int(rf[0])) + " Hz")
+        layout_ui.info4.setText(_h.format(title="Stop Frequency") + str(int(rf[-1])) + " Hz")
+        layout_ui.info4a.setText(
+            _h.format(title="Frequency Range") + str(int(rf[-1] - rf[0])) + " Hz"
+        )
+        layout_ui.info5.setText(_h.format(title="Sample Rate") + str(int(rf[1] - rf[0])) + " Hz")
+        layout_ui.l6a.setText(_h.format(title="Temperature") + label_temperature)
+        layout_ui.l6.setText(_h.format(title="Dissipation") + label_dissipation)
+        layout_ui.l7.setText(_h.format(title="Resonance Frequency") + label_resonance_frequency)
 
     def _update_reference_axis_labels(self) -> None:
-        for i, p in enumerate(self._plt2_arr):
-            if p is None:
-                continue
-            p.setLabel(
-                "left",
-                "Resonance Frequency",
-                units="Hz",
-                color=Constants.plot_colors[6],
-                **{"font-size": "10pt"},
-            )
-            p.setLabel(
-                "right",
-                "Dissipation",
-                units="",
-                color=Constants.plot_colors[7],
-                **{"font-size": "10pt"},
-            )
-            self._plt2_arr[i] = p
+        """Updates plot axis labels and the info panel to reflect reference mode styling.
 
-        ui3 = self.InfoWin.ui3
-        ui3.inforef1.setText("<font color=#0000ff > Ref. Frequency </font>" + self._labelref1)
-        ui3.inforef2.setText("<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2)
+        This method is invoked when the application switches to reference (baseline
+        subtraction) mode. It updates the Y-axis labels of the resonance and
+        dissipation plots to use specific reference colors and refreshes the
+        information panel with the currently stored reference values.
+        """
+        for p in self._plt2_arr:
+            if p is not None:
+                p.setLabel(
+                    "left",
+                    "Resonance Frequency",
+                    units="Hz",
+                    color=Constants.plot_colors[6],
+                    **{"font-size": "10pt"},
+                )
+                p.setLabel(
+                    "right",
+                    "Dissipation",
+                    units="",
+                    color=Constants.plot_colors[7],
+                    **{"font-size": "10pt"},
+                )
+
+        layout_ui = self.InfoWin.ui3
+        layout_ui.inforef1.setText(f"<font color=#0000ff > Ref. Frequency </font>{self._labelref1}")
+        layout_ui.inforef2.setText(
+            f"<font color=#0000ff > Ref. Dissipation </font>{self._labelref2}"
+        )
 
     def _draw_amplitude_plots_reference(self) -> None:
-        """Update amplitude curves in reference mode."""
+        """Updates the amplitude plot curves specifically for reference mode.
+
+        This method refreshes the data for each amplitude curve while in
+        reference/baseline mode. It ensures that the plot view scales correctly
+        by resetting limits and enabling auto-range on both axes before
+        assigning the latest frequency and amplitude buffers to the plot items.
+        """
         for i, p in enumerate(self._plt0_arr):
-            if p is None:
-                continue
-            p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
-            p.enableAutoRange(axis="x", enable=True)
-            p.enableAutoRange(axis="y", enable=True)
-            ci = self._ci_amp[i]
-            if ci is not None:
-                ci.setData(
-                    x=self.worker.get_value0_buffer(i),
-                    y=self.worker.get_value1_buffer(i),
-                )
-            self._plt0_arr[i] = p
+            if p:
+                p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+                p.enableAutoRange(axis="x", enable=True)
+                p.enableAutoRange(axis="y", enable=True)
+
+                ci = self._ci_amp[i]
+                if ci:
+                    ci.setData(
+                        x=self.worker.get_value0_buffer(i), y=self.worker.get_value1_buffer(i)
+                    )
 
     def _draw_freq_diss_plots_reference(self) -> None:
-        """Update frequency and dissipation curves in reference mode."""
+        """Updates frequency and dissipation curves using reference-subtracted data.
+
+        This method calculates the delta between real-time data and stored baseline
+        reference values for both resonance frequency and dissipation. It then
+        updates the respective plot curves and adjusts the ViewBox limits to
+        ensure the visibility of the subtracted signal.
+        """
         is_measurement = self._get_source() == OperationType.measurement
 
-        for i, p2 in enumerate(self._plt2_arr):
-            if p2 is None:
+        # Initialize tracking set once (a set is faster and cleaner than a dictionary here)
+        if not hasattr(self, "_ci_diss_ref_pen_set"):
+            self._ci_diss_ref_pen_set = set()
+
+        for i, active_plot in enumerate(self._plt2_arr):
+            if not active_plot:
                 continue
-            p3 = self._plt3_arr[i]
+
+            active_overlay = self._plt3_arr[i]
 
             # Frequency (reference-subtracted)
             self._vector_1 = (
                 np.asarray(self.worker.get_d1_buffer(i)) - self._reference_value_frequency[i]
             )
             ci_freq = self._ci_freq[i]
-            if ci_freq is not None:
+            if ci_freq:
                 ci_freq.setData(x=self.worker.get_t1_buffer(i), y=self._vector_1)
-
-            if is_measurement:
-                p2.setLimits(
-                    yMax=self._vector_reference_frequency[i][-1],
-                    yMin=self._vector_reference_frequency[i][0],
-                    minYRange=5,
-                )
-                # p2.enableAutoRange(axis="x", enable=True)
-                # p2.enableAutoRange(axis="y", enable=True)
-
-            self._plt2_arr[i] = p2
 
             # Dissipation (reference-subtracted)
             self._vector_2 = (
                 np.asarray(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
             )
             ci_diss = self._ci_diss[i]
-            if ci_diss is not None:
-                # Switch to reference-mode pen colour on first reference set
-                ci_diss.setPen(Constants.plot_colors[7])
+            if ci_diss:
+                # Switch to reference-mode pen colour once, not every tick.
+                if i not in self._ci_diss_ref_pen_set:
+                    ci_diss.setPen(Constants.plot_colors[7])
+                    self._ci_diss_ref_pen_set.add(i)
                 ci_diss.setData(x=self.worker.get_t2_buffer(i), y=self._vector_2)
 
+            # Apply limits if measuring
             if is_measurement:
-                p3.setLimits(
+                active_plot.setLimits(
+                    yMax=self._vector_reference_frequency[i][-1],
+                    yMin=self._vector_reference_frequency[i][0],
+                    minYRange=5,
+                )
+
+                active_overlay.setLimits(
                     yMax=self._vector_reference_dissipation[i][-1],
                     yMin=self._vector_reference_dissipation[i][0],
                     minYRange=1e-7,
                 )
-                p3.enableAutoRange(axis="x", enable=True)
-                p3.enableAutoRange(axis="y", enable=True)
-
-            self._plt3_arr[i] = p3
+                active_overlay.enableAutoRange(axis="x", enable=True)
+                active_overlay.enableAutoRange(axis="y", enable=True)
 
         if is_measurement:
             self._plt4.setLimits(yMax=50, yMin=-10)
             self._plt4.enableAutoRange(axis="x", enable=True)
             self._plt4.enableAutoRange(axis="y", enable=True)
 
-    def _draw_plots_reference(self) -> None:
-        """Redraw all plots when a reference baseline has been set."""
-        self._update_reference_axis_labels()
-        self._draw_amplitude_plots_reference()
-        self._draw_freq_diss_plots_reference()
-        self._draw_temperature_plot()
-
-    def _draw_plots_no_reference(self) -> None:
-        """Redraw all plots in absolute (no reference) mode."""
-        self._update_no_reference_axis_labels()
-        self._draw_amplitude_plots_no_reference()
-        self._draw_temperature_plot()
-
     def _update_no_reference_axis_labels(self) -> None:
-        for i, p in enumerate(self._plt2_arr):
-            if p is None:
-                continue
-            p.setLabel(
-                "left",
-                "Resonance Frequency",
-                units="Hz",
-                color=Constants.plot_colors[2],
-                **{"font-size": "10pt"},
-            )
-            p.setLabel(
-                "right",
-                "Dissipation",
-                units="",
-                color=Constants.plot_colors[3],
-                **{"font-size": "10pt"},
-            )
-            self._plt2_arr[i] = p
+        """Resets plot axis labels and info panel text to standard absolute mode.
 
-        ui3 = self.InfoWin.ui3
-        ui3.inforef1.setText("<font color=#0000ff > Ref. Frequency </font>" + self._labelref1)
-        ui3.inforef2.setText("<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2)
+        This method restores the default visual styling for the resonance and
+        dissipation plots when reference/baseline subtraction is disabled. It
+        updates the axis colors to the standard palette and ensures the
+        auxiliary info panel correctly displays the currently loaded (but
+        inactive) reference values.
+        """
+        font = {"font-size": "10pt"}
+        colors = Constants.plot_colors
+
+        for p in self._plt2_arr:
+            if p:
+                p.setLabel("left", "Resonance Frequency", units="Hz", color=colors[2], **font)
+                p.setLabel("right", "Dissipation", units="", color=colors[3], **font)
+
+        layout_ui = self.InfoWin.ui3
+        layout_ui.inforef1.setText(f"<font color=#0000ff> Ref. Frequency </font>{self._labelref1}")
+        layout_ui.inforef2.setText(
+            f"<font color=#0000ff> Ref. Dissipation </font>{self._labelref2}"
+        )
 
     def _draw_amplitude_plots_no_reference(self) -> None:
-        """
-        For each channel: update amplitude plot, then (if in measurement
-        mode) update frequency / dissipation plots and handle drop detection.
+        """Updates amplitude plots and associated sensor data in absolute mode.
+
+        This method orchestrates the visual update for each active channel when
+        not using a reference baseline. It handles the conditional logic between
+        single-channel display and multiplexed (combined) views, ensuring that
+        auto-ranging is applied and secondary plots (frequency, dissipation,
+        and temperature) are refreshed.
         """
         n = Constants._NUM_DISPLAY_POINTS
-        src = self._get_source()
-        is_measurement = src == OperationType.measurement
+        is_measurement = self._get_source() == OperationType.measurement
         is_multiplex = is_measurement and self.multiplex_plots > 1
 
-        amps: dict[int, np.ndarray] = {}
+        aplitudes: dict[int, np.ndarray] = {}
 
-        for i, p0 in enumerate(self._plt0_arr):
-            if p0 is None:
+        for i, active_plot in enumerate(self._plt0_arr):
+            if not active_plot:
                 continue
 
-            p2 = self._plt2_arr[i]
-            p3 = self._plt3_arr[i]
+            plot_resonance_frequency, plot_dissipation = self._plt2_arr[i], self._plt3_arr[i]
 
             self._readFREQ = self.worker.get_value0_buffer(i)
-            vector1 = self.worker.get_d1_buffer(i)
-            amp_buffer = self.worker.get_value1_buffer(i)
+            resonance_frequency = self.worker.get_d1_buffer(i)
+            amplitdue = self.worker.get_value1_buffer(i)
 
             if is_multiplex:
-                # Collect; combined plot is drawn after the loop
-                amps[i] = amp_buffer
+                aplitudes[i] = amplitdue
             else:
-                p0.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
-                p0.enableAutoRange(axis="x", enable=True)
-                p0.enableAutoRange(axis="y", enable=True)
+                active_plot.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+                active_plot.enableAutoRange(axis="x", enable=True)
+                active_plot.enableAutoRange(axis="y", enable=True)
+
                 ci = self._ci_amp[i]
-                if ci is not None:
-                    ci.setData(x=self._readFREQ, y=amp_buffer)
+                if ci:
+                    ci.setData(x=self._readFREQ, y=amplitdue)
 
-            if is_measurement and p2 is not None and p3 is not None:
-                self._draw_freq_diss_channel(i, p2, p3, vector1, n)
+            if is_measurement and plot_resonance_frequency and plot_dissipation:
+                self._draw_freq_diss_channel(
+                    i, plot_resonance_frequency, plot_dissipation, resonance_frequency, n
+                )
+        if is_measurement:
+            self._plt4.setLimits(yMax=50, yMin=-10, minYRange=0.5)
+            self._plt4.enableAutoRange(axis="x", enable=True)
+            self._plt4.enableAutoRange(axis="y", enable=True)
 
-            self._plt0_arr[i] = p0
-            self._plt2_arr[i] = p2
-            self._plt3_arr[i] = p3
-
-            if is_measurement:
-                self._plt4.setLimits(yMax=50, yMin=-10, minYRange=0.5)
-                self._plt4.enableAutoRange(axis="x", enable=True)
-                self._plt4.enableAutoRange(axis="y", enable=True)
-
-        # ── Combined amplitude for multiplex ────────────────────────────
-        if is_multiplex and amps:
-            self._draw_combined_amplitude(amps)
+        # Combined amplitude for multiplex
+        if is_multiplex and aplitudes:
+            self._draw_combined_amplitude(aplitudes)
 
     def _draw_freq_diss_channel(
         self,
         i: int,
-        p2: pg.PlotWidget,
-        p3: pg.ViewBox,
-        vector1: np.ndarray,
+        plot_resonance_frequency: pg.PlotWidget,
+        plot_dissipation: pg.ViewBox,
+        data_resonance_frequency: np.ndarray,
         n: int,
     ) -> None:
+        """Updates resonance frequency and dissipation curves for a specific channel.
+
+        This method synchronizes the time-series data for a single channel, manages
+        axis scaling/padding, and handles the logic for updating secondary plot
+        limits and drop-detection overlays. To optimize performance, data buffers
+        are sliced to the display limit 'n' before processing.
+
+        Args:
+            i (int): The channel/plot index to update.
+            plot_resonance_frequency (pg.PlotWidget): The primary plot widget
+                displaying frequency over time.
+            plot_dissipation (pg.ViewBox): The overlay ViewBox displaying
+                dissipation over time.
+            data_resonance_frequency (np.ndarray): The raw resonance frequency
+                buffer used for limit calculations.
+            n (int): The number of data points to display (Constants._NUM_DISPLAY_POINTS).
+
+        Key Operations:
+            1. Extracts the first 'n' points from the worker
+              time and data buffers.
+            2. Updates the `ci_freq` and `ci_diss` data points.
+            3. Calculates and applies dynamic padding to the
+              time axis based on `Constants.default_plot_padding`.
+            4. Calculates the theoretical maximum dissipation
+              based on frequency range and caches it to prevent redundant
+              updates to the ViewBox limits.
+            5. Triggers the visual status label for
+              drop detection.
         """
-        Update the frequency and dissipation curves for channel `i` and
-        manage the drop-detection overlay label.
-        """
-        # ── Sync dissipation ViewBox geometry every tick (primary sync during run) ─
-        # This is essential — vb3 has no geometry until explicitly set here.
-        # The deferred sigResized callback in _init_plot_curves handles post-stop
-        # resize, but this per-tick call is what positions vb3 correctly during run.
-        p3.setGeometry(p2.getViewBox().sceneBoundingRect())
-        p3.linkedViewChanged(p2.getViewBox(), p3.XAxis)
+        # Cache the slices to prevent redundant array operations per tick
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[:n]
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)[:n]
+        slice_time_dissipation = self.worker.get_t2_buffer(i)[:n]
+        slice_dissipation = self.worker.get_d2_buffer(i)[:n]
 
-        # ── Frequency curve ──────────────────────────────────────────────
-        ci_freq = self._ci_freq[i]
-        if ci_freq is not None:
-            ci_freq.setData(
-                x=self.worker.get_t1_buffer(i)[:n],
-                y=self.worker.get_d1_buffer(i)[:n],
+        ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
+
+        # Update Curve Data
+        if ci_freq:
+            ci_freq.setData(x=slice_time_resonance_frequency, y=slice_resonance_frequency)
+
+        if ci_diss:
+            ci_diss.setData(x=slice_time_dissipation, y=slice_dissipation)
+
+        # Handle X-Axis Padding & Sync
+        if slice_time_resonance_frequency.size > 0:
+            x_min, x_max = float(slice_time_resonance_frequency[0]), float(
+                slice_time_resonance_frequency[-1]
             )
-
-        # ── Dissipation curve ────────────────────────────────────────────
-        ci_diss = self._ci_diss[i]
-        if ci_diss is not None:
-            ci_diss.setPen(Constants.plot_colors[3])
-            ci_diss.setData(
-                x=self.worker.get_t2_buffer(i)[:n],
-                y=self.worker.get_d2_buffer(i)[:n],
-            )
-
-        x_data = self.worker.get_t1_buffer(i)[:n]
-        if x_data.size > 0:
-            x_min, x_max = float(x_data[0]), float(x_data[-1])
-            x_range = x_max - x_min
-            if x_range == 0:
-                x_range = 1.0
+            x_range = (x_max - x_min) or 1.0
             x_pad = x_range * Constants.default_plot_padding
+            plot_resonance_frequency.setXRange(x_min - x_pad, x_max + x_pad)
 
-            p2.setXRange(x_min - x_pad, x_max + x_pad, padding=0)
+        self._apply_freq_limits(i, plot_resonance_frequency, data_resonance_frequency)
 
-        self._apply_freq_limits(i, p2, vector1)
+        # Dissipation yMax Limit Caching
+        if not hasattr(self, "_p3_last_ymax"):
+            self._p3_last_ymax = {}
 
-        # ── Let Dissipation Auto-Range its Y-Axis ──
-        p3.setLimits(
-            yMax=(self._readFREQ[-1] - self._readFREQ[0]) / self._readFREQ[0],
-            yMin=0,
-            minYRange=Constants.plot_min_range_diss,
-        )
-        p3.enableAutoRange(axis="y", enable=True)
+        try:
+            new_ymax = (self._readFREQ[-1] - self._readFREQ[0]) / self._readFREQ[0]
+        except (IndexError, ZeroDivisionError, TypeError):
+            new_ymax = None
 
-        self._handle_drop_overlay(i, p2, p3)
+        if new_ymax is not None and self._p3_last_ymax.get(i) != new_ymax:
+            plot_dissipation.setLimits(
+                yMax=new_ymax, yMin=0, minYRange=Constants.plot_min_range_diss
+            )
+            self._p3_last_ymax[i] = new_ymax
 
-    def _apply_freq_limits(self, i: int, p2: pg.PlotWidget, vector1: np.ndarray) -> None:
-        if not vector1.size:
+        self._handle_drop_overlay(i, plot_resonance_frequency, plot_dissipation)
+
+    def _apply_freq_limits(
+        self, i: int, plot_resonance_frequency: pg.PlotWidget, data_resonance_frequency: np.ndarray
+    ) -> None:
+        """Configures Y-axis view ranges and pan/zoom constraints for frequency plots.
+
+        This method calculates the optimal vertical viewing area for resonance
+        frequency data. It provides "smart" scaling by enforcing a minimum range
+        (to prevent visual noise from appearing as large oscillations) and applying
+        padding to ensure data points do not touch the plot edges.
+
+        Args:
+            i (int): The channel index being processed.
+            plot_resonance_frequency (pg.PlotWidget): The PyQtGraph plot widget to be updated.
+            data_resonance_frequency (np.ndarray): The raw resonance frequency data buffer.
+        """
+        visible = data_resonance_frequency[: Constants._NUM_DISPLAY_POINTS]
+        if not visible.size:
             return
 
-        _ymin = float(np.amin(vector1))
-        _ymax = float(np.amax(vector1))
+        _ymin, _ymax = float(np.nanmin(visible)), float(np.nanmax(visible))
+
+        if not (np.isfinite(_ymin) and np.isfinite(_ymax)):
+            return
+
+        min_range = Constants.plot_min_range_freq
         _yrange = _ymax - _ymin
 
-        if _yrange < Constants.plot_min_range_freq:
-            _yavg = float(np.average(vector1))
-            _ymin = _yavg - Constants.plot_min_range_freq / 2
-            _ymax = _yavg + Constants.plot_min_range_freq / 2
-            _yrange = Constants.plot_min_range_freq
+        # Adjust bounds if the range is too tight
+        if _yrange < min_range:
+            _yavg = float(np.nanmean(visible))
+            _ymin, _ymax = _yavg - (min_range / 2.0), _yavg + (min_range / 2.0)
+            _yrange = min_range
 
+        # Calculate padding
         pad = Constants.default_plot_padding * _yrange
-
-        final_y_min = _ymin - pad
-        final_y_max = _ymax + pad
-        p2.setLimits(
-            yMax=final_y_max,
-            yMin=final_y_min,
-            minYRange=Constants.plot_min_range_freq,
+        limit_pad = pad * 4.0
+        plot_resonance_frequency.setLimits(
+            yMax=_ymax + limit_pad, yMin=_ymin - limit_pad, minYRange=min_range
         )
-        p2.enableAutoRange(axis="y", enable=True)
+        plot_resonance_frequency.disableAutoRange(axis="y")
+        plot_resonance_frequency.setYRange(_ymin - pad, _ymax + pad)
 
     def _handle_drop_overlay(
         self,
         i: int,
-        p2: pg.PlotWidget,
-        p3: pg.ViewBox,
+        plot_resonance_frequency: pg.PlotWidget,
+        plot_dissipation: pg.ViewBox,
     ) -> None:
+        """Manages the lifecycle of the on-plot status label for a specific channel.
+
+        This method initializes and updates a floating text label (`pg.LabelItem`)
+        positioned within the resonance frequency plot. The label serves as a
+        real-time guide for the operator, displaying context-aware instructions
+        based on whether a sample drop has been detected.
+
+        Args:
+            i (int): The index of the channel/plot being updated.
+            plot_resonance_frequency (pg.PlotWidget): The primary frequency-over-time
+                plot where the label is anchored.
+            plot_dissipation (pg.ViewBox): The secondary ViewBox used for
+                post-drop state logic.
         """
-        Manage the on-plot text label that guides the operator through the
-        drop-application and fill-monitoring workflow.
-        """
-        n = Constants._NUM_DISPLAY_POINTS
         try:
-            # Lazy-create the LabelItem the first time
-            if self._text4[i] is None:
+            if not self._text4[i]:
                 lbl = pg.LabelItem(size="11pt", bold=True)
-                lbl.setParentItem(p2.graphicsItem())
+                lbl.setParentItem(plot_resonance_frequency.graphicsItem())
                 lbl.anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
                 self._text4[i] = lbl
                 return  # nothing to show on the very first tick
-
-            if not self._drop_applied[i]:
-                self._update_pre_drop_label(i, p2)
-
+            if self._drop_applied[i]:
+                self._update_post_drop_label(i, plot_resonance_frequency, plot_dissipation)
             else:
-                self._update_post_drop_label(i, p2, p3)
-
+                self._update_pre_drop_label(i, plot_resonance_frequency)
         except Exception:
-            import traceback
-
             Log.e("Error handling plot status label text!")
-            Log.e("PlotStatus", traceback.format_exc())
 
-    def _update_pre_drop_label(self, i: int, p2: pg.PlotWidget) -> None:  # noqa: ARG002
-        """Show dry-detection status or 'Apply drop now!' before drop."""
-        vector0 = self.worker.get_t2_buffer(i)
-        time_running = vector0[0]
+    def _update_pre_drop_label(self, i: int, plot_resonance_frequency: pg.PlotWidget) -> None:
+        """Updates the plot overlay label with dry-detection status prior to sample application.
+
+        This method coordinates the "Pre-Drop" phase of the experiment. It utilizes
+        the `dry_detect` logic to determine if the sensor is sufficiently dry
+        to proceed. If the sensor is wet, it latches the drying time and displays
+        a diagnostic message; once dry, it prompts the operator to apply the sample.
+
+        The method also maintains a rolling baseline of the minimum and maximum
+        values for resonance frequency and dissipation to assist with signal
+        normalization.
+
+        Args:
+            i (int): The index of the channel/plot being updated.
+            plot_resonance_frequency (pg.PlotWidget): The plot widget where the
+                label is rendered (used for context, though label is updated via
+                `self._text4`).
+        """
+        time_running = self.worker.get_t2_buffer(i)[0]
         if time_running == 0:
             return
 
-        dissipation_vector = self.worker.get_d2_buffer(i)
+        # Cache buffers to prevent re-querying the worker later
         rf_vector = self.worker.get_d1_buffer(i)
-        relative_time = self.worker.get_t1_buffer(i)
+        diss_vector = self.worker.get_d2_buffer(i)
 
         dry_status, dry_msg = self.dry_detect[i].update(
             resonance_frequency=rf_vector,
-            dissipation=dissipation_vector,
-            relative_time=relative_time,
+            dissipation=diss_vector,
+            relative_time=self.worker.get_t1_buffer(i),
         )
-        if i == 0:
-            self._last_dry_msg = dry_msg
-            self._last_dry_status = dry_status
 
-        if not dry_status:
+        if i == 0:
+            self._last_dry_msg, self._last_dry_status = dry_msg, dry_status
+
+        # Evaluate positive state first for cleaner branching
+        if dry_status:
+            self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
+        else:
             # Sensor still wet – latch the earliest dry time for this channel
             with self._sensorDriedTimeValue.get_lock():
                 if self._sensorDriedTimes[i] == 0.0:
-                    self._sensorDriedTimes[i] = time_running
-                    self._sensorDriedTimeValue.value = self._sensorDriedTimes[i]
+                    self._sensorDriedTimeValue.value = self._sensorDriedTimes[i] = time_running
 
             self._text4[i].setText(dry_msg, color=(0, 0, 200))
+
+            # Slice once instead of re-evaluating the buffer 4 times
             n = Constants._NUM_DISPLAY_POINTS
+            rf_slice = rf_vector[:n]
+            diss_slice = diss_vector[:n]
+
             self._baselinedata[i] = [
-                [
-                    np.amin(self.worker.get_d1_buffer(i)[:n]),
-                    np.amax(self.worker.get_d1_buffer(i)[:n]),
-                ],
-                [
-                    np.amin(self.worker.get_d2_buffer(i)[:n]),
-                    np.amax(self.worker.get_d2_buffer(i)[:n]),
-                ],
+                [np.amin(rf_slice), np.amax(rf_slice)],
+                [np.amin(diss_slice), np.amax(diss_slice)],
             ]
-        else:
-            self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
 
     def _update_post_drop_label(
         self,
         i: int,
-        p2: pg.PlotWidget,
-        p3: pg.ViewBox,
+        plot_resonance_frequency: pg.PlotWidget,
+        plot_dissipation: pg.ViewBox,
     ) -> None:
-        """Manage the overlay label and run-finished detection after drop."""
-        # Show any latched fill-classifier message
-        if self._fill_display_msg and self._text4[i] is not None:
-            self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
+        """Manages the status label and detects run completion after a sample drop.
 
-        time_running = p2.getViewBox().viewRange()[0][1]
-        current_y_range = [p2.getViewBox().viewRange()[1], p3.viewRange()[1]]
+        This method monitors the stability of the resonance frequency and dissipation
+        signals following a drop application. It uses a delta-tracking algorithm
+        to determine if the Y-axis has stabilized, signaling that the measurement
+        run is effectively finished.
+
+        Args:
+            i (int): The index of the channel/plot being monitored.
+            plot_resonance_frequency (pg.PlotWidget): The primary frequency plot
+                providing the master view range and time reference.
+            plot_dissipation (pg.ViewBox): The secondary ViewBox used to
+                extract dissipation signal ranges.
+        """
+        lbl = self._text4[i]
+
+        # Show any latched fill-classifier message
+        if self._fill_display_msg and lbl:
+            lbl.setText(self._fill_display_msg, color=(200, 100, 0))
+
+        # Cache view range to avoid redundant, expensive getter calls
+        rf_view_range = plot_resonance_frequency.getViewBox().viewRange()
+        time_running = rf_view_range[0][1]
+
+        current_y_range = [rf_view_range[1], plot_dissipation.viewRange()[1]]
+
+        # Extract deltas
         current_deltas = np.diff(current_y_range)[:, 0]
         last_y_deltas = np.diff(self._last_y_range[i])[:, 0]
         baseline_deltas = np.diff(self._baselinedata[i])[:, 0]
 
-        if any(np.subtract(current_deltas, last_y_deltas) > baseline_deltas):
+        if (current_deltas - last_y_deltas > baseline_deltas).any():
             self._last_y_range[i] = current_y_range
             self._last_y_delta[i] = time_running
             self._run_finished[i] = False
-            if not self._fill_display_msg:
-                self._text4[i].setText(" ")
 
-        elif time_running - self._last_y_delta[i] > 10.0 and not self._run_finished[i]:
+            if not self._fill_display_msg and lbl:
+                lbl.setText(" ")
+
+        elif (time_running - self._last_y_delta[i] > 10.0) and not self._run_finished[i]:
             self._run_finished[i] = True
-            Log.d(f"Plot {i}: Y-axis stabilised for 10 s – run appears finished.")
+            Log.d(f"Plot {i}: Y-axis stabilised for 10 s - run appears finished.")
 
         # Latch earliest drop-applied time for multiplex
         with self._dropAppliedTimeValue.get_lock():
@@ -5297,93 +4682,141 @@ class MainWindow(QtWidgets.QMainWindow):
             if self._dropAppliedTimeValue.value == 0.0:
                 self._dropAppliedTimeValue.value = time_running
 
-    def _draw_combined_amplitude(self, amps: dict[int, np.ndarray]) -> None:
-        combined = amps[0].copy()
-        for k in range(1, len(amps)):
-            if k in amps:
-                combined = np.maximum(combined, amps[k])
+    def _draw_combined_amplitude(self, amplitudes: dict[int, np.ndarray]) -> None:
+        """Renders a composite amplitude plot for multiplexed sensor channels.
 
-        p0 = self._plt0_arr[0]
+        This method performs a high-performance envelope calculation by taking
+        the element-wise maximum across all active channels. It updates a
+        combined curve and manages a pool of dynamic text labels to identify
+        individual peaks within the composite view.
 
-        if self._ci_amp_combined is not None:
+        Args:
+            amplitudes (dict[int, np.ndarray]): A mapping of channel indices to their
+                respective amplitude buffers.
+        """
+        combined = np.maximum.reduce(list(amplitudes.values()))
+
+        if self._ci_amp_combined:
             self._ci_amp_combined.setData(x=self._readFREQ, y=combined)
 
-        # Initialize the pool if it doesn't exist
         if not hasattr(self, "_multiplex_peak_labels"):
             self._multiplex_peak_labels = []
 
-        # Ensure we have enough labels in the pool
-        while len(self._multiplex_peak_labels) < len(amps):
-            item = pg.TextItem(color=(0, 0, 0), anchor=(0, 1))
-            p0.addItem(item)
-            self._multiplex_peak_labels.append(item)
+        labels = self._multiplex_peak_labels
+        plot_amplitude = self._plt0_arr[0]
 
-        # Update positions and text, hide unused ones
-        for idx, (j, amp) in enumerate(amps.items()):
-            am = int(np.argmax(amp))
-            item = self._multiplex_peak_labels[idx]
-            item.setText(str(j + 1))
-            item.setPos(self._readFREQ[am], combined[am])
-            item.setVisible(True)
+        # Update positions and text, lazily creating new labels if the pool is too small
+        for idx, (j, amp) in enumerate(amplitudes.items()):
+            if idx >= len(labels):
+                item = pg.TextItem(color=(0, 0, 0), anchor=(0, 1))
+                plot_amplitude.addItem(item)
+                labels.append(item)
 
-        # Hide any extras in the pool if the number of channels drops
-        for idx in range(len(amps), len(self._multiplex_peak_labels)):
-            self._multiplex_peak_labels[idx].setVisible(False)
+            amp_idx = np.argmax(amp)
+            labels[idx].setText(str(j + 1))
+            labels[idx].setPos(self._readFREQ[amp_idx], combined[amp_idx])
+            labels[idx].setVisible(True)
+
+        # Hide any unused labels in the pool via a quick slice
+        for item in labels[len(amplitudes) :]:
+            item.setVisible(False)
 
     def _draw_temperature_plot(self) -> None:
-        """Update the temperature curve; called from both reference/no-reference paths."""
-        n = Constants._NUM_DISPLAY_POINTS
-        if self._ci_temp is not None:
+        """Updates the temperature curve in the global environment plot.
+
+        This method refreshes the time-series temperature data by pulling from the
+        worker's temperature time buffer. It is designed to be agnostic of the
+        reference/absolute mode logic, providing a consistent update for the
+        environmental monitoring window.
+
+        """
+        if self._ci_temp:
+            n = Constants._NUM_DISPLAY_POINTS
             self._ci_temp.setData(
-                x=self.worker.get_t3_buffer(0)[:n],
-                y=self.worker.get_d3_buffer(0)[:n],
+                x=self.worker.get_t3_buffer(0)[:n], y=self.worker.get_d3_buffer(0)[:n]
             )
 
-    def _bandwidth_error_msg(error1: int, error2: int) -> str:
-        """Return the appropriate bandwidth-method warning string."""
-        if error1 and error2:
+    def _bandwidth_error_msg(self, error_left_cuttoff: int, error_right_cuttoff: int) -> str:
+        """Generates a warning string when the half-power bandwidth calculation fails.
+
+        This method checks specifically for failures in locating the cut-off frequencies
+        required to calculate the Q-factor or dissipation using the bandwidth method.
+
+        Args:
+            error_left_cuttoff (int): Boolean-like flag (0 or 1) indicating if the
+                lower frequency cut-off was not found.
+            error_right_cuttoff (int): Boolean-like flag (0 or 1) indicating if the
+                upper frequency cut-off was not found.
+
+        Returns:
+            str: A descriptive warning message for the UI. Returns an empty string
+                if no bandwidth errors are detected.
+        """
+        if error_left_cuttoff and error_right_cuttoff:
             return (
                 "Warning: unable to apply half-power bandwidth method, "
                 "lower and upper cut-off frequency not found"
             )
-        if error1:
+        if error_left_cuttoff:
             return (
                 "Warning: unable to apply half-power bandwidth method, "
                 "lower cut-off frequency (left side) not found"
             )
-        if error2:
+        if error_right_cuttoff:
             return (
                 "Warning: unable to apply half-power bandwidth method, "
                 "upper cut-off frequency (right side) not found"
             )
         return ""
 
-    def _serial_error_message(e1: int, e2: int, e3: int, e4: int) -> str:
-        """Return the infobar message for serial tracking errors."""
-        if e1 and e2:
+    def _serial_error_message(
+        self, error_upper: int, error_lower: int, error_derivative: int, error_noise: int
+    ) -> str:
+        """Constructs a detailed error message based on serial tracking and reconstruction failures.
+
+        This method evaluates various hardware and signal processing error flags
+        to provide feedback on why a peak cannot be tracked or why signal
+        reconstruction is degraded. It handles drift limit violations, bandwidth
+        failures, and algorithmic fallback states.
+
+        Args:
+            error_upper (int): Error state for the upper frequency boundary or peak.
+                Value 1 implies upper peak drift; 2 implies lower peak drift.
+            error_lower (int): Error state for the lower frequency boundary or peak.
+                Value 1 implies upper peak drift; 2 implies lower peak drift.
+            error_derivative (int): Flag indicating signal reconstruction is
+                relying solely on derivatives due to wave construction failure.
+            error_noise (int): Flag indicating that noise correction algorithms
+                could not be applied during signal reconstruction.
+
+        Returns:
+            str: A formatted warning string intended for the application infobar.
+                Prioritizes bandwidth and drift errors over reconstruction warnings.
+                Returns an empty string if no errors are present.
+        """
+        if error_upper and error_lower:
             return (
                 "Warning: unable to apply half-power bandwidth method, "
                 "lower and upper cut-off frequency not found"
             )
-        if e1:
-            peak = {1: " upper ", 2: " lower "}.get(e1, " ")
+        if error_upper:
+            peak = {1: " upper ", 2: " lower "}.get(error_upper, " ")
             return (
                 f"Warning: unable to track the{peak}peak frequency, "
                 "it has drifted more than maximum drift (left) allows"
             )
-        if e2:
-            # BUG FIX: original code checked e1 again here – should be e2
-            peak = {1: " upper ", 2: " lower "}.get(e2, " ")
+        if error_lower:
+            peak = {1: " upper ", 2: " lower "}.get(error_lower, " ")
             return (
                 f"Warning: unable to track the{peak}peak frequency, "
                 "it has drifted more than maximum drift (right) allows"
             )
-        if e3:
+        if error_derivative:
             return (
-                "Warning: failed to construct sine wave, "
+                "Warning: failed to construct signal wave, "
                 "approximating reconstruction with derivatives only"
             )
-        if e4:
+        if error_noise:
             return (
                 "Warning: failed to reconstruct signal wave, "
                 "unable to apply noise correction reconstruction"
@@ -5786,9 +5219,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     cal_file_path = Constants.cvs_peakfrequencies_path
                     cal_file_path = FileStorage.DEV_populate_path(cal_file_path, j)
                     timestamp = os.path.getmtime(cal_file_path)  # may throw OSError
-                    last_modified = datetime.datetime.fromtimestamp(timestamp)
-                    last_cal_age = datetime.datetime.now() - last_modified
-                    FIFTEEN_MINS = datetime.timedelta(minutes=15)
+                    last_modified = datetime.fromtimestamp(timestamp, timezone.utc)
+                    last_cal_age = datetime.now(timezone.utc) - last_modified
+                    FIFTEEN_MINS = timedelta(minutes=15)
                     # mask in this device cal state to the top-level vars
                     is_recent &= last_cal_age < FIFTEEN_MINS
                     age_of_this = int(last_cal_age.total_seconds() / 60)
@@ -5848,6 +5281,20 @@ class MainWindow(QtWidgets.QMainWindow):
                         Log.i(TAG, "Reference reset!   ")
                         self._labelref1 = "not set"
                         self._labelref2 = "not set"
+                        # Restore non-reference pen on dissipation curves; the
+                        # per-tick setPen in _draw_freq_diss_channel was
+                        # removed for performance, so the transition must be
+                        # handled here explicitly.
+                        for j, ci in enumerate(getattr(self, "_ci_diss", [])):
+                            if ci is not None:
+                                try:
+                                    ci.setPen(Constants.plot_colors[3])
+                                except (AttributeError, RuntimeError):
+                                    pass
+                        # Invalidate the reference-pen cache so a subsequent
+                        # re-enable re-applies the reference colour.
+                        if hasattr(self, "_ci_diss_ref_pen_set"):
+                            self._ci_diss_ref_pen_set.clear()
                     else:
                         self._reference_flag = True
                         d1 = float("{0:.2f}".format(self._reference_value_frequency[i]))
@@ -6339,7 +5786,7 @@ class MainWindow(QtWidgets.QMainWindow):
             access_path = os.path.join(
                 Constants.local_app_data_path, "tokens", "dbx_access_token.pem"
             )
-            expires_at = datetime.datetime.fromtimestamp(0)  # mark expired if no file found
+            expires_at = datetime.fromtimestamp(0, timezone.utc)  # mark expired if no file found
             # check if stored access token is still valid
             if os.path.exists(access_path):
                 Log.d("Checking expiration of access token.")
@@ -6347,12 +5794,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     data = json.load(f)
                     access_token = data["access_token"]
                     expires_in = data["expires_in"]
-                    captured = os.path.getmtime(access_path)
-                    captured = datetime.datetime.fromtimestamp(captured)
+                    captured_ts = os.path.getmtime(access_path)
+                    captured = datetime.fromtimestamp(captured_ts, timezone.utc)
                     # consider expired if within 1 min of expiration:
-                    expires_at = captured + datetime.timedelta(seconds=int(expires_in), minutes=-1)
+                    expires_at = captured + timedelta(seconds=int(expires_in), minutes=-1)
                     Log.d(f"Expires at: {expires_at}")
-            if datetime.datetime.now() >= expires_at:
+            if datetime.now(timezone.utc) >= expires_at:
                 # stored access_token is expired, attempt to get a new one
                 # prefer working resource path, if exists
                 working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
@@ -6505,7 +5952,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     date_order = parser.parse(resp.headers["Last-Modified"])
                     for entry in all_tags:
                         build_type = "exe" if require_EXE else "py"
-                        date_order -= datetime.timedelta(days=1)
+                        date_order -= timedelta(days=1)
                         build = {
                             "date": date_order,  # updated to actual release date when calling target_build()
                             "name": f"nanovisQ_SW_{entry}_{build_type}.zip",
@@ -6593,7 +6040,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # import all to dictionary, sorted by date
             # download the most recent build if version is different and/or date is newer than current build
             ts1 = most_recent["date"].date()
-            ts2 = datetime.datetime.fromisoformat(Constants.app_date).date()
+            ts2 = datetime.fromisoformat(Constants.app_date).date()
             Log.d(f"ts1 = {ts1}, ts2 = {ts2}")
 
             if Constants.app_version in most_recent["name"] and ts1 == ts2:
