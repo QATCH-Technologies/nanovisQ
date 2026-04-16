@@ -4216,14 +4216,17 @@ void pogo_button_pressed(bool init)
     {
       if (DEBUG)
         client->printf("Servo1 to %i, Servo2 to %i\n", pos1, pos2);
-      if (dir1 == -1 && digitalRead(POGO_LID_SW_PIN_N) == LOW) {
-        pogo_sw_exists = done1 = done2 = true;  // abort early
-      }
+        
       if (!done1)
         pogoServo1.write(pos1);
       if (!done2)
         pogoServo2.write(pos2);
       delay(delayMs);
+
+      if (dir1 == -1 && digitalRead(POGO_LID_SW_PIN_N) == LOW)
+      {
+        pogo_sw_exists = done1 = done2 = true;  // abort early
+      }
       if (!done1)
       {
         if (pos1 == end1)
