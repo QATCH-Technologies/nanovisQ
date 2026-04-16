@@ -536,10 +536,10 @@ class Ui_Export(QtWidgets.QWidget):
             os.getcwd(), Constants.log_export_path, "export_history.log"
         )
         send2trash.send2trash(history_path)
-        self.tabChanged(2)
+        self.tabChanged(4)
 
     def tabChanged(self, idx):
-        if idx == 2:
+        if idx == 4:
             history_path = os.path.join(
                 os.getcwd(), Constants.log_export_path, "export_history.log"
             )
