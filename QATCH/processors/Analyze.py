@@ -7326,6 +7326,9 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
+            # Parallel view of initial_fill that will undergo the same filter pipeline
+            # as the initial-fill portion of log_velocity / log_velocity_46.
+            initial_fill_tracked = np.asarray(initial_fill, dtype=float).copy()
             dropUnder2 = 0
             ####################################
             # NEW CODE for 2023-11-07 TESTING:
@@ -7346,6 +7349,7 @@ class AnalyzerWorker(QtCore.QObject):
                     Log.d(f"Dropped {i} initial samples under 2 Hz threshold")
                     log_velocity = log_velocity[i:]
                     log_position = log_position[i:]
+                    initial_fill_tracked = initial_fill_tracked[i:] 
                     dropUnder2 = i
                     ####################################
                     # NEW CODE for 02/03/2023 TESTING:
@@ -7372,12 +7376,26 @@ class AnalyzerWorker(QtCore.QObject):
                 ax3.annotate("Not Analyzed", (cp, 0), ha="center")
                 ax4.annotate("Not Analyzed", (cp, 0), ha="center")
             else:
-                for i in range(len(initial_fill)):
-                    if initial_fill[i] > 46:
-                        Log.d(f"Dropped {i} initial samples under 46 Hz threshold")
-                        log_velocity_46 = log_velocity_46[i:]
-                        log_position_46 = log_position_46[i:]
+                drop_46 = 0
+                for i in range(len(initial_fill_tracked)):
+                    if initial_fill_tracked[i] > 46:
+                        drop_46 = i
+                        Log.d(f"Dropped {i} initial samples under 46 Hz threshold.")
                         break
+
+                # Never trim into the distances region. The subsequent
+                # np.delete calls assume at least len(distances) samples remain.
+                max_drop = max(0, len(log_velocity_46) - len(distances))
+                if drop_46 > max_drop:
+                    Log.w(
+                        f"46 Hz threshold at tracked index {drop_46} would leave "
+                        f"fewer than len(distances)={len(distances)} samples; "
+                        f"clamping to {max_drop}"
+                    )
+                    drop_46 = max_drop
+
+                log_velocity_46 = log_velocity_46[drop_46:]
+                log_position_46 = log_position_46[drop_46:]
 
             self.update(status_label)
 
@@ -7406,6 +7424,10 @@ class AnalyzerWorker(QtCore.QObject):
             log_position_skip = log_position[~keep_ids]
             log_velocity = log_velocity[keep_ids]
             log_position = log_position[keep_ids]
+            # Apply the same filter to the tracked initial-fill view. keep_ids is sized
+            # to log_velocity (initial fill + distances)
+            initial_fill_keep = keep_ids[: len(initial_fill_tracked)]
+            initial_fill_tracked = initial_fill_tracked[initial_fill_keep]
             Log.d(
                 f"Rejected {len(log_position_skip)} samples as initial outliers: {log_position_skip}"
             )
