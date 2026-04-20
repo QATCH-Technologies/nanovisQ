@@ -1498,6 +1498,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Messaging attribute for early stop messages.
         self._fill_display_msg: Optional[str] = None
         self._calib_progress_dlg = None
+        self._calib_overlay_items = [
+            None
+        ] * 4  # (proxy_widget, progress_bar, label_item) per channel
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
 
@@ -2116,6 +2119,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._readFREQ = self.worker.get_frequency_range()
 
             # Duplicate frequencies
+            self._calib_overlay_items = [None] * 4
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
             self._drop_epoch_sent = False
@@ -2425,34 +2429,99 @@ class MainWindow(QtWidgets.QMainWindow):
         # required due to bug in PyQt under macOS
         self.ControlsWin.ui1.pButton_Stop.repaint()
 
-    def _create_calibration_progress_dialog(self):
-        """Creates and initializes a modal progress dialog for the calibration process.
+    def _show_calibration_plot_overlay(self) -> None:
+        """Creates and embeds a per-channel progress overlay into the primary
+        Resonance Frequency / Dissipation plots (``_plt2_arr``).
 
-        If an existing instance of the calibration progress dialog is found, it is
-        closed and discarded before a new one is instantiated. The resulting dialog
-        is configured to be strictly modal, remain on top of other windows, and
-        disables both the help and close ('X') buttons to prevent the user from
-        interrupting the mandatory calibration sequence. Auto-reset and auto-close
-        behaviors are also disabled.
+        Any previously created overlays are torn down before new ones are
+        constructed, making the method safe to call on repeated Initialize
+        attempts within the same session.
         """
-        if hasattr(self, "_calib_progress_dlg") and self._calib_progress_dlg is not None:
-            self._calib_progress_dlg.close()
-            self._calib_progress_dlg = None
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "initialize.png")
+        self._hide_calibration_plot_overlay()
 
-        self._calib_progress_dlg = QtWidgets.QProgressDialog(
-            "Starting calibration...", None, 0, 100, self
-        )
-        self._calib_progress_dlg.setAutoReset(False)
-        self._calib_progress_dlg.setAutoClose(False)
-        self._calib_progress_dlg.setWindowIcon(QtGui.QIcon(icon_path))
-        self._calib_progress_dlg.setWindowTitle("Calibration in Progress")
-        self._calib_progress_dlg.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
-        self._calib_progress_dlg.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
-        self._calib_progress_dlg.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
-        self._calib_progress_dlg.setFixedSize(400, 90)
-        self._calib_progress_dlg.setModal(True)
-        self._calib_progress_dlg.show()
+        for i, plt2 in enumerate(self._plt2_arr):
+            if plt2 is None:
+                continue
+            container = QtWidgets.QWidget()
+            container.setFixedSize(380, 62)
+            container.setStyleSheet(
+                "QWidget {"
+                "  background: rgba(255, 255, 255, 230);"
+                "}"
+                "QLabel {"
+                "  background: transparent;"
+                "  border: none;"
+                "  font-size: 10pt;"
+                "  color: #333333;"
+                "}"
+                "QProgressBar {"
+                "  border: none;"
+                "  border-radius: 3px;"
+                "  background: #e8f4fb;"
+                "}"
+                "QProgressBar::chunk {"
+                "  background: #2E9BDA;"
+                "  border-radius: 3px;"
+                "}"
+            )
+
+            layout = QtWidgets.QVBoxLayout(container)
+            layout.setContentsMargins(14, 8, 14, 8)
+            layout.setSpacing(6)
+
+            status_label = QtWidgets.QLabel("Starting\u2026")
+            status_label.setAlignment(QtCore.Qt.AlignCenter)
+
+            progress_bar = QtWidgets.QProgressBar()
+            progress_bar.setRange(0, 100)
+            progress_bar.setValue(0)
+            progress_bar.setTextVisible(False)
+            progress_bar.setFixedHeight(6)
+
+            layout.addWidget(status_label)
+            layout.addWidget(progress_bar)
+
+            #  Embed into the plot scene
+            proxy = QtWidgets.QGraphicsProxyWidget()
+            proxy.setWidget(container)
+            proxy.setParentItem(plt2.graphicsItem())
+            proxy.setZValue(1000)
+
+            def _center_in_viewbox(p=proxy, plot=plt2) -> None:
+                try:
+                    vb = plot.getViewBox()
+                    vb_rect = vb.mapRectToItem(plot.graphicsItem(), vb.boundingRect())
+                    pw = p.boundingRect().width()
+                    ph = p.boundingRect().height()
+                    p.setPos(
+                        vb_rect.x() + (vb_rect.width() - pw) / 2.0,
+                        vb_rect.y() + (vb_rect.height() - ph) / 2.0,
+                    )
+                except RuntimeError:
+                    pass
+
+            QtCore.QTimer.singleShot(0, _center_in_viewbox)
+            self._calib_overlay_items[i] = (proxy, progress_bar, status_label)
+
+    def _hide_calibration_plot_overlay(self) -> None:
+        """Removes all active per-channel calibration overlay widgets from
+        their parent plot scenes and resets ``_calib_overlay_items`` to all-None.
+
+        Safe to call even when no overlays exist (e.g., on the very first
+        Initialize or after a prior teardown).
+        """
+        for i, overlay in enumerate(self._calib_overlay_items):
+            if overlay is None:
+                continue
+            proxy, _qbar, _lbl = overlay
+            try:
+                proxy.setParentItem(None)
+                scene = proxy.scene()
+                if scene is not None:
+                    scene.removeItem(proxy)
+            except RuntimeError:
+                pass
+            self._calib_overlay_items[i] = None
 
     ###########################################################################
     # Configures text comment and info
@@ -3779,10 +3848,9 @@ class MainWindow(QtWidgets.QMainWindow):
         indicators with color-coded feedback.
         """
         # Calibration progress dialog handling
-        if getattr(self, "_calib_progress_dlg", None) is None:
-            self._create_calibration_progress_dialog()
+        if self._calib_overlay_items[0] is None:
+            self._show_calibration_plot_overlay()
             QtWidgets.QApplication.processEvents()
-
         stop_flag = 0
         self.ControlsWin.ui1.pButton_Stop.setEnabled(False)
         phase = 1 if self.worker.get_value1_buffer(0).any() else 0
@@ -3859,9 +3927,12 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
         # Update and conditionally close Dialog
-        if getattr(self, "_calib_progress_dlg", None) is not None:
-            self._calib_progress_dlg.setValue(progress_val)
-            self._calib_progress_dlg.setLabelText(f"{label_status}\n{label_bar}")
+        for i, overlay in enumerate(self._calib_overlay_items):
+            if overlay is None:
+                continue
+            _proxy, qbar, lbl = overlay
+            qbar.setValue(progress_val)
+            lbl.setText(f"{label_status} — {label_bar}", color=(80, 80, 80))
 
         if stop_flag:
             self.stop_flag += 1
@@ -3869,9 +3940,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._timer_plot.stop()
                 self._enable_ui(True)
                 self.worker.stop()
-                if getattr(self, "_calib_progress_dlg", None) is not None:
-                    self._calib_progress_dlg.close()
-                    self._calib_progress_dlg = None
+                for i, overlay in enumerate(self._calib_overlay_items):
+                    if overlay is None:
+                        continue
+                    _proxy, qbar, lbl = overlay
+                    try:
+                        lbl.setText("")
+                        _proxy.setVisible(False)
+                        _proxy.setParentItem(None)
+                        self._plt2_arr[i].scene().removeItem(_proxy)
+                    except Exception:
+                        pass
+                    self._calib_overlay_items[i] = None
 
     def _update_fill_classifier(
         self,
