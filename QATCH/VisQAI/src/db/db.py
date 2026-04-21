@@ -15,10 +15,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-18
+    2026-04-14
 
 Version:
-    1.9
+    1.9.1
 """
 
 import json
@@ -915,23 +915,56 @@ class Database:
         try:
             self._enc_metadata = b"\x45{}\n"  # default: nop seed with empty dict
             self.metadata = {}
+            self._has_metadata = False
+
+            if not self.db_path.exists():
+                Log.e(TAG, "Database file does not exist. Creating empty metadata.")
+                return
+
             with open(self.db_path, "rb") as f:
+                magic_header = f.read(16)
+                if magic_header == b"SQLite format 3\x00":
+                    Log.i(TAG, "Standard SQLite binary format detected. Bypassing encryption.")
+                    self.use_encryption = False
+                    return
+
+                # Check if it looks like a raw SQL script instead of custom DB
+                f.seek(0)
+                first_chars = f.read(20).upper()
+                if first_chars.startswith(b"BEGIN TRANSACTION") or first_chars.startswith(
+                    b"PRAGMA"
+                ):
+                    Log.i(
+                        TAG,
+                        "Plain SQL script detected. Treating as unencrypted DB without metadata.",
+                    )
+                    return
+
+                f.seek(0)
                 self._enc_metadata = f.readline()
                 enc_metadata = self._enc_metadata.decode(
                     self.metadata.get("app_encoding", "utf-8")
                 ).rsplit("\n", 1)[
                     0
                 ]  # remove at most 1 trailing '\n'
+
+                if not enc_metadata:
+                    Log.w(TAG, "Database file is empty. Bypassing encryption load.")
+                    self.use_encryption = False
+                    return
+
                 seed = ord(enc_metadata[0])
                 shuffled = enc_metadata[1:]
                 enc_metadata = self._shuffle_text(shuffled, seed)
                 shift_by = -len(enc_metadata)
                 str_metadata = self._caesar_cipher(enc_metadata, shift_by)
                 self.metadata = json.loads(str_metadata)
-        except FileNotFoundError:
-            Log.e(TAG, "Database file does not exist. Creating empty metadata.")
-        except Exception:
-            Log.e(TAG, "No readable metadata found in database file.")
+                self._has_metadata = True
+
+        except Exception as e:
+            Log.e(TAG, f"No readable metadata found in database file. Error: {e}")
+            self._has_metadata = False
+            self._enc_metadata = b"\x45{}\n"  # Restore default so we don't write garbage later
 
     def _shuffle_text(self, text: str, seed: Union[int, None] = None) -> str:
         """Shuffles the characters of a given `text` string in a pseudo-random order.
@@ -1061,7 +1094,11 @@ class Database:
         con = sqlite3.connect(":memory:")
         if os.path.isfile(filepath):
             self.file_handle = open(filepath, "rb")
-            self._enc_metadata = self.file_handle.readline()
+
+            # Only consume the first line if we successfully validated it as metadata
+            if getattr(self, "_has_metadata", False):
+                self._enc_metadata = self.file_handle.readline()
+
             secure_bytes = self.file_handle.read()
             if password:
                 # Decrypt the file content
