@@ -358,7 +358,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.ui_preferences = PreferencesUI(self)
         # self.userrole
         self.current_timer = QtCore.QTimer()
-        self.current_timer.timeout.connect(self.double_toggle_plots)
+        # self.current_timer.timeout.connect(self.double_toggle_plots)
         UserProfiles().session_end()
 
     def _createMenu(self, target):
@@ -670,21 +670,26 @@ class ControlsWindow(QtWidgets.QMainWindow):
 
     def hide_top_plot(self, toggle_console):
         if self.chk2.isChecked() or self.chk3.isChecked():
+            # Remove the timer hack completely:
+            # if toggle_console:
+            #     if self.current_timer.isActive():
+            #         self.current_timer.stop()
+            #     self.current_timer.setSingleShot(True)
+            #     self.current_timer.start(100)
+            
+            # Instead, optionally trigger a proper layout refresh if PyQt needs a nudge
             if toggle_console:
-                if self.current_timer.isActive():
-                    self.current_timer.stop()
-                self.current_timer.setSingleShot(True)
-                self.current_timer.start(100)
+                self.parent.PlotsWin.layout().activate() # Or update() / adjustSize()
         else:
             Log.d("Hiding top plots window")
             self.parent.PlotsWin.ui2.plt.setVisible(False)
 
-    def double_toggle_plots(self):
-        Log.d("Toggling console window (for sizing)")
-        self.chk4.setChecked(not self.chk4.isChecked())
-        self.toggle_RandD()
-        self.chk4.setChecked(not self.chk4.isChecked())
-        QtCore.QTimer.singleShot(0, self.toggle_RandD)
+    # def double_toggle_plots(self):
+    #     Log.d("Toggling console window (for sizing)")
+    #     self.chk4.setChecked(not self.chk4.isChecked())
+    #     self.toggle_RandD()
+    #     self.chk4.setChecked(not self.chk4.isChecked())
+    #     QtCore.QTimer.singleShot(0, self.toggle_RandD)
 
     def view_tutorials(self):
         self.parent.TutorialWin.setVisible(not self.parent.TutorialWin.isVisible())
@@ -1880,6 +1885,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # BEGIN HANDLE ORPHANED FILES:
         # Move any existing orphaned CSV files in the output directories from prior Returns
         # This is to prevent new files from being missed and not renamed at the end of a run
+        
         try:
             if os.path.exists(Constants.new_files_path):
                 os.remove(Constants.new_files_path)
@@ -2098,19 +2104,27 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         # Set the number of plots to display for multiplex devices based on the number of devices connected.
-        self.set_multi_mode()
+        self.PlotsWin.setUpdatesEnabled(False)
 
-        if self._get_source() == OperationType.measurement:
-            # Set the style-space for measurments.
-            color_err = "#333333"
-            labelbar = "Starting..."
-            self.ControlsWin.ui1.infobar.setText(
-                "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-                    color_err, labelbar
+        try:
+            # Set the number of plots to display for multiplex devices based on the number of devices connected.
+            self.set_multi_mode()
+            
+            if self._get_source() == OperationType.measurement:
+                # Set the style-space for measurments.
+                color_err = "#333333"
+                labelbar = "Starting..."
+                self.ControlsWin.ui1.infobar.setText(
+                    "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                        color_err, labelbar
+                    )
                 )
-            )
-            self.ControlsWin.ui1._update_progress_text()
-            self.ControlsWin.ui1.run_progress_bar.repaint()
+                self.ControlsWin.ui1._update_progress_text()
+                # Run progress repaint can stay, but it won't affect the frozen PlotsWin
+                self.ControlsWin.ui1.run_progress_bar.repaint()
+        finally:
+            # 2. Re-enable UI repaints to render the newly configured layout seamlessly
+            self.PlotsWin.setUpdatesEnabled(True)
 
         # Start worker thread.
         worker_check = self.worker.start()
@@ -2422,31 +2436,51 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.tool_Reset.setEnabled(enabled)
         self.ControlsWin.ui1.tool_TempControl.setEnabled(enable_temp)
         # self.ControlsWin.ui1.tool_Advanced.setEnabled(enabled)
-
-        # For more details on "bug in PyQt under macOS"... http://stackoverflow.com/a/60074600
-        # required due to bug in PyQt under macOS
-        self.ControlsWin.ui1.pButton_Start.repaint()
-        # required due to bug in PyQt under macOS
-        self.ControlsWin.ui1.pButton_Stop.repaint()
-
-    def _show_calibration_plot_overlay(self) -> None:
-        """Creates and embeds a per-channel progress overlay into the primary
-        Resonance Frequency / Dissipation plots (``_plt2_arr``).
-
-        Any previously created overlays are torn down before new ones are
-        constructed, making the method safe to call on repeated Initialize
-        attempts within the same session.
+        if Architecture.get_os() == OSType.macosx:
+            self.ControlsWin.ui1.pButton_Start.repaint()
+            self.ControlsWin.ui1.pButton_Stop.repaint()
+        else:
+            self.ControlsWin.ui1.pButton_Start.update()
+            self.ControlsWin.ui1.pButton_Stop.update()
+            
+    def _remove_welcome_text(self) -> None:
+        """Removes the welcome TextItems from the Resonance Frequency / Dissipation
+        plot. Safe to call even if the items were never added or have already been
+        removed.
         """
+        target = self._plt2_arr[1] if self._plt2_arr[1] is not None else self._plt2_arr[0]
+        if target is None:
+            return
+        for attr in ("_text1", "_text2", "_text3"):
+            item = getattr(self, attr, None)
+            if item is not None:
+                try:
+                    target.removeItem(item)
+                except Exception:
+                    pass
+    def _show_calibration_plot_overlay(self) -> None:
         self._hide_calibration_plot_overlay()
+        self._remove_welcome_text() 
 
         for i, plt2 in enumerate(self._plt2_arr):
             if plt2 is None:
                 continue
+
+            vb = plt2.getViewBox()
+
+            # ── Dimming rect (covers welcome text and grays the empty plot) ──
+            dim_rect = QtWidgets.QGraphicsRectItem()
+            dim_rect.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 200)))
+            dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+            dim_rect.setParentItem(plt2.graphicsItem())
+            dim_rect.setZValue(999)
+
+            # ── Progress container ───────────────────────────────────────────
             container = QtWidgets.QWidget()
-            container.setFixedSize(380, 62)
+            container.setFixedSize(340, 72)
             container.setStyleSheet(
                 "QWidget {"
-                "  background: rgba(255, 255, 255, 230);"
+                "  background: rgba(255, 255, 255, 0);"
                 "}"
                 "QLabel {"
                 "  background: transparent;"
@@ -2471,6 +2505,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             status_label = QtWidgets.QLabel("Starting\u2026")
             status_label.setAlignment(QtCore.Qt.AlignCenter)
+            status_label.setWordWrap(True)  # prevents clipping on long strings
 
             progress_bar = QtWidgets.QProgressBar()
             progress_bar.setRange(0, 100)
@@ -2481,16 +2516,22 @@ class MainWindow(QtWidgets.QMainWindow):
             layout.addWidget(status_label)
             layout.addWidget(progress_bar)
 
-            #  Embed into the plot scene
             proxy = QtWidgets.QGraphicsProxyWidget()
             proxy.setWidget(container)
             proxy.setParentItem(plt2.graphicsItem())
             proxy.setZValue(1000)
 
-            def _center_in_viewbox(p=proxy, plot=plt2) -> None:
+            # ── Geometry sync ────────────────────────────────────────────────
+            # Use 100 ms instead of 0 ms - the GraphicsLayoutWidget hasn't
+            # completed its layout pass at calibration start (no data in the
+            # ViewBox yet), so singleShot(0) reads an unsettled bounding rect.
+            def _center(p=proxy, plot=plt2, dr=dim_rect) -> None:
                 try:
-                    vb = plot.getViewBox()
-                    vb_rect = vb.mapRectToItem(plot.graphicsItem(), vb.boundingRect())
+                    _vb = plot.getViewBox()
+                    vb_rect = _vb.mapRectToItem(plot.graphicsItem(), _vb.boundingRect())
+                    # Stretch dim rect over the full data canvas
+                    dr.setRect(vb_rect)
+                    # Center the progress container
                     pw = p.boundingRect().width()
                     ph = p.boundingRect().height()
                     p.setPos(
@@ -2500,27 +2541,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 except RuntimeError:
                     pass
 
-            QtCore.QTimer.singleShot(0, _center_in_viewbox)
-            self._calib_overlay_items[i] = (proxy, progress_bar, status_label)
+            QtCore.QTimer.singleShot(100, _center)
+            self._calib_overlay_items[i] = (proxy, dim_rect, progress_bar, status_label)
 
     def _hide_calibration_plot_overlay(self) -> None:
-        """Removes all active per-channel calibration overlay widgets from
-        their parent plot scenes and resets ``_calib_overlay_items`` to all-None.
-
-        Safe to call even when no overlays exist (e.g., on the very first
-        Initialize or after a prior teardown).
-        """
         for i, overlay in enumerate(self._calib_overlay_items):
             if overlay is None:
                 continue
-            proxy, _qbar, _lbl = overlay
-            try:
-                proxy.setParentItem(None)
-                scene = proxy.scene()
-                if scene is not None:
-                    scene.removeItem(proxy)
-            except RuntimeError:
-                pass
+            proxy, dim_rect, _qbar, _lbl = overlay  # 4-tuple now
+            for item in (proxy, dim_rect):
+                try:
+                    item.setParentItem(None)
+                    scene = item.scene()
+                    if scene is not None:
+                        scene.removeItem(item)
+                except RuntimeError:
+                    pass
             self._calib_overlay_items[i] = None
 
     ###########################################################################
@@ -2970,15 +3006,29 @@ class MainWindow(QtWidgets.QMainWindow):
         Sets the number of multiplex plots and clears and redraws current plots
         with the correct plot count.  Exceptions are logged as errors and returned to the
         main ui window.
+
+        If the requested plot count matches the current count and plots have already
+        been built, this is a no-op (no teardown/rebuild). Without this guard, every
+        call to ``start()`` re-runs ``_configure_plot()``, which recreates every
+        ``PlotItem``, ``AxisItem``, and ``ViewBox`` -- the dominant source of UI jitter
+        when cycling Initialize / Run / Reset.
         """
         try:
-            self.multiplex_plots = max(
+            new_count = max(
                 1, min(4, 1 + self.ControlsWin.ui1.cBox_MultiMode.currentIndex())
             )
+            current_count = getattr(self, "multiplex_plots", None)
+            plots_already_built = any(p is not None for p in self._plt0_arr) or any(
+                p is not None for p in self._plt2_arr
+            )
+            if new_count == current_count and plots_already_built:
+                return
+
+            self.multiplex_plots = new_count
             self.PlotsWin.ui2.plt.clear()
             self.PlotsWin.ui2.pltB.clear()
-            self.clear()  # erase any saved data shown on plots
-            self._configure_plot()  # re-draw plots with new count
+            self.clear() 
+            self._configure_plot() 
         except Exception as e:
             Log.e(tag=TAG, msg="Unable to set count of multiplex plots.")
             Log.e(tag=TAG, msg=f"Details: {str(e)}")
@@ -3838,19 +3888,21 @@ class MainWindow(QtWidgets.QMainWindow):
             "<font color=#0000ff> Infobar </font>"
             "<font color={color}>{bar}</font>".format(color=color_err, bar=label_bar)
         )
-
+    
     def _update_calibration_ui(self) -> None:
         """Manages UI state transitions during device calibration.
 
         This method handles the synchronization between the background calibration
-        process and the user interface. It manages a modal progress dialog,
+        process and the user interface. It manages the in-plot progress overlay,
         evaluates buffer data for success or error conditions, and updates status
-        indicators with color-coded feedback.
+        indicators with color-coded feedback. All state messages - including
+        warnings and errors - are propagated directly into the plot overlay.
         """
-        # Calibration progress dialog handling
+        # Create overlay on first tick
         if self._calib_overlay_items[0] is None:
             self._show_calibration_plot_overlay()
             QtWidgets.QApplication.processEvents()
+
         stop_flag = 0
         self.ControlsWin.ui1.pButton_Stop.setEnabled(False)
         phase = 1 if self.worker.get_value1_buffer(0).any() else 0
@@ -3858,9 +3910,13 @@ class MainWindow(QtWidgets.QMainWindow):
         data_temperature = self.worker.get_d3_buffer(0)
 
         # Default UI state (Processing)
-        label_status, color_err = "Calibration Processing", "#333333"
-        label_bar = "The operation will take a few seconds to complete… please wait…"
+        label_status = "Calibration Processing"
+        label_bar = "The operation will take a few seconds to complete\u2026 please wait\u2026"
+        color_err = "#333333"
         css_style = Constants._CSS_YELLOW
+        overlay_bar_color = "#2E9BDA"
+        overlay_label_color = "#333333"
+        is_warning = False
 
         if not self.worker.is_running():
             stop_flag = 1
@@ -3870,89 +3926,121 @@ class MainWindow(QtWidgets.QMainWindow):
         if on_sample < Constants.calibration_default_samples:
             self._completed = (on_sample / Constants.calibration_default_samples) * 100
 
-        # Determine calibration state and compress repetitive assignments
+        # Determine calibration state
         time_temp_err = time_temperature[0] == 1
         temperature_err = data_temperature[0] == 1
-        is_warning = False
 
-        # TODO: Label bars need to be propogated to the latest iteration of the calibration dialog
-        # instead of to the infobar which has been deprecated.
         if phase == 0 and temperature_err:
-            label_bar = "Initialize Warning: empty buffer! Please repeat Initialize after disconnecting/reconnecting Device!"
+            label_bar = (
+                "Warning: empty buffer! "
+                "Please repeat Initialize after disconnecting/reconnecting the device."
+            )
             is_warning = True
         elif phase == 0 and time_temp_err:
-            label_bar = "Initialize Warning: empty buffer/ValueError! Please repeat Initialize after disconnecting/reconnecting Device!"
+            label_bar = (
+                "Warning: empty buffer / ValueError! "
+                "Please repeat Initialize after disconnecting/reconnecting the device."
+            )
             is_warning = True
         elif phase != 0:
             if not time_temp_err and not temperature_err:
-                label_status, color_err, css_style = (
-                    "Calibration Success",
-                    "#008000",
-                    Constants._CSS_GREEN,
-                )
-                label_bar = 'Initialize Success for baseline correction! Ready to measure. Press "Start" then apply drop.'
+                label_status = "Calibration Success"
+                label_bar = 'Baseline correction complete. Ready to measure. Press \u201cStart\u201d then apply drop.'
+                color_err = "#008000"
+                css_style = Constants._CSS_GREEN
+                overlay_bar_color = "#2E9BDA"
+                overlay_label_color = "#008000"
                 stop_flag = 1
             elif time_temp_err:
-                label_bar = "Initialize Warning: ValueError or generic error during signal acquisition. Please repeat the Initialize."
+                label_bar = (
+                    "Warning: ValueError or generic error during signal acquisition. "
+                    "Please repeat the Initialize."
+                )
                 is_warning = True
             elif temperature_err:
-                label_bar = "Initialize Warning: unable to identify fundamental peak or apply peak detection algorithm. Please repeat the Initialize!"
+                label_bar = (
+                    "Warning: unable to identify fundamental peak or apply peak detection. "
+                    "Please repeat the Initialize."
+                )
                 is_warning = True
 
         if is_warning:
-            label_status, color_err, css_style = (
-                "Calibration Warning",
-                "#ff0000",
-                Constants._CSS_RED,
-            )
+            label_status = "Calibration Warning"
+            color_err = "#ff0000"
+            css_style = Constants._CSS_RED
+            overlay_bar_color = "#DA2E2E"
+            overlay_label_color = "#cc0000"
             stop_flag = 1
 
+        # ── Side-panel UI ────────────────────────────────────────────────────
         self.ControlsWin.ui1.infostatus.setStyleSheet(css_style)
+        self.ControlsWin.ui1.infostatus.setText(
+            f"<font color=#333333> Program Status </font>{label_status}"
+        )
+        self.ControlsWin.ui1.infobar.setText(
+            f"<font color=#0000ff> Infobar </font>"
+            f"<font color={color_err}>{label_bar}</font>"
+        )
 
-        # Update Progress Values
-        progress_val = 0 if stop_flag else int(self._completed + 1)
-        self.ControlsWin.ui1.run_progress_bar.setValue(progress_val)
-
-        # Update UI Text labels
         layout_info_win = self.InfoWin.ui3
         layout_info_win.l6a.setText("<font color=#0000ff>  Temperature </font>not available")
         layout_info_win.l6.setText("<font color=#0000ff>  Dissipation </font>not available")
         layout_info_win.l7.setText("<font color=#0000ff>  Resonance Frequency </font>not available")
 
-        self.ControlsWin.ui1.infostatus.setText(
-            f"<font color=#333333> Program Status </font>{label_status}"
-        )
-        self.ControlsWin.ui1.infobar.setText(
-            f"<font color=#0000ff> Infobar </font><font color={color_err}>{label_bar}</font>"
-        )
+        # Progress bar value (hold at 0 on terminal states so bar doesn't jump to 100)
+        progress_val = 0 if stop_flag else int(self._completed + 1)
+        self.ControlsWin.ui1.run_progress_bar.setValue(progress_val)
 
-        # Update and conditionally close Dialog
+        # ── In-plot overlay ──────────────────────────────────────────────────
         for i, overlay in enumerate(self._calib_overlay_items):
             if overlay is None:
                 continue
-            _proxy, qbar, lbl = overlay
-            qbar.setValue(progress_val)
-            lbl.setText(f"{label_status} — {label_bar}", color=(80, 80, 80))
+            _proxy, _dim_rect, _qbar, _lbl = overlay
 
+            _qbar.setValue(progress_val)
+
+            # Recolor the progress bar chunk to reflect the current state
+            _qbar.setStyleSheet(
+                "QProgressBar {"
+                "  border: none;"
+                "  border-radius: 3px;"
+                "  background: #e8f4fb;"
+                "}"
+                f"QProgressBar::chunk {{"
+                f"  background: {overlay_bar_color};"
+                "  border-radius: 3px;"
+                "}"
+            )
+
+            # Two-line label: bold status on top, detail below
+            _lbl.setText(
+                f"<b>{label_status}</b><br/>"
+                f"<span style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</span>"
+            )
+            _lbl.setTextFormat(QtCore.Qt.RichText)
+
+        # Tear down
         if stop_flag:
             self.stop_flag += 1
             if isinstance(self.worker._port, str) or self.stop_flag >= len(self.worker._port):
                 self._timer_plot.stop()
                 self._enable_ui(True)
                 self.worker.stop()
-                for i, overlay in enumerate(self._calib_overlay_items):
-                    if overlay is None:
-                        continue
-                    _proxy, qbar, lbl = overlay
-                    try:
-                        lbl.setText("")
-                        _proxy.setVisible(False)
-                        _proxy.setParentItem(None)
-                        self._plt2_arr[i].scene().removeItem(_proxy)
-                    except Exception:
-                        pass
-                    self._calib_overlay_items[i] = None
 
+                if is_warning:
+                    # Leave the error overlay on the plot indefinitely.
+                    # It will be torn down by the next call to
+                    # _show_calibration_plot_overlay when Initialize is pressed again.
+                    pass
+                else:
+                    # Success — show the final state briefly, then restore the
+                    # welcome text so the plot is ready for the next operation.
+                    def _on_success_clear():
+                        self._hide_calibration_plot_overlay()
+                        self._annotate_welcome_text()
+
+                    QtCore.QTimer.singleShot(1500, _on_success_clear)
+                    
     def _update_fill_classifier(
         self,
         data_resonance_frequency: np.ndarray,
@@ -5012,6 +5100,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
 
+        # Block signals to prevent unwanted triggers during refresh
+        self.ControlsWin.ui1.cBox_Port.blockSignals(True)
+
         # Clears boxes before adding new
         self.ControlsWin.ui1.cBox_Port.clear()
 
@@ -5023,7 +5114,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 "#333333", "Searching for devices... please wait..."
             )
         )
-        self.ControlsWin.ui1.infobar.repaint()
+        if Architecture.get_os() == OSType.macosx:
+            self.ControlsWin.ui1.infobar.repaint()
+        else:
+            self.ControlsWin.ui1.infobar.update()
 
         ports = self.worker.get_source_ports(source)
 
@@ -5036,10 +5130,22 @@ class MainWindow(QtWidgets.QMainWindow):
         device_list = FileStorage.DEV_get_device_list()
         device_ports = []
         dev_pids = []
+        # Cache results of Discovery().ping() and Discovery().doDiscover()
+        _now = time.monotonic() if hasattr(time, "monotonic") else time.time()
+        _DISCOVER_TTL_S = 10.0
+        _last_discover = getattr(self, "_last_full_discover_ts", 0.0)
+        _use_discover_cache = (_now - _last_discover) < _DISCOVER_TTL_S
+        _ping_cache = getattr(self, "_ping_cache", {})  # {ip: (ts, result)}
         for i, dev_name in device_list:
             dev_info = FileStorage.DEV_info_get(i, dev_name)
             if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
-                net_exists = Discovery().ping(dev_info["IP"])
+                _ip = dev_info["IP"]
+                _cached = _ping_cache.get(_ip)
+                if _cached is not None and (_now - _cached[0]) < _DISCOVER_TTL_S:
+                    net_exists = _cached[1]
+                else:
+                    net_exists = Discovery().ping(_ip)
+                    _ping_cache[_ip] = (_now, net_exists)
             if "NAME" in dev_info and "PORT" in dev_info:
                 try:
                     device_ports.append(dev_info["PORT"])
@@ -5086,10 +5192,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 ret = self.fwUpdater.run(self, self.ReadyToShow)
                 if ret == True or ret >= 0:  # not a failed check
                     Log.d("Device info queried. Waiting to refresh ports on next call.")
+                    # Ensure the combo box signals are re-enabled before the
+                    # early return; the recursive _refresh_ports() call will
+                    # re-block them itself.
+                    self.ControlsWin.ui1.cBox_Port.blockSignals(False)
                     return  # fwUpdater.run() calls _refresh_ports() when devinfo written, stop stop here
                     # NOTE: Each subsequent call to _refresh_ports() will parse one pending device info.
 
-        for net_dev in Discovery().doDiscover(full_query=True):
+        if _use_discover_cache and hasattr(self, "_cached_net_devs"):
+            _net_devs = self._cached_net_devs
+        else:
+            _net_devs = list(Discovery().doDiscover(full_query=True))
+            self._cached_net_devs = _net_devs
+            self._last_full_discover_ts = _now
+        self._ping_cache = _ping_cache
+
+        for net_dev in _net_devs:
             [build, version, date, hw, ip, mac, usb, uid] = net_dev
             found_new = True
             found_exist = False
@@ -5172,6 +5290,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if common_port != "":
             Log.d(f"found pre-selected port = {common_port.split(':')[0]}")
             selected_port = common_port
+
+        # Unblock signals before setCurrentIndex so the final port-change
+        # notification propagates exactly once (instead of once per addItem
+        # during the repopulate loop above).
+        self.ControlsWin.ui1.cBox_Port.blockSignals(False)
 
         if selected_port in ports:
             i = self.ControlsWin.ui1.cBox_Port.findData(selected_port)
@@ -5319,16 +5442,35 @@ class MainWindow(QtWidgets.QMainWindow):
     # Cleans history plot
     ###########################################################################
     def clear(self):
-        elems = self._plt0_arr + [self._plt1] + self._plt2_arr + self._plt3_arr + [self._plt4]
-        for e in elems:
-            if e != None:
-                e.clear()
-                e.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
-                e.setXRange(min=0, max=1)
-                e.setYRange(min=0, max=1)
-        if self._plt2_arr[0] != None:
-            self._annotate_welcome_text()
-        self.ControlsWin.ui1.run_progress_bar.setValue(0)
+        # Batch plot mutations behind setUpdatesEnabled(False/True) on the parent
+        # graphics widgets. Without this, each setLimits/setXRange/setYRange call
+        # triggers its own scene update, producing visible flicker when Reset or
+        # Start re-initializes plots. Updates are re-enabled in a finally block
+        # so an exception never leaves the PlotsWin permanently frozen.
+        plt_widget = getattr(self.PlotsWin.ui2, "plt", None)
+        pltB_widget = getattr(self.PlotsWin.ui2, "pltB", None)
+        if plt_widget is not None:
+            plt_widget.setUpdatesEnabled(False)
+        if pltB_widget is not None:
+            pltB_widget.setUpdatesEnabled(False)
+        try:
+            elems = (
+                self._plt0_arr + [self._plt1] + self._plt2_arr + self._plt3_arr + [self._plt4]
+            )
+            for e in elems:
+                if e != None:
+                    e.clear()
+                    e.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
+                    e.setXRange(min=0, max=1)
+                    e.setYRange(min=0, max=1)
+            if self._plt2_arr[0] != None:
+                self._annotate_welcome_text()
+            self.ControlsWin.ui1.run_progress_bar.setValue(0)
+        finally:
+            if plt_widget is not None:
+                plt_widget.setUpdatesEnabled(True)
+            if pltB_widget is not None:
+                pltB_widget.setUpdatesEnabled(True)
 
     ###########################################################################
     # Reference set/reset
