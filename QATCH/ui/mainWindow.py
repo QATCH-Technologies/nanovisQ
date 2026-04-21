@@ -2445,10 +2445,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.ui1.pButton_Stop.update()
 
     def _hide_calib_ready_text(self) -> None:
-        """Removes the post-calibration 'ready' TextItems from all plots.
+        """
+        Removes the post-calibration 'ready' TextItems from all plot widgets.
 
-        Safe to call even if items were never added or already removed.
-        Complements _hide_calibration_plot_overlay for the success-state path.
+        This method iterates through the stored text items, removes them from their 
+        respective plot views, and nullifies the references. It is designed to be 
+        idempotent and safe to call even if items have already been removed or 
+        were never initialized.
         """
         for i, rt in enumerate(self._calib_ready_text):
             if rt is None:
@@ -2462,9 +2465,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._calib_ready_text[i] = None
 
     def _remove_welcome_text(self) -> None:
-        """Removes the welcome TextItems from the Resonance Frequency / Dissipation
-        plot. Safe to call even if the items were never added or have already been
-        removed.
+        """
+        Removes the initial 'welcome' or instructional text items from the UI.
+
+        Targeted primarily at the Resonance Frequency and Dissipation plots, this 
+        cleans up the canvas to prepare for data visualization. It safely handles 
+        missing attributes or already-deleted items using a try-except block.
         """
         target = self._plt2_arr[1] if self._plt2_arr[1] is not None else self._plt2_arr[0]
         if target is None:
@@ -2478,6 +2484,17 @@ class MainWindow(QtWidgets.QMainWindow):
                     pass
 
     def _show_calibration_plot_overlay(self) -> None:
+        """
+        Initializes and displays a modal-like progress overlay on the plots.
+
+        This method:
+        1. Clears any existing overlays or welcome text.
+        2. Creates a semi-transparent dimming rectangle (QGraphicsRectItem).
+        3. Injects a QProgressBar and status label via a QGraphicsProxyWidget.
+        4. Establishes a dynamic centering callback that adjusts the overlay 
+           position whenever the plot view is resized.
+        5. Stores the UI components in `_calib_overlay_items` for future updates.
+        """
         self._hide_calibration_plot_overlay()
         self._remove_welcome_text()
 
@@ -2487,14 +2504,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
             vb = plt2.getViewBox()
 
-            # ── Dimming rect (covers welcome text and grays the empty plot) ──
+            # Dimming rect
             dim_rect = QtWidgets.QGraphicsRectItem()
             dim_rect.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 200)))
             dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
             dim_rect.setParentItem(plt2.graphicsItem())
             dim_rect.setZValue(999)
             dim_rect.setVisible(False)
-            # ── Progress container ───────────────────────────────────────────
+
+            # Progress container
             container = QtWidgets.QWidget()
             container.setFixedSize(340, 72)
             container.setStyleSheet(
@@ -2540,31 +2558,25 @@ class MainWindow(QtWidgets.QMainWindow):
             proxy.setParentItem(plt2.graphicsItem())
             proxy.setZValue(1000)
             proxy.setVisible(False)
-            # ── Geometry sync ────────────────────────────────────────────────
+
+            # Geometry sync
             def _make_center_callback(plot_obj, proxy_obj, dim_obj):
                 def _center_callback(*args):
                     try:
                         _vb = plot_obj.getViewBox()
                         vb_rect = _vb.mapRectToItem(plot_obj.graphicsItem(), _vb.boundingRect())
-                        
-                        # 1. Resize dimming rectangle
                         dim_obj.setRect(vb_rect)
-                        
-                        # 2. Get proxy dimensions 
                         pw = proxy_obj.boundingRect().width()
                         ph = proxy_obj.boundingRect().height()
                         
-                        # Fallbacks just in case the proxy geometry is 0 during the first 100ms
                         if pw == 0: pw = 340
                         if ph == 0: ph = 72
 
-                        # 3. Center the proxy widget
                         proxy_obj.setPos(
                             vb_rect.x() + (vb_rect.width() - pw) / 2.0,
                             vb_rect.y() + (vb_rect.height() - ph) / 2.0,
                         )
                         
-                        # 4. Reveal
                         dim_obj.setVisible(True)
                         proxy_obj.setVisible(True)
                         
@@ -2584,10 +2596,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self._calib_overlay_items[i] = (proxy, dim_rect, progress_bar, status_label)
 
     def _hide_calibration_plot_overlay(self) -> None:
+        """
+        Tears down the calibration progress overlay and cleans up resources.
+
+        This method performs critical cleanup including:
+        1. Disconnecting the 'sigResized' signal to prevent memory leaks or 
+           callbacks on deleted objects.
+        2. Removing the proxy widgets and dimming rectangles from the graphics scene.
+        3. Resetting the internal overlay tracking list to its default state.
+        """
         for i, overlay in enumerate(self._calib_overlay_items):
             if overlay is None:
                 continue
-            proxy, dim_rect, _qbar, _lbl = overlay 
+            proxy, dim_rect, _, _ = overlay 
             
             plt2 = self._plt2_arr[i] if i < len(self._plt2_arr) else None
             if plt2 is not None and hasattr(proxy, '_resize_cb'):
@@ -3052,12 +3073,6 @@ class MainWindow(QtWidgets.QMainWindow):
         Sets the number of multiplex plots and clears and redraws current plots
         with the correct plot count.  Exceptions are logged as errors and returned to the
         main ui window.
-
-        If the requested plot count matches the current count and plots have already
-        been built, this is a no-op (no teardown/rebuild). Without this guard, every
-        call to ``start()`` re-runs ``_configure_plot()``, which recreates every
-        ``PlotItem``, ``AxisItem``, and ``ViewBox`` -- the dominant source of UI jitter
-        when cycling Initialize / Run / Reset.
         """
         try:
             new_count = max(1, min(4, 1 + self.ControlsWin.ui1.cBox_MultiMode.currentIndex()))
@@ -3470,8 +3485,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # Set plot background color to white.
         self.PlotsWin.ui2.plt.setBackground(background="#FFFFFF")
         self.PlotsWin.ui2.pltB.setBackground(background="#FFFFFF")
-
-        # Grabbed from the original plot titles, but modified to include multiplex suffixes if applicable.
         title_amplitude = "Plot: Amplitude"
         title_resonance_dissipation = "Plot: Resonance Frequency / Dissipation"
         title_temperature = "Plot: Temperature"
@@ -3648,9 +3661,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
             vb3 = p3  # p3 is the overlay ViewBox
 
-            # Duck-type check: verify both objects have the signals and
-            # methods we need, rather than relying on isinstance which can
-            # fail across pyqtgraph import paths or version differences.
             can_wire = (
                 vb2 is not None
                 and vb3 is not None
@@ -3672,14 +3682,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     except (AttributeError, RuntimeError):
                         pass
 
-                # Sync geometry by directly executing so `sceneBoundingRect()` reads the
-                # correct `rect` sync at signal time.
                 def link_geometry(sender=None, vb_main=vb2, vb_overlay=vb3):
                     try:
                         vb_overlay.setGeometry(vb_main.sceneBoundingRect())
                         vb_overlay.linkedViewChanged(vb_main, vb_overlay.XAxis)
                     except RuntimeError:
-                        pass  # Object deleted during a restart; safely ignore
+                        pass 
 
                 # X-axis pan/zoom sync
                 def sync_x_axis(sender, new_range, vb_overlay=vb3):
@@ -3941,13 +3949,23 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _update_calibration_ui(self) -> None:
-        """Manages UI state transitions during device calibration.
+        """
+        Manages the UI state transitions and visual feedback during calibration.
 
-        This method handles the synchronization between the background calibration
-        process and the user interface. It manages the in-plot progress overlay,
-        evaluates buffer data for success or error conditions, and updates status
-        indicators with color-coded feedback. All state messages - including
-        warnings and errors - are propagated directly into the plot overlay.
+        This method acts as a controller that:
+        1.  Ensures the plot-injected progress bars are active on the first call.
+        2.  Evaluates the data buffers and worker status to identify the current calibration 
+            phase (Processing, Success, or Warning).
+        3.  Translates the current sample count into a percentage for both the global 
+            and plot-specific progress bars.
+        4.  Dynamically updates CSS colors and text content for status labels and 
+            progress bar 'chunks' based on success or error conditions.
+        5.  If a stop condition is met (completion or fatal error), it stops the timers, 
+            cleans up the worker thread, and re-enables the main UI controls.
+
+        Note:
+            This method relies on `QtWidgets.QApplication.processEvents()` for the 
+            initial overlay render to ensure the UI remains responsive during setup.
         """
         # Create overlay on first tick
         if self._calib_overlay_items[0] is None:
@@ -3960,7 +3978,7 @@ class MainWindow(QtWidgets.QMainWindow):
         time_temperature = self.worker.get_t3_buffer(0)
         data_temperature = self.worker.get_d3_buffer(0)
 
-        # Default UI state (Processing)
+        # Default UI state
         label_status = "Calibration Processing"
         label_bar = "The operation will take a few seconds to complete\u2026 please wait\u2026"
         color_err = "#333333"
@@ -4023,7 +4041,7 @@ class MainWindow(QtWidgets.QMainWindow):
             overlay_label_color = "#cc0000"
             stop_flag = 1
 
-        # ── Side-panel UI ────────────────────────────────────────────────────
+        # Side-panel UI
         self.ControlsWin.ui1.infostatus.setStyleSheet(css_style)
         self.ControlsWin.ui1.infostatus.setText(
             f"<font color=#333333> Program Status </font>{label_status}"
@@ -4042,14 +4060,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.run_progress_bar.setValue(progress_val)
 
         # Progress bar value — hold at 100 on terminal states so bar stays full
-        progress_val = 100 if stop_flag else int(self._completed + 1)  # ← was: 0 if stop_flag
+        progress_val = 100 if stop_flag else int(self._completed + 1)
         self.ControlsWin.ui1.run_progress_bar.setValue(progress_val)
 
-        # ── In-plot overlay ──────────────────────────────────────────────────
-        for i, overlay in enumerate(self._calib_overlay_items):
+        for _, overlay in enumerate(self._calib_overlay_items):
             if overlay is None:
                 continue
-            _proxy, _dim_rect, _qbar, _lbl = overlay
+            _, _, _qbar, _lbl = overlay
 
             _qbar.setValue(progress_val)
 
@@ -4065,48 +4082,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 "  border-radius: 3px;"
                 "}"
             )
-
-            # Two-line label: bold status on top, detail below
             _lbl.setText(
                 f"<b>{label_status}</b><br/>"
                 f"<span style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</span>"
             )
             _lbl.setTextFormat(QtCore.Qt.RichText)
 
-        # ── Tear down ────────────────────────────────────────────────────────
+        # Tear down
         if stop_flag:
             self.stop_flag += 1
             if isinstance(self.worker._port, str) or self.stop_flag >= len(self.worker._port):
                 self._timer_plot.stop()
                 self._enable_ui(True)
                 self.worker.stop()
-
-                if is_warning:
-                    # Leave the error overlay (red, full bar) indefinitely.
-                    # Torn down by _show_calibration_plot_overlay on next Initialize,
-                    # or by _hide_calibration_plot_overlay when Start is pressed.
-                    pass
-                else:
-                    # Success — after a brief pause, dissolve the overlay widget but
-                    # persist the "ready" message as a plain plot TextItem so it
-                    # stays visible until the user presses Start.
-                    def _on_success_transition():
-                        self._hide_calibration_plot_overlay()
-                        for i, plt2 in enumerate(self._plt2_arr):
-                            if plt2 is None:
-                                continue
-                            ready_text = pg.TextItem("", anchor=(0.5, 0.5))
-                            ready_text.setHtml(
-                                "<span style='font-size:9pt; color:#008000;'>"
-                                "Ready to measure. "
-                                "Press \u201cStart\u201d then apply drop."
-                                "</span>"
-                            )
-                            ready_text.setPos(0.5, 0.5)
-                            plt2.addItem(ready_text, ignoreBounds=True)
-                            self._calib_ready_text[i] = ready_text
-
-                    QtCore.QTimer.singleShot(1500, _on_success_transition)
 
     def _update_fill_classifier(
         self,
