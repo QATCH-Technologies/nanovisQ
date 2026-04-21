@@ -4203,7 +4203,8 @@ void pogo_button_pressed(bool init)
     int dir2 = (end2 > start2) ? 1 : (end2 < start2) ? -1
                                                      : 0;
 
-    if (init || pogo_sw_exists) {
+    if (init || pogo_sw_exists)
+    {
       uint8_t distance = abs(start1 - end1);
       start1 = init ? start1 : pogo_switch_pos;
       end1 = dir1 ? start1 + distance : 0;
