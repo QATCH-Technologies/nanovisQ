@@ -2227,13 +2227,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.ui1.run_progress_bar.repaint()
 
                 if _rebuilt:
-                    # Task (jitter fix): the freshly-rebuilt plots have no dim
-                    # overlays at all - trying to fade "out" of nothing is why
-                    # the previous fix had no visible transition. Snap dim IN
-                    # instantly, then animate it OUT. The rebuild flash is
-                    # already buffered by setUpdatesEnabled(False) up the stack,
-                    # so the user just sees a smooth come-into-focus as the
-                    # first samples arrive.
+                    # Always snap the measurement plots to the dim state, then
+                    # animate them out. The `_rebuilt` detection below is based on
+                    # `id(self._plt2_arr[0])` which is unreliable — CPython
+                    # recycles addresses after `plt.clear()` + `_configure_plot()`,
+                    # and rebuilds can also happen BEFORE `start()` runs (e.g. a
+                    # source-change fired by the Measurement combo-box selection
+                    # earlier in the event loop). Running snap-dim unconditionally
+                    # is cheap: for plots that are already dim at opacity 1.0 the
+                    # animator's `fade_to(1.0, 0ms)` short-circuits via its
+                    # < 1e-4 delta check and no flicker is visible. For plots
+                    # whose overlays were torn down with the previous PlotItem
+                    # generation, `_apply_plot_dim` evicts the stale entry and
+                    # builds a fresh rect at opacity 1.0 before the fade runs —
+                    # which is the only thing that makes the fade-out visible.
                     self._set_plots_dimmed(
                         amplitude=True, rf_diss=True, temperature=True, animate=False
                     )
@@ -2791,22 +2798,63 @@ class MainWindow(QtWidgets.QMainWindow):
         so toggling back to dim reuses the existing rect and avoids reconnect/
         reparent churn on every transition.
 
+        Stale-entry handling: `_dim_overlays` is keyed by `id(plot_item)`, and
+        CPython recycles addresses. After `plt.clear()` + `_configure_plot()`
+        rebuilds, a freshly allocated PlotItem can land at the same address a
+        just-destroyed one vacated, so a cached entry can point at a dead
+        QGraphicsRectItem (its parent PlotItem was GC'd and Qt tore down the
+        children). We detect that by probing `scene()`; a deleted wrapper
+        raises `RuntimeError`, and an orphaned one returns `None`. Either case
+        means "pretend there's no entry" — evict and fall through.
+
         Args:
             plot_item: PyQtGraph PlotItem to dim/undim. No-op if None.
             dim:       True to fade the overlay in, False to fade it out.
-            animate:   When False, snaps to the target opacity instantly. Useful
-                    when the application state requires a dim without a fade
-                    (e.g. cold start before the window is shown).
+            animate:   When False, snaps to the target opacity instantly.
         """
         if plot_item is None:
             return
         if not hasattr(self, "_dim_overlays"):
             self._dim_overlays = {}
 
+        # Guard against plot_item itself being a dead Qt wrapper (can happen
+        # on transitional frames mid-rebuild); bail cleanly rather than
+        # raising into the caller.
+        try:
+            gi = plot_item.graphicsItem()
+            vb = plot_item.getViewBox()
+        except (RuntimeError, AttributeError):
+            return
+        if gi is None or vb is None:
+            return
+
         key = id(plot_item)
         existing = self._dim_overlays.get(key)
         target_opacity = 1.0 if dim else 0.0
         duration = 300 if animate else 0
+
+        # Validate the cached entry is still backed by a live, scene-attached
+        # QGraphicsRectItem. If not, evict and proceed as if no entry existed.
+        if existing is not None:
+            cached_rect, cached_resize_cb, cached_animator = existing
+            stale = False
+            try:
+                if cached_rect.scene() is None:
+                    stale = True
+            except RuntimeError:
+                stale = True
+
+            if stale:
+                try:
+                    cached_animator.stop()
+                except RuntimeError:
+                    pass
+                try:
+                    vb.sigResized.disconnect(cached_resize_cb)
+                except (TypeError, RuntimeError):
+                    pass
+                del self._dim_overlays[key]
+                existing = None
 
         # Fast path: re-target an existing fade rather than creating a new rect.
         if existing is not None:
@@ -2818,16 +2866,20 @@ class MainWindow(QtWidgets.QMainWindow):
         if not dim:
             return
 
-        try:
-            vb = plot_item.getViewBox()
-        except Exception:
-            return
-
         dim_rect = QtWidgets.QGraphicsRectItem()
         dim_rect.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 200)))
         dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
-        dim_rect.setParentItem(plot_item.graphicsItem())
+        dim_rect.setParentItem(gi)
         dim_rect.setZValue(997)
+        # Size the rect synchronously so the first paint after
+        # setUpdatesEnabled(True) already shows a full-plot overlay rather
+        # than a zero-height strip (the 0.5-high initial_rect we saw in
+        # startup logs happens before layout settles; a singleShot(0)
+        # resize can still race with the fade on rebuild).
+        try:
+            dim_rect.setRect(vb.mapRectToItem(gi, vb.boundingRect()))
+        except Exception:
+            pass
         # Start invisible when animating so the fade is actually visible; snap
         # directly to the target when caller opted out of animation.
         dim_rect.setOpacity(0.0 if animate else target_opacity)
@@ -2835,9 +2887,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         def _resize_cb(*_args):
             try:
-                rect = vb.mapRectToItem(plot_item.graphicsItem(), vb.boundingRect())
+                rect = vb.mapRectToItem(gi, vb.boundingRect())
                 dim_rect.setRect(rect)
-            except Exception:
+            except (RuntimeError, Exception):
                 pass
 
         vb.sigResized.connect(_resize_cb)
