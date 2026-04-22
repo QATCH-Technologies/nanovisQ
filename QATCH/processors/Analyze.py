@@ -2807,6 +2807,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     "fill_classifier": os.path.join(
                         v6_base_path, "classifiers", "fill_classifier", "type_cls.pt"
                     ),
+                    "viscosity_classifier": os.path.join(
+                        v6_base_path, "classifiers", "visc_classifier", "visc_cls.pt"
+                    ),
                     "detectors": {
                         "init": os.path.join(
                             v6_base_path, "detectors", "init_detector", "init.pt"

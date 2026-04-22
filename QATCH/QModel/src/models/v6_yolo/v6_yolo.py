@@ -112,6 +112,64 @@ class QModelV6Config:
     PROG_COMPLETE: int = 100
 
 
+class QModelV6YOLO_ViscosityClassifier:
+    """
+    Handles the classification of the run viscosity (e.g., <50cP or >50cP).
+    Uses the same full run image logic as the Fill Classifier.
+    """
+
+    TAG = "[QModelV6YOLO_ViscosityClassifier]"
+
+    def __init__(self, model_path: str):
+        if not os.path.exists(model_path):
+            Log.e(self.TAG, f"Model not found at: {model_path}")
+            raise FileNotFoundError(f"Model not found at: {model_path}")
+        try:
+            os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+            Log.i(self.TAG, f"Loading Viscosity Classifier from {model_path}...")
+            self.model = YOLO(model_path)
+        except Exception as e:
+            Log.e(self.TAG, f"Failed to load YOLO model: {e}")
+            raise RuntimeError(f"Failed to load YOLO model: {e}")
+
+    def predict(
+        self, df: Optional[pd.DataFrame] = None, img_input: Optional[np.ndarray] = None
+    ) -> str:
+        """
+        Predicts viscosity class using either a dataframe or a pre-generated image.
+        Returns the raw YOLO string label.
+        """
+        if img_input is None:
+            if df is None or df.empty:
+                return "Unknown"
+            strip_height = QModelV6Config.FILL_GEN_H // 3
+            try:
+                img_high_res = QModelV6YOLO_DataProcessor.generate_fill_cls(
+                    df, img_h=strip_height, img_w=QModelV6Config.FILL_GEN_W
+                )
+                if img_high_res is None:
+                    return "Unknown"
+                img_input = cv2.resize(
+                    img_high_res,
+                    (QModelV6Config.FILL_INFERENCE_W, QModelV6Config.FILL_INFERENCE_H),
+                    interpolation=cv2.INTER_AREA,
+                )
+            except Exception as e:
+                Log.e(self.TAG, f"Error generating signal image: {e}")
+                return "Unknown"
+
+        try:
+            results = self.model(img_input, verbose=False)
+            if not results:
+                return "Unknown"
+
+            # Extract top prediction label
+            return results[0].names[results[0].probs.top1]
+        except Exception as e:
+            Log.e(self.TAG, f"Inference error: {e}")
+            return "Unknown"
+
+
 class QModelV6YOLO_FillClassifier:
     """
     Handles the classification of the run state (e.g., no_fill, initial_fill, 1ch, 2ch, 3ch).
@@ -148,7 +206,9 @@ class QModelV6YOLO_FillClassifier:
             Log.e(self.TAG, f"Failed to load YOLO model: {e}")
             raise RuntimeError(f"Failed to load YOLO model: {e}")
 
-    def predict(self, df: pd.DataFrame) -> int:
+    def predict(
+        self, df: Optional[pd.DataFrame] = None, img_input: Optional[np.ndarray] = None
+    ) -> int:
         """
         Generates a visual representation of the run data and classifies its fill state.
 
@@ -160,47 +220,39 @@ class QModelV6YOLO_FillClassifier:
 
         Args:
             df (pd.DataFrame): The raw sensor data to classify.
-
+            img_input (np.ndarray): The input image for classification.
         Returns:
             int: The number of channels to detect (0, 1, 2, or 3). Returns 0 on failure
             or if the classification result implies no channels (e.g., "no_fill").
         """
-        if df is None or df.empty:
-            Log.w(self.TAG, "Dataframe provided for prediction is empty.")
-            return 0
+        if img_input is None:
+            if df is None or df.empty:
+                Log.w(self.TAG, "Dataframe provided for prediction is empty.")
+                return 0
 
-        # Generate Image
-        # We divide the target GEN_H by 3 because the processor stacks 3 strips
-        strip_height = QModelV6Config.FILL_GEN_H // 3
+            # Generate Image
+            strip_height = QModelV6Config.FILL_GEN_H // 3
 
-        try:
-            img_high_res = QModelV6YOLO_DataProcessor.generate_fill_cls(
-                df, img_h=strip_height, img_w=QModelV6Config.FILL_GEN_W
+            try:
+                img_high_res = QModelV6YOLO_DataProcessor.generate_fill_cls(
+                    df, img_h=strip_height, img_w=QModelV6Config.FILL_GEN_W
+                )
+            except Exception as e:
+                Log.e(self.TAG, f"Error generating signal image: {e}")
+                return 0
+
+            if img_high_res is None:
+                Log.w(self.TAG, "Generated image is None.")
+                return 0
+
+            # Resize for Inference
+            img_input = cv2.resize(
+                img_high_res,
+                (QModelV6Config.FILL_INFERENCE_W, QModelV6Config.FILL_INFERENCE_H),
+                interpolation=cv2.INTER_AREA,
             )
-        except Exception as e:
-            Log.e(self.TAG, f"Error generating signal image: {e}")
-            return 0
 
-        if img_high_res is None:
-            Log.w(self.TAG, "Generated image is None.")
-            return 0
-
-        # Resize for Inference
-        img_input = cv2.resize(
-            img_high_res,
-            (QModelV6Config.FILL_INFERENCE_W, QModelV6Config.FILL_INFERENCE_H),
-            interpolation=cv2.INTER_AREA,
-        )
-        # # --- Debugging for live fill frames and type cls ---
-        # debug_dir = os.path.join(os.getcwd(), "debug_frames")
-        # os.makedirs(debug_dir, exist_ok=True)
-
-        # # Use nanoseconds to ensure unique filenames in a fast loop
-        # timestamp = time.time_ns()
-        # save_path = os.path.join(debug_dir, f"input_{timestamp}.png")
-
-        # cv2.imwrite(save_path, img_input)
-        # Inference
+        # --- The rest of your inference logic remains the same below this ---
         try:
             results = self.model(img_input, verbose=False)
             if not results:
@@ -380,6 +432,7 @@ class QModelV6YOLO:
         """
         self.model_assets = model_assets
         self._fill_classifier = None
+        self._visc_classifier = None
         self._detectors: Dict[str, Any] = {
             "init": None,
             "ch1": None,
@@ -387,6 +440,14 @@ class QModelV6YOLO:
             "ch3": None,
             "poi5_fine": None,  # Added for fine-tuning
         }
+
+    def _load_visc_cls(self) -> Any:
+        """Lazy loads the Viscosity Classifier model."""
+        if self._visc_classifier is None:
+            model_path = self.model_assets.get("viscosity_classifier")
+            if model_path:
+                self._visc_classifier = QModelV6YOLO_ViscosityClassifier(model_path)
+        return self._visc_classifier
 
     def _load_fill_cls(self) -> Any:
         """
@@ -661,17 +722,45 @@ class QModelV6YOLO:
 
             if master_df is None or master_df.empty:
                 raise ValueError("Preprocessing failed")
+            viscosity_label = "Unknown"
+            fill_cls = self._load_fill_cls()
+            visc_cls = self._load_visc_cls()
+
+            shared_img_input = None
+            # Only generate the expensive image if either classifier needs it
+            if num_channels is None or visc_cls is not None:
+                try:
+                    strip_height = QModelV6Config.FILL_GEN_H // 3
+                    img_high_res = QModelV6YOLO_DataProcessor.generate_fill_cls(
+                        master_df, img_h=strip_height, img_w=QModelV6Config.FILL_GEN_W
+                    )
+                    if img_high_res is not None:
+                        shared_img_input = cv2.resize(
+                            img_high_res,
+                            (QModelV6Config.FILL_INFERENCE_W, QModelV6Config.FILL_INFERENCE_H),
+                            interpolation=cv2.INTER_AREA,
+                        )
+                except Exception as e:
+                    Log.e(self.TAG, f"Error generating shared image for classifiers: {e}")
 
             if num_channels is None:
                 if progress_signal:
                     progress_signal.emit(30, "Determining Channel Count...")
-
-                fill_cls = self._load_fill_cls()
-                num_channels = int(fill_cls.predict(master_df)) if fill_cls else 3
+                # Pass the shared image instead of the DataFrame
+                num_channels = (
+                    int(fill_cls.predict(img_input=shared_img_input))
+                    if fill_cls and shared_img_input is not None
+                    else 3
+                )
 
             if num_channels == -1:
-                return self._get_default_predictions(), num_channels
+                return self._get_default_predictions(), num_channels, viscosity_label
 
+            if visc_cls and shared_img_input is not None:
+                if progress_signal:
+                    progress_signal.emit(35, "Estimating Viscosity...")
+                viscosity_label = visc_cls.predict(img_input=shared_img_input)
+            Log.i(f"Channel Count: {num_channels}, Viscosity Class: {viscosity_label}")
             final_results = {}
             current_df = master_df.copy()
             col_time = (
