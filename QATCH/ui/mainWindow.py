@@ -1516,9 +1516,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Configures specific elements of the PyQtGraph plots
         self._configure_plot()
-        QtCore.QTimer.singleShot(0, lambda: self._set_plots_dimmed(
-            amplitude=True, rf_diss=True, temperature=True, animate=True
-        ))
+        QtCore.QTimer.singleShot(
+            0,
+            lambda: self._set_plots_dimmed(
+                amplitude=True, rf_diss=True, temperature=True, animate=True
+            ),
+        )
         # Configures specific elements of the QTimers
         self._configure_timers()
 
@@ -1911,6 +1914,7 @@ class MainWindow(QtWidgets.QMainWindow):
         Returns:
             None to caller on error.
         """
+        Log.w(TAG, "[START-TRACE] enter start()")
         # Validate if a userprofile can perform the capture action.
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
@@ -2184,26 +2188,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self._enable_ui(True)
             return
 
-        # Set the number of plots to display for multiplex devices based on the number of devices connected.
+        Log.w(TAG, f"[START-TRACE] before try-block, source={self._get_source()}")
         self.PlotsWin.setUpdatesEnabled(False)
-
         try:
             # Capture plot identity so we can tell whether set_multi_mode()
             # actually rebuilt the plot items or hit its early-return path.
             # Only the rebuild case needs the dim-then-fade masking treatment;
             # a same-source Start (e.g. restart after Stop) would otherwise
             # get an unwanted dim blink over its existing curves.
-            _before_plt2_id = (
-                id(self._plt2_arr[0]) if self._plt2_arr[0] is not None else None
-            )
+            _before_plt2_id = id(self._plt2_arr[0]) if self._plt2_arr[0] is not None else None
 
             # Set the number of plots to display for multiplex devices based on the number of devices connected.
             self.set_multi_mode()
 
-            _rebuilt = (
-                self._plt2_arr[0] is not None
-                and id(self._plt2_arr[0]) != _before_plt2_id
-            )
+            _rebuilt = self._plt2_arr[0] is not None and id(self._plt2_arr[0]) != _before_plt2_id
 
             # Welcome/instructional copy is only meaningful in standby. On
             # rebuild, set_multi_mode() re-added it through clear() ->
@@ -2214,7 +2212,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._remove_welcome_text()
 
             if self._get_source() == OperationType.measurement:
-                # Set the style-space for measurments.
+                Log.w(TAG, "[START-TRACE] entered measurement branch")
                 color_err = "#333333"
                 labelbar = "Starting..."
                 self.ControlsWin.ui1.infobar.setText(
@@ -2226,33 +2224,33 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Run progress repaint can stay, but it won't affect the frozen PlotsWin
                 self.ControlsWin.ui1.run_progress_bar.repaint()
 
-                if _rebuilt:
-                    # Always snap the measurement plots to the dim state, then
-                    # animate them out. The `_rebuilt` detection below is based on
-                    # `id(self._plt2_arr[0])` which is unreliable — CPython
-                    # recycles addresses after `plt.clear()` + `_configure_plot()`,
-                    # and rebuilds can also happen BEFORE `start()` runs (e.g. a
-                    # source-change fired by the Measurement combo-box selection
-                    # earlier in the event loop). Running snap-dim unconditionally
-                    # is cheap: for plots that are already dim at opacity 1.0 the
-                    # animator's `fade_to(1.0, 0ms)` short-circuits via its
-                    # < 1e-4 delta check and no flicker is visible. For plots
-                    # whose overlays were torn down with the previous PlotItem
-                    # generation, `_apply_plot_dim` evicts the stale entry and
-                    # builds a fresh rect at opacity 1.0 before the fade runs —
-                    # which is the only thing that makes the fade-out visible.
-                    self._set_plots_dimmed(
-                        amplitude=True, rf_diss=True, temperature=True, animate=False
-                    )
-                    self._set_plots_dimmed(
+                # No branching on _rebuilt. Whether set_multi_mode rebuilt
+                # the plots IN THIS start() call is not a reliable signal,
+                # because the user's most common path (source change via the
+                # combo box) rebuilds plots BEFORE start() runs - the
+                # rebuild's dim overlays are cached under the orphaned old
+                # plots' ids, and the new plots in self._plt*_arr have no
+                # overlays when start() gets to them. An `else` branch that
+                # only issues dim=False snaps no-ops silently because the
+                # fast path finds no cached entry and `if not dim: return`
+                # bails.
+                #
+                # Snap-dim unconditionally. Behind the outer
+                # setUpdatesEnabled(False) it's invisible, and
+                # _apply_plot_dim creates a fresh dim_rect at opacity 1.0
+                # on the current plots. The deferred singleShot(0) then
+                # runs after start() returns to the event loop (past
+                # worker.start()'s subprocess-spawn block), so its timer
+                # ticks are not lost to main-thread blocking.
+                self._set_plots_dimmed(
+                    amplitude=True, rf_diss=True, temperature=True, animate=False
+                )
+                QtCore.QTimer.singleShot(
+                    0,
+                    lambda: self._set_plots_dimmed(
                         amplitude=False, rf_diss=False, temperature=False, animate=True
-                    )
-                else:
-                    # Same-source Start (typical: Stop -> Start again). Plots
-                    # were not rebuilt; just make sure nothing is dim.
-                    self._set_plots_dimmed(
-                        amplitude=False, rf_diss=False, temperature=False, animate=True
-                    )
+                    ),
+                )
             elif self._get_source() == OperationType.calibration:
                 # Task 1: dim instantly (no fade-in). The rebuild has already
                 # absorbed whatever prior state was on screen, and a fade-in
@@ -2260,11 +2258,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 # transition. Amp will fade back to bright via the success
                 # branch of _update_calibration_ui; RF/Dissipation picks up
                 # the calibration progress overlay on the next timer tick.
-                self._set_plots_dimmed(
-                    amplitude=True, temperature=True, animate=False
-                )
+                self._set_plots_dimmed(amplitude=True, temperature=True, animate=False)
         finally:
             self.PlotsWin.setUpdatesEnabled(True)
+        Log.w(TAG, "[START-TRACE] exited try/finally")
         # Start worker thread.
         worker_check = self.worker.start()
         if worker_check == 1:
@@ -2859,6 +2856,18 @@ class MainWindow(QtWidgets.QMainWindow):
         # Fast path: re-target an existing fade rather than creating a new rect.
         if existing is not None:
             _, _, animator = existing
+            try:
+                current_op = animator._item.opacity()
+                rect_sz = animator._item.rect()
+                in_scene = animator._item.scene() is not None
+            except RuntimeError:
+                current_op, rect_sz, in_scene = "DEAD", "DEAD", False
+            Log.w(
+                TAG,
+                f"[DIM] plot={id(plot_item)} dim={dim} animate={animate} "
+                f"cur_op={current_op} target={target_opacity} "
+                f"rect={rect_sz} in_scene={in_scene}",
+            )
             animator.fade_to(target_opacity, duration_ms=duration)
             return
 
@@ -2896,7 +2905,11 @@ class MainWindow(QtWidgets.QMainWindow):
         animator = _PlotDimAnimator(dim_rect, parent=self)
         self._dim_overlays[key] = (dim_rect, _resize_cb, animator)
         QtCore.QTimer.singleShot(0, _resize_cb)
-
+        Log.w(
+            TAG,
+            f"[DIM-NEW] plot={id(plot_item)} dim={dim} animate={animate} "
+            f"initial_rect={dim_rect.rect()} opacity={dim_rect.opacity()}",
+        )
         if animate:
             animator.fade_to(target_opacity, duration_ms=duration)
 
@@ -3408,6 +3421,16 @@ class MainWindow(QtWidgets.QMainWindow):
         Sets the number of multiplex plots and clears and redraws current plots
         with the correct plot count.  Exceptions are logged as errors and returned to the
         main ui window.
+
+        Standby-dim invariant: after this method runs, the plots currently in
+        `self._plt*_arr` are in the dim state (opacity 1.0 on their dim
+        overlays). This is what lets `start()` just fade-out on press without
+        a jarring bright->dim snap. The old code only dimmed the outgoing
+        plots (via the internal `clear(_reinit_curves=False)` -> 
+        `_set_plots_dimmed` call), leaving the fresh plots from
+        `_configure_plot()` bright - the user would see bright-standby plots
+        for as long as the firmware popup was open, then a single-frame snap
+        to dim when Start's `setUpdatesEnabled(True)` ran.
         """
         try:
             new_count = max(1, min(4, 1 + self.ControlsWin.ui1.cBox_MultiMode.currentIndex()))
@@ -3426,10 +3449,40 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._hide_calibration_plot_overlay()
             if hasattr(self, "_calib_ready_text"):
                 self._hide_calib_ready_text()
-            self.PlotsWin.ui2.plt.clear()
-            self.PlotsWin.ui2.pltB.clear()
-            self.clear(_reinit_curves=False)
-            self._configure_plot()
+
+            # Wrap the whole rebuild behind setUpdatesEnabled(False) on the
+            # parent graphics widgets. Without this, the user would see the
+            # intermediate empty-layout state between plt.clear() and
+            # _configure_plot(). setUpdatesEnabled(True) in the finally fires
+            # one consolidated repaint that reflects the final dim state -
+            # never an in-between frame.
+            plt_widget = self.PlotsWin.ui2.plt
+            pltB_widget = self.PlotsWin.ui2.pltB
+            plt_widget.setUpdatesEnabled(False)
+            pltB_widget.setUpdatesEnabled(False)
+            try:
+                plt_widget.clear()
+                pltB_widget.clear()
+                self.clear(_reinit_curves=False)
+                self._configure_plot()
+                # Leave the newly-built plots in the dim state. animate=False
+                # snaps the dim_rects to opacity 1.0 synchronously. The next
+                # paint (triggered by setUpdatesEnabled(True) below) shows
+                # dim plots directly; there is no bright-frame for the user
+                # to see, no subsequent sudden-dim on Start press. The
+                # internal _set_plots_dimmed call inside clear(_reinit_curves
+                # =False) targets the outgoing plots in self._plt*_arr before
+                # _configure_plot swaps them out, so it does not achieve
+                # this - its dim rects end up parented to orphaned PlotItems
+                # that are about to be GC'd. We need a separate call here,
+                # *after* _configure_plot has populated self._plt*_arr with
+                # the new plots.
+                self._set_plots_dimmed(
+                    amplitude=True, rf_diss=True, temperature=True, animate=False
+                )
+            finally:
+                plt_widget.setUpdatesEnabled(True)
+                pltB_widget.setUpdatesEnabled(True)
         except Exception as e:
             Log.e(tag=TAG, msg="Unable to set count of multiplex plots.")
             Log.e(tag=TAG, msg=f"Details: {str(e)}")
