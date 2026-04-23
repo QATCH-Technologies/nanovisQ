@@ -5,8 +5,6 @@ reviews:
   auto_review:
     enabled: false
     labels: ["review-ready"]
-    # Automatically pauses auto-reviews after the first reviewed commit
-    auto_pause_after_reviewed_commits: 1 
 
   # Disables "Review skipped" messages in the walkthrough
   review_status: false 
