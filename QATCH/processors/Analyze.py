@@ -280,11 +280,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     # new maths for resonance and dissipation (scaled)
                     avg = np.average(resonance_frequency[t_0p5:t_1p0])
                     ys = ys * avg / 2
-                    ys_fit = ys_fit * avg / 2
+                    # ys_fit = ys_fit * avg / 2
                     ys = ys - np.amin(ys)
-                    ys_fit = ys_fit - np.amin(ys_fit)
+                    # ys_fit = ys_fit - np.amin(ys_fit)
                     ys_freq = avg - resonance_frequency
-                    ys_freq_fit = ys_freq  # savgol_filter(ys_freq, smooth_factor, 1)
+                    # ys_freq_fit = savgol_filter(ys_freq, smooth_factor, 1)
+
+                    # needed for invert curve detection, but use unfitted curves (raw is fine)
+                    ys_fit = ys.copy()
+                    ys_freq_fit = ys_freq.copy()
 
                     baseline = np.average(dissipation[t_0p5:t_1p0])
                     diff_factor = (
@@ -7735,7 +7739,7 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.i(f"f2 = {f2:2.2f} Hz")
                 Log.i(f"f2-f0 = {f2-f0} Hz")
 
-                # Guardrail: Check Frequency/Dissipation Ratio for High Shear-Rate Calculation
+                # PR #377: Guardrail: Check Frequency/Dissipation Ratio for High Shear-Rate Calculation
                 frequency_shift = f2 - f0
                 dissipation_shift = d2 - d0
                 ratio = frequency_shift / dissipation_shift * 1e-6
@@ -7743,7 +7747,7 @@ class AnalyzerWorker(QtCore.QObject):
                 # Adjust limits for the guardrails as needed
                 freq_limit = 1000
                 ratio_limit = 40
-                if frequency_shift < freq_limit and ratio < ratio_limit:
+                if abs(frequency_shift) < freq_limit and abs(ratio) < ratio_limit:
 
                     # Calculate high shear-rate viscosity
                     high_shear_15x = 15e6
