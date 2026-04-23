@@ -7678,4 +7678,3 @@ class DryingDetection:
         # return np.power(float(np.nanmean(arr)), 2) / sigma
         sigma = float(np.nanstd(arr))
         return sigma
-        return sigma
