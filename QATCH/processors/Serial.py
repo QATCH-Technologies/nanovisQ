@@ -2134,7 +2134,24 @@ class SerialProcess(multiprocessing.Process):
     # Loads Calibration (baseline correction) from file
     ###########################################################################
 
-    def load_calibration_file(self, i):
+    def load_calibration_file(self, i: int):
+        """Loads calibration data (baseline correction) from a device-specific file.
+
+        This method retrieves the appropriate calibration file path based on the 
+        fundamental frequency (e.g., 5MHz or 10MHz QCS type). It then reads the 
+        file to extract frequency, magnitude, and (if available) phase data arrays.
+
+        Args:
+            i (int): The index or identifier for the specific serial device/port. 
+                This is used to resolve the correct device-specific file path.
+
+        Returns:
+            tuple: A 3-element tuple containing:
+                - freq_all (numpy.ndarray): An array of frequency values.
+                - mag_all (numpy.ndarray): An array of baseline magnitude values.
+                - phase_all (numpy.ndarray, optional): An array of baseline phase 
+                  values if included in the calibration file, otherwise None.
+        """
         # Loads Fundamental frequency and Overtones from file
         peaks_mag, _, _, _, _ = self.load_frequencies_file(i)
 
@@ -2143,6 +2160,13 @@ class SerialProcess(multiprocessing.Process):
             filename = Constants.csv_calibration_path
         elif peaks_mag[0] > 9e06 and peaks_mag[0] < 11e06:
             filename = Constants.csv_calibration_path10
+        else:
+            Log.w(
+                TAG,
+                f"Peak magnitude {peaks_mag[0]} out of expected bounds. Falling back to default calibration.",
+            )
+            filename = Constants.csv_calibration_path
+
         filename = FileStorage.DEV_populate_path(filename, i)
 
         data = loadtxt(filename)
