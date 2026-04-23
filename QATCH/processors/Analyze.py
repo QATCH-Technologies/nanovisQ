@@ -7367,8 +7367,8 @@ class AnalyzerWorker(QtCore.QObject):
             log_velocity_46 = log_velocity
             log_position_46 = log_position
             Log.d(f"log_velocity = {log_velocity}")
-            Log.d(f"initial_fill = {initial_fill}")
-            if initial_fill[-1] < 90:
+            Log.d(f"initial_fill = {initial_fill_tracked}")
+            if initial_fill_tracked[-1] < 90:
                 log_velocity_46 = log_velocity_46[-len(distances) :]
                 log_position_46 = log_position_46[-len(distances) :]
                 cp = xs[all_times[FILL_IDX]] / 2
