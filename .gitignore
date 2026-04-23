@@ -15,3 +15,5 @@
 # But explicitly include "VisQAI-base.zip" and "app.db" assets
 !**/assets/VisQAI-base.zip
 !**/assets/app.db
+/QATCH_auto_login.py
+/credentials.json
