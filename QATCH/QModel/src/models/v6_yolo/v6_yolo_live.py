@@ -535,7 +535,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         )
         type_cls_asset = os.path.join(v6_base_path, "classifiers", "fill_classifier", "type_cls.pt")
         self.model_path = type_cls_asset
-        self.buffer_window_size = buffer_window_size
+        self.buffer_window_size = buffer_window_size if buffer_window_size else 2000
 
         # Instance placeholder
         self._classifier: Optional[QModelV6YOLO_Live] = None
@@ -605,19 +605,28 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                         break
 
                 data_received = False
+                df_list = []
+
                 for chunk in chunks:
                     if isinstance(chunk, DropEpochSignal):
                         self._classifier.set_drop_applied_timestamp(chunk.relative_time)
                         continue
-                    df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(chunk)
+
                     try:
+                        df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(chunk)
                         if df_chunk is not None and not df_chunk.empty:
-                            self._classifier.add_chunk(df_chunk)
-                            data_received = True
+                            df_list.append(df_chunk)
                     except ValueError as ve:
                         Log.w(TAG, f"Skipping worker data chunk: {ve}")
                     except Exception as e:
                         Log.e(TAG, f"Error converting worker data: {e}")
+                if df_list:
+                    try:
+                        combined_chunk = pd.concat(df_list, ignore_index=True)
+                        self._classifier.add_chunk(combined_chunk)
+                        data_received = True
+                    except Exception as e:
+                        Log.e(TAG, f"Error batching chunks: {e}")
 
                 if data_received:
                     pred_int = self._classifier.attempt_classification()
