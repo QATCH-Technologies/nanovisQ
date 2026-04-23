@@ -1,0 +1,11 @@
+# .coderabbit.yaml
+reviews:
+  auto_review:
+    enabled: false
+    labels: ["review-ready"]
+    # Automatically pauses auto-reviews after the first reviewed commit
+    auto_pause_after_reviewed_commits: 1 
+  tone_instructions: >
+    "Adopt the persona of a Japanese Samurai. Use metaphors related to honor, 
+    discipline, and swordsmanship. Be direct, respectful, and authoritative. 
+    Focus on structural integrity and preventing bugs from bringing dishonor."

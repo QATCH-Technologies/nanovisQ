@@ -4271,16 +4271,17 @@ void pogo_button_pressed(bool init)
 
   // Declare an in-line helper function to control servo motors by specifying
   // their start and end positions and a delay (in milliseconds).
-  auto move_servos = [](byte start1, byte end1, byte start2, byte end2, byte delayMs)
+  auto move_servos = [](byte start1, byte end1, byte start2, byte end2, byte delayMs, bool init)
   {
     int dir1 = (end1 > start1) ? 1 : (end1 < start1) ? -1
                                                      : 0;
     int dir2 = (end2 > start2) ? 1 : (end2 < start2) ? -1
                                                      : 0;
 
-    if (pogo_switch_pos != 0 && pogo_sw_exists) {
+    if (init || pogo_sw_exists)
+    {
       uint8_t distance = abs(start1 - end1);
-      start1 = pogo_switch_pos;
+      start1 = init ? start1 : pogo_switch_pos;
       end1 = dir1 ? start1 + distance : 0;
     }
 
@@ -4291,14 +4292,29 @@ void pogo_button_pressed(bool init)
     {
       if (DEBUG)
         client->printf("Servo1 to %i, Servo2 to %i\n", pos1, pos2);
-      if (dir1 == -1 && digitalRead(POGO_LID_SW_PIN_N) == LOW) {
-        pogo_sw_exists = done1 = done2 = true;  // abort early
-      }
+        
       if (!done1)
         pogoServo1.write(pos1);
       if (!done2)
         pogoServo2.write(pos2);
       delay(delayMs);
+
+      if (dir1 == -1)
+      {
+        // Require 5 consecutive LOW reads to reject jitter on movement
+        bool pressed = true;
+        for (uint8_t i = 0; i < 5; i++)
+        {
+          if (digitalRead(POGO_LID_SW_PIN_N) != LOW) { pressed = false; break; }
+          delayMicroseconds(200);
+        }
+        if (pressed)
+        {
+          pogo_sw_exists = done1 = done2 = true;  // abort early
+          if (DEBUG)
+            client->printf("Servo limit switch hit @ pos %i\n", pos1);
+        }
+      }
       if (!done1)
       {
         if (pos1 == end1)
@@ -4321,16 +4337,16 @@ void pogo_button_pressed(bool init)
   if (init)
   {                                      // init -> opened
     digitalWrite(POGO_BTN_LED_PIN, LOW); // LED off before movement
-    move_servos(POS_INIT_1, POS_OPENED_1, POS_INIT_2, POS_OPENED_2, MOVE_DELAY);
+    move_servos(POS_INIT_1, POS_OPENED_1, POS_INIT_2, POS_OPENED_2, MOVE_DELAY, init);
   }
   else if (pogo_lid_opened)
   {                                      // closed -> opened
     digitalWrite(POGO_BTN_LED_PIN, LOW); // LED off before movement
-    move_servos(POS_CLOSED_1, POS_OPENED_1, POS_CLOSED_2, POS_OPENED_2, MOVE_DELAY);
+    move_servos(POS_CLOSED_1, POS_OPENED_1, POS_CLOSED_2, POS_OPENED_2, MOVE_DELAY, init);
   }
   else
   { // opened -> closed
-    move_servos(POS_OPENED_1, POS_CLOSED_1, POS_OPENED_2, POS_CLOSED_2, MOVE_DELAY);
+    move_servos(POS_OPENED_1, POS_CLOSED_1, POS_OPENED_2, POS_CLOSED_2, MOVE_DELAY, init);
     digitalWrite(POGO_BTN_LED_PIN, HIGH); // LED on after movement
   }
 
