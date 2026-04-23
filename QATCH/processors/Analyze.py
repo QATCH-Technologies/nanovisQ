@@ -280,11 +280,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     # new maths for resonance and dissipation (scaled)
                     avg = np.average(resonance_frequency[t_0p5:t_1p0])
                     ys = ys * avg / 2
-                    # ys_fit = ys_fit * avg / 2
+                    ys_fit = ys_fit * avg / 2
                     ys = ys - np.amin(ys)
-                    # ys_fit = ys_fit - np.amin(ys_fit)
+                    ys_fit = ys_fit - np.amin(ys_fit)
                     ys_freq = avg - resonance_frequency
-                    # ys_freq_fit = savgol_filter(ys_freq, smooth_factor, 1)
+                    ys_freq_fit = ys_freq  # savgol_filter(ys_freq, smooth_factor, 1)
 
                     baseline = np.average(dissipation[t_0p5:t_1p0])
                     diff_factor = (
@@ -1244,11 +1244,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
         configured to be modal, remain on top of other windows, disable
         auto-reset and auto-close behaviors, and use a fixed size.
         """
-        if hasattr(self, "_analyze_progress_dlg") and self._analyze_progress_dlg is not None:
+        if (
+            hasattr(self, "_analyze_progress_dlg")
+            and self._analyze_progress_dlg is not None
+        ):
             self._analyze_progress_dlg.close()
             self._analyze_progress_dlg = None
 
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "analyze.svg")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "analyze.svg"
+        )
 
         self._analyze_progress_dlg = QtWidgets.QProgressDialog(
             "Analyzing data...", None, 0, 100, self
@@ -1257,7 +1262,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._analyze_progress_dlg.setAutoClose(False)
         self._analyze_progress_dlg.setWindowIcon(QtGui.QIcon(icon_path))
         self._analyze_progress_dlg.setWindowTitle("Analyzing...")
-        self._analyze_progress_dlg.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
+        self._analyze_progress_dlg.setWindowFlag(
+            QtCore.Qt.WindowContextHelpButtonHint, False
+        )
         self._analyze_progress_dlg.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
         self._analyze_progress_dlg.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
         self._analyze_progress_dlg.setFixedSize(400, 90)
@@ -1880,18 +1887,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _update_analyze_popup_progress(self, value, status):
         """Updates the progress value and status text of the Analyze progress dialog.
 
-        This method sets the current progress of the dialog, capping the value at 99 
-        to prevent the dialog from automatically closing or appearing complete before 
-        the background task finishes. It also updates the descriptive status label and 
-        forces the event loop to process pending events, ensuring the UI remains 
+        This method sets the current progress of the dialog, capping the value at 99
+        to prevent the dialog from automatically closing or appearing complete before
+        the background task finishes. It also updates the descriptive status label and
+        forces the event loop to process pending events, ensuring the UI remains
         responsive.
 
         Args:
             value (int): The current progress value, typically representing a percentage.
             status (str): A descriptive message indicating the current analysis step.
         """
-        if hasattr(self, "_analyze_progress_dlg") and self._analyze_progress_dlg is not None:
-            self._analyze_progress_dlg.setValue(min(value, 99))  # hold at 99 until finished
+        if (
+            hasattr(self, "_analyze_progress_dlg")
+            and self._analyze_progress_dlg is not None
+        ):
+            self._analyze_progress_dlg.setValue(
+                min(value, 99)
+            )  # hold at 99 until finished
             if status and len(status):
                 self._analyze_progress_dlg.setLabelText(status)
             QtCore.QCoreApplication.processEvents()
@@ -1899,11 +1911,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _close_analyze_progress_dialog(self):
         """Closes and cleans up the Analyze progress dialog upon task completion.
 
-        If the progress dialog exists, this method forces its progress value to 100 
-        to visually indicate full completion, closes the dialog window, and resets 
+        If the progress dialog exists, this method forces its progress value to 100
+        to visually indicate full completion, closes the dialog window, and resets
         the instance attribute to None for garbage collection.
         """
-        if hasattr(self, "_analyze_progress_dlg") and self._analyze_progress_dlg is not None:
+        if (
+            hasattr(self, "_analyze_progress_dlg")
+            and self._analyze_progress_dlg is not None
+        ):
             failed = hasattr(self, "analyze_work") and not self.analyze_work.exitCode()
             if failed:
                 PopUp.warning(
@@ -6153,16 +6168,14 @@ class AnalyzerWorker(QtCore.QObject):
             smooth_factor = int(smooth_factor) + (int(smooth_factor + 1) % 2)
             if smooth_factor < 3:
                 smooth_factor = 3
+            if smooth_factor > 69:
+                smooth_factor = 69
             Log.i(TAG, f"Total run time: {total_runtime} secs")
             # the nearest odd number of seconds (runtime)
             Log.d(TAG, f"Smoothing: {smooth_factor}")
             Log.d(TAG, f"Applying smooth factor for first 90s ONLY.")
 
-            t_first_90_split = (
-                len(xs)
-                if total_runtime <= 90
-                else next(x for x, t in enumerate(xs) if t > 90)
-            )
+            t_first_90_split = next((x for x, t in enumerate(xs) if t > 90), len(xs))
             extend_data = True if total_runtime > 90 else False
             # downsample factor for extended data > 90s
             extend_smf = int(smooth_factor / 20)
@@ -6436,7 +6449,7 @@ class AnalyzerWorker(QtCore.QObject):
                 else:
                     try:
                         t0 = next(x for x, t in enumerate(xs) if t > t0)
-                    except:
+                    except StopIteration:
                         Log.d("Re-interpreting user input as an index, not a timestamp")
                         t0 = int(t0)
                 if not done:
@@ -6487,7 +6500,7 @@ class AnalyzerWorker(QtCore.QObject):
                 else:
                     try:
                         t1 = next(x for x, t in enumerate(xs) if t > t1)
-                    except:
+                    except StopIteration:
                         Log.d("Re-interpreting user input as an index, not a timestamp")
                         t1 = int(t1)
                 if not done:
@@ -6538,7 +6551,7 @@ class AnalyzerWorker(QtCore.QObject):
                 else:
                     try:
                         tp = next(x for x, t in enumerate(xs) if t > tp)
-                    except:
+                    except StopIteration:
                         Log.d("Re-interpreting user input as an index, not a timestamp")
                         tp = int(tp)
                 if not done:
@@ -6746,7 +6759,7 @@ class AnalyzerWorker(QtCore.QObject):
                 try:
                     this_min = next(t for t, y in minima_sort if t > key)
                     this_zero = next(t for t in zeros2 if t > key)
-                except:
+                except StopIteration:
                     this_min = len(ys_diss_2ndd) - 1
                     this_zero = len(ys_diss_2ndd) - 2
                 if this_max > this_zero or this_min < this_zero:
@@ -6985,7 +6998,7 @@ class AnalyzerWorker(QtCore.QObject):
                     else:
                         try:
                             time = next(x for x, t in enumerate(xs) if t > time)
-                        except:
+                        except StopIteration:
                             Log.d(
                                 "Re-interpreting user input as an index, not a timestamp"
                             )
@@ -7092,9 +7105,12 @@ class AnalyzerWorker(QtCore.QObject):
             Log.i("(The following midpoints are shown as blue Xs on Figure 1):")
 
             if len(times) >= 2:
+                # NOTE: Channel 1 midpoint uses dissipation deliberately
+                #       whereas 2nd and 3rd channels are frequency derived
                 midpoint_ch1_y = (ys_fit[times[1]] + ys_fit[times[0]]) / 2
                 midpoint_ch1_i = next(
-                    x for x, y in enumerate(ys_fit) if y > midpoint_ch1_y
+                    (x for x, y in enumerate(ys_fit) if y > midpoint_ch1_y),
+                    int(np.average([times[0:2]])),
                 )
                 midpoint_ch1_x = xs[midpoint_ch1_i]
                 Log.i(
@@ -7115,7 +7131,8 @@ class AnalyzerWorker(QtCore.QObject):
             if len(times) >= 4:
                 midpoint_ch2_y = (ys_freq_fit[times[2]] + ys_freq_fit[times[1]]) / 2
                 midpoint_ch2_i = next(
-                    x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch2_y
+                    (x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch2_y),
+                    int(np.average([times[1:3]])),
                 )
                 midpoint_ch2_x = xs[midpoint_ch2_i]
                 Log.i(
@@ -7136,7 +7153,8 @@ class AnalyzerWorker(QtCore.QObject):
             if len(times) >= 6:
                 midpoint_ch3_y = (ys_freq_fit[times[3]] + ys_freq_fit[times[2]]) / 2
                 midpoint_ch3_i = next(
-                    x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch3_y
+                    (x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch3_y),
+                    int(np.average([times[2:4]])),
                 )
                 midpoint_ch3_x = xs[midpoint_ch3_i]
                 Log.i(
@@ -7194,7 +7212,13 @@ class AnalyzerWorker(QtCore.QObject):
             idx_of_normal_pts_to_remove = []
             idx_of_normal_pts_to_retain = []
             for p in normal_pts:
-                midpoint_p_i = next(x for x, y in enumerate(ys_normal) if y >= p) + tp
+                try:
+                    midpoint_p_i = (
+                        next(x for x, y in enumerate(ys_normal) if y >= p) + tp
+                    )
+                except StopIteration:
+                    Log.w(f"Failed to find 1st channel dissipation @ {p:0.1f}")
+                    continue
                 midpoint_p_x = xs[midpoint_p_i]
                 midpoint_p_y = ys_fit[midpoint_p_i]
                 Log.i(
@@ -7349,7 +7373,7 @@ class AnalyzerWorker(QtCore.QObject):
                     Log.d(f"Dropped {i} initial samples under 2 Hz threshold")
                     log_velocity = log_velocity[i:]
                     log_position = log_position[i:]
-                    initial_fill_tracked = initial_fill_tracked[i:] 
+                    initial_fill_tracked = initial_fill_tracked[i:]
                     dropUnder2 = i
                     ####################################
                     # NEW CODE for 02/03/2023 TESTING:
@@ -7367,7 +7391,7 @@ class AnalyzerWorker(QtCore.QObject):
             log_velocity_46 = log_velocity
             log_position_46 = log_position
             Log.d(f"log_velocity = {log_velocity}")
-            Log.d(f"initial_fill = {initial_fill_tracked}")
+            Log.d(f"initial_fill_tracked = {initial_fill_tracked}")
             if initial_fill_tracked[-1] < 90:
                 log_velocity_46 = log_velocity_46[-len(distances) :]
                 log_position_46 = log_position_46[-len(distances) :]
@@ -7818,7 +7842,7 @@ class AnalyzerWorker(QtCore.QObject):
                                 )
                                 - 1
                             )
-                        except:
+                        except StopIteration:
                             Log.e(
                                 f"Failed to locate POI_{i} @ timestamp {xs[all_times[i]] - xs[0]} from fundamental dataset. Attempting to proceed with index 0..."
                             )
@@ -8190,7 +8214,13 @@ class AnalyzerWorker(QtCore.QObject):
                 local_temp = []
                 # skip first point, reverse order
                 for pt in shear_points[1:][::-1]:
-                    idx = next(x for x, y in enumerate(in_shear_rate) if y <= pt)
+                    try:
+                        idx = next(x for x, y in enumerate(in_shear_rate) if y <= pt)
+                    except StopIteration:
+                        Log.e(
+                            f"Failed to find index for shear point {pt:2.2f}. Cannot plot this index."
+                        )
+                        continue
                     local_shear.append(in_shear_rate[idx])
                     local_visc.append(sm_trendline[idx])
                     local_linv.append(lin_viscosity[idx])
@@ -8424,9 +8454,12 @@ class AnalyzerWorker(QtCore.QObject):
                     )
                     visc_interp = float(interp_func(shear_interp))
                     i_l, i_r = next(
-                        (i - 1, i)
-                        for i, s in enumerate(in_shear_san_60_80)
-                        if s > shear_interp
+                        (
+                            (i - 1, i)
+                            for i, s in enumerate(in_shear_san_60_80)
+                            if s > shear_interp
+                        ),
+                        (-1, len(in_shear_san_60_80)),
                     )
                     if i_l == -1 or i_r == len(in_shear_san_60_80):
                         # indicate 10% error when extrapolating beyond left or right of the shear array
@@ -8464,12 +8497,25 @@ class AnalyzerWorker(QtCore.QObject):
                         len(in_shear_rate) - 1,
                         max(2, values_to_average - 1),
                     )
-                    visc_avg = np.average(in_viscosity[idx_start : idx_end + 1])
-                    visc_std = np.std(in_viscosity[idx_start : idx_end + 1])
+                    # Make sure NOT to include high-shear(s) in average viscosity calculation
+                    visc_subset = in_viscosity[idx_start : idx_end + 1]
+                    if high_shear_15x != 0:
+                        if high_shear_15y in visc_subset:
+                            # assumes 15MHz is last in list
+                            visc_subset = visc_subset[:-1]
+                            idx_end -= 1
+                    if high_shear_5x != 0:
+                        if high_shear_5y in visc_subset:
+                            # assumes 5MHz is last in list
+                            visc_subset = visc_subset[:-1]
+                            idx_end -= 1
+                    # Calculate average +/- deviation from viscosity subset
+                    visc_avg = np.average(visc_subset)
+                    visc_std = np.std(visc_subset)
                     shear_min = in_shear_rate[idx_start]
                     shear_max = in_shear_rate[idx_end]
 
-                    summary_text += "\nAverage viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rates in range {:2.0f} - {:2.0f} s⁻¹.".format(
+                    summary_text += "\nAverage viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rates {:2.0f} - {:2.0f} s⁻¹.".format(
                         visc_avg, visc_std, shear_min, shear_max
                     )
                     plot_text += (
