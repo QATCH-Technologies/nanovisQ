@@ -11,6 +11,8 @@ from time import time, sleep
 from serial.tools import list_ports
 import numpy as np
 from numpy import loadtxt
+from typing import Union, Tuple
+import numpy as np
 
 # from progressbar import Bar, Percentage, ProgressBar, RotatingMarker,Timer
 import logging
@@ -1823,15 +1825,84 @@ class SerialProcess(multiprocessing.Process):
     # Sets frequency range for the corresponding overtone
     ###########################################################################
 
-    def get_frequencies(self, samples, i):
-        """
-        :param samples: Number of samples :type samples: int.
-        :return: overtone :rtype: float.
-        :return: fStep, frequency step  :rtype: float.
-        :return: readFREQ, frequency range :rtype: float list.
+    ###########################################################################
+    # Sets frequency range for the corresponding overtone
+    ###########################################################################
+
+    def get_frequencies(self, samples: int, i: int) -> Union[
+        Tuple[str, float, float, np.ndarray, int, int, int, float, float, float],
+        Tuple[
+            str,
+            float,
+            float,
+            np.ndarray,
+            int,
+            int,
+            int,
+            float,
+            float,
+            float,
+            str,
+            float,
+            float,
+            np.ndarray,
+            int,
+            int,
+            int,
+            float,
+            float,
+            float,
+            str,
+            float,
+            float,
+            np.ndarray,
+            int,
+            int,
+            int,
+            float,
+            float,
+            float,
+        ],
+    ]:
+        """Calculates and returns the frequency sweep parameters for a specific device.
+
+        This method reads the calibrated peak frequencies from the device's specific
+        configuration file to determine whether it uses a 5MHz or 10MHz crystal. It then
+        calculates the start and stop frequencies, the frequency step size (fStep), and
+        the exact array of frequencies to sweep (readFREQ) based on the requested number
+        of samples and the configured overtone. If frequency hopping is enabled, it
+        calculates these parameters for the primary overtone, the next higher overtone,
+        and the next lower overtone.
+
+        Args:
+            samples (int): The total number of frequency data points to acquire
+                during a single sweep.
+            i (int): The device or port index, used to load the correct device-specific
+                calibration and frequency bounds files.
+
+        Returns:
+            tuple: A tuple containing the calculated sweep parameters.
+                If frequency hopping is disabled (self._freq_hopping == False), returns
+                a 10-element tuple:
+                (overtone_name, overtone_value, fStep, readFREQ, SG_window_size,
+                 spline_points, spline_factor, baseline, startFreq, stopFreq)
+
+                If frequency hopping is enabled (self._freq_hopping == True), returns
+                a 30-element tuple containing three contiguous 10-element sets of the
+                parameters above, corresponding to: (1) target overtone, (2) upper
+                overtone, and (3) lower overtone.
+
+        Raises:
+            ValueError: If the primary peak frequency read from the calibration file
+                does not fall near the expected 5MHz or 10MHz operating ranges.
         """
         # Loads frequencies from file
         peaks_mag, _, left_bounds, right_bounds, baselines = self.load_frequencies_file(i)
+
+        # Checks QCS type 5Mhz or 10MHz
+        # Sets start and stop frequencies for the corresponding overtone
+        # Resolve overtone index to a strict int to satisfy Pylance
+        o_idx = int(self._overtone_int) if self._overtone_int is not None else 0
 
         # Checks QCS type 5Mhz or 10MHz
         # Sets start and stop frequencies for the corresponding overtone
@@ -1839,7 +1910,10 @@ class SerialProcess(multiprocessing.Process):
             switch = Overtone_Switcher_5MHz(
                 peak_frequencies=peaks_mag, left_bounds=left_bounds, right_bounds=right_bounds
             )
+
             # 0=fundamental, 1=3rd overtone and so on
+            target_res = switch.overtone5MHz_to_freq_range(o_idx)
+            assert target_res is not None, "Switcher returned None for 5MHz target overtone"
             (
                 overtone_name,
                 overtone_value,
@@ -1847,10 +1921,12 @@ class SerialProcess(multiprocessing.Process):
                 self._stopFreq,
                 SG_window_size,
                 spline_factor,
-            ) = switch.overtone5MHz_to_freq_range(self._overtone_int)
+            ) = target_res
 
             # Added for freq hopping
             if self._freq_hopping:
+                up_res = switch.overtone5MHz_to_freq_range(min(o_idx + 1, len(peaks_mag) - 1))
+                assert up_res is not None, "Switcher returned None for 5MHz upper overtone"
                 (
                     overtone_name_up,
                     overtone_value_up,
@@ -1858,9 +1934,10 @@ class SerialProcess(multiprocessing.Process):
                     self._stopFreq_up,
                     SG_window_size_up,
                     spline_factor_up,
-                ) = switch.overtone5MHz_to_freq_range(
-                    min(self._overtone_int + 1, len(peaks_mag) - 1)
-                )
+                ) = up_res
+
+                down_res = switch.overtone5MHz_to_freq_range(max(o_idx - 1, 0))
+                assert down_res is not None, "Switcher returned None for 5MHz lower overtone"
                 (
                     overtone_name_down,
                     overtone_value_down,
@@ -1868,18 +1945,20 @@ class SerialProcess(multiprocessing.Process):
                     self._stopFreq_down,
                     SG_window_size_down,
                     spline_factor_down,
-                ) = switch.overtone5MHz_to_freq_range(max(self._overtone_int - 1, 0))
+                ) = down_res
             else:
-                self._startFreq_up = 0
-                self._stopFreq_up = 0
-                self._startFreq_down = 0
-                self._stopFreq_down = 0
-            ###################################################################
+                self._startFreq_up = self._stopFreq_up = 0
+                self._startFreq_down = self._stopFreq_down = 0
+
             Log.i(TAG, "QATCH Device setup: @5MHz")
+
         elif peaks_mag[0] > 9e06 and peaks_mag[0] < 11e06:
             switch = Overtone_Switcher_10MHz(
                 peak_frequencies=peaks_mag, left_bounds=left_bounds, right_bounds=right_bounds
             )
+
+            target_res = switch.overtone10MHz_to_freq_range(o_idx)
+            assert target_res is not None, "Switcher returned None for 10MHz target overtone"
             (
                 overtone_name,
                 overtone_value,
@@ -1887,8 +1966,44 @@ class SerialProcess(multiprocessing.Process):
                 self._stopFreq,
                 SG_window_size,
                 spline_factor,
-            ) = switch.overtone10MHz_to_freq_range(self._overtone_int)
+            ) = target_res
+
+            # Added for freq hopping
+            if self._freq_hopping:
+                up_res = switch.overtone10MHz_to_freq_range(min(o_idx + 1, len(peaks_mag) - 1))
+                assert up_res is not None, "Switcher returned None for 10MHz upper overtone"
+                (
+                    overtone_name_up,
+                    overtone_value_up,
+                    self._startFreq_up,
+                    self._stopFreq_up,
+                    SG_window_size_up,
+                    spline_factor_up,
+                ) = up_res
+
+                down_res = switch.overtone10MHz_to_freq_range(max(o_idx - 1, 0))
+                assert down_res is not None, "Switcher returned None for 10MHzlower overtone"
+                (
+                    overtone_name_down,
+                    overtone_value_down,
+                    self._startFreq_down,
+                    self._stopFreq_down,
+                    SG_window_size_down,
+                    spline_factor_down,
+                ) = down_res
+            else:
+                self._startFreq_up = self._stopFreq_up = 0
+                self._startFreq_down = self._stopFreq_down = 0
+
             Log.i(TAG, "QATCH Device setup: @10MHz")
+        else:
+            # Trap out-of-range frequencies and/or corrupted files
+            Log.e(
+                TAG, f"Unsupported base frequency: {peaks_mag[0]} Hz. Must be near 5MHz or 10MHz."
+            )
+            raise ValueError(
+                f"Unsupported base frequency: {peaks_mag[0]} Hz. Must be near 5MHz or 10MHz."
+            )
 
         # Sets the frequency step
         fStep = (self._stopFreq - self._startFreq) / (samples - 1)
@@ -1906,15 +2021,16 @@ class SerialProcess(multiprocessing.Process):
         if self._freq_hopping:
             d_up = fStep_up - int(fStep_up)
             if not d_up == 0:
-                self._stopFreq_up -= d * (samples - 1)
+                self._stopFreq_up -= d_up * (samples - 1)
                 fStep_up = int(fStep_up)
             d_down = fStep_down - int(fStep_down)
             if not d_down == 0:
-                self._stopFreq_down -= d * (samples - 1)
+                self._stopFreq_down -= d_down * (samples - 1)
                 fStep_down = int(fStep_down)
 
         # Sets spline points for fitting
         spline_points = int((self._stopFreq - self._startFreq)) + 1
+
         # Added for freq hopping
         if self._freq_hopping:
             spline_points_up = int((self._stopFreq_up - self._startFreq_up)) + 1
@@ -1927,18 +2043,23 @@ class SerialProcess(multiprocessing.Process):
             readFREQ_up = np.arange(samples) * (fStep_up) + self._startFreq_up
             readFREQ_down = np.arange(samples) * (fStep_down) + self._startFreq_down
 
-        # Sets the baseline counts for the corresponding overtone
-        baseline = baselines[self._overtone_int]
+        # Fallback to 0.0 if the calibration file didn't include baselines
+        baseline = float(baselines[o_idx]) if baselines is not None else 0.0
+
         if self._freq_hopping:
-            baseline_up = baselines[min(self._overtone_int + 1, len(peaks_mag) - 1)]
-            baseline_down = baselines[max(self._overtone_int - 1, 0)]
+            baseline_up = (
+                float(baselines[min(o_idx + 1, len(peaks_mag) - 1)])
+                if baselines is not None
+                else 0.0
+            )
+            baseline_down = float(baselines[max(o_idx - 1, 0)]) if baselines is not None else 0.0
 
         # Added bottom 2 lines for freq hopping
         if self._freq_hopping:
             return (
                 overtone_name,
                 overtone_value,
-                fStep,
+                float(fStep),
                 readFREQ,
                 SG_window_size,
                 spline_points,
@@ -1948,7 +2069,7 @@ class SerialProcess(multiprocessing.Process):
                 self._stopFreq,
                 overtone_name_up,
                 overtone_value_up,
-                fStep_up,
+                float(fStep_up),
                 readFREQ_up,
                 SG_window_size_up,
                 spline_points_up,
@@ -1958,7 +2079,7 @@ class SerialProcess(multiprocessing.Process):
                 self._stopFreq_up,
                 overtone_name_down,
                 overtone_value_down,
-                fStep_down,
+                float(fStep_down),
                 readFREQ_down,
                 SG_window_size_down,
                 spline_points_down,
@@ -1971,7 +2092,7 @@ class SerialProcess(multiprocessing.Process):
             return (
                 overtone_name,
                 overtone_value,
-                fStep,
+                float(fStep),
                 readFREQ,
                 SG_window_size,
                 spline_points,
