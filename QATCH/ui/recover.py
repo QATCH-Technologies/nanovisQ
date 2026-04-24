@@ -2,32 +2,32 @@ import os
 import zipfile
 import csv
 import io
+
+from contextlib import suppress
 from PyQt5.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QHBoxLayout,
-    QGridLayout,
     QListWidget,
     QWidget,
     QLabel,
     QPushButton,
     QFormLayout,
     QFrame,
-    QProgressBar,
     QSizePolicy,
     QAbstractItemView,
     QInputDialog,
     QMessageBox,
-    QApplication,
     QListWidgetItem,
     QLineEdit,
     QStackedWidget,
     QComboBox,
     QSpinBox,
     QDoubleSpinBox,
-    QDateTimeEdit,
-    QCheckBox,
+    QDateEdit,
+    QTimeEdit,
 )
+
 from PyQt5.QtCore import (
     Qt,
     QThread,
@@ -37,11 +37,15 @@ from PyQt5.QtCore import (
     QSize,
     QPoint,
     QDateTime,
+    QDate,
+    QTime,
     QTimer,
+    QVariantAnimation,
+    QTimeLine,
 )
-from PyQt5.QtGui import QFont, QIcon, QPixmap, QPainter, QRegion
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QMouseEvent, QCloseEvent, QBrush, QColor
 from datetime import datetime
-from typing import List
+from typing import List, Optional, Any, Dict, BinaryIO, Sequence, Set, cast
 import numpy as np
 import send2trash
 import pyqtgraph as pg
@@ -53,8 +57,23 @@ from QATCH.common.fileStorage import secure_open
 TAG = "[RunRecovery]"
 
 
-class UnnamedRun:
-    """Data class to hold unnamed run information"""
+class RunMetadata:
+    """A data class representing information for a run that has not been named.
+
+    This class serves as a container for metadata extracted from raw run files
+    located in the unnamed recovery directory.
+
+    Attributes:
+        filepath (str): The absolute path to the directory containing the run data.
+        display_name (str): The name of the run derived from the folder name.
+        timestamp (str): The date and time the run was recorded.
+        duration_seconds (float): The total length of the run in seconds.
+        num_points (int): The total count of data points recorded in the run.
+        ruling (str): The classification of the run (e.g., "Good" or "Bad").
+        file_size_mb (float): The total size of the run folder in megabytes.
+        virtual_csv_path (str | None): The path to the CSV file within a ZIP archive,
+            if applicable.
+    """
 
     def __init__(
         self,
@@ -65,8 +84,21 @@ class UnnamedRun:
         num_points: int,
         ruling: str,
         file_size_mb: float,
-        virtual_csv_path: str = None,
+        virtual_csv_path: str | None = None,
     ):
+        """Initializes an RunMetadata instance with provided metadata.
+
+        Args:
+            filepath: The absolute path to the run directory.
+            display_name: The string used to identify the run in the UI.
+            timestamp: A formatted string representing the start time.
+            duration_seconds: Duration of the experiment in seconds.
+            num_points: Number of valid data rows in the run.
+            ruling: Classification status of the run data.
+            file_size_mb: Total disk usage of the run files in MB.
+            virtual_csv_path: Internal path to the CSV data if stored inside a ZIP.
+                Defaults to None.
+        """
         self.filepath = filepath
         self.display_name = display_name
         self.timestamp = timestamp
@@ -78,11 +110,15 @@ class UnnamedRun:
 
 
 class RecoveryWorker(QThread):
-    """Worker thread to handle recovery process without blocking UI"""
+    """
+    TODO: Recovery worker behavior needs to be defined
+        - Create XML
+        - Probably requires a signature prompt
+    """
 
-    progress_updated = pyqtSignal(int)  # Progress percentage
-    status_updated = pyqtSignal(str)  # Status message
-    recovery_complete = pyqtSignal(bool, str)  # Success flag, message
+    progress_updated = pyqtSignal(int)
+    status_updated = pyqtSignal(str)
+    recovery_complete = pyqtSignal(bool, str)
 
     def __init__(self, run_data, run_name):
         super().__init__()
@@ -91,64 +127,54 @@ class RecoveryWorker(QThread):
         self._is_cancelled = False
 
     def cancel(self):
-        self._is_cancelled = True
+        pass
 
     def run(self):
-        """Perform the actual recovery work"""
-        try:
-            self.status_updated.emit("Parsing raw data...")
-            self.progress_updated.emit(10)
-            if self._is_cancelled:
-                return
-            self.msleep(500)
-
-            self.status_updated.emit("Generating viscosity profile...")
-            self.progress_updated.emit(35)
-            if self._is_cancelled:
-                return
-            self.msleep(800)
-
-            self.status_updated.emit("Computing statistics...")
-            self.progress_updated.emit(60)
-            if self._is_cancelled:
-                return
-            self.msleep(600)
-
-            self.status_updated.emit("Generating missing metadata...")
-            self.progress_updated.emit(80)
-            if self._is_cancelled:
-                return
-            self.msleep(400)
-
-            self.status_updated.emit("Writing recovered file...")
-            self.progress_updated.emit(95)
-            if self._is_cancelled:
-                return
-            self.msleep(300)
-
-            self.progress_updated.emit(100)
-            self.status_updated.emit("Recovery complete!")
-            self.recovery_complete.emit(True, f"Successfully recovered run as '{self.run_name}'")
-
-        except Exception as e:
-            self.recovery_complete.emit(False, f"Recovery failed: {str(e)}")
+        pass
 
 
 class ScanWorker(QThread):
-    """Worker thread that scans the unnamed-runs directory without blocking the UI."""
+    """Worker thread that scans the unnamed-runs directory without blocking the UI.
 
-    scan_complete = pyqtSignal(list)  # list[UnnamedRun]
+    This thread iterates through a specified directory to find and analyze folders
+    containing run data. It parses metadata from internal ZIP/CSV files and
+    calculates directory sizes on disk. Results are returned via signals to ensure
+    the main GUI thread remains responsive during file I/O.
+
+    Attributes:
+        scan_complete (pyqtSignal): Emitted when the scan finishes successfully.
+            Carries a list of RunMetadata objects.
+        scan_failed (pyqtSignal): Emitted if a critical error occurs during the
+            scan. Carries an error message string.
+        unnamed_dir (str): The directory path to be scanned.
+        _is_cancelled (bool): Internal flag to stop the thread execution prematurely.
+    """
+
+    scan_complete = pyqtSignal(list)
     scan_failed = pyqtSignal(str)
 
     def __init__(self, unnamed_dir):
+        """Initializes the ScanWorker with the target directory.
+
+        Args:
+            unnamed_dir: The absolute path to the directory containing
+                unnamed run folders.
+        """
         super().__init__()
         self.unnamed_dir = unnamed_dir
         self._is_cancelled = False
 
     def cancel(self):
+        """Sets the cancellation flag to abort the scanning process."""
         self._is_cancelled = True
 
     def run(self):
+        """Executes the directory scan and metadata extraction.
+
+        Iterates through the directory, identifies run folders, extracts
+        CSV metadata, calculates file sizes, and compiles a list of
+        RunMetadata objects. Emits scan_complete upon success.
+        """
         runs = []
         try:
             if not os.path.exists(self.unnamed_dir):
@@ -195,7 +221,7 @@ class ScanWorker(QThread):
                         pass
 
                 runs.append(
-                    UnnamedRun(
+                    RunMetadata(
                         filepath=filepath,
                         display_name=display_name,
                         timestamp=csv_timestamp,
@@ -213,6 +239,23 @@ class ScanWorker(QThread):
 
     @staticmethod
     def _extract_metadata(folderpath):
+        """Extracts experimental metadata from files within a run folder.
+
+        Locates a ZIP file within the folder, finds the primary data CSV
+        inside that ZIP, and parses it to determine the run duration,
+        point count, and start timestamp.
+
+        Args:
+            folderpath: The path to the specific run directory to analyze.
+
+        Returns:
+            A tuple containing:
+                - duration (float): The maximum relative time found in the data.
+                - num_points (int): The total number of data rows.
+                - timestamp (str): The start date/time string or "Unknown".
+                - virtual_csv_path (str | None): The path to the CSV data
+                  source, or None if not found.
+        """
         duration = 0.0
         num_points = 0
         timestamp = "Unknown"
@@ -272,12 +315,16 @@ class ScanWorker(QThread):
 
                     num_points += 1
 
-                    if num_points == 1 and date_idx != -1 and time_idx != -1:
-                        if len(row) > max(date_idx, time_idx):
-                            date_str = str(row[date_idx]).strip()
-                            time_str = str(row[time_idx]).strip()
-                            if date_str and time_str:
-                                timestamp = f"{date_str} {time_str}"
+                    if (
+                        num_points == 1
+                        and date_idx != -1
+                        and time_idx != -1
+                        and len(row) > max(date_idx, time_idx)
+                    ):
+                        date_str = str(row[date_idx]).strip()
+                        time_str = str(row[time_idx]).strip()
+                        if date_str and time_str:
+                            timestamp = f"{date_str} {time_str}"
 
                     if rel_time_idx != -1 and len(row) > rel_time_idx:
                         try:
@@ -288,6 +335,11 @@ class ScanWorker(QThread):
                             pass
 
                 duration = round(max_time, 2)
+        except RuntimeError as e:
+            if "Bad password" in str(e) or "password" in str(e).lower():
+                Log.w(TAG, f"Encrypted file, skipping metadata for {folderpath}")
+            else:
+                Log.e(TAG, f"Failed to extract metadata from {folderpath}: {str(e)}")
         except Exception as e:
             Log.e(TAG, f"Failed to extract metadata from {folderpath}: {str(e)}")
 
@@ -295,70 +347,56 @@ class ScanWorker(QThread):
 
 
 class RecoveryProgressDialog(QDialog):
-    """Modal dialog showing recovery progress"""
+    """
+    TODO: Progress dialog needs to be complete.
+        - Prompt runname
+        - Prompt device from available devices
+        - Other XML things I will need to create?
+        - Signature?
+    """
 
     def __init__(self, parent, run_data, run_name):
         super().__init__(parent)
-        self.run_data = run_data
-        self.run_name = run_name
-        self.worker = None
-        self.setup_ui()
-        self.start_recovery()
 
     def setup_ui(self):
         pass
 
     def start_recovery(self):
-        """Start the recovery worker thread"""
-        self.worker = RecoveryWorker(self.run_data, self.run_name)
-        self.worker.progress_updated.connect(self.update_progress)
-        self.worker.status_updated.connect(self.update_status)
-        self.worker.recovery_complete.connect(self.on_recovery_complete)
-        self.worker.start()
+        pass
 
     def update_progress(self, value):
-        self.progress_bar.setValue(value)
-
-    def update_status(self, message):
-        self.status_text.append(message)
-        self.status_text.verticalScrollBar().setValue(
-            self.status_text.verticalScrollBar().maximum()
-        )
+        pass
 
     def on_recovery_complete(self, success, message):
-        if success:
-            self.cancel_button.setText("Close")
-            self.cancel_button.clicked.disconnect()
-            self.cancel_button.clicked.connect(self.accept)
-            QMessageBox.information(self, "Recovery Complete", message)
-        else:
-            self.cancel_button.setText("Close")
-            self.cancel_button.clicked.disconnect()
-            self.cancel_button.clicked.connect(self.reject)
-            QMessageBox.critical(self, "Recovery Failed", message)
+        pass
 
     def on_cancel_clicked(self):
-        if self.worker and self.worker.isRunning():
-            reply = QMessageBox.question(
-                self,
-                "Cancel Recovery",
-                "Are you sure you want to cancel the recovery process?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if reply == QMessageBox.Yes:
-                self.worker.cancel()
-                self.worker.wait()
-                self.reject()
-        else:
-            self.reject()
+        pass
 
 
 class ToggleListWidget(QListWidget):
-    """QListWidget that deselects an item when it is clicked a second time."""
+    """A QListWidget that allows toggling item selection.
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and event.modifiers() == Qt.NoModifier:
+    Extends the standard QListWidget to provide a "toggle" behavior where
+    clicking an already-selected item deselects it, provided it is the
+    only item currently selected.
+    """
+
+    def mousePressEvent(self, event: QMouseEvent):  # noqa: N802
+        """Overrides the mouse press event to handle selection toggling.
+
+        If a user left-clicks a single item that is already selected (without
+        keyboard modifiers), the selection is cleared. Otherwise, the standard
+        QListWidget selection behavior is executed.
+
+        Args:
+            event (QMouseEvent): The mouse event containing position,
+                button, and modifier information.
+        """
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+        ):
             item = self.itemAt(event.pos())
             if item is not None and item.isSelected() and len(self.selectedItems()) == 1:
                 self.clearSelection()
@@ -368,109 +406,62 @@ class ToggleListWidget(QListWidget):
         super().mousePressEvent(event)
 
 
-class FilterPopup(QFrame):
+class RecoveryFilter(QFrame):
+    """A specialized popup frame for configuring run recovery filters.
 
-    filtersChanged = pyqtSignal(dict)
+    This widget provides a flyout menu containing various filter criteria,
+    including status (Good/Bad), date/time ranges, and numeric ranges for
+    duration, data points, and file size. It emits a signal when filters
+    are applied or reset.
 
-    def __init__(self, parent=None, current_filters=None):
-        super().__init__(parent, Qt.Popup)
+    Attributes:
+        filtersChanged (pyqtSignal): Signal emitted when the user clicks 'Apply'
+            or 'Reset', carrying a dict of the active filter criteria.
+        current_filters (dict): The initial filter state used to populate the UI.
+        status_combo (QComboBox): Dropdown for selecting run status.
+        date_from (QDateEdit): Input for the start date of the search range.
+        time_from (QTimeEdit): Input for the start time of the search range.
+        date_to (QDateEdit): Input for the end date of the search range.
+        time_to (QTimeEdit): Input for the end time of the search range.
+        duration_min (QDoubleSpinBox): Minimum duration filter input.
+        duration_max (QDoubleSpinBox): Maximum duration filter input.
+        points_min (QSpinBox): Minimum data points filter input.
+        points_max (QSpinBox): Maximum data points filter input.
+        size_min (QDoubleSpinBox): Minimum file size filter input.
+        size_max (QDoubleSpinBox): Maximum file size filter input.
+    """
+
+    filters_changed = pyqtSignal(dict)
+
+    def __init__(self, parent: QWidget | None = None, current_filters: dict | None = None) -> None:
+        """Initializes the RecoveryFilter with customizable UI elements and initial state.
+
+        The constructor builds a multi-section layout containing status selection,
+        dynamic date/time rows that can be toggled on/off, and range-based
+        numeric inputs. It also applies a custom stylesheet with icons for
+        calendars and chevrons.
+
+        Args:
+            parent (QWidget, optional): The parent widget for the popup.
+                Defaults to None.
+            current_filters (dict, optional): A dictionary containing existing
+                filter values to pre-populate the fields. Defaults to None.
+        """
+        super().__init__(parent, Qt.WindowType.Popup)
         self.current_filters = current_filters or {}
-        self.setObjectName("FilterPopup")
-        self.setStyleSheet(
-            """
-            QFrame#FilterPopup {
-                background-color: #ffffff;
-                border: 1px solid rgba(0, 0, 0, 25);
-                border-radius: 8px;
-            }
-            QLabel {
-                color: #666666;
-                font-size: 9pt;
-                background: transparent;
-                border: none;
-            }
-            QLabel#titleLabel {
-                color: #222222;
-                font-size: 10pt;
-                font-weight: 600;
-            }
-            QLabel#sectionLabel {
-                color: #333333;
-                font-size: 9pt;
-                font-weight: 600;
-                padding-top: 2px;
-            }
-            QLabel#rangeSep {
-                color: #999999;
-                font-size: 9pt;
-                padding: 0 2px;
-            }
-            QComboBox, QSpinBox, QDoubleSpinBox, QDateTimeEdit {
-                background-color: #ffffff;
-                border: 1px solid rgba(0, 0, 0, 25);
-                border-radius: 4px;
-                padding: 3px 6px;
-                font-size: 9pt;
-                color: #333333;
-                min-height: 20px;
-            }
-            QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QDateTimeEdit:focus {
-                border: 1px solid rgba(0, 114, 189, 120);
-            }
-            QDateTimeEdit::drop-down {
-                subcontrol-origin: padding;
-                subcontrol-position: right center;
-                width: 18px;
-                border: none;
-            }
-            QCheckBox {
-                color: #555555;
-                font-size: 9pt;
-                spacing: 6px;
-                background: transparent;
-            }
-            QCheckBox::indicator {
-                width: 14px;
-                height: 14px;
-                border: 1px solid rgba(0, 0, 0, 40);
-                border-radius: 3px;
-                background: #ffffff;
-            }
-            QCheckBox::indicator:checked {
-                background-color: rgba(0, 114, 189, 200);
-                border: 1px solid rgba(0, 114, 189, 220);
-                image: none;
-            }
-            QFrame#filterSeparator {
-                background-color: rgba(0, 0, 0, 15);
-                border: none;
-                max-height: 1px;
-                min-height: 1px;
-            }
-            QPushButton {
-                border-radius: 5px;
-                padding: 5px 14px;
-                font-size: 9pt;
-            }
-            QPushButton#applyBtn {
-                background-color: rgba(0, 114, 189, 25);
-                color: #005b9f;
-                border: 1px solid rgba(0, 114, 189, 60);
-            }
-            QPushButton#applyBtn:hover {
-                background-color: rgba(0, 114, 189, 45);
-            }
-            QPushButton#resetBtn {
-                background-color: transparent;
-                color: #666666;
-                border: 1px solid rgba(0, 0, 0, 25);
-            }
-            QPushButton#resetBtn:hover {
-                background-color: rgba(0, 0, 0, 6);
-            }
-            """
-        )
+        self._from_set = False
+        self._to_set = False
+        self.setObjectName("RecoveryFilter")
 
+        self.setStyleSheet(
+            RecoveryFilter._build_stylesheet(
+                icon_cal=os.path.join(Architecture.get_path(), "QATCH", "icons", "date-range.svg"),
+                icon_up=os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg"),
+                icon_down=os.path.join(
+                    Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
+                ),
+            )
+        )
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(16, 14, 16, 14)
         main_layout.setSpacing(10)
@@ -479,70 +470,75 @@ class FilterPopup(QFrame):
         title.setObjectName("titleLabel")
         main_layout.addWidget(title)
 
-        # Single vertical layout where each "section" is a label + controls.
-        # This keeps alignment predictable regardless of label/field widths.
         sections_layout = QVBoxLayout()
         sections_layout.setContentsMargins(0, 0, 0, 0)
         sections_layout.setSpacing(10)
 
-        # ---- Status ----
-        status_section = self._make_section("Status")
-        self.status_combo = QComboBox()
-        self.status_combo.addItems(["Any", "Good", "Bad"])
-        self.status_combo.setMinimumWidth(160)
-        status_row = QHBoxLayout()
-        status_row.setContentsMargins(0, 0, 0, 0)
-        status_row.setSpacing(6)
-        status_row.addWidget(self.status_combo, 1)
-        status_section.addLayout(status_row)
-        sections_layout.addLayout(status_section)
+        # Ruling Filters
+        ruling_section = self._make_section("RULING")
+        self.ruling_combo = QComboBox()
+        self.ruling_combo.addItems(["Any", "Good", "Bad"])
+        self.ruling_combo.setMinimumWidth(160)
+        ruling_row = QHBoxLayout()
+        ruling_row.setContentsMargins(0, 0, 0, 0)
+        ruling_row.setSpacing(6)
+        ruling_row.addWidget(self.ruling_combo, 1)
+        ruling_section.addLayout(ruling_row)
+        sections_layout.addLayout(ruling_section)
 
-        # ---- Date / Time range ----
-        date_section = self._make_section("Date / Time")
-        self.date_enabled = QCheckBox("Filter by date range")
-        self.date_enabled.toggled.connect(self._on_date_toggled)
-        date_section.addWidget(self.date_enabled)
+        # Date/Time Ranges
+        date_section = self._make_section("DATE / TIME")
 
-        self.date_from = QDateTimeEdit()
-        self.date_from.setCalendarPopup(True)
-        self.date_from.setDisplayFormat("yyyy-MM-dd HH:mm")
-        self.date_from.setDateTime(QDateTime.currentDateTime().addDays(-30))
-        self.date_to = QDateTimeEdit()
-        self.date_to.setCalendarPopup(True)
-        self.date_to.setDisplayFormat("yyyy-MM-dd HH:mm")
-        self.date_to.setDateTime(QDateTime.currentDateTime())
+        (
+            from_row_layout,
+            self._date_from_placeholder,
+            self._date_from_active,
+            self.date_from,
+            self.time_from,
+            self._date_from_clear,
+        ) = self._build_date_row(True)
 
-        date_row = QHBoxLayout()
-        date_row.setContentsMargins(0, 0, 0, 0)
-        date_row.setSpacing(6)
-        date_row.addWidget(self.date_from, 1)
-        sep_lbl = QLabel("–")
-        sep_lbl.setObjectName("rangeSep")
-        date_row.addWidget(sep_lbl)
-        date_row.addWidget(self.date_to, 1)
-        date_section.addLayout(date_row)
+        (
+            to_row_layout,
+            self._date_to_placeholder,
+            self._date_to_active,
+            self.date_to,
+            self.time_to,
+            self._date_to_clear,
+        ) = self._build_date_row(False)
+
+        self._date_from_placeholder.clicked.connect(lambda: self._activate_date_row(True))
+        self._date_from_clear.clicked.connect(lambda: self._clear_date_row(True))
+        self._date_to_placeholder.clicked.connect(lambda: self._activate_date_row(False))
+        self._date_to_clear.clicked.connect(lambda: self._clear_date_row(False))
+
+        date_section.addLayout(from_row_layout)
+        date_section.addLayout(to_row_layout)
         sections_layout.addLayout(date_section)
 
-        # ---- Numeric ranges (duration / points / size) ----
+        # Numeric Ranges
         self.duration_min = self._make_double_spin()
         self.duration_max = self._make_double_spin()
-        self.duration_max.setToolTip("0 = no upper limit")
+        self.duration_max.setToolTip("Any = no upper limit")
+        self.duration_max.setSpecialValueText("Any")
         sections_layout.addLayout(
-            self._make_range_section("Duration (s)", self.duration_min, self.duration_max)
+            self._make_range_section("DURATION (s)", self.duration_min, self.duration_max)
         )
 
         self.points_min = self._make_int_spin()
         self.points_max = self._make_int_spin()
-        self.points_max.setToolTip("0 = no upper limit")
+        self.points_max.setToolTip("Any = no upper limit")
+        self.points_max.setSpecialValueText("Any")
         sections_layout.addLayout(
-            self._make_range_section("Data Points", self.points_min, self.points_max)
+            self._make_range_section("DATA POINTS", self.points_min, self.points_max)
         )
 
         self.size_min = self._make_double_spin()
         self.size_max = self._make_double_spin()
-        self.size_max.setToolTip("0 = no upper limit")
+        self.size_max.setToolTip("Any = no upper limit")
+        self.size_max.setSpecialValueText("Any")
         sections_layout.addLayout(
-            self._make_range_section("File Size (MB)", self.size_min, self.size_max)
+            self._make_range_section("FILE SIZE (MB)", self.size_min, self.size_max)
         )
 
         main_layout.addLayout(sections_layout)
@@ -552,19 +548,19 @@ class FilterPopup(QFrame):
         sep.setObjectName("filterSeparator")
         main_layout.addWidget(sep)
 
-        # ---- Buttons ----
+        # Reset and Apply Buttons
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
         btn_row.addStretch()
 
         self.reset_btn = QPushButton("Reset")
         self.reset_btn.setObjectName("resetBtn")
-        self.reset_btn.setCursor(Qt.PointingHandCursor)
+        self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.reset_btn.clicked.connect(self._on_reset)
 
         self.apply_btn = QPushButton("Apply")
         self.apply_btn.setObjectName("applyBtn")
-        self.apply_btn.setCursor(Qt.PointingHandCursor)
+        self.apply_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.apply_btn.clicked.connect(self._on_apply)
 
         btn_row.addWidget(self.reset_btn)
@@ -572,13 +568,258 @@ class FilterPopup(QFrame):
         main_layout.addLayout(btn_row)
 
         self.setMinimumWidth(340)
-
         self._populate_from(current_filters or {})
 
-    # ---------- builder helpers ----------
+    @staticmethod
+    def _build_stylesheet(icon_cal: str = "", icon_up: str = "", icon_down: str = "") -> str:
+        """Generates the Qt Style Sheet (QSS) for the Recovery Filter popup.
 
-    def _make_section(self, title_text):
-        """Return a VBox layout with a titled section header already added."""
+        This method constructs a comprehensive CSS-like string used to style the
+        FilterPopup. It handles theme colors, border radii, and custom SVG icon
+        injection for interactive elements like dropdowns and spin boxes.
+
+        Args:
+            icon_cal: The file path to the calendar SVG icon used in QDateEdit.
+                Defaults to an empty string (standard rendering).
+            icon_up: The file path to the upward chevron SVG icon for spin boxes.
+                Defaults to an empty string.
+            icon_down: The file path to the downward chevron SVG icon for spin boxes.
+                Defaults to an empty string.
+
+        Returns:
+            str: A formatted QSS string containing all style rules for the popup
+                and its child widgets.
+        """
+
+        def _url(p: str) -> str:
+            """Formats a file path into a QSS image URL property."""
+            return ("image: url(" + p.replace(os.sep, "/") + ");") if p else ""
+
+        _cal_img = _url(icon_cal)
+        _up_img = _url(icon_up)
+        _down_img = _url(icon_down)
+
+        _btn_bg = "rgba(245, 245, 245, 210)"
+        _btn_hover = "rgba(0, 114, 189, 30)"
+        _btn_pressed = "rgba(0, 114, 189, 58)"
+        _btn_border = "rgba(0, 0, 0, 14)"
+
+        return f"""
+            /* Popup shell */
+            QFrame#RecoveryFilter {{
+                background-color: rgba(255, 255, 255, 244);
+                border: 1px solid rgba(0, 0, 0, 18);
+                border-radius: 8px;
+            }}
+
+            /* Labels */
+            QLabel {{
+                color: #555555;
+                font-size: 9pt;
+                background: transparent;
+                border: none;
+            }}
+            QLabel#titleLabel {{
+                color: #888888;
+                font-size: 9pt;
+                font-weight: 400;
+            }}
+            QLabel#sectionLabel {{
+                color: #444444;
+                font-size: 9pt;
+                font-weight: 600;
+                padding-top: 2px;
+            }}
+            QLabel#rangeSep {{
+                color: #999999;
+                font-size: 9pt;
+                padding: 0 2px;
+            }}
+            QLabel#dateRangeLbl {{
+                color: #888888;
+                font-size: 9pt;
+                min-width: 28px;
+                max-width: 28px;
+            }}
+
+            /* Input fields */
+            QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit {{
+                background-color: rgba(255, 255, 255, 180);
+                border: 1px solid rgba(0, 0, 0, 20);
+                border-radius: 4px;
+                padding: 3px 6px;
+                font-size: 9pt;
+                color: #333333;
+                min-height: 20px;
+                selection-background-color: rgba(0, 114, 189, 80);
+            }}
+            QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover,
+            QDateEdit:hover, QTimeEdit:hover {{
+                background-color: rgba(255, 255, 255, 220);
+                border-color: rgba(0, 0, 0, 32);
+            }}
+            QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
+            QDateEdit:focus, QTimeEdit:focus {{
+                border: 1px solid rgba(0, 114, 189, 120);
+                background-color: rgba(255, 255, 255, 255);
+            }}
+
+            /* ComboBox drop-down */
+            QComboBox::drop-down {{
+                subcontrol-origin: border;
+                subcontrol-position: right center;
+                width: 22px;
+                border-left: 1px solid {_btn_border};
+                border-top-right-radius: 3px;
+                border-bottom-right-radius: 3px;
+                background: {_btn_bg};
+            }}
+            QComboBox::drop-down:hover  {{ background: {_btn_hover}; }}
+            QComboBox::drop-down:pressed {{ background: {_btn_pressed}; }}
+            QComboBox::down-arrow {{
+                width: 8px;
+                height: 8px;
+                {_down_img}
+            }}
+
+            /* QDateEdit calendar button */
+            QDateEdit::drop-down {{
+                subcontrol-origin: border;
+                subcontrol-position: right center;
+                width: 22px;
+                border-left: 1px solid {_btn_border};
+                border-top-right-radius: 3px;
+                border-bottom-right-radius: 3px;
+                background: {_btn_bg};
+            }}
+            QDateEdit::drop-down:hover  {{ background: {_btn_hover}; }}
+            QDateEdit::drop-down:pressed {{ background: {_btn_pressed}; }}
+            QDateEdit::down-arrow {{
+                width: 12px;
+                height: 12px;
+                {_cal_img}
+            }}
+
+            /* Spin-box & TimeEdit up/down buttons */
+            QSpinBox::up-button, QDoubleSpinBox::up-button, QTimeEdit::up-button {{
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 16px;
+                border-left: 1px solid {_btn_border};
+                border-bottom: 1px solid {_btn_border};
+                border-top-right-radius: 3px;
+                background: {_btn_bg};
+            }}
+            QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+            QTimeEdit::up-button:hover {{
+                background: {_btn_hover};
+            }}
+            QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+            QTimeEdit::up-button:pressed {{
+                background: {_btn_pressed};
+            }}
+
+            QSpinBox::down-button, QDoubleSpinBox::down-button, QTimeEdit::down-button {{
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 16px;
+                border-left: 1px solid {_btn_border};
+                border-top: 1px solid {_btn_border};
+                border-bottom-right-radius: 3px;
+                background: {_btn_bg};
+            }}
+            QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover,
+            QTimeEdit::down-button:hover {{
+                background: {_btn_hover};
+            }}
+            QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed,
+            QTimeEdit::down-button:pressed {{
+                background: {_btn_pressed};
+            }}
+
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow, QTimeEdit::up-arrow {{
+                width: 6px;
+                height: 6px;
+                {_up_img}
+            }}
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow, QTimeEdit::down-arrow {{
+                width: 6px;
+                height: 6px;
+                {_down_img}
+            }}
+
+            /* Separator */
+            QFrame#filterSeparator {{
+                background-color: rgba(0, 0, 0, 14);
+                border: none;
+                max-height: 1px;
+                min-height: 1px;
+            }}
+
+            /* Footer buttons */
+            QPushButton {{
+                border-radius: 5px;
+                padding: 5px 14px;
+                font-size: 9pt;
+            }}
+            QPushButton#applyBtn {{
+                background-color: rgba(0, 114, 189, 25);
+                color: #005b9f;
+                border: 1px solid rgba(0, 114, 189, 60);
+            }}
+            QPushButton#applyBtn:hover  {{ background-color: rgba(0, 114, 189, 45); }}
+            QPushButton#resetBtn {{
+                background-color: transparent;
+                color: #666666;
+                border: 1px solid rgba(0, 0, 0, 22);
+            }}
+            QPushButton#resetBtn:hover  {{ background-color: rgba(0, 0, 0, 6); }}
+
+            /* Date row widgets (from new date section) */
+            QPushButton#addDateBtn {{
+                background-color: transparent;
+                color: #aaaaaa;
+                border: 1px dashed rgba(0, 0, 0, 22);
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 9pt;
+                text-align: left;
+            }}
+            QPushButton#addDateBtn:hover {{
+                background-color: rgba(0, 114, 189, 8);
+                border-color: rgba(0, 114, 189, 55);
+                color: rgba(0, 100, 170, 200);
+            }}
+            QPushButton#clearDateBtn {{
+                background-color: transparent;
+                border: none;
+                color: #aaaaaa;
+                font-size: 11pt;
+                padding: 0px;
+                min-width: 20px;  max-width: 20px;
+                min-height: 20px; max-height: 20px;
+                border-radius: 10px;
+            }}
+            QPushButton#clearDateBtn:hover {{
+                background-color: rgba(0, 0, 0, 10);
+                color: #555555;
+            }}
+        """
+
+    def _make_section(self, title_text: str) -> QVBoxLayout:
+        """Creates a layout container with a styled section header.
+
+        This helper method generates a vertical layout with zero margins and
+        standardized spacing, pre-populated with a QLabel acting as a header.
+        The label is assigned the 'sectionLabel' object name for QSS styling.
+
+        Args:
+            title_text: The string to display as the section heading.
+
+        Returns:
+            QVBoxLayout: A layout object ready to have additional widgets
+                or layouts added to it.
+        """
         section = QVBoxLayout()
         section.setContentsMargins(0, 0, 0, 0)
         section.setSpacing(4)
@@ -587,20 +828,132 @@ class FilterPopup(QFrame):
         section.addWidget(lbl)
         return section
 
-    def _make_double_spin(self):
+    def _build_date_row(
+        self, is_from: bool
+    ) -> tuple[QVBoxLayout, QPushButton, QWidget, QDateEdit, QTimeEdit, QPushButton]:
+        """Constructs a toggleable date/time input row.
+
+        Creates a dual-state UI component: a dashed 'placeholder' button for
+        inactive states and an 'active' container with date/time editors and
+        a clear button.
+
+        Args:
+            is_from: If True, prefixes the row with 'From:'; otherwise uses 'To:'.
+
+        Returns:
+            A tuple containing:
+                - layout (QHBoxLayout): The main row container.
+                - placeholder (QPushButton): The dashed button shown when unset.
+                - active_container (QWidget): The widget holding the editors.
+                - date_edit (QDateEdit): The date input widget.
+                - time_edit (QTimeEdit): The time input widget.
+                - clear_btn (QPushButton): The 'x' button to reset the row.
+        """
+        outer = QVBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Inactive placeholders
+        label_text = "+  From date" if is_from else "+  To date"
+        placeholder = QPushButton(label_text)
+        placeholder.setObjectName("addDateBtn")
+        placeholder.setCursor(Qt.CursorShape.PointingHandCursor)
+        placeholder.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        # Active row widget
+        active_widget = QWidget()
+        active_widget.setObjectName("dateActiveRow")
+        row_layout = QHBoxLayout(active_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(4)
+
+        bound_lbl = QLabel("From" if is_from else "To")
+        bound_lbl.setObjectName("dateRangeLbl")
+
+        default_dt = (
+            QDateTime.currentDateTime().addDays(-30) if is_from else QDateTime.currentDateTime()
+        )
+
+        date_edit = QDateEdit()
+        date_edit.setCalendarPopup(True)
+        date_edit.setDisplayFormat("yyyy-MM-dd")
+        date_edit.setDate(default_dt.date())
+        date_edit.setMinimumWidth(75)
+
+        time_edit = QTimeEdit()
+        time_edit.setDisplayFormat("HH:mm")
+        time_edit.setTime(QTime(0, 0) if is_from else default_dt.time())
+        time_edit.setFixedWidth(78)
+
+        clear_btn = QPushButton()
+        clear_btn.setIcon(
+            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "clear.svg"))
+        )
+        clear_btn.setObjectName("clearDateBtn")
+        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        clear_btn.setToolTip("Clear this date bound")
+
+        row_layout.addWidget(bound_lbl)
+        row_layout.addWidget(date_edit, 1)
+        row_layout.addWidget(time_edit)
+        row_layout.addWidget(clear_btn)
+
+        outer.addWidget(placeholder)
+        outer.addWidget(active_widget)
+
+        return outer, placeholder, active_widget, date_edit, time_edit, clear_btn
+
+    def _make_double_spin(self) -> QSpinBox:
+        """Factory method to create a standardized QDoubleSpinBox.
+
+        Configures a spin box with a large range (0 to 1,000,000), two decimal
+        places of precision, and a default starting value of 0.0. This is
+        primarily used for duration and file size filters.
+
+        Returns:
+            QDoubleSpinBox: A configured double precision spin box widget.
+        """
         w = QDoubleSpinBox()
         w.setRange(0.0, 1_000_000.0)
         w.setDecimals(2)
         w.setValue(0.0)
         return w
 
-    def _make_int_spin(self):
+    def _make_int_spin(self) -> QSpinBox:
+        """Factory method to create a standardized QSpinBox for integer values.
+
+        Configures a spin box with a broad range (0 to 100,000,000) and a default
+        starting value of 0. This is typically used for data point count filters.
+
+        Returns:
+            QSpinBox: A configured integer spin box widget.
+        """
         w = QSpinBox()
         w.setRange(0, 100_000_000)
         w.setValue(0)
         return w
 
-    def _make_range_section(self, title_text, min_widget, max_widget):
+    def _make_range_section(
+        self, title_text: str, min_widget: QWidget, max_widget: QWidget
+    ) -> QVBoxLayout:
+        """Creates a labeled section containing a Min/Max input range row.
+
+        This helper utilizes `_make_section` to create the header and then
+        assembles a horizontal row containing the 'Min' label, the minimum
+        input widget, the 'Max' label, and the maximum input widget.
+
+        Args:
+            title_text: The category name to display as the section header
+                (e.g., "DURATION (s)").
+            min_widget: The widget used for the lower bound input
+                (typically a QSpinBox or QDoubleSpinBox).
+            max_widget: The widget used for the upper bound input
+                (typically a QSpinBox or QDoubleSpinBox).
+
+        Returns:
+            QVBoxLayout: A vertical layout containing the header and the
+                horizontal range row.
+        """
         section = self._make_section(title_text)
 
         row = QHBoxLayout()
@@ -618,39 +971,99 @@ class FilterPopup(QFrame):
         section.addLayout(row)
         return section
 
-    # ---------- state ----------
+    def _activate_date_row(self, is_from: bool) -> None:
+        """Transitions a date/time row from placeholder to active state.
 
-    def _on_date_toggled(self, checked):
-        self.date_from.setEnabled(checked)
-        self.date_to.setEnabled(checked)
+        Sets the internal tracking boolean for the specified row and triggers
+        a UI update to swap the placeholder button for the actual
+        date/time editors.
 
-    def _populate_from(self, f):
+        Args:
+            is_from: If True, activates the 'From' (start) date row.
+                If False, activates the 'To' (end) date row.
+        """
+        if is_from:
+            self._from_set = True
+        else:
+            self._to_set = True
+        self._update_date_visuals()
+
+    def _clear_date_row(self, is_from: bool) -> None:
+        """Resets a date/time row to its default state and hides it.
+
+        This method sets the internal tracking flag to False, restores the
+        default date and time values for the specified row, and updates
+        the UI to show the placeholder button again.
+
+        Args:
+            is_from: If True, resets the 'From' (start) date row to 30 days ago
+                at 00:00. If False, resets the 'To' (end) date row to the
+                current date and time.
+        """
+        if is_from:
+            self._from_set = False
+            self.date_from.setDate(QDateTime.currentDateTime().addDays(-30).date())
+            self.time_from.setTime(QTime(0, 0))
+        else:
+            self._to_set = False
+            self.date_to.setDate(QDateTime.currentDateTime().date())
+            self.time_to.setTime(QDateTime.currentDateTime().time())
+        self._update_date_visuals()
+
+    def _update_date_visuals(self) -> None:
+        """Synchronizes the visibility of date/time widgets with their active state.
+
+        This method checks the internal `_from_set` and `_to_set` boolean flags
+        to determine whether to show the '+ Set date/time' placeholder buttons
+        or the actual date/time input editors for both the 'From' and 'To' rows.
+        """
+        self._date_from_placeholder.setVisible(not self._from_set)
+        self._date_from_active.setVisible(self._from_set)
+        self._date_to_placeholder.setVisible(not self._to_set)
+        self._date_to_active.setVisible(self._to_set)
+
+    def _populate_from(self, f: dict) -> None:
+        """Populates the popup widgets with values from a filter dictionary.
+
+        This method synchronizes the UI state with a provided dictionary. It handles
+        conditional logic for 'Any' (infinite) values in numeric ranges and
+        independently restores the 'From' and 'To' date bounds, ensuring the
+        visual state (placeholder vs. active editors) is updated accordingly.
+
+        Args:
+            f: A dictionary containing filter criteria. Expected keys include:
+                - 'status': str ("Good", "Bad", or others for "Any")
+                - 'date_from'/'date_to': datetime objects
+                - 'duration_min'/'duration_max': float
+                - 'points_min'/'points_max': int
+                - 'size_min'/'size_max': float
+        """
         status = f.get("status")
         if status in ("Good", "Bad"):
-            self.status_combo.setCurrentText(status)
+            self.ruling_combo.setCurrentText(status)
         else:
-            self.status_combo.setCurrentIndex(0)  # "Any"
+            self.ruling_combo.setCurrentIndex(0)  # "Any"
 
-        # Date range
-        has_date = "date_from" in f and "date_to" in f
-        self.date_enabled.setChecked(has_date)
-        if has_date:
+        self._from_set = "date_from" in f
+        self._to_set = "date_to" in f
+
+        if self._from_set:
             try:
-                self.date_from.setDateTime(
-                    QDateTime.fromString(
-                        f["date_from"].strftime("%Y-%m-%d %H:%M:%S"),
-                        "yyyy-MM-dd HH:mm:ss",
-                    )
-                )
-                self.date_to.setDateTime(
-                    QDateTime.fromString(
-                        f["date_to"].strftime("%Y-%m-%d %H:%M:%S"),
-                        "yyyy-MM-dd HH:mm:ss",
-                    )
-                )
+                dt = f["date_from"]
+                self.date_from.setDate(QDate(dt.year, dt.month, dt.day))
+                self.time_from.setTime(QTime(dt.hour, dt.minute))
             except Exception:
-                pass
-        self._on_date_toggled(self.date_enabled.isChecked())
+                self._from_set = False
+
+        if self._to_set:
+            try:
+                dt = f["date_to"]
+                self.date_to.setDate(QDate(dt.year, dt.month, dt.day))
+                self.time_to.setTime(QTime(dt.hour, dt.minute))
+            except Exception:
+                self._to_set = False
+
+        self._update_date_visuals()
 
         self.duration_min.setValue(
             float(f["duration_min"]) if f.get("duration_min") is not None else 0.0
@@ -668,15 +1081,35 @@ class FilterPopup(QFrame):
         s_max = f.get("size_max")
         self.size_max.setValue(0.0 if (s_max is None or s_max == float("inf")) else float(s_max))
 
-    def _collect(self):
+    def _collect(self) -> dict:
+        """Collects all current UI values into a filter criteria dictionary.
+
+        This method reads the state of every widget in the popup. It converts
+        Qt-specific objects (like QDate and QTime) into standard Python
+        datetimes and handles the 'Any' logic for numeric ranges by
+        substituting a value of 0 with positive infinity where appropriate.
+
+        Returns:
+            dict: A dictionary of active filters. Keys are only included if
+                they deviate from default 'Any' states. Possible keys:
+                - 'status' (str): "Good" or "Bad"
+                - 'date_from' (datetime): Start boundary
+                - 'date_to' (datetime): End boundary
+                - 'duration_min'/'duration_max' (float)
+                - 'points_min'/'points_max' (int/float)
+                - 'size_min'/'size_max' (float)
+        """
         filters = {}
 
-        if self.status_combo.currentText() != "Any":
-            filters["status"] = self.status_combo.currentText()
+        if self.ruling_combo.currentText() != "Any":
+            filters["status"] = self.ruling_combo.currentText()
 
-        if self.date_enabled.isChecked():
-            filters["date_from"] = self.date_from.dateTime().toPyDateTime()
-            filters["date_to"] = self.date_to.dateTime().toPyDateTime()
+        if self._from_set:
+            filters["date_from"] = QDateTime(
+                self.date_from.date(), self.time_from.time()
+            ).toPyDateTime()
+        if self._to_set:
+            filters["date_to"] = QDateTime(self.date_to.date(), self.time_to.time()).toPyDateTime()
 
         d_min = self.duration_min.value()
         d_max = self.duration_max.value()
@@ -698,39 +1131,120 @@ class FilterPopup(QFrame):
 
         return filters
 
-    def _on_apply(self):
-        self.filtersChanged.emit(self._collect())
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
+        """Intercepts the close event to perform a collapse animation.
+
+        Instead of closing immediately, the event is ignored while a
+        QPropertyAnimation shrinks the widget's height to zero. Once
+        the animation finishes, the close method is called again with
+        an internal flag set to allow the window to actually close.
+
+        Args:
+            event (QCloseEvent): The window close event received from the OS or
+                parent widget.
+        """
+        """Collapse the popup before actually closing."""
+        if getattr(self, "_closing_animated", False):
+            event.accept()
+            return
+        event.ignore()
+        self._closing_animated = True
+        full_h = self.height()
+        anim = QPropertyAnimation(self, b"maximumHeight")
+        anim.setDuration(130)
+        anim.setEasingCurve(QEasingCurve.InCubic)
+        anim.setStartValue(full_h)
+        anim.setEndValue(0)
+        anim.finished.connect(self.close)
+        anim.start()
+        self._close_anim = anim
+
+    def _on_apply(self) -> None:
+        """Gathers current filter settings and signals the parent to apply them.
+
+        This method acts as the finalization step for the filter popup. It
+        executes the data collection logic, emits the `filters_changed` signal
+        with the resulting dictionary, and initiates the animated close sequence.
+        """
+        self.filters_changed.emit(self._collect())
         self.close()
 
-    def _on_reset(self):
-        self.status_combo.setCurrentIndex(0)
-        self.date_enabled.setChecked(False)
-        self.date_from.setDateTime(QDateTime.currentDateTime().addDays(-30))
-        self.date_to.setDateTime(QDateTime.currentDateTime())
-        self.duration_min.setValue(0.0)
-        self.duration_max.setValue(0.0)
+    def _on_reset(self) -> None:
+        """Resets all filter widgets to their default values and closes the popup.
+
+        This method clears the status selection, resets the date range to the
+        default 30-day window, zeros out all numeric ranges (triggering the 'Any'
+        state), and emits an empty dictionary via `filters_changed` before
+        initiating the close animation.
+        """
+        self.ruling_combo.setCurrentIndex(0)
+        self._from_set = False
+        self._to_set = False
+        self.date_from.setDate(QDateTime.currentDateTime().addDays(-30).date())
+        self.time_from.setTime(QTime(0, 0))
+        self.date_to.setDate(QDateTime.currentDateTime().date())
+        self.time_to.setTime(QDateTime.currentDateTime().time())
+        self._update_date_visuals()
+        self.duration_min.setValue(0)
+        self.duration_max.setValue(0)
         self.points_min.setValue(0)
         self.points_max.setValue(0)
-        self.size_min.setValue(0.0)
-        self.size_max.setValue(0.0)
-        self.filtersChanged.emit({})
+        self.size_min.setValue(0)
+        self.size_max.setValue(0)
+        self.filters_changed.emit({})
         self.close()
 
 
-class RecoverUnnamedRunsDialog(QDialog):
+class RunRecoveryDialog(QDialog):
+    """Dialog for recovering and managing unnamed experimental runs.
 
-    _UNNAMED_DIR = os.path.join(Architecture.get_path(), Constants.log_export_path, "_unnamed")
+    This dialog scans a specific directory for orphaned or unnamed run data,
+    displays them in a filterable list, and provides a preview interface for
+    inspecting run metadata (duration, points, size, etc.) before recovery.
 
-    def __init__(self, parent=None):
+    Attributes:
+        _UNNAMED_DIR (str): The absolute path to the source directory containing
+            unnamed run folders.
+        unnamed_runs (List[RunMetadata]): The master list of all discovered
+            runs found on disk.
+        selected_run (Optional[RunMetadata]): The currently highlighted run in
+            the list, if any.
+        active_filters (Dict[str, Any]): A dictionary of filtering criteria
+            currently applied to the list.
+        is_preview_visible (bool): Toggle state for the side preview panel.
+        _filter_popup (Optional[FilterPopup]): Reference to the persistent
+            floating filter menu.
+    """
+
+    _UNNAMED_DIR: str = os.path.join(Architecture.get_path(), Constants.log_export_path, "_unnamed")
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initializes the RunRecoveryDialog.
+
+        Sets up the internal state, constructs the UI components, and
+        triggers the initial asynchronous scan of the unnamed runs directory.
+
+        Args:
+            parent: The parent widget. Defaults to None.
+        """
         super().__init__(parent)
-        self.unnamed_runs: List[UnnamedRun] = []
-        self.selected_run = None
-        self.active_filters = {}
-        self.is_preview_visible = True
+        self.unnamed_runs: List[RunMetadata] = []
+        self.selected_run: Optional[RunMetadata] = None
+        self.active_filters: dict[str, Any] = {}
+        self.is_preview_visible: bool = True
+        self._filter_popup: Optional[QWidget] = None
         self.setup_ui()
         self.load_unnamed_runs()
 
-    def setup_ui(self):
+    def setup_ui(self) -> None:
+        """
+        Initializes and configures the user interface components for the dialog.
+
+        This method sets up the styling, layouts, and widget hierarchies,
+        including the search bar, sortable run list, detail view, and a
+        PyQtGraph-based preview plot. It also connects UI signals to their
+        respective logic handlers.
+        """
         self.setStyleSheet(
             """
             QDialog { background-color: transparent; }
@@ -741,7 +1255,7 @@ class RecoverUnnamedRunsDialog(QDialog):
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(10)
 
-        # TOP
+        # Top layout
         top_master_layout = QVBoxLayout()
         top_master_layout.setSpacing(15)
 
@@ -793,7 +1307,7 @@ class RecoverUnnamedRunsDialog(QDialog):
 
         self.filter_btn = QPushButton()
         self.filter_btn.setFixedSize(28, 28)
-        self.filter_btn.setCursor(Qt.PointingHandCursor)
+        self.filter_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.filter_btn.setToolTip("Filter Options")
         self.filter_btn.setIcon(
             QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "filter.svg"))
@@ -803,19 +1317,23 @@ class RecoverUnnamedRunsDialog(QDialog):
         self.filter_btn.setCheckable(True)
         self.filter_btn.clicked.connect(self.show_filter_menu)
 
-        # Rescan lives in the top bar; runs on a worker and animates while scanning
-        self._rescan_icon_path = os.path.join(
+        self._rescan_icon_path: str = os.path.join(
             Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg"
         )
-        self._rescan_base_pixmap = QIcon(self._rescan_icon_path).pixmap(QSize(16, 16))
-        self._rescan_angle = 0
-        self._rescan_timer = QTimer(self)
-        self._rescan_timer.setInterval(16)  # ~60 fps
-        self._rescan_timer.timeout.connect(self._tick_rescan_spinner)
+        self._rescan_base_pixmap: QPixmap = QIcon(self._rescan_icon_path).pixmap(QSize(16, 16))
+        # This tracks a float from 0.0 to 360.0
+        self._rescan_animation: QVariantAnimation = QVariantAnimation(self)
+        self._rescan_animation.setStartValue(0.0)
+        self._rescan_animation.setEndValue(360.0)
+        self._rescan_animation.setDuration(850)  # Time for one full spin (ms)
+        self._rescan_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self._rescan_animation.valueChanged.connect(self._update_rescan_icon)
+        self._rescan_animation.finished.connect(self._check_rescan_loop)
+        self._is_rescan_loading: bool = False
 
-        self.rescan_btn = QPushButton()
+        self.rescan_btn: QPushButton = QPushButton()
         self.rescan_btn.setFixedSize(28, 28)
-        self.rescan_btn.setCursor(Qt.PointingHandCursor)
+        self.rescan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.rescan_btn.setToolTip("Rescan for unnamed runs")
         self.rescan_btn.setIcon(QIcon(self._rescan_base_pixmap))
         self.rescan_btn.setIconSize(QSize(16, 16))
@@ -827,11 +1345,11 @@ class RecoverUnnamedRunsDialog(QDialog):
         search_layout.addWidget(self.rescan_btn)
         top_master_layout.addLayout(search_layout)
 
-        # 2. Details, Buttons (right)
+        # Details & 'Recover' / 'Delete' buttons
         content_layout = QHBoxLayout()
         content_layout.setSpacing(15)
 
-        # LEFT — list column with sort bar above the list
+        # Left layout
         left_column = QWidget()
         left_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         left_column.setMinimumWidth(0)
@@ -839,7 +1357,7 @@ class RecoverUnnamedRunsDialog(QDialog):
         left_column_layout.setContentsMargins(0, 0, 0, 0)
         left_column_layout.setSpacing(6)
 
-        # Sort bar — minimal chrome, matches the rest of the dialog
+        # Sort bar
         sort_bar = QWidget()
         sort_bar.setStyleSheet(
             """
@@ -905,8 +1423,7 @@ class RecoverUnnamedRunsDialog(QDialog):
 
         self.sort_combo = QComboBox()
         self.sort_combo.setObjectName("sortCombo")
-        self.sort_combo.setCursor(Qt.PointingHandCursor)
-        # (display text, sort key)
+        self.sort_combo.setCursor(Qt.CursorShape.PointingHandCursor)
         for text, key in (
             ("Name", "name"),
             ("Date", "date"),
@@ -915,7 +1432,7 @@ class RecoverUnnamedRunsDialog(QDialog):
             ("File Size", "size"),
         ):
             self.sort_combo.addItem(text, key)
-        self.sort_combo.setCurrentIndex(1)  # default: Date
+        self.sort_combo.setCurrentIndex(1)
         self.sort_combo.currentIndexChanged.connect(lambda *_: self._sort_runs())
 
         self._sort_ascending = False  # newest first by default
@@ -924,7 +1441,7 @@ class RecoverUnnamedRunsDialog(QDialog):
             QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "descending.svg"))
         )
         self.sort_dir_btn.setObjectName("sortDir")
-        self.sort_dir_btn.setCursor(Qt.PointingHandCursor)
+        self.sort_dir_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.sort_dir_btn.setToolTip("Toggle sort direction")
         self.sort_dir_btn.setFixedSize(24, 24)
         self.sort_dir_btn.clicked.connect(self._toggle_sort_direction)
@@ -936,7 +1453,7 @@ class RecoverUnnamedRunsDialog(QDialog):
 
         left_column_layout.addWidget(sort_bar)
 
-        # LEFT
+        # Left layout
         self.runs_list = ToggleListWidget()
         self.runs_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.runs_list.setStyleSheet(
@@ -965,7 +1482,7 @@ class RecoverUnnamedRunsDialog(QDialog):
         self.runs_list.itemDoubleClicked.connect(self.on_item_double_clicked)
 
         self.empty_list_placeholder = QLabel("No recoverable runs")
-        self.empty_list_placeholder.setAlignment(Qt.AlignCenter)
+        self.empty_list_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_list_placeholder.setStyleSheet(
             """
             QLabel {
@@ -988,7 +1505,7 @@ class RecoverUnnamedRunsDialog(QDialog):
         left_column_layout.addWidget(self.list_stack, stretch=1)
         content_layout.addWidget(left_column, stretch=1)
 
-        # RIGHT
+        # Right layout
         right_container = QWidget()
         right_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         right_container.setMinimumWidth(0)
@@ -1030,8 +1547,8 @@ class RecoverUnnamedRunsDialog(QDialog):
         details_form = QFormLayout()
         details_form.setContentsMargins(0, 0, 0, 0)
         details_form.setSpacing(6)
-        details_form.setLabelAlignment(Qt.AlignLeft)
-        details_form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
+        details_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        details_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         def make_key_label(text):
             lbl = QLabel(text)
@@ -1039,7 +1556,7 @@ class RecoverUnnamedRunsDialog(QDialog):
             return lbl
 
         def make_value_label():
-            lbl = QLabel("—")
+            lbl = QLabel("-")
             lbl.setStyleSheet("color: #333333; font-size: 9pt;")
             lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             return lbl
@@ -1058,18 +1575,18 @@ class RecoverUnnamedRunsDialog(QDialog):
 
         details_outer.addLayout(details_form)
 
-        # Thin separator between info and actions
+        # Action seperator
         details_sep = QFrame()
         details_sep.setObjectName("detailsSep")
         details_outer.addWidget(details_sep)
 
-        # Borderless text action buttons — hover-only visual affordance
+        # Action buttons
         action_row = QHBoxLayout()
         action_row.setContentsMargins(0, 0, 0, 0)
         action_row.setSpacing(4)
 
         self.recover_button = QPushButton("  Recover")
-        self.recover_button.setCursor(Qt.PointingHandCursor)
+        self.recover_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.recover_button.setEnabled(False)
         self.recover_button.setIcon(
             QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "restore.svg"))
@@ -1102,7 +1619,7 @@ class RecoverUnnamedRunsDialog(QDialog):
         self.recover_button.clicked.connect(self.on_recover_clicked)
 
         self.delete_button = QPushButton("  Delete")
-        self.delete_button.setCursor(Qt.PointingHandCursor)
+        self.delete_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.delete_button.setEnabled(False)
         self.delete_button.setIcon(
             QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "delete.svg"))
@@ -1142,7 +1659,7 @@ class RecoverUnnamedRunsDialog(QDialog):
 
         right_layout.addWidget(self.details_frame)
 
-        # ---- Small plot preview card, sits right below the details ----
+        # Plot preview
         self.plot_card = QFrame()
         self.plot_card.setObjectName("plotCard")
         self.plot_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -1176,26 +1693,25 @@ class RecoverUnnamedRunsDialog(QDialog):
         self.plot_widget.hideButtons()
         self.plot_widget.setMenuEnabled(False)
         self.plot_widget.showGrid(x=True, y=True, alpha=0.15)
-
-        # No visible axes at this preview size — it's just a silhouette
         self.plot_widget.hideAxis("left")
         self.plot_widget.hideAxis("right")
         bottom_axis = self.plot_widget.getAxis("bottom")
         bottom_axis.setPen(pg.mkPen(color="#cccccc", width=1))
         bottom_axis.setLabel(text="")
         bottom_axis.setStyle(showValues=False)
-
-        # Softer / "glassy" primary colors — same hue family as before but
-        # lightened a touch and with slightly more transparency.
-        self._FREQ_COLOR = (82, 142, 201)  # soft sky blue
-        self._DISS_COLOR = (225, 175, 85)  # soft amber
+        self._FREQ_COLOR = (82, 142, 201)
+        self._DISS_COLOR = (225, 175, 85)
         pen_freq = pg.mkPen(color=(*self._FREQ_COLOR, 170), width=1.4)
         pen_diss = pg.mkPen(color=(*self._DISS_COLOR, 170), width=1.4)
 
         self.curve_freq = self.plot_widget.plot(pen=pen_freq)
 
         self.view_box_diss = pg.ViewBox()
-        self.plot_widget.scene().addItem(self.view_box_diss)
+        scene = self.plot_widget.scene()
+        if scene is not None:
+            scene.addItem(self.view_box_diss)
+        else:
+            pass
         self.view_box_diss.setXLink(self.plot_widget)
         self.view_box_diss.setMouseEnabled(x=False, y=False)
         self.view_box_diss.setMenuEnabled(False)
@@ -1203,17 +1719,21 @@ class RecoverUnnamedRunsDialog(QDialog):
         self.curve_diss = pg.PlotCurveItem(pen=pen_diss)
         self.view_box_diss.addItem(self.curve_diss)
 
-        def updateViews():
-            self.view_box_diss.setGeometry(self.plot_widget.plotItem.vb.sceneBoundingRect())
-            self.view_box_diss.linkedViewChanged(
-                self.plot_widget.plotItem.vb, self.view_box_diss.XAxis
-            )
+        plot_item = self.plot_widget.getPlotItem()
+        if plot_item is not None and plot_item.vb is not None:
+            main_vb = plot_item.vb
 
-        updateViews()
-        self.plot_widget.plotItem.vb.sigResized.connect(updateViews)
+            def _update_views() -> None:
+                """Synchronizes the dissipation ViewBox geometry with the main plot ViewBox."""
+                rect = main_vb.sceneBoundingRect()
+                self.view_box_diss.setGeometry(rect)
+                self.view_box_diss.linkedViewChanged(main_vb, self.view_box_diss.XAxis)
+
+            main_vb.sigResized.connect(_update_views)
+            _update_views()
 
         self.empty_plot_placeholder = QLabel("No data to display")
-        self.empty_plot_placeholder.setAlignment(Qt.AlignCenter)
+        self.empty_plot_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_plot_placeholder.setStyleSheet(
             """
             QLabel {
@@ -1231,8 +1751,7 @@ class RecoverUnnamedRunsDialog(QDialog):
         self.plot_stack.setCurrentIndex(1)
 
         plot_card_layout.addWidget(self.plot_stack, stretch=1)
-
-        # Tiny legend row underneath
+        # Legend
         freq_hex = "#%02x%02x%02x" % self._FREQ_COLOR
         diss_hex = "#%02x%02x%02x" % self._DISS_COLOR
         self.plot_legend_label = QLabel(
@@ -1243,47 +1762,97 @@ class RecoverUnnamedRunsDialog(QDialog):
             f'<span style="color:#777777;"> Dissipation</span>'
         )
         self.plot_legend_label.setObjectName("plotLegend")
-        self.plot_legend_label.setAlignment(Qt.AlignCenter)
-        self.plot_legend_label.setTextFormat(Qt.RichText)
+        self.plot_legend_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.plot_legend_label.setTextFormat(Qt.TextFormat.RichText)
         plot_card_layout.addWidget(self.plot_legend_label)
-
         right_layout.addWidget(self.plot_card, stretch=1)
-
         content_layout.addWidget(right_container, stretch=1)
         top_master_layout.addLayout(content_layout)
-
         main_layout.addLayout(top_master_layout, stretch=1)
-
         self.setLayout(main_layout)
 
-    def show_filter_menu(self):
-        popup = FilterPopup(self, current_filters=self.active_filters)
-        popup.filtersChanged.connect(self._on_filters_changed)
+    def show_filter_menu(self) -> None:
+        """
+        Handles the creation, positioning, and animation of the recovery filter popup.
+
+        If a popup is already active, it closes it. Otherwise, it instantiates
+        a RecoveryFilter, positions it relative to the filter button, and
+        executes a slide-down 'open' animation.
+        """
+        self.filter_btn.setChecked(bool(self.active_filters))
+
+        if self._filter_popup is not None:
+            with suppress(RuntimeError):
+                self._filter_popup.close()
+
+            self._filter_popup = None
+            return
+
+        popup = RecoveryFilter(self, current_filters=self.active_filters)
+        popup.filters_changed.connect(self._on_filters_changed)
 
         popup.adjustSize()
+        full_height = popup.sizeHint().height()
+
         btn_right_global = self.filter_btn.mapToGlobal(
             QPoint(self.filter_btn.width(), self.filter_btn.height() + 4)
         )
         pos = QPoint(btn_right_global.x() - popup.width(), btn_right_global.y())
         popup.move(pos)
+
+        # Open animation
+        popup.setMaximumHeight(0)
         popup.show()
+        open_anim = QPropertyAnimation(popup, b"maximumHeight")
+        open_anim.setDuration(180)
+        open_anim.setEasingCurve(QEasingCurve.OutCubic)
+        open_anim.setStartValue(0)
+        open_anim.setEndValue(full_height)
+        open_anim.finished.connect(lambda: popup.setMaximumHeight(16777215))
+        open_anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
-        popup.destroyed.connect(lambda: self.filter_btn.setChecked(bool(self.active_filters)))
+        self._filter_popup = popup
+        popup.destroyed.connect(self._on_filter_popup_closed)
 
-    def _on_filters_changed(self, filters):
+    def _on_filter_popup_closed(self) -> None:
+        """
+        Cleans up references when the filter popup is closed or destroyed.
+
+        Resets the internal popup reference to None and synchronizes the
+        filter button's visual checked state with the presence of active filters.
+        """
+        self._filter_popup = None
+        self.filter_btn.setChecked(bool(self.active_filters))
+
+    def _on_filters_changed(self, filters: Dict[str, Any]) -> None:
+        """
+        Updates the active filter state and refreshes the displayed runs.
+
+        Args:
+            filters (Dict[str, Any]): A dictionary containing the filter criteria
+                emitted by the RecoveryFilter popup.
+        """
         self.active_filters = filters
         self.filter_btn.setChecked(bool(filters))
         self.refilter_list()
 
-    def refilter_list(self, *_):
-        """Apply search text + active filters to the list."""
+    def refilter_list(self, *_: object) -> None:
+        """
+        Applies search text and active filters to the runs list.
+
+        Iterates through all items in the runs list, evaluating them against the
+        current search query and filter criteria (status, date, duration, points,
+        and size). Updates item visibility and the UI empty state accordingly.
+        """
         query = self.search_bar.text().lower().strip()
         visible_count = 0
 
         for index in range(self.runs_list.count()):
             item = self.runs_list.item(index)
-            run: UnnamedRun = item.data(Qt.UserRole)
-
+            if item is None:
+                continue
+            raw_data = item.data(Qt.ItemDataRole.UserRole)
+            run = cast("RunMetadata", raw_data)
             matches = True
 
             # Search
@@ -1343,8 +1912,17 @@ class RecoverUnnamedRunsDialog(QDialog):
             self.list_stack.setCurrentIndex(0)
 
     @staticmethod
-    def _parse_timestamp(ts: str):
-        """Best-effort parse of a run timestamp string."""
+    def _parse_timestamp(ts: str) -> Optional[datetime]:
+        """
+        Best-effort parse of a run timestamp string into a datetime object.
+
+        Args:
+            ts (str): The timestamp string to parse.
+
+        Returns:
+            Optional[datetime]: The parsed datetime object if successful;
+            otherwise, None.
+        """
         if not ts or ts == "Unknown":
             return None
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%m/%d/%Y %H:%M:%S"):
@@ -1354,85 +1932,87 @@ class RecoverUnnamedRunsDialog(QDialog):
                 continue
         return None
 
-    def toggle_preview(self):
-        if (
-            hasattr(self, "plot_animation")
-            and self.plot_animation.state() == QPropertyAnimation.Running
-        ):
-            return
+    def _update_rescan_icon(self, angle: float) -> None:
+        """
+        Renders and applies a rotated version of the rescan icon to the button.
 
-        start_h = self.plot_container.height()
+        This method creates a temporary transparent canvas (QPixmap), uses a QPainter
+        to rotate the base pixmap around its center point by the specified angle,
+        and updates the button icon. It utilizes smooth pixmap transformation and
+        antialiasing for a high-quality visual result.
 
-        if self.is_preview_visible:
-            # Collapsing — container drives down to 28; plot_stack fades out
-            target_h = self._PLOT_COLLAPSED_HEIGHT
-            self.toggle_plot_btn.setIcon(self.icon_show)
-            self.is_preview_visible = False
-        else:
-            # Expanding — show the plot stack BEFORE the animation starts
-            target_h = self._PLOT_EXPANDED_HEIGHT
-            self.toggle_plot_btn.setIcon(self.icon_hide)
-            self.is_preview_visible = True
-            self.plot_stack.setVisible(True)
-
-        # Drive maximumHeight; mirror it onto minimumHeight each frame so the
-        # layout engine doesn't have any slack to snap against at the ends.
-        self.plot_animation = QPropertyAnimation(self.plot_container, b"maximumHeight")
-        self.plot_animation.setDuration(self._PLOT_ANIM_DURATION)
-        self.plot_animation.setEasingCurve(QEasingCurve.OutCubic)
-        self.plot_animation.setStartValue(start_h)
-        self.plot_animation.setEndValue(target_h)
-        self.plot_animation.valueChanged.connect(self._sync_plot_min_height)
-
-        def on_finished():
-            # Lock the final geometry exactly so nothing jumps after the curve ends
-            self.plot_container.setMinimumHeight(target_h)
-            self.plot_container.setMaximumHeight(target_h)
-            # Fully hide the stack after collapse so the plot can't leak through
-            if not self.is_preview_visible:
-                self.plot_stack.setVisible(False)
-
-        self.plot_animation.finished.connect(on_finished)
-        self.plot_animation.start()
-
-    def _sync_plot_min_height(self, h):
-        """Keep min height == max height during the toggle animation."""
-        self.plot_container.setMinimumHeight(int(h))
-
-    # ----- Rescan spinner animation -----
-
-    def _tick_rescan_spinner(self):
-        self._rescan_angle = (self._rescan_angle + 12) % 360
+        Args:
+            angle (float): The rotation angle in degrees (0.0 to 360.0).
+        """
         size = self._rescan_base_pixmap.size()
         if size.isEmpty():
             return
+
         canvas = QPixmap(size)
-        canvas.fill(Qt.transparent)
+        canvas.fill(Qt.GlobalColor.transparent)
+
         painter = QPainter(canvas)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
-        painter.setRenderHint(QPainter.Antialiasing)
-        cx = size.width() / 2
-        cy = size.height() / 2
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Translate to center, rotate, translate back
+        cx, cy = size.width() / 2.0, size.height() / 2.0
         painter.translate(cx, cy)
-        painter.rotate(self._rescan_angle)
+        painter.rotate(angle)
         painter.translate(-cx, -cy)
+
         painter.drawPixmap(0, 0, self._rescan_base_pixmap)
         painter.end()
+
         self.rescan_btn.setIcon(QIcon(canvas))
 
-    def _start_rescan_animation(self):
-        self._rescan_angle = 0
-        self.rescan_btn.setEnabled(False)
-        self._rescan_timer.start()
+    def _check_rescan_loop(self) -> None:
+        """
+        Evaluates the loading state at the end of an animation cycle to determine continuity.
 
-    def _stop_rescan_animation(self):
-        self._rescan_timer.stop()
-        self.rescan_btn.setIcon(QIcon(self._rescan_base_pixmap))
-        self.rescan_btn.setEnabled(True)
+        This method is connected to the 'finished' signal of the rescan animation.
+        It ensures the spinner only stops after completing a full 360-degree
+        revolution, maintaining a professional visual transition. If the scan
+        is still in progress, it restarts the animation; otherwise, it resets
+        the icon to the upright position and re-enables the button.
+        """
+        if self._is_rescan_loading:
+            self._rescan_animation.start()
+        else:
+            self._update_rescan_icon(0.0)
+            self.rescan_btn.setEnabled(True)
 
-    # ----- Sorting -----
+    def _start_rescan_animation(self) -> None:
+        """
+        Sets the loading state and initiates the rescan spinner animation.
 
-    def _toggle_sort_direction(self):
+        This method flags the internal loading state as active, disables the
+        rescan button to prevent concurrent scan requests, and starts the
+        QVariantAnimation loop. If the animation is already running, it
+        allows the current cycle to continue without interruption.
+        """
+        self._is_rescan_loading = True
+        if hasattr(self, "rescan_btn"):
+            self.rescan_btn.setEnabled(False)
+        if self._rescan_animation.state() != QVariantAnimation.State.Running:
+            self._rescan_animation.start()
+
+    def _stop_rescan_animation(self) -> None:
+        """
+        Signals that the loading process is complete.
+
+        The animation will continue until it finishes its current revolution
+        to ensure the icon returns to the upright position smoothly.
+        """
+        self._is_rescan_loading = False
+
+    def _toggle_sort_direction(self) -> None:
+        """
+        Inverts the current sort order and updates the direction button's icon and tooltip.
+
+        This method toggles 'self._sort_ascending', swaps the button icon between
+        ascending and descending SVG assets, and triggers a re-sort of the runs list.
+        """
         self._sort_ascending = not self._sort_ascending
         icon_asc = QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "ascending.svg"))
         icon_desc = QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "descending.svg"))
@@ -1442,11 +2022,13 @@ class RecoverUnnamedRunsDialog(QDialog):
         self.sort_dir_btn.setToolTip("Ascending" if self._sort_ascending else "Descending")
         self._sort_runs()
 
-    def _sort_runs(self):
-        """Re-order the items in runs_list based on the current sort key/direction.
+    def _sort_runs(self) -> None:
+        """
+        Re-orders the items in runs_list based on the current sort key and direction.
 
-        Works on the backing self.unnamed_runs list so ordering survives rescans.
-        Preserves the current selection and then re-applies the active filter.
+        This method sorts the backing 'self.unnamed_runs' list to ensure ordering
+        persists. It preserves the current user selection, clears and repopulates
+        the QListWidget, and then re-applies any active filters.
         """
         if not hasattr(self, "sort_combo"):
             return
@@ -1454,7 +2036,8 @@ class RecoverUnnamedRunsDialog(QDialog):
         key = self.sort_combo.currentData()
         ascending = self._sort_ascending
 
-        def sort_key(r: UnnamedRun):
+        def sort_key(r: RunMetadata):
+            """Helper to extract the sortable value from metadata."""
             if key == "name":
                 return (r.display_name or "").lower()
             if key == "date":
@@ -1471,73 +2054,100 @@ class RecoverUnnamedRunsDialog(QDialog):
         try:
             self.unnamed_runs.sort(key=sort_key, reverse=not ascending)
         except TypeError:
-            # Mixed types (e.g. date parsing produced None vs datetime): fall back to name
             self.unnamed_runs.sort(
                 key=lambda r: (r.display_name or "").lower(), reverse=not ascending
             )
 
-        selected_runs = {item.data(Qt.UserRole) for item in self.runs_list.selectedItems()}
+        selected_runs = {
+            item.data(Qt.ItemDataRole.UserRole) for item in self.runs_list.selectedItems()
+        }
 
         self.runs_list.blockSignals(True)
         self.runs_list.clear()
         for run in self.unnamed_runs:
             item = QListWidgetItem(run.display_name)
-            item.setData(Qt.UserRole, run)
+            item.setData(Qt.ItemDataRole.UserRole, run)
             self.runs_list.addItem(item)
             if run in selected_runs:
                 item.setSelected(True)
         self.runs_list.blockSignals(False)
 
         self.refilter_list()
-        # Explicitly refresh, since the block above suppressed the signal
         self.on_selection_changed()
 
-    # ----- Scan / reload -----
+    def load_unnamed_runs(self) -> None:
+        """
+        Initiates an asynchronous scan for recoverable runs.
 
-    def load_unnamed_runs(self):
-        """Kick off an async scan. Safe to call from init or from the rescan button."""
-        # If a scan is already running, ignore additional requests
-        if getattr(self, "_scan_worker", None) and self._scan_worker.isRunning():
+        Resets the UI state, clears current run metadata, and starts the
+        rescan animation. A ScanWorker is initialized to process the
+        unnamed directory in a background thread.
+        """
+        if (
+            hasattr(self, "_scan_worker")
+            and self._scan_worker is not None
+            and self._scan_worker.isRunning()
+        ):
             return
 
-        # Reset the list UI immediately so the user sees the scan starting
-        self.unnamed_runs = []
+        self.unnamed_runs: list = []
         self.runs_list.clear()
         self.clear_details()
         self.recover_button.setEnabled(False)
         self.delete_button.setEnabled(False)
         self.empty_list_placeholder.setText("Scanning for recoverable runs…")
         self.list_stack.setCurrentIndex(1)
-
         self._start_rescan_animation()
-
         self._scan_worker = ScanWorker(self._UNNAMED_DIR)
+
+        # Signals
         self._scan_worker.scan_complete.connect(self._on_scan_complete)
         self._scan_worker.scan_failed.connect(self._on_scan_failed)
         self._scan_worker.finished.connect(self._stop_rescan_animation)
         self._scan_worker.start()
 
-    def _on_scan_complete(self, runs):
+    def _on_scan_complete(self, runs: List["RunMetadata"]) -> None:
+        """
+        Callback triggered when the background ScanWorker successfully finishes.
+
+        Args:
+            runs (List[RunMetadata]): The collection of run metadata objects
+                found during the scan.
+        """
         self.unnamed_runs = list(runs)
-
-        # Apply current sort choice, then populate the list widget
         self._sort_runs()
-
-        # _sort_runs() already repopulates and calls refilter_list,
-        # but when the list is empty sort_runs is a no-op on unnamed_runs,
-        # so make sure we show the right placeholder.
         if not self.unnamed_runs:
             self.empty_list_placeholder.setText("No recoverable runs")
             self.list_stack.setCurrentIndex(1)
 
-    def _on_scan_failed(self, message):
-        Log.i(TAG, f"Error loading unnamed runs: {message}")
+    def _on_scan_failed(self, message: str) -> None:
+        """
+        Callback triggered when the background ScanWorker encounters an error.
+
+        Logs the failure message, resets the local run data, and ensures the UI
+        reflects an empty state with an appropriate message.
+
+        Args:
+            message (str): The error description emitted by the worker.
+        """
+        Log.e(TAG, f"Error loading unnamed runs: {message}")
         self.unnamed_runs = []
         self.runs_list.clear()
         self.empty_list_placeholder.setText("No recoverable runs")
         self.list_stack.setCurrentIndex(1)
 
-    def update_plot_preview(self, run: UnnamedRun):
+    def update_plot_preview(self, run: "RunMetadata") -> None:
+        """
+        Parses a virtual CSV file to update the frequency and dissipation plot preview.
+
+        This method reads data from a virtual path, identifies header indices,
+        downsamples the dataset if it exceeds the point threshold, applies a
+        smoothing filter, and updates the pyqtgraph curves. It handles encrypted
+        files and malformed data gracefully.
+
+        Args:
+            run (RunMetadata): The metadata object containing the CSV path.
+        """
         if not run or not run.virtual_csv_path:
             self.curve_freq.setData([], [])
             self.curve_diss.setData([], [])
@@ -1547,8 +2157,8 @@ class RecoverUnnamedRunsDialog(QDialog):
         times, freqs, disss = [], [], []
 
         try:
-            with secure_open(run.virtual_csv_path, "r") as f:
-                text_io = io.TextIOWrapper(f, encoding="utf-8-sig")
+            with secure_open(run.virtual_csv_path, "rb") as f:  # Open as binary "rb"
+                text_io = io.TextIOWrapper(cast(BinaryIO, f), encoding="utf-8-sig")
                 reader = csv.reader(text_io)
 
                 header_row = None
@@ -1578,14 +2188,18 @@ class RecoverUnnamedRunsDialog(QDialog):
                             )
                         continue
 
-                    if t_idx != -1 and f_idx != -1 and d_idx != -1:
-                        if len(row) > max(t_idx, f_idx, d_idx):
-                            try:
-                                times.append(float(str(row[t_idx]).strip()))
-                                freqs.append(float(str(row[f_idx]).strip()))
-                                disss.append(float(str(row[d_idx]).strip()))
-                            except (ValueError, TypeError):
-                                pass
+                    if (
+                        t_idx != -1
+                        and f_idx != -1
+                        and d_idx != -1
+                        and len(row) > max(t_idx, f_idx, d_idx)
+                    ):
+                        try:
+                            times.append(float(str(row[t_idx]).strip()))
+                            freqs.append(float(str(row[f_idx]).strip()))
+                            disss.append(float(str(row[d_idx]).strip()))
+                        except (ValueError, TypeError):
+                            pass
 
             max_preview_points = 1500
             total_points = len(times)
@@ -1601,16 +2215,29 @@ class RecoverUnnamedRunsDialog(QDialog):
                 self.plot_stack.setCurrentIndex(1)
                 return
 
-            # Smooth out high-frequency noise for a cleaner preview
+            # Smoothing for a clearner plot
             freqs_s = self._smooth(freqs)
             disss_s = self._smooth(disss)
 
             self.curve_freq.setData(times, freqs_s)
             self.curve_diss.setData(times, disss_s)
-            self.plot_widget.plotItem.vb.autoRange()
+            plot_item = self.plot_widget.plotItem
+            if plot_item is not None and plot_item.vb is not None:
+                plot_item.vb.autoRange()
+            if self.view_box_diss is not None:
+                self.view_box_diss.autoRange()
             self.view_box_diss.autoRange()
             self.plot_stack.setCurrentIndex(0)
 
+        except RuntimeError as e:
+            # Bad-password errors are expected for encrypted ZIPs show a placeholder.
+            if "Bad password" in str(e) or "password" in str(e).lower():
+                self.empty_plot_placeholder.setText("Preview unavailable")
+            else:
+                Log.e(TAG, f"Failed to load preview data: {str(e)}")
+            self.curve_freq.setData([], [])
+            self.curve_diss.setData([], [])
+            self.plot_stack.setCurrentIndex(1)
         except Exception as e:
             Log.e(TAG, f"Failed to load preview data: {str(e)}")
             self.curve_freq.setData([], [])
@@ -1618,13 +2245,25 @@ class RecoverUnnamedRunsDialog(QDialog):
             self.plot_stack.setCurrentIndex(1)
 
     @staticmethod
-    def _smooth(values, window=9):
-        """Centered moving-average smoother. Preserves endpoints so the
-        first/last samples aren't pulled toward zero.
+    def _smooth(values: Sequence[float], window: int = 9) -> List[float]:
+        """
+        Applies a centered moving-average smoother to a sequence of values.
+
+        Uses edge-padding to preserve endpoints, preventing the smoothed signal
+        from tapering toward zero at the boundaries.
+
+        Args:
+            values (Sequence[float]): The input numerical data to smooth.
+            window (int): The size of the smoothing window (default is 9).
+                Must be at least 3.
+
+        Returns:
+            List[float]: The smoothed data as a list of floats.
         """
         n = len(values)
         if n < max(window, 3):
-            return values
+            return list(values)
+
         arr = np.asarray(values, dtype=float)
         # Pad using edge values so convolution doesn't dip at the boundaries
         pad = window // 2
@@ -1633,12 +2272,20 @@ class RecoverUnnamedRunsDialog(QDialog):
         smoothed = np.convolve(padded, kernel, mode="valid")
         return smoothed.tolist()
 
-    def on_selection_changed(self):
+    def on_selection_changed(self) -> None:
+        """
+        Updates the detail panel and button states based on the current selection.
+
+        Handles three states:
+        1. Single selection: Display full metadata and plot preview.
+        2. Multiple selection: Clear details, enable bulk delete, disable recovery.
+        3. No selection: Clear details and disable all actions.
+        """
         selected_items = self.runs_list.selectedItems()
         count = len(selected_items)
 
         if count == 1:
-            run = selected_items[0].data(Qt.UserRole)
+            run = selected_items[0].data(Qt.ItemDataRole.UserRole)
             self.selected_run = run
 
             self.detail_datetime.setText(run.timestamp)
@@ -1655,6 +2302,7 @@ class RecoverUnnamedRunsDialog(QDialog):
 
             self.recover_button.setEnabled(True)
             self.delete_button.setEnabled(True)
+            self.delete_button.setText("  Delete")
 
         elif count > 1:
             self.selected_run = None
@@ -1662,14 +2310,23 @@ class RecoverUnnamedRunsDialog(QDialog):
 
             self.recover_button.setEnabled(False)
             self.delete_button.setEnabled(True)
+            self.delete_button.setText(f"  Delete ({count})")
 
         else:
             self.selected_run = None
             self.clear_details()
             self.recover_button.setEnabled(False)
             self.delete_button.setEnabled(False)
+            self.delete_button.setText("  Delete")
 
-    def on_delete_clicked(self):
+    def on_delete_clicked(self) -> None:
+        """
+        Handles moving selected items to the system Recycle Bin after user confirmation.
+
+        If successful, the items are passed to the animation handler for removal
+        from the UI. Errors (like missing folders or permission issues) are logged
+        without interrupting the bulk process.
+        """
         selected_items = self.runs_list.selectedItems()
         if not selected_items:
             return
@@ -1697,7 +2354,7 @@ class RecoverUnnamedRunsDialog(QDialog):
         runs_to_remove = []
 
         for item in selected_items:
-            run = item.data(Qt.UserRole)
+            run = item.data(Qt.ItemDataRole.UserRole)
             folder_path = os.path.abspath(run.filepath)
             try:
                 if os.path.exists(folder_path):
@@ -1709,39 +2366,100 @@ class RecoverUnnamedRunsDialog(QDialog):
             except Exception as e:
                 Log.e(TAG, f"Failed to trash {folder_path}: {str(e)}")
 
-        for item, run in runs_to_remove:
-            row = self.runs_list.row(item)
-            self.runs_list.takeItem(row)
-            if run in self.unnamed_runs:
-                self.unnamed_runs.remove(run)
-
-        self.on_selection_changed()
-        self.refilter_list()
-
         if success_count > 0:
-            Log.i(
-                TAG,
-                f"Successfully moved {success_count} runs to the Recycle Bin.",
-            )
+            Log.i(TAG, f"Successfully moved {success_count} runs to the Recycle Bin.")
 
-    def on_item_double_clicked(self, item):
-        run = item.data(Qt.UserRole)
+        if runs_to_remove:
+            self._animate_delete_items(runs_to_remove)
+        else:
+            self.on_selection_changed()
+            self.refilter_list()
+
+    def _animate_delete_items(self, runs_to_remove):
+        """
+        TODO: Animation behavior is currently broken.  Just vanishing off plot
+                after a short delay.
+        """
+
+        items = [item for item, _ in runs_to_remove]
+
+        # Phase 1: red highlight
+        for item in items:
+            item.setBackground(QBrush(QColor(220, 53, 69, 55)))
+            item.setForeground(QBrush(QColor(176, 42, 56, 220)))
+
+        # Phase 2: collapse
+        orig_heights = {id(item): self.runs_list.visualItemRect(item).height() for item in items}
+
+        def do_collapse():
+            timeline = QTimeLine(220, self)
+            timeline.setFrameRange(0, 100)
+            timeline.setEasingCurve(QEasingCurve.InCubic)
+
+            def on_frame(frame):
+                remaining = 1.0 - frame / 100.0
+                for item in items:
+                    h = max(0, int(orig_heights.get(id(item), 28) * remaining))
+                    item.setSizeHint(QSize(item.sizeHint().width(), h))
+
+            def on_finished():
+                for item, run in runs_to_remove:
+                    row = self.runs_list.row(item)
+                    self.runs_list.takeItem(row)
+                    if run in self.unnamed_runs:
+                        self.unnamed_runs.remove(run)
+                self.on_selection_changed()
+                self.refilter_list()
+
+            timeline.frameChanged.connect(on_frame)
+            timeline.finished.connect(on_finished)
+            timeline.start()
+            self._delete_timeline = timeline  # keep reference
+
+        QTimer.singleShot(180, do_collapse)
+
+    def on_item_double_clicked(self, item: QListWidgetItem) -> None:
+        """
+        Handles the double-click event on a list item to initiate recovery.
+
+        This convenience method allows users to skip the 'Recover' button by
+        directly double-clicking a run in the list. It updates the currently
+        selected run and triggers the recovery workflow.
+
+        Args:
+            item (QListWidgetItem): The list item that was double-clicked.
+        """
+        run = item.data(Qt.ItemDataRole.UserRole)
         self.selected_run = run
         self.on_recover_clicked()
 
-    def clear_details(self):
-        self.detail_datetime.setText("—")
-        self.detail_duration.setText("—")
-        self.detail_points.setText("—")
-        self.detail_ruling.setText("—")
-        self.detail_ruling.setStyleSheet("color: #333333; font-size: 9pt;")
-        self.detail_filesize.setText("—")
+    def clear_details(self) -> None:
+        """
+        Resets the metadata detail panel and plot preview to an empty state.
 
-        self.curve_freq.setData([], [])
-        self.curve_diss.setData([], [])
-        self.plot_stack.setCurrentIndex(1)  # show empty placeholder
+        This method clears all text labels with a placeholder dash, resets the
+        ruling color to a neutral gray, and flushes the plot data. It also
+        switches the plot stack to show the 'no data' placeholder.
+        """
+        placeholder: str = ""
+        self.detail_datetime.setText(placeholder)
+        self.detail_duration.setText(placeholder)
+        self.detail_points.setText(placeholder)
+        self.detail_filesize.setText(placeholder)
+        self.detail_ruling.setText(placeholder)
+        self.detail_ruling.setStyleSheet("color: #333333; font-size: 9pt;")
+
+        if hasattr(self, "curve_freq") and hasattr(self, "curve_diss"):
+            self.curve_freq.setData([], [])
+            self.curve_diss.setData([], [])
+
+        if hasattr(self, "plot_stack"):
+            self.plot_stack.setCurrentIndex(1)
 
     def on_recover_clicked(self):
+        """
+        TODO: Figure out behavior for recovery!
+        """
         if self.selected_run is None:
             return
 
@@ -1753,7 +2471,7 @@ class RecoverUnnamedRunsDialog(QDialog):
         )
 
         if ok and run_name.strip():
-            if self.validate_run_name(run_name):
+            if self._validate_run_name(run_name):
                 recovery_dialog = RecoveryProgressDialog(self, self.selected_run, run_name)
                 result = recovery_dialog.exec_()
 
@@ -1775,22 +2493,26 @@ class RecoverUnnamedRunsDialog(QDialog):
                     "Run name already exists or contains invalid characters.",
                 )
 
-    def validate_run_name(self, name):
-        if not name.strip():
+    def _validate_run_name(self, name: str) -> bool:
+        """
+        Validates that a proposed run name is safe for the file system.
+
+        Checks for empty or whitespace-only strings and ensures the name does
+        not contain reserved characters that are prohibited by Windows (NTFS)
+        or Unix-based file systems.
+
+        Args:
+            name (str): The proposed folder/file name.
+
+        Returns:
+            bool: True if the name is valid/safe, False otherwise.
+        """
+        clean_name: str = name.strip()
+        if not clean_name:
             return False
-        invalid_chars = ["/", "\\", ":", "*", "?", '"', "<", ">", "|"]
+
+        invalid_chars: Set[str] = {"/", "\\", ":", "*", "?", '"', "<", ">", "|"}
         if any(char in name for char in invalid_chars):
             return False
+
         return True
-
-
-# Example usage
-if __name__ == "__main__":
-    import sys
-
-    app = QApplication(sys.argv)
-
-    dialog = RecoverUnnamedRunsDialog()
-    dialog.show()
-
-    sys.exit(app.exec_())
