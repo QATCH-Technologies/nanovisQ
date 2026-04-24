@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6b70"
-#define RELEASE_DATE "2026-03-27"
+#define CODE_VERSION "v2.6b70_POGO_SW"
+#define RELEASE_DATE "2026-04-24"
 
 /************************** LIBRARIES **************************/
 
@@ -4203,20 +4203,30 @@ void pogo_button_pressed(bool init)
     int dir2 = (end2 > start2) ? 1 : (end2 < start2) ? -1
                                                      : 0;
 
-    if (init || pogo_sw_exists)
+    if (init)
+    {
+      end1 = 0;  // search for lid switch existence
+    }
+    else if (pogo_sw_exists)
     {
       uint8_t distance = abs(start1 - end1);
-      start1 = init ? start1 : pogo_switch_pos;
+      start1 = pogo_switch_pos;
       end1 = dir1 ? start1 + distance : 0;
     }
 
+    if (DEBUG)
+        client->printf("Moving Servo1 from %i to %i, Servo2 from %i to %i\n", start1, end1, start2, end2);
+
     int pos1 = start1;
     int pos2 = start2;
+    int loop_counter = 0;
     bool done1 = false, done2 = false;
     while (!done1 || !done2)
     {
+      loop_counter++;  // increment loop counter each iteration
+
       if (DEBUG)
-        client->printf("Servo1 to %i, Servo2 to %i\n", pos1, pos2);
+        client->printf("Servo1 to %i, Servo2 to %i; done1 = %i, done2 = %i\n", pos1, pos2, done1, done2);
         
       if (!done1)
         pogoServo1.write(pos1);
@@ -4242,14 +4252,14 @@ void pogo_button_pressed(bool init)
       }
       if (!done1)
       {
-        if (pos1 == end1)
+        if (pos1 == end1 || loop_counter > 180)
           done1 = true;
         else
           pos1 += dir1;
       }
       if (!done2)
       {
-        if (pos2 == end2)
+        if (pos2 == end2 || loop_counter > 180)
           done2 = true;
         else
           pos2 += dir2;
