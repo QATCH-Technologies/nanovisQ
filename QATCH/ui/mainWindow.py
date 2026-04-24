@@ -13,7 +13,6 @@ from collections import deque
 from time import localtime, mktime, strftime, strptime, time
 from typing import List, Optional
 from xml.dom import minidom
-import time
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
@@ -3899,7 +3898,7 @@ class MainWindow(QtWidgets.QMainWindow):
             data_dissipation (np.ndarray): The current buffer of
                 dissipation values.
         """
-        now = time.time()
+        now = time()
 
         # Check rate-limit; update timestamp if ready
         if now - getattr(self, "_last_forecaster_push_time", 0.0) > 0.2:
