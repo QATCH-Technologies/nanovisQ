@@ -4206,6 +4206,7 @@ void pogo_button_pressed(bool init)
     if (init)
     {
       end1 = 0;  // search for lid switch existence
+      dir1 = -1; // force downward toward open position
     }
     else if (pogo_sw_exists)
     {
