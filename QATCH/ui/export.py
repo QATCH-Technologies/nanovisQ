@@ -19,7 +19,7 @@ from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
-from QATCH.ui.recover import RunRecoveryDialog
+from QATCH.ui.run_recovery_ui import RunRecoveryDialog
 
 # TODO copy this to QATCH core context, not from VisQAI
 from QATCH.VisQAI.src.io.parser import Parser
