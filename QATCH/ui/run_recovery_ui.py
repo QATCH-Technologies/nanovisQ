@@ -1,9 +1,32 @@
+"""
+run_recovery_ui.py
+
+This module provides a robust framework for recovering and managing unnamed data runs
+within the QATCH software environment. It handles the identification of raw data folders,
+extraction of metadata, secure generation of XML audit trails with cryptographic signatures,
+and the organized relocation of processed runs to the system's logged data storage.
+
+Author(s):
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-04-24
+
+Version:
+    1.0
+"""
+
 import os
 import zipfile
 import csv
 import io
-
+import shutil
+from xml.dom import minidom
 from contextlib import suppress
+from datetime import datetime, timedelta
+import datetime as dt
+import hashlib
 from PyQt5.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -16,7 +39,6 @@ from PyQt5.QtWidgets import (
     QFrame,
     QSizePolicy,
     QAbstractItemView,
-    QInputDialog,
     QMessageBox,
     QListWidgetItem,
     QLineEdit,
@@ -26,6 +48,13 @@ from PyQt5.QtWidgets import (
     QDoubleSpinBox,
     QDateEdit,
     QTimeEdit,
+    QGraphicsDropShadowEffect,
+    QGraphicsBlurEffect,
+    QGraphicsOpacityEffect,
+    QProgressBar,
+    QDialogButtonBox,
+    QCheckBox,
+    QInputDialog,
 )
 
 from PyQt5.QtCore import (
@@ -41,11 +70,18 @@ from PyQt5.QtCore import (
     QTime,
     QTimer,
     QVariantAnimation,
-    QTimeLine,
 )
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QMouseEvent, QCloseEvent, QBrush, QColor
-from datetime import datetime
-from typing import List, Optional, Any, Dict, BinaryIO, Sequence, Set, cast
+from PyQt5.QtGui import (
+    QIcon,
+    QPixmap,
+    QPainter,
+    QPaintEvent,
+    QMouseEvent,
+    QCloseEvent,
+    QBrush,
+    QColor,
+)
+from typing import List, Optional, Any, Dict, BinaryIO, Sequence, Set, Tuple, cast
 import numpy as np
 import send2trash
 import pyqtgraph as pg
@@ -53,6 +89,7 @@ from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.drawPlateConfig import Architecture
 from QATCH.common.fileStorage import secure_open
+from QATCH.common.userProfiles import UserProfiles
 
 TAG = "[RunRecovery]"
 
@@ -66,71 +103,239 @@ class RunMetadata:
     Attributes:
         filepath (str): The absolute path to the directory containing the run data.
         display_name (str): The name of the run derived from the folder name.
-        timestamp (str): The date and time the run was recorded.
-        duration_seconds (float): The total length of the run in seconds.
-        num_points (int): The total count of data points recorded in the run.
+        start (str): The date and time the run started in ISO format.
+        stop (str): The date and time the run ended in ISO format.
+        duration (float): The total length of the run in seconds.
+        samples (int): The total count of data points recorded in the run.
         ruling (str): The classification of the run (e.g., "Good" or "Bad").
         file_size_mb (float): The total size of the run folder in megabytes.
-        virtual_csv_path (str | None): The path to the CSV file within a ZIP archive,
-            if applicable.
+        virtual_csv_path (str | None): The path to the CSV file within a ZIP archive.
     """
 
     def __init__(
         self,
         filepath: str,
         display_name: str,
-        timestamp: str,
-        duration_seconds: float,
-        num_points: int,
+        start: str,
+        stop: str,
+        duration: float,
+        samples: int,
         ruling: str,
         file_size_mb: float,
         virtual_csv_path: str | None = None,
     ):
-        """Initializes an RunMetadata instance with provided metadata.
-
-        Args:
-            filepath: The absolute path to the run directory.
-            display_name: The string used to identify the run in the UI.
-            timestamp: A formatted string representing the start time.
-            duration_seconds: Duration of the experiment in seconds.
-            num_points: Number of valid data rows in the run.
-            ruling: Classification status of the run data.
-            file_size_mb: Total disk usage of the run files in MB.
-            virtual_csv_path: Internal path to the CSV data if stored inside a ZIP.
-                Defaults to None.
-        """
         self.filepath = filepath
         self.display_name = display_name
-        self.timestamp = timestamp
-        self.duration_seconds = duration_seconds
-        self.num_points = num_points
+        self.start = start
+        self.stop = stop
+        self.duration = duration
+        self.samples = samples
         self.ruling = ruling
         self.file_size_mb = file_size_mb
         self.virtual_csv_path = virtual_csv_path
 
 
 class RecoveryWorker(QThread):
+    """Handles the asynchronous process of writing run XML and executing recovery.
+
+    This worker parses existing run metadata, updates or creates an XML record
+    with machine metrics and audit trails, renames associated data files,
+    and moves the final directory to the logged data storage.
+
+    Attributes:
+        progress (pyqtSignal): Emits int (0-100) representing completion percentage.
+        finished_task (pyqtSignal): Emits (bool, str) representing (success, error_message).
     """
-    TODO: Recovery worker behavior needs to be defined
-        - Create XML
-        - Probably requires a signature prompt
-    """
 
-    progress_updated = pyqtSignal(int)
-    status_updated = pyqtSignal(str)
-    recovery_complete = pyqtSignal(bool, str)
+    progress = pyqtSignal(int)
+    finished_task = pyqtSignal(bool, str)
 
-    def __init__(self, run_data, run_name):
-        super().__init__()
-        self.run_data = run_data
-        self.run_name = run_name
-        self._is_cancelled = False
+    def __init__(
+        self,
+        run_metadata: Any,
+        new_name: str,
+        device_name: str,
+        initials: str,
+        parent: Optional[Any] = None,
+    ) -> None:
+        """Initializes the RecoveryWorker with necessary run details.
 
-    def cancel(self):
-        pass
+        Args:
+            run_metadata: An object containing 'filepath', 'ruling', 'start', 'stop',
+                'duration', and 'samples'.
+            new_name (str): The new name for the run and its associated XML file.
+            device_name (str): The name of the device associated with the run.
+            initials (str): The initials of the user performing the recovery.
+            parent (QObject, optional): The parent object for the QThread.
+        """
+        super().__init__(parent)
+        self.run_metadata = run_metadata
+        self.new_name = new_name
+        self.device_name = device_name
+        self.initials = initials
+
+        self.logged_data_base = os.path.join(Architecture.get_path(), Constants.log_export_path)
 
     def run(self):
-        pass
+        """Executes the recovery logic in a separate thread.
+
+        Performs XML manipulation, hashing for integrity signatures, file renaming,
+        and directory relocation.
+        """
+        try:
+            self.progress.emit(10)
+            old_folder_path = os.path.abspath(self.run_metadata.filepath)
+            existing_xml_path = None
+
+            # Locate existing XML
+            for f in os.listdir(old_folder_path):
+                if f.endswith(".xml"):
+                    existing_xml_path = os.path.join(old_folder_path, f)
+                    break
+
+            if existing_xml_path and os.path.exists(existing_xml_path):
+                audit_action = "PARAMS"
+                run_doc = minidom.parse(existing_xml_path)
+                xml = run_doc.documentElement
+                if xml is not None:
+                    for old_metrics in xml.getElementsByTagName("metrics"):
+                        xml.removeChild(old_metrics)
+                else:
+                    xml = run_doc.createElement("run_info")
+                    run_doc.appendChild(xml)
+            else:
+                # Logic for a brand new recovery XML
+                audit_action = "CAPTURE"
+                run_doc = minidom.Document()
+                xml = run_doc.createElement("run_info")
+                run_doc.appendChild(xml)
+
+            # Set machine, device, name, and ruling field
+            try:
+                xml.setAttribute("machine", Architecture.get_os_name())
+            except NameError:
+                xml.setAttribute("machine", os.name)
+
+            xml.setAttribute("device", self.device_name)
+            xml.setAttribute("name", self.new_name)
+
+            run_ruling = getattr(self.run_metadata, "ruling", "UNKNOWN")
+            xml.setAttribute("ruling", run_ruling)
+
+            # Generate top-level signature
+            run_info_sig = hashlib.sha256(
+                f"RUNINFO_{self.new_name}_{dt.datetime.now().isoformat()}".encode("utf-8")
+            ).hexdigest()
+            xml.setAttribute("signature", run_info_sig)
+
+            # Build metrics block
+            metrics = run_doc.createElement("metrics")
+
+            def add_metric(name, value, units=None):
+                m = run_doc.createElement("metric")
+                m.setAttribute("name", name)
+                m.setAttribute("value", str(value))
+                if units:
+                    m.setAttribute("units", units)
+                metrics.appendChild(m)
+
+            add_metric("calibrated", "UNKNOWN")
+            start_val = getattr(self.run_metadata, "start", "UNKNOWN")
+            add_metric("start", start_val)
+            stop_val = getattr(self.run_metadata, "stop", "UNKNOWN")
+            add_metric("stop", stop_val)
+
+            raw_duration = getattr(self.run_metadata, "duration", 0.0)
+            duration_units = "seconds"
+            try:
+                dur_float = float(raw_duration)
+                if dur_float > 60.0:
+                    dur_float /= 60.0
+                    duration_units = "minutes"
+                duration_str = f"{dur_float:2.4f}"
+            except (ValueError, TypeError):
+                duration_str = str(raw_duration)
+
+            add_metric("duration", duration_str, duration_units)
+            samples_val = getattr(self.run_metadata, "samples", "UNKNOWN")
+            add_metric("samples", samples_val)
+
+            metrics_sig = hashlib.sha256(
+                f"METRICS_{start_val}_{stop_val}_{samples_val}".encode("utf-8")
+            ).hexdigest()
+            metrics.setAttribute("signature", metrics_sig)
+            xml.appendChild(metrics)
+
+            # Build audits block
+            existing_audits = xml.getElementsByTagName("audits")
+            if existing_audits:
+                audits = existing_audits[0]
+            else:
+                audits = run_doc.createElement("audits")
+                audits_root_sig = hashlib.sha256(
+                    f"AUDITS_{dt.datetime.now().isoformat()}".encode("utf-8")
+                ).hexdigest()
+                audits.setAttribute("signature", audits_root_sig)
+                xml.appendChild(audits)
+
+            recorded_time = dt.datetime.now().isoformat()
+            raw_sig_string = f"{audit_action}{recorded_time}{self.initials}"
+            audit_sig = hashlib.sha256(raw_sig_string.encode("utf-8")).hexdigest()
+
+            audit = run_doc.createElement("audit")
+            audit.setAttribute("profile", getattr(self, "profile_id", "recovery_default"))
+            audit.setAttribute("action", audit_action)
+            audit.setAttribute("recorded", recorded_time)
+
+            try:
+                machine_name = Architecture.get_os_name()
+            except NameError:
+                machine_name = os.name
+
+            audit.setAttribute("machine", machine_name)
+            audit.setAttribute("username", getattr(self, "username", "System Administrator"))
+            audit.setAttribute("initials", self.initials)
+            audit.setAttribute("role", "ADMIN")
+            audit.setAttribute("signature", audit_sig)
+            audits.appendChild(audit)
+
+            self.progress.emit(40)
+
+            # File Operations: Write XML
+            target_xml_path = os.path.join(old_folder_path, f"{self.new_name}.xml")
+            with open(target_xml_path, "w", encoding="utf-8") as xml_file:
+                run_doc.writexml(xml_file, indent="  ", addindent="  ", newl="\n")
+
+            if existing_xml_path and os.path.abspath(existing_xml_path) != os.path.abspath(
+                target_xml_path
+            ):
+                os.remove(existing_xml_path)
+
+            self.progress.emit(60)
+
+            # Rename Zip
+            for file_name in os.listdir(old_folder_path):
+                file_path = os.path.join(old_folder_path, file_name)
+                if file_name.endswith(".zip") and file_name != "capture.zip":
+                    os.rename(file_path, os.path.join(old_folder_path, "capture.zip"))
+
+            self.progress.emit(80)
+
+            # Move to destination
+            target_device_dir = os.path.join(self.logged_data_base, self.device_name)
+            os.makedirs(target_device_dir, exist_ok=True)
+            final_destination = os.path.join(target_device_dir, self.new_name)
+
+            if os.path.exists(final_destination):
+                shutil.rmtree(final_destination)
+
+            shutil.move(old_folder_path, final_destination)
+
+            self.progress.emit(100)
+            self.finished_task.emit(True, "")
+
+        except Exception as e:
+            self.finished_task.emit(False, str(e))
 
 
 class ScanWorker(QThread):
@@ -172,9 +377,10 @@ class ScanWorker(QThread):
         """Executes the directory scan and metadata extraction.
 
         Iterates through the directory, identifies run folders, extracts
-        CSV metadata, calculates file sizes, and compiles a list of
-        RunMetadata objects. Emits scan_complete upon success.
+        CSV metadata, calculates file sizes, computes start/stop times,
+        and compiles a list of RunMetadata objects.
         """
+
         runs = []
         try:
             if not os.path.exists(self.unnamed_dir):
@@ -203,6 +409,7 @@ class ScanWorker(QThread):
                     virtual_csv_path,
                 ) = self._extract_metadata(filepath)
 
+                # Calculate File Size
                 try:
                     total_size = sum(
                         os.path.getsize(os.path.join(filepath, f))
@@ -213,20 +420,40 @@ class ScanWorker(QThread):
                     total_size = 0
                 file_size_mb = round(total_size / (1024 * 1024), 2)
 
+                # Calculate ISO Start and Stop Times
+                start_iso = "UNKNOWN"
+                stop_iso = "UNKNOWN"
+
                 if csv_timestamp == "Unknown":
                     try:
-                        mtime = datetime.fromtimestamp(os.stat(filepath).st_mtime)
-                        csv_timestamp = mtime.strftime("%Y-%m-%d %H:%M:%S")
+                        stop_dt = datetime.fromtimestamp(os.stat(filepath).st_mtime)
+                        start_dt = stop_dt - timedelta(seconds=float(duration))
+                        start_iso = start_dt.isoformat(timespec="seconds")
+                        stop_iso = stop_dt.isoformat(timespec="seconds")
                     except OSError:
                         pass
+                else:
+                    try:
+                        if "T" in csv_timestamp:
+                            start_dt = datetime.fromisoformat(csv_timestamp)
+                        else:
+                            start_dt = datetime.strptime(csv_timestamp, "%Y-%m-%d %H:%M:%S")
+
+                        stop_dt = start_dt + timedelta(seconds=float(duration))
+
+                        start_iso = start_dt.isoformat(timespec="seconds")
+                        stop_iso = stop_dt.isoformat(timespec="seconds")
+                    except (ValueError, TypeError):
+                        start_iso = csv_timestamp  # Fallback to raw string if parsing fails
 
                 runs.append(
                     RunMetadata(
                         filepath=filepath,
                         display_name=display_name,
-                        timestamp=csv_timestamp,
-                        duration_seconds=duration,
-                        num_points=num_points,
+                        start=start_iso,
+                        stop=stop_iso,
+                        duration=duration,
+                        samples=num_points,
                         ruling=ruling,
                         file_size_mb=file_size_mb,
                         virtual_csv_path=virtual_csv_path,
@@ -348,32 +575,359 @@ class ScanWorker(QThread):
         return duration, num_points, timestamp, virtual_csv_path
 
 
-class RecoveryProgressDialog(QDialog):
-    """
-    TODO: Progress dialog needs to be complete.
-        - Prompt runname
-        - Prompt device from available devices
-        - Other XML things I will need to create?
-        - Signature?
+class SignatureDialog(QDialog):
+    """A self-contained modal dialog to capture a user's signature/initials.
+
+    This dialog verifies the identity of the current user by requiring their
+    initials. it supports 'Dev Mode' auto-signing and allows users to switch
+    profiles if the current session info is incorrect.
+
+    Attributes:
+        username (str): The display name of the currently logged-in user.
+        expected_initials (Optional[str]): The initials required to pass validation.
+        sign (QLineEdit): Input field for user initials.
+        sign_do_not_ask (QCheckBox): Toggle for persistent session signing.
     """
 
-    def __init__(self, parent, run_data, run_name):
+    def __init__(self, parent: Optional[Any] = None) -> None:
+        """Initializes the SignatureDialog and loads session metadata.
+
+        Args:
+            parent (QWidget, optional): The parent widget for the modal dialog.
+        """
         super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.Dialog)
+        self.setWindowTitle("Signature")
+        self.setModal(True)
 
-    def setup_ui(self):
-        pass
+        # NOTE: Sizing may need to be updated!
+        self.setFixedWidth(240)
+        self.username = "[NONE]"
+        self.expected_initials = "N/A"
 
-    def start_recovery(self):
-        pass
+        try:
+            valid, infos = UserProfiles.session_info()
+            if valid:
+                if infos and len(infos) >= 2:
+                    self.username = infos[0]
+                    self.expected_initials = infos[1]
+                else:
+                    self.username = "Unknown User"
+                    self.expected_initials = ""
+            else:
+                try:
+                    self.expected_initials = None
+                except Exception:
+                    self.expected_initials = "N/A"
+        except ImportError:
+            pass
 
-    def update_progress(self, value):
-        pass
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "sign.png")
+        self.setWindowIcon(QIcon(icon_path))
 
-    def on_recovery_complete(self, success, message):
-        pass
+        layout_sign = QVBoxLayout(self)
+        layout_sign.setContentsMargins(12, 12, 12, 12)
+        layout_sign.setSpacing(8)
 
-    def on_cancel_clicked(self):
-        pass
+        layout_curr = QHBoxLayout()
+        signed_in_as_label = QLabel("Signed in as: ")
+        signed_in_as_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        layout_curr.addWidget(signed_in_as_label)
+
+        self.signedInAs = QLabel(self.username)
+        self.signedInAs.setAlignment(Qt.AlignmentFlag.AlignRight)
+        layout_curr.addWidget(self.signedInAs)
+        layout_sign.addLayout(layout_curr)
+
+        line_sep = QFrame()
+        line_sep.setFrameShape(QFrame.HLine)
+        line_sep.setFrameShadow(QFrame.Sunken)
+        layout_sign.addWidget(line_sep)
+
+        layout_switch = QHBoxLayout()
+        self.signerInit = QLabel(f"Initials: <b>{self.expected_initials or 'N/A'}</b>")
+        layout_switch.addWidget(self.signerInit)
+
+        switch_user = QPushButton("Switch User")
+        switch_user.clicked.connect(self.switch_user_at_sign_time)
+        layout_switch.addWidget(switch_user)
+        layout_sign.addLayout(layout_switch)
+
+        self.sign = QLineEdit()
+        self.sign.setMaxLength(4)
+        self.sign.setPlaceholderText("Initials")
+        self.sign.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        layout_sign.addWidget(self.sign)
+
+        self.sign_do_not_ask = QCheckBox("Do not ask again this session")
+        self.sign_do_not_ask.setEnabled(False)
+
+        # Dev Mode Logic
+        try:
+            if UserProfiles.checkDevMode()[0]:
+                auto_sign_key = None
+                session_key = None
+                if os.path.exists(Constants.auto_sign_key_path):
+                    with open(Constants.auto_sign_key_path, "r") as f:
+                        auto_sign_key = f.readline()
+
+                session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+                if os.path.exists(session_key_path):
+                    with open(session_key_path, "r") as f:
+                        session_key = f.readline()
+
+                if auto_sign_key == session_key and session_key is not None:
+                    self.sign_do_not_ask.setChecked(True)
+                else:
+                    self.sign_do_not_ask.setChecked(False)
+                    if os.path.exists(Constants.auto_sign_key_path):
+                        os.remove(Constants.auto_sign_key_path)
+        except NameError:
+            suppress(NameError)
+            pass
+
+        if self.sign_do_not_ask.isEnabled() or self.sign_do_not_ask.isChecked():
+            layout_sign.addWidget(self.sign_do_not_ask)
+        else:
+            self.sign_do_not_ask.hide()
+
+        # Buttons
+        self.sign_ok = QPushButton("OK")
+        self.sign_ok.setDefault(True)
+        self.sign_ok.setAutoDefault(True)
+
+        self.sign_cancel = QPushButton("Cancel")
+
+        layout_ok_cancel = QHBoxLayout()
+        layout_ok_cancel.addWidget(self.sign_ok)
+        layout_ok_cancel.addWidget(self.sign_cancel)
+        layout_sign.addLayout(layout_ok_cancel)
+
+        self.sign_ok.clicked.connect(self.validate_and_accept)
+        self.sign_cancel.clicked.connect(self.reject)
+
+    def switch_user_at_sign_time(self) -> None:
+        """Invokes the user profile switching logic.
+
+        Displays an information dialog to the user indicating functionality invocation.
+
+        TODO: Needs to be implemented fully!
+        """
+        QMessageBox.information(self, "Switch User", "Switch User functionality invoked.")
+
+    def validate_and_accept(self) -> None:
+        """Validates the input initials against expected session data.
+
+        Checks for empty input and ensures the entered initials match the
+        expected initials of the logged-in user (case-insensitive).
+        If successful, it calls accept().
+        """
+        entered_initials = self.sign.text().strip().upper()
+        if not entered_initials:
+            QMessageBox.warning(self, "Required", "Please enter your initials to sign.")
+            return
+        if (
+            isinstance(self.expected_initials, str)
+            and self.expected_initials != "N/A"
+            and entered_initials != self.expected_initials.upper()
+        ):
+            QMessageBox.warning(
+                self,
+                "Mismatch",
+                f"Initials do not match the signed in user ({self.expected_initials}).",
+            )
+            return
+
+        self.accept()
+
+    def get_initials(self) -> str:
+        """Retrieves the initials entered by the user.
+
+        Returns:
+            str: The sanitized, uppercase initials from the input field.
+        """
+        return self.sign.text().strip().upper()
+
+
+class RecoverDialog(QDialog):
+    """Standard dialog for recovering a run with device creation and progress tracking.
+
+    This dialog allows users to specify a new name for a recovered run, select or
+    create a target device directory, and provides visual feedback during the
+    asynchronous recovery process.
+
+    Attributes:
+        run_metadata (RunMetadata): The metadata object associated with the run.
+        name_input (QLineEdit): Widget for entering the new run name.
+        device_combo (QComboBox): Dropdown for selecting available device directories.
+        add_device_btn (QPushButton): Button to trigger new device folder creation.
+        progress_bar (QProgressBar): Visual indicator of the recovery task progress.
+        status_label (QLabel): Displays error messages or status updates.
+        btn_box (QDialogButtonBox): Standard Ok/Cancel buttons.
+        worker (RecoveryWorker): The background thread handling the file operations.
+    """
+
+    def __init__(self, run_metadata, available_devices: List[str], parent=None) -> None:
+        """Initializes the RecoverDialog with run information and UI components.
+
+        Args:
+            run_metadata (RunMetadata): Object containing the original run details.
+            available_devices (List[str]): List of device names to populate the dropdown.
+            parent (QWidget, optional): Parent widget. Defaults to None to prevent
+                transparency inheritance issues.
+        """
+        super().__init__(None)
+        self.setWindowTitle("Recover Run")
+        self.setModal(True)
+        self.setMinimumWidth(350)
+        self.setWindowIcon(
+            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "restore.svg"))
+        )
+
+        self.run_metadata = run_metadata
+        self.name_input = QLineEdit(self)
+        self.name_input.setPlaceholderText("Enter run name...")
+        if hasattr(run_metadata, "display_name"):
+            self.name_input.setText(run_metadata.display_name)
+
+        # Device Selection Row
+        device_layout = QHBoxLayout()
+        self.device_combo = QComboBox(self)
+        if available_devices:
+            self.device_combo.addItems(available_devices)
+        else:
+            self.device_combo.addItem("No devices found")
+            self.device_combo.setEnabled(False)
+        self.add_device_btn = QPushButton()
+        self.add_device_btn.setIcon(
+            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "add.svg"))
+        )
+        self.add_device_btn.setFixedWidth(30)
+        self.add_device_btn.setToolTip("Add New Device Folder")
+        self.add_device_btn.clicked.connect(self._add_new_device)
+
+        device_layout.addWidget(self.device_combo)
+        device_layout.addWidget(self.add_device_btn)
+
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.hide()
+
+        self.status_label = QLabel("", self)
+        self.status_label.setStyleSheet("color: red;")
+        self.status_label.hide()
+
+        # Buttons
+        self.btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.btn_box.button(QDialogButtonBox.Ok).setText("Recover")
+
+        form_layout = QFormLayout()
+        form_layout.addRow("Run Name:", self.name_input)
+        form_layout.addRow("Target Device:", device_layout)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.addLayout(form_layout)
+        main_layout.addWidget(self.status_label)
+        main_layout.addWidget(self.progress_bar)
+        main_layout.addWidget(self.btn_box)
+        self.btn_box.accepted.connect(self._on_recover_clicked)
+        self.btn_box.rejected.connect(self.reject)
+
+    def _add_new_device(self) -> None:
+        """Prompts the user for a name and creates a physical folder in the config directory.
+
+        Opens a text input dialog. If a name is provided, it ensures the config
+        directory exists, creates the subfolder, and updates the device selection
+        dropdown to reflect the new entry.
+        """
+        name, ok = QInputDialog.getText(self, "Add Device", "Device Serial/Name:")
+        if ok and name.strip():
+            device_name = name.strip()
+            try:
+                config_dir = os.path.join(Constants.local_app_data_path, "config")
+                # Ensure config directory exists
+                os.makedirs(config_dir, exist_ok=True)
+
+                new_device_path = os.path.join(config_dir, device_name)
+                # Create the new device folder
+                if not os.path.exists(new_device_path):
+                    os.makedirs(new_device_path)
+
+                # Update UI
+                if not self.device_combo.isEnabled():
+                    self.device_combo.clear()
+                    self.device_combo.setEnabled(True)
+
+                if self.device_combo.findText(device_name) == -1:
+                    self.device_combo.addItem(device_name)
+
+                self.device_combo.setCurrentText(device_name)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not create device folder:\n{str(e)}")
+
+    def _on_recover_clicked(self) -> None:
+        """Starts the worker thread and disables UI inputs after capturing signature.
+
+        Validates the user input (run name and device selection) and prompts for an
+        electronic signature. Upon successful signature, it initializes and starts
+        the RecoveryWorker thread while locking the UI to prevent concurrent edits.
+        """
+        new_name = self.name_input.text().strip()
+        device = self.device_combo.currentText()
+
+        if not new_name:
+            self.status_label.setText("Run name cannot be empty.")
+            self.status_label.show()
+            return
+
+        if not self.device_combo.isEnabled() or device == "No devices found":
+            self.status_label.setText("No valid device selected.")
+            self.status_label.show()
+            return
+
+        # Trigger signature request
+        sig_dialog = SignatureDialog(self)
+        if sig_dialog.exec_() != QDialog.Accepted:
+            return
+
+        initials = sig_dialog.get_initials()
+
+        # Disable UI for processing
+        self.name_input.setEnabled(False)
+        self.device_combo.setEnabled(False)
+        self.add_device_btn.setEnabled(False)
+        self.btn_box.button(QDialogButtonBox.Ok).setEnabled(False)
+
+        self.status_label.hide()
+        self.progress_bar.show()
+
+        # Start background worker
+        self.worker = RecoveryWorker(self.run_metadata, new_name, device, initials)
+        self.worker.progress.connect(self.progress_bar.setValue)
+        self.worker.finished_task.connect(self._on_worker_finished)
+        self.worker.start()
+
+    def _on_worker_finished(self, success: bool, error_message: str) -> None:
+        """Handles the completion of the background recovery task.
+
+        If the task is successful, the dialog is accepted and closed. If it fails,
+        the UI is re-enabled to allow the user to correct errors, and the
+        error message is displayed.
+
+        Args:
+            success (bool): Whether the recovery task finished without errors.
+            error_message (str): The error description if success is False.
+        """
+        if success:
+            self.accept()
+        else:
+            self.name_input.setEnabled(True)
+            self.device_combo.setEnabled(True)
+            self.add_device_btn.setEnabled(True)
+            self.btn_box.button(QDialogButtonBox.Ok).setEnabled(True)
+            self.progress_bar.hide()
+            self.status_label.setText(f"Error: {error_message}")
+            self.status_label.show()
 
 
 class ToggleListWidget(QListWidget):
@@ -408,13 +962,53 @@ class ToggleListWidget(QListWidget):
         super().mousePressEvent(event)
 
 
-class RecoveryFilter(QFrame):
+class RoundedPanel(QFrame):
+    """A custom QFrame that renders with rounded corners and a soft border.
+
+    This widget uses QPainter to draw a stylized background. It is designed to
+    look like a modern "card" or panel, featuring a semi-transparent white
+    fill and a very subtle dark border.
+
+    Attributes:
+        None (Inherits from QFrame)
+    """
+
+    def __init__(self, parent: Optional[Any] = None) -> None:
+        """Initializes the panel and sets transparency attributes.
+
+        Args:
+            parent (QWidget, optional): The parent widget.
+        """
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Overridden paint event to draw the rounded rectangle geometry.
+
+        Args:
+            event (QPaintEvent): The event triggered by the Qt paint engine.
+        """
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QColor(0, 0, 0, 18))
+        painter.setBrush(QColor(255, 255, 255, 244))
+        rect = self.rect().adjusted(0, 0, -1, -1)
+        painter.drawRoundedRect(rect, 8.0, 8.0)
+
+
+class RecoveryFilter(QWidget):
     """A specialized popup frame for configuring run recovery filters.
 
     This widget provides a flyout menu containing various filter criteria,
     including status (Good/Bad), date/time ranges, and numeric ranges for
     duration, data points, and file size. It emits a signal when filters
     are applied or reset.
+
+    The popup is implemented as a transparent outer ``QWidget`` containing
+    an inner ``QFrame`` (``self._panel``). The outer container reserves
+    margin space around the inner frame so that a ``QGraphicsDropShadowEffect``
+    applied to the panel can render a soft, rounded shadow that follows the
+    panel's ``border-radius`` instead of the rectangular OS popup outline.
 
     Attributes:
         filtersChanged (pyqtSignal): Signal emitted when the user clicks 'Apply'
@@ -431,9 +1025,17 @@ class RecoveryFilter(QFrame):
         points_max (QSpinBox): Maximum data points filter input.
         size_min (QDoubleSpinBox): Minimum file size filter input.
         size_max (QDoubleSpinBox): Maximum file size filter input.
+
+    TODO: The drop shadow has sharp corners on the bottom of the filter for some reason and I cannot
+        figure out what is causing it.
     """
 
     filters_changed = pyqtSignal(dict)
+
+    _SHADOW_MARGIN_L = 0
+    _SHADOW_MARGIN_T = 0
+    _SHADOW_MARGIN_R = 0
+    _SHADOW_MARGIN_B = 0
 
     def __init__(self, parent: QWidget | None = None, current_filters: dict | None = None) -> None:
         """Initializes the RecoveryFilter with customizable UI elements and initial state.
@@ -449,11 +1051,35 @@ class RecoveryFilter(QFrame):
             current_filters (dict, optional): A dictionary containing existing
                 filter values to pre-populate the fields. Defaults to None.
         """
-        super().__init__(parent, Qt.WindowType.Popup)
+        super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.current_filters = current_filters or {}
         self._from_set = False
         self._to_set = False
-        self.setObjectName("RecoveryFilter")
+
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._panel = RoundedPanel(self)
+        self._panel.setObjectName("RecoveryFilterInner")
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(
+            self._SHADOW_MARGIN_L,
+            self._SHADOW_MARGIN_T,
+            self._SHADOW_MARGIN_R,
+            self._SHADOW_MARGIN_B,
+        )
+        outer_layout.setSpacing(0)
+        outer_layout.addWidget(self._panel)
+
+        shadow = QGraphicsDropShadowEffect(self._panel)
+        shadow.setBlurRadius(28)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QColor(0, 0, 0, 70))
+        self._panel.setGraphicsEffect(shadow)
+        shadow = QGraphicsDropShadowEffect(self._panel)
+        shadow.setBlurRadius(28)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QColor(0, 0, 0, 70))
+        self._panel.setGraphicsEffect(shadow)
 
         self.setStyleSheet(
             RecoveryFilter._build_stylesheet(
@@ -464,8 +1090,8 @@ class RecoveryFilter(QFrame):
                 ),
             )
         )
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 14, 16, 14)
+        main_layout = QVBoxLayout(self._panel)
+        main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(10)
 
         title = QLabel("Filter Options")
@@ -607,13 +1233,6 @@ class RecoveryFilter(QFrame):
         _btn_border = "rgba(0, 0, 0, 14)"
 
         return f"""
-            /* Popup shell */
-            QFrame#RecoveryFilter {{
-                background-color: rgba(255, 255, 255, 244);
-                border: 1px solid rgba(0, 0, 0, 18);
-                border-radius: 8px;
-            }}
-
             /* Labels */
             QLabel {{
                 color: #555555;
@@ -1627,6 +2246,14 @@ class RunRecoveryDialog(QDialog):
             QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "delete.svg"))
         )
         self.delete_button.setIconSize(QSize(14, 14))
+        # Reserve enough horizontal room so multi-select counts like "Delete (999)"
+        # never get clipped. QPushButton's sizeHint does not always grow when the
+        # text is changed at runtime, so we baseline on the widest expected label
+        # plus icon and horizontal padding (5px+9px each side from the QSS).
+        _del_fm = self.delete_button.fontMetrics()
+        _del_text_w = _del_fm.horizontalAdvance("  Delete (999)")
+        self.delete_button.setMinimumWidth(_del_text_w + 14 + 18 + 6)
+        self.delete_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.delete_button.setStyleSheet(
             """
             QPushButton {
@@ -1780,17 +2407,23 @@ class RunRecoveryDialog(QDialog):
         If a popup is already active, it closes it. Otherwise, it instantiates
         a RecoveryFilter, positions it relative to the filter button, and
         executes a slide-down 'open' animation.
+
+        A short debounce window after a popup closes prevents the same click
+        from immediately re-opening the menu (e.g., when the user clicks the
+        filter button while the popup is already open and ``Qt.WindowType.Popup``
+        is auto-dismissing it).
         """
-        self.filter_btn.setChecked(bool(self.active_filters))
+        if getattr(self, "_filter_popup_just_closed", False):
+            self.filter_btn.setChecked(bool(self.active_filters))
+            return
 
         if self._filter_popup is not None:
             with suppress(RuntimeError):
                 self._filter_popup.close()
-
-            self._filter_popup = None
             return
 
         popup = RecoveryFilter(self, current_filters=self.active_filters)
+        popup.setAttribute(Qt.WA_DeleteOnClose, True)
         popup.filters_changed.connect(self._on_filters_changed)
 
         popup.adjustSize()
@@ -1799,8 +2432,14 @@ class RunRecoveryDialog(QDialog):
         btn_right_global = self.filter_btn.mapToGlobal(
             QPoint(self.filter_btn.width(), self.filter_btn.height() + 4)
         )
-        pos = QPoint(btn_right_global.x() - popup.width(), btn_right_global.y())
+        right_margin = getattr(popup, "_SHADOW_MARGIN_R", 0)
+        top_margin = getattr(popup, "_SHADOW_MARGIN_T", 0)
+        pos = QPoint(
+            btn_right_global.x() - popup.width() + right_margin,
+            btn_right_global.y() - top_margin,
+        )
         popup.move(pos)
+        self.filter_btn.setChecked(True)
 
         # Open animation
         popup.setMaximumHeight(0)
@@ -1820,11 +2459,15 @@ class RunRecoveryDialog(QDialog):
         """
         Cleans up references when the filter popup is closed or destroyed.
 
-        Resets the internal popup reference to None and synchronizes the
-        filter button's visual checked state with the presence of active filters.
+        Resets the internal popup reference to None, syncs the filter button's
+        visual checked state with the presence of active filters, and arms a
+        short debounce flag so the same click event that dismissed the popup
+        cannot immediately re-open it.
         """
         self._filter_popup = None
         self.filter_btn.setChecked(bool(self.active_filters))
+        self._filter_popup_just_closed = True
+        QTimer.singleShot(150, lambda: setattr(self, "_filter_popup_just_closed", False))
 
     def _on_filters_changed(self, filters: Dict[str, Any]) -> None:
         """
@@ -1867,7 +2510,7 @@ class RunRecoveryDialog(QDialog):
 
             # Date / time range
             if matches and "date_from" in self.active_filters and "date_to" in self.active_filters:
-                run_dt = self._parse_timestamp(run.timestamp)
+                run_dt = self._parse_timestamp(run.start)
                 if run_dt is None:
                     matches = False
                 else:
@@ -1879,7 +2522,7 @@ class RunRecoveryDialog(QDialog):
             if matches and "duration_min" in self.active_filters:
                 matches = (
                     self.active_filters["duration_min"]
-                    <= run.duration_seconds
+                    <= run.duration
                     <= self.active_filters["duration_max"]
                 )
 
@@ -1887,7 +2530,7 @@ class RunRecoveryDialog(QDialog):
             if matches and "points_min" in self.active_filters:
                 matches = (
                     self.active_filters["points_min"]
-                    <= run.num_points
+                    <= run.samples
                     <= self.active_filters["points_max"]
                 )
 
@@ -1984,6 +2627,21 @@ class RunRecoveryDialog(QDialog):
             self._update_rescan_icon(0.0)
             self.rescan_btn.setEnabled(True)
 
+            if hasattr(self, "_blur_effect") and self._blur_effect is not None:
+                self._blur_out_anim = QPropertyAnimation(self._blur_effect, b"blurRadius", self)
+                self._blur_out_anim.setDuration(250)  # Smooth fade out
+                self._blur_out_anim.setStartValue(self._blur_effect.blurRadius())
+                self._blur_out_anim.setEndValue(0.0)
+
+                def _cleanup_blur():
+                    viewport = self.runs_list.viewport()
+                    if viewport is not None:
+                        viewport.setGraphicsEffect(None)
+                    self._blur_effect = None
+
+                self._blur_out_anim.finished.connect(_cleanup_blur)
+                self._blur_out_anim.start()
+
     def _start_rescan_animation(self) -> None:
         """
         Sets the loading state and initiates the rescan spinner animation.
@@ -2043,12 +2701,12 @@ class RunRecoveryDialog(QDialog):
             if key == "name":
                 return (r.display_name or "").lower()
             if key == "date":
-                dt = self._parse_timestamp(r.timestamp)
+                dt = self._parse_timestamp(r.start)
                 return dt or datetime.min
             if key == "duration":
-                return r.duration_seconds or 0.0
+                return r.duration or 0.0
             if key == "points":
-                return r.num_points or 0
+                return r.samples or 0
             if key == "size":
                 return r.file_size_mb or 0.0
             return (r.display_name or "").lower()
@@ -2092,13 +2750,34 @@ class RunRecoveryDialog(QDialog):
         ):
             return
 
-        self.unnamed_runs: list = []
-        self.runs_list.clear()
         self.clear_details()
         self.recover_button.setEnabled(False)
         self.delete_button.setEnabled(False)
-        self.empty_list_placeholder.setText("Scanning for recoverable runs…")
-        self.list_stack.setCurrentIndex(1)
+
+        # Conditionally blur existing items or show placeholder
+        viewport = self.runs_list.viewport()
+        if viewport is not None:
+            self._blur_effect = QGraphicsBlurEffect(viewport)
+            self._blur_effect.setBlurRadius(0.0)
+            viewport.setGraphicsEffect(self._blur_effect)
+
+            self._blur_anim = QPropertyAnimation(self._blur_effect, b"blurRadius")
+            self._blur_anim.setDuration(300)
+            self._blur_anim.setStartValue(0.0)
+            self._blur_anim.setEndValue(5.0)
+            self._blur_anim.start()
+
+        if self.runs_list.count() == 0:
+            self.empty_list_placeholder.setText("Scanning for recoverable runs…")
+            self.list_stack.setCurrentIndex(1)
+            self._placeholder_blur = QGraphicsBlurEffect(self.empty_list_placeholder)
+            self.empty_list_placeholder.setGraphicsEffect(self._placeholder_blur)
+            self._placeholder_anim = QPropertyAnimation(self._placeholder_blur, b"blurRadius")
+            self._placeholder_anim.setDuration(400)
+            self._placeholder_anim.setStartValue(10.0)
+            self._placeholder_anim.setEndValue(0.0)
+            self._placeholder_anim.start()
+
         self._start_rescan_animation()
         self._scan_worker = ScanWorker(self._UNNAMED_DIR)
 
@@ -2118,9 +2797,12 @@ class RunRecoveryDialog(QDialog):
         """
         self.unnamed_runs = list(runs)
         self._sort_runs()
+
         if not self.unnamed_runs:
             self.empty_list_placeholder.setText("No recoverable runs")
             self.list_stack.setCurrentIndex(1)
+        else:
+            self.list_stack.setCurrentIndex(0)
 
     def _on_scan_failed(self, message: str) -> None:
         """
@@ -2292,9 +2974,9 @@ class RunRecoveryDialog(QDialog):
             run = selected_items[0].data(Qt.ItemDataRole.UserRole)
             self.selected_run = run
 
-            self.detail_datetime.setText(run.timestamp)
-            self.detail_duration.setText(f"{run.duration_seconds} seconds")
-            self.detail_points.setText(f"{run.num_points:,}")
+            self.detail_datetime.setText(run.start)
+            self.detail_duration.setText(f"{run.duration} seconds")
+            self.detail_points.setText(f"{run.samples:,}")
 
             ruling_color = "#2c8a3d" if run.ruling == "Good" else "#c12c3b"
             self.detail_ruling.setStyleSheet(f"color: {ruling_color}; font-size: 9pt;")
@@ -2342,15 +3024,22 @@ class RunRecoveryDialog(QDialog):
                 f"'{selected_items[0].text()}' to the Recycle Bin?"
             )
         else:
-            msg = f"Are you sure you want to move {count} selected runs " f"to the Recycle Bin?"
+            msg = f"Are you sure you want to move {count} selected runs to the Recycle Bin?"
+        msg_box = QMessageBox(None)
+        msg_box.setWindowTitle("Confirm Deletion")
+        msg_box.setText(msg)
 
-        reply = QMessageBox.question(
-            self,
-            "Confirm Deletion",
-            msg,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setWindowIcon(
+            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "delete.svg"))
         )
+
+        # Configure buttons
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+
+        reply = msg_box.exec_()
+
         if reply != QMessageBox.Yes:
             return
 
@@ -2379,46 +3068,108 @@ class RunRecoveryDialog(QDialog):
             self.on_selection_changed()
             self.refilter_list()
 
-    def _animate_delete_items(self, runs_to_remove):
-        """
-        TODO: Animation behavior is currently broken.  Just vanishing off plot
-                after a short delay.
-        """
+    def _animate_delete_items(self, runs_to_remove: List[Tuple[QListWidgetItem, Any]]) -> None:
+        """Animates the removal of list items by turning them red, then collapsing vertically.
 
+        The process follows three stages:
+        1. Update stylesheet to highlight selected items in red.
+        2. Capture pixmaps of items and place them in QLabel overlays.
+        3. Animate the height of the items to zero while fading out the overlays.
+
+        Args:
+            runs_to_remove (List[Tuple[QListWidgetItem, Any]]): A list of tuples containing
+                the QListWidgetItem to animate and its associated data object.
+        """
         items = [item for item, _ in runs_to_remove]
 
-        # Phase 1: red highlight
-        for item in items:
-            item.setBackground(QBrush(QColor(220, 53, 69, 55)))
-            item.setForeground(QBrush(QColor(176, 42, 56, 220)))
+        original_stylesheet = self.runs_list.styleSheet()
+        red_stylesheet = (
+            original_stylesheet
+            + """
+            QListWidget::item:selected {
+                background-color: rgba(220, 53, 69, 55);
+                color: #b02a38;
+            }
+        """
+        )
+        self.runs_list.setStyleSheet(red_stylesheet)
+        self.runs_list.repaint()
 
-        # Phase 2: collapse
-        orig_heights = {id(item): self.runs_list.visualItemRect(item).height() for item in items}
+        def do_collapse() -> None:
+            """Inner function to handle the vertical collapse and overlay logic."""
+            overlays = []
+            orig_rects = {}
+            for item in items:
+                rect = self.runs_list.visualItemRect(item)
+                orig_rects[id(item)] = rect
 
-        def do_collapse():
-            timeline = QTimeLine(220, self)
-            timeline.setFrameRange(0, 100)
-            timeline.setEasingCurve(QEasingCurve.InCubic)
+                if rect.height() > 0:
+                    pixmap = self.runs_list.viewport().grab(rect)
+                    overlay = QLabel(self.runs_list.viewport())
+                    overlay.setPixmap(pixmap)
+                    overlay.setScaledContents(True)
+                    overlay.setGeometry(rect)
+                    opacity = QGraphicsOpacityEffect(overlay)
+                    opacity.setOpacity(1.0)
+                    overlay.setGraphicsEffect(opacity)
+                    overlay.show()
+                    overlays.append((item, overlay, opacity))
 
-            def on_frame(frame):
-                remaining = 1.0 - frame / 100.0
+                item.setBackground(QBrush(Qt.transparent))
+                item.setForeground(QBrush(Qt.transparent))
+
+            anim = QVariantAnimation(self)
+            anim.setDuration(220)
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.InCubic)
+
+            def on_frame(progress: float) -> None:
+                """Updates item heights and overlay positions for each frame.
+
+                Args:
+                    progress (float): Animation progress from 0.0 to 1.0.
+                """
+                remaining = 1.0 - progress
                 for item in items:
-                    h = max(0, int(orig_heights.get(id(item), 28) * remaining))
-                    item.setSizeHint(QSize(item.sizeHint().width(), h))
+                    orig_rect = orig_rects.get(id(item))
+                    if orig_rect:
+                        h = max(0, int(orig_rect.height() * remaining))
+                        item.setSizeHint(QSize(-1, h))
 
-            def on_finished():
+                self.runs_list.doItemsLayout()
+                for item, overlay, opacity in overlays:
+                    orig_rect = orig_rects[id(item)]
+                    current_rect = self.runs_list.visualItemRect(item)
+
+                    w = orig_rect.width()
+                    h = max(0, int(orig_rect.height() * remaining))
+                    x = current_rect.x()
+                    y = current_rect.y()
+
+                    overlay.setGeometry(x, y, w, h)
+                    opacity.setOpacity(max(0.0, remaining))
+
+            def on_finished() -> None:
+                """Clean up overlays and permanently remove items from the list."""
+                self.runs_list.setStyleSheet(original_stylesheet)
+
+                for _, overlay, _ in overlays:
+                    overlay.deleteLater()
                 for item, run in runs_to_remove:
                     row = self.runs_list.row(item)
-                    self.runs_list.takeItem(row)
+                    if row >= 0:
+                        self.runs_list.takeItem(row)
                     if run in self.unnamed_runs:
                         self.unnamed_runs.remove(run)
+
                 self.on_selection_changed()
                 self.refilter_list()
 
-            timeline.frameChanged.connect(on_frame)
-            timeline.finished.connect(on_finished)
-            timeline.start()
-            self._delete_timeline = timeline  # keep reference
+            anim.valueChanged.connect(on_frame)
+            anim.finished.connect(on_finished)
+            anim.start()
+            self._delete_anim = anim
 
         QTimer.singleShot(180, do_collapse)
 
@@ -2460,42 +3211,40 @@ class RunRecoveryDialog(QDialog):
         if hasattr(self, "plot_stack"):
             self.plot_stack.setCurrentIndex(1)
 
-    def on_recover_clicked(self):
-        """
-        TODO: Figure out behavior for recovery!
-        """
-        if self.selected_run is None:
+    def on_recover_clicked(self) -> None:
+        selected_items = self.runs_list.selectedItems()
+        if not selected_items:
             return
+        run_to_recover = selected_items[0].data(Qt.ItemDataRole.UserRole)
+        devices = []
+        try:
+            config_dir = os.path.join(Constants.local_app_data_path, "config")
 
-        run_name, ok = QInputDialog.getText(
-            self,
-            "Recover Run",
-            f"Enter name for run from {self.selected_run.timestamp}:",
-            text="",
-        )
-
-        if ok and run_name.strip():
-            if self._validate_run_name(run_name):
-                recovery_dialog = RecoveryProgressDialog(self, self.selected_run, run_name)
-                result = recovery_dialog.exec_()
-
-                if result == QDialog.Accepted:
-                    current_item = self.runs_list.currentItem()
-                    if current_item is not None:
-                        row = self.runs_list.row(current_item)
-                        self.runs_list.takeItem(row)
-                    if self.selected_run in self.unnamed_runs:
-                        self.unnamed_runs.remove(self.selected_run)
-
-                    self.clear_details()
-                    self.recover_button.setEnabled(False)
-                    self.refilter_list()
+            if os.path.exists(config_dir):
+                # List all items in the directory, but only keep them if they are folders
+                devices = [
+                    folder_name
+                    for folder_name in os.listdir(config_dir)
+                    if os.path.isdir(os.path.join(config_dir, folder_name))
+                ]
             else:
-                QMessageBox.warning(
-                    self,
-                    "Invalid Name",
-                    "Run name already exists or contains invalid characters.",
-                )
+                Log.w(TAG, f"Device config directory not found at: {config_dir}")
+
+        except Exception as e:
+            Log.e(TAG, f"Failed to load devices from config path: {str(e)}")
+
+        dialog = RecoverDialog(run_to_recover, devices, parent=self)
+
+        if dialog.exec_() == QDialog.Accepted:
+            Log.i(TAG, f"Successfully recovered run to {dialog.device_combo.currentText()}")
+            row = self.runs_list.row(selected_items[0])
+            self.runs_list.takeItem(row)
+
+            if run_to_recover in self.unnamed_runs:
+                self.unnamed_runs.remove(run_to_recover)
+
+            self.on_selection_changed()
+            self.refilter_list()
 
     def _validate_run_name(self, name: str) -> bool:
         """

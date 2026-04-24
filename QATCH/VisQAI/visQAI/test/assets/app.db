@@ -1,0 +1,63 @@
+E{}
+BEGIN TRANSACTION;
+CREATE TABLE buffer (
+                ingredient_id INTEGER PRIMARY KEY,
+                pH REAL,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            );
+CREATE TABLE excipient (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            );
+CREATE TABLE formulation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                temperature REAL
+            );
+CREATE TABLE formulation_component (
+                formulation_id INTEGER NOT NULL,
+                component_type TEXT NOT NULL,
+                ingredient_id INTEGER NOT NULL,
+                concentration REAL NOT NULL,
+                units TEXT NOT NULL,
+                PRIMARY KEY (formulation_id, component_type),
+                FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            );
+CREATE TABLE ingredient (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                enc_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                is_user INTEGER NOT NULL DEFAULT 0
+            );
+CREATE TABLE protein (
+                ingredient_id    INTEGER PRIMARY KEY,
+                class_type       TEXT NOT NULL DEFAULT 'None'
+                                CHECK (class_type IN ('None','ADC','FC-Fusion','mAb_IgG1','mAb_IgG4','Polyclonal','Other')),
+                molecular_weight REAL,
+                pI_mean          REAL,
+                pI_range         REAL,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            );
+CREATE TABLE salt (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            );
+CREATE TABLE stabilizer (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            );
+CREATE TABLE surfactant (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            );
+CREATE TABLE viscosity_profile (
+                formulation_id INTEGER PRIMARY KEY,
+                shear_rates TEXT NOT NULL,
+                viscosities TEXT NOT NULL,
+                units TEXT NOT NULL,
+                is_measured INTEGER NOT NULL,
+                FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE
+            );
+DELETE FROM "sqlite_sequence";
+COMMIT;
