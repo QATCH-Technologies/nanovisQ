@@ -5773,7 +5773,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     # Partial success
                     Log.w(f"User canceled resource download: Updated {i} of {num_files} files.")
                     with open(working_file_compare, "a") as f:
-                        f.write("* (Partial download)")
+                        f.write("*,(Partial download)")
                     Log.w("Marked resources for future update again.")
                     PopUp.question_FW(
                         self,

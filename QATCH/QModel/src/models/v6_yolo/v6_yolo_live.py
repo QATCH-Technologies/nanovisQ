@@ -10,10 +10,10 @@ for the main application.
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-04-07
+    2026-04-10
 
 Version:
-    2.1.1
+    2.1.3
 """
 
 import logging
@@ -95,10 +95,11 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     #   threshold_seconds = float -> message fires only if the run's Relative_time at
     #                               confirmation equals or exceeds the threshold.
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 minutes
-        2: (240.0, "Data Ready, You Can Stop"),  # >= 4 minutes
-        3: (None, "Complete, Press Stop"),  # always on 3-channel confirmation
+        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min at Initial Fill, no ch1 yet
+        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min at ch1, no ch2 yet
+        3: (None, "Data Ready, Stop"),  # always on 3-channel confirmation
     }
+    INITIAL_FILL_TIMEOUT_S: float = 180.0
 
     def __init__(self, model_path: str, buffer_window_size: Optional[int] = None):
         """Initializes the live fill classifier with a model and buffer settings.
@@ -134,7 +135,13 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         # Tracks which channels have already had their timed duration warning fired so
         # that _evaluate_duration_threshold never double-emits for the same channel.
         self._channel_warning_fired: Dict[int, bool] = {}
-
+        # Tracks which channels have exceeded their duration threshold but are waiting
+        self._extended_fill_latched: Dict[int, bool] = {}
+        self._initial_fill_timeout_fired: bool = False
+        self._cal_csv_written: bool = False
+        self._cal_csv_path: str = os.path.join(
+            Architecture.get_path(), "QATCH", "QModel", "logs", "fill_calibration_30s.csv"
+        )
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
 
     def set_drop_applied_timestamp(self, relative_time: float) -> None:
@@ -166,6 +173,38 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                 f"Fill epoch already set ({self._fill_epoch:.1f} s) - ignoring "
                 f"drop-applied timestamp {relative_time:.1f} s.",
             )
+
+    def _check_initial_fill_timeout(self) -> None:
+        """Fires a 'Data Ready, Stop' signal if 3 minutes elapse after Initial Fill
+         is confirmed without 1 Channel being detected.
+
+        Requires all three conditions to be true simultaneously:
+        - Current prediction is 0 (Initial Fill confirmed, not yet ch1).
+        - Channel 0 confirmation time is recorded.
+        - Elapsed time since channel 0 confirmation >= INITIAL_FILL_TIMEOUT_S.
+
+        Fires at most once per run, guarded by ``_initial_fill_timeout_fired``.
+        """
+        if self._initial_fill_timeout_fired:
+            return
+        if self.current_prediction < 1:
+            return
+
+        ch0_time = self._channel_confirm_times.get(0)
+        if ch0_time is None:
+            return
+
+        elapsed_s: float = max(self._last_max_time, 0.0) - ch0_time
+        if elapsed_s >= self.INITIAL_FILL_TIMEOUT_S:
+            Log.w(
+                self.TAG,
+                f"Initial Fill (ch0) confirmed at {ch0_time:.1f} s but no 1-Channel "
+                f"state detected after {elapsed_s:.1f} s "
+                f"(threshold {self.INITIAL_FILL_TIMEOUT_S / 60:.0f} min). "
+                f"Emitting 'Data Ready, Stop'.",
+            )
+            self._pending_display_message = "Data Ready, Stop"
+            self._initial_fill_timeout_fired = True
 
     def add_chunk(self, df_chunk: pd.DataFrame) -> None:
         """Ingests a new chunk of data into the rolling buffer.
@@ -271,6 +310,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                     # Re-evaluate timed thresholds every cycle so warnings fire even
                     # when the channel has been stable since first confirmation.
                     self._evaluate_duration_threshold(self.current_prediction)
+                self._check_initial_fill_timeout()
             else:
                 Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
 
@@ -318,13 +358,31 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                     f"{self._fill_epoch:.1f} s.",
                 )
 
+        # Check whether the previous channel's extended-fill latch was armed.
+        # If so, now that this channel has finally been confirmed, emit the message.
+        # This must run before any early return so that channels not in
+        # DURATION_THRESHOLDS (e.g. channel 2) still release the latch for
+        # channel 1 when they are confirmed.
+        prev_channel = channel - 1
+        if self._extended_fill_latched.get(prev_channel, False):
+            _, prev_message = self.DURATION_THRESHOLDS.get(prev_channel, (None, None))
+            if prev_message is not None:
+                Log.i(
+                    self.TAG,
+                    f"Extended fill latch for channel {prev_channel} released on "
+                    f"channel {channel} confirmation - displaying: '{prev_message}'",
+                )
+                self._pending_display_message = prev_message
+                # Consume the latch so it cannot fire again.
+                self._extended_fill_latched[prev_channel] = False
+
         if channel not in self.DURATION_THRESHOLDS:
             return
 
         threshold_s, message = self.DURATION_THRESHOLDS[channel]
 
         if threshold_s is None:
-            # Unconditional - emit immediately on confirmation (e.g. 3-channel complete).
+            # emit immediately on confirmation (e.g. 3-channel complete).
             Log.i(
                 self.TAG,
                 f"Channel {channel} fill complete - displaying: '{message}'",
@@ -352,7 +410,6 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         threshold_s, message = self.DURATION_THRESHOLDS[channel]
 
         if threshold_s is None:
-            # Unconditional messages are already handled in _on_channel_confirmed.
             return
 
         if self._channel_warning_fired.get(channel, False):
@@ -360,37 +417,27 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
 
         confirm_time = self._channel_confirm_times.get(channel)
         if confirm_time is None:
-            # Channel not yet confirmed - nothing to evaluate.
             return
 
-        current_time: float = max(self._last_max_time, 0.0)
+        if self._fill_epoch is None:
+            return  # drop epoch not yet established; cannot evaluate fill duration
 
-        # Compute elapsed time since the fill epoch was established.
-        if self._fill_epoch is not None:
-            elapsed_s: float = current_time - self._fill_epoch
-            epoch_note = f"{elapsed_s:.1f} s since fill epoch"
-        else:
-            # Edge case: classifier jumped straight past channel 0 (e.g. model
-            # started mid-fill). Fall back to absolute run time so the logic
-            # still functions, but flag it clearly in the log.
-            elapsed_s = current_time
-            epoch_note = f"{elapsed_s:.1f} s (no Initial Fill epoch - using absolute time)"
-            Log.w(
-                self.TAG,
-                f"Channel {channel} threshold check but no Initial Fill epoch recorded. "
-                "Duration will be evaluated against absolute run time.",
-            )
+        current_time: float = max(self._last_max_time, 0.0)
+        elapsed_s: float = current_time - self._fill_epoch
 
         if elapsed_s >= threshold_s:
             threshold_min = threshold_s / 60.0
             elapsed_min = elapsed_s / 60.0
             Log.w(
                 self.TAG,
-                f"Extended fill detected: channel {channel} at {epoch_note} "
-                f"(threshold {threshold_min:.0f} min, elapsed {elapsed_min:.2f} min). "
-                f"Displaying: '{message}'",
+                f"Extended fill detected: channel {channel} at {elapsed_s:.1f} s "
+                f"since fill epoch (threshold {threshold_min:.0f} min, "
+                f"elapsed {elapsed_min:.2f} min). Latching display message until "
+                f"next channel is confirmed: '{message}'",
             )
-            self._pending_display_message = message
+            # Do NOT emit the display message here. Instead arm the latch so that
+            # _on_channel_confirmed will emit it once the next channel is detected.
+            self._extended_fill_latched[channel] = True
             self._channel_warning_fired[channel] = True
 
     def get_and_clear_display_message(self) -> Optional[str]:
@@ -488,7 +535,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         )
         type_cls_asset = os.path.join(v6_base_path, "classifiers", "fill_classifier", "type_cls.pt")
         self.model_path = type_cls_asset
-        self.buffer_window_size = buffer_window_size
+        self.buffer_window_size = buffer_window_size if buffer_window_size else 2000
 
         # Instance placeholder
         self._classifier: Optional[QModelV6YOLO_Live] = None
@@ -558,19 +605,28 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                         break
 
                 data_received = False
+                df_list = []
+
                 for chunk in chunks:
                     if isinstance(chunk, DropEpochSignal):
                         self._classifier.set_drop_applied_timestamp(chunk.relative_time)
                         continue
-                    df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(chunk)
+
                     try:
+                        df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(chunk)
                         if df_chunk is not None and not df_chunk.empty:
-                            self._classifier.add_chunk(df_chunk)
-                            data_received = True
+                            df_list.append(df_chunk)
                     except ValueError as ve:
                         Log.w(TAG, f"Skipping worker data chunk: {ve}")
                     except Exception as e:
                         Log.e(TAG, f"Error converting worker data: {e}")
+                if df_list:
+                    try:
+                        combined_chunk = pd.concat(df_list, ignore_index=True)
+                        self._classifier.add_chunk(combined_chunk)
+                        data_received = True
+                    except Exception as e:
+                        Log.e(TAG, f"Error batching chunks: {e}")
 
                 if data_received:
                     pred_int = self._classifier.attempt_classification()

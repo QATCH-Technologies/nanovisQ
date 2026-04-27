@@ -67,7 +67,9 @@ class QATCH:
                 Constants.app_date,
             )  # arbitrary string, required for Windows Toolbar to display QATCH icon
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-            ctypes.windll.kernel32.SetConsoleTitleW("QATCH Q-1 Real-Time GUI - command line")
+            ctypes.windll.kernel32.SetConsoleTitleW(
+                "QATCH Q-1 Real-Time GUI - command line"
+            )
         self._args = self._init_logger()
         self._app = QApplication(argv)
         if not USE_PYI_SPLASH:
@@ -79,15 +81,22 @@ class QATCH:
         if USE_PYI_SPLASH:
             # Update the text on the splash screen
             build_info = "\n".join(
-                [f"                                          {s}" for s in build_info.split("\n")]
+                [
+                    f"                                          {s}"
+                    for s in build_info.split("\n")
+                ]
             )
             pyi_splash.update_text(build_info)
         else:
-            icon_path = os.path.join(Architecture.get_path(), "QATCH\\icons\\qatch-splash.png")
+            icon_path = os.path.join(
+                Architecture.get_path(), "QATCH\\icons\\qatch-splash.png"
+            )
             pixmap = QPixmap(icon_path)
             pixmap_resized = pixmap.scaledToWidth(512)
             self.splash = QSplashScreen(pixmap_resized, QtCore.Qt.WindowStaysOnTopHint)
-            self.splash.showMessage(build_info, QtCore.Qt.AlignBottom | QtCore.Qt.AlignCenter)
+            self.splash.showMessage(
+                build_info, QtCore.Qt.AlignBottom | QtCore.Qt.AlignCenter
+            )
             self.splash.show()
 
         # Close SplashScreen after app is loaded
@@ -132,7 +141,9 @@ class QATCH:
         # lazy load imports
         from QATCH.ui import mainWindow
 
-        if Architecture.is_python_version(MinimalPython.major, minor=MinimalPython.minor):
+        if Architecture.is_python_version(
+            MinimalPython.major, minor=MinimalPython.minor
+        ):
             Log.i(TAG, "Application started")
             self.win = mainWindow.MainWindow(samples=self._args.get_user_samples())
             # win.setWindowTitle("{} - {}".format(Constants.app_title, Constants.app_version))

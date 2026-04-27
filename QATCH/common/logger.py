@@ -2,7 +2,7 @@
 Logging module for the QATCH Nanovis system.
 
 This module provides the Logger class for configuring and managing
-logging handlers, file rotation, and console output, as well as the
+logging handlers, file rotation, and console output, as well as the 
 LoggerLevel enum defining available log levels.
 
 Author:
@@ -15,7 +15,6 @@ Date:
 Version:
     ?
 """
-
 import logging
 import logging.handlers
 import sys
@@ -27,7 +26,7 @@ from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
 from QATCH.core.constants import Constants
 
-os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
 
 
 class Logger:
@@ -45,18 +44,18 @@ class Logger:
         """
         try:
             from absl import logging as absl_logging
-
             absl_logging.set_verbosity(absl_logging.ERROR)
-            absl_logging.set_stderrthreshold("error")
-            logging.getLogger("absl").setLevel(logging.ERROR)
+            absl_logging.set_stderrthreshold('error')
+            logging.getLogger('absl').setLevel(logging.ERROR)
         except ImportError:
             pass
 
         log_format_file = logging.Formatter(
-            fmt="%(asctime)s %(levelname)s %(module)s %(funcName)s %(message)s"
+            fmt='%(asctime)s %(levelname)s %(module)s %(funcName)s %(message)s'
         )
         log_format_console = logging.Formatter(
-            fmt="%(asctime)s\t%(levelname)s\t%(message)s", datefmt="%Y-%m-%d %I:%M:%S %p"
+            fmt='%(asctime)s\t%(levelname)s\t%(message)s',
+            datefmt='%Y-%m-%d %I:%M:%S %p'
         )
 
         top_level_logger = logging.getLogger("QATCH")
@@ -69,15 +68,15 @@ class Logger:
         file_handler = logging.handlers.RotatingFileHandler(
             f"{Constants.log_export_path}/{Constants.log_filename}",
             maxBytes=Constants.log_max_bytes,
-            backupCount=0,
+            backupCount=0
         )
         file_handler.setFormatter(log_format_file)
         file_handler.setLevel(logging.DEBUG)
         top_level_logger.addHandler(file_handler)
 
         if sys.stdout is None:
-            sys.stdout = open(os.devnull, "w")
-            sys.stderr = open(os.devnull, "w")
+            sys.stdout = open(os.devnull, 'w')
+            sys.stderr = open(os.devnull, 'w')
 
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(log_format_console)
@@ -121,7 +120,7 @@ class Logger:
         Returns:
             str: Representation string.
         """
-        return "<%s (%s)>" % (self.__class__.__name__, "QATCH.logger")
+        return '<%s (%s)>' % (self.__class__.__name__, "QATCH.logger")
 
     @staticmethod
     def close() -> None:
@@ -220,22 +219,22 @@ class Logger:
         Logger.i(tag, f"Platform: {Architecture.get_os_type()}")
         Logger.i(tag, f"Python version: {Architecture.get_python_version()}")
         Logger.i(tag, f"Path: {os.getcwd()}")
-        if getattr(sys, "frozen", False):
+        if getattr(sys, 'frozen', False):
             Logger.d(tag, f"_MEIPASS: {sys._MEIPASS}")
         Logger.i("-" * len(header))
 
-        frozen = "not"
-        if getattr(sys, "frozen", False):
-            frozen = "ever so"
+        frozen = 'not'
+        if getattr(sys, 'frozen', False):
+            frozen = 'ever so'
             bundle_dir = sys._MEIPASS
         else:
             bundle_dir = os.path.dirname(os.path.abspath(__file__))
         Logger.d("=== DEBUG INFORMATIONS ===")
         Logger.d(f"we are {frozen} frozen")
-        Logger.d("bundle dir is", bundle_dir)
-        Logger.d("sys.argv[0] is", sys.argv[0])
-        Logger.d("sys.executable is", sys.executable)
-        Logger.d("os.getcwd is", os.getcwd())
+        Logger.d('bundle dir is', bundle_dir)
+        Logger.d('sys.argv[0] is', sys.argv[0])
+        Logger.d('sys.executable is', sys.executable)
+        Logger.d('os.getcwd is', os.getcwd())
 
 
 class LoggerLevel(Enum):
@@ -250,7 +249,6 @@ class LoggerLevel(Enum):
         DEBUG(int): Debug level.
         ANY(int): All messages.
     """
-
     CRITICAL = logging.CRITICAL
     ERROR = logging.ERROR
     WARNING = logging.WARNING
