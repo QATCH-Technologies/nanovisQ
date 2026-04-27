@@ -11,10 +11,10 @@ Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-04-24
+    2026-04-27
 
 Version:
-    1.0
+    1.0.1
 """
 
 import os
@@ -70,6 +70,8 @@ from PyQt5.QtCore import (
     QTime,
     QTimer,
     QVariantAnimation,
+    QParallelAnimationGroup,
+    QAbstractAnimation,
 )
 from PyQt5.QtGui import (
     QIcon,
@@ -85,6 +87,8 @@ from typing import List, Optional, Any, Dict, BinaryIO, Sequence, Set, Tuple, ca
 import numpy as np
 import send2trash
 import pyqtgraph as pg
+
+
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.drawPlateConfig import Architecture
@@ -819,7 +823,9 @@ class RecoverDialog(QDialog):
 
         # Buttons
         self.btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.btn_box.button(QDialogButtonBox.Ok).setText("Recover")
+        ok_button = self.btn_box.button(QDialogButtonBox.StandardButton.Ok)
+        if ok_button is not None:
+            ok_button.setText("Recover")
 
         form_layout = QFormLayout()
         form_layout.addRow("Run Name:", self.name_input)
@@ -1032,10 +1038,11 @@ class RecoveryFilter(QWidget):
 
     filters_changed = pyqtSignal(dict)
 
-    _SHADOW_MARGIN_L = 0
-    _SHADOW_MARGIN_T = 0
-    _SHADOW_MARGIN_R = 0
-    _SHADOW_MARGIN_B = 0
+    # Was: all 0
+    _SHADOW_MARGIN_L = 28
+    _SHADOW_MARGIN_T = 24
+    _SHADOW_MARGIN_R = 28
+    _SHADOW_MARGIN_B = 32  # extra to accommodate offset(0, 4)
 
     def __init__(self, parent: QWidget | None = None, current_filters: dict | None = None) -> None:
         """Initializes the RecoveryFilter with customizable UI elements and initial state.
@@ -1051,12 +1058,20 @@ class RecoveryFilter(QWidget):
             current_filters (dict, optional): A dictionary containing existing
                 filter values to pre-populate the fields. Defaults to None.
         """
-        super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        super().__init__(
+            parent,
+            Qt.WindowFlags(
+                Qt.WindowType.Popup
+                | Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.NoDropShadowWindowHint
+            ),
+        )
         self.current_filters = current_filters or {}
         self._from_set = False
         self._to_set = False
 
         self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
         self._panel = RoundedPanel(self)
         self._panel.setObjectName("RecoveryFilterInner")
 
@@ -1070,11 +1085,6 @@ class RecoveryFilter(QWidget):
         outer_layout.setSpacing(0)
         outer_layout.addWidget(self._panel)
 
-        shadow = QGraphicsDropShadowEffect(self._panel)
-        shadow.setBlurRadius(28)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QColor(0, 0, 0, 70))
-        self._panel.setGraphicsEffect(shadow)
         shadow = QGraphicsDropShadowEffect(self._panel)
         shadow.setBlurRadius(28)
         shadow.setOffset(0, 4)
@@ -1094,9 +1104,26 @@ class RecoveryFilter(QWidget):
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(10)
 
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(4)
+
         title = QLabel("Filter Options")
         title.setObjectName("titleLabel")
-        main_layout.addWidget(title)
+
+        self.close_btn = QPushButton()
+        self.close_btn.setIcon(
+            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "clear.svg"))
+        )
+        self.close_btn.setObjectName("closeBtn")
+        self.close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.close_btn.setToolTip("Close")
+        self.close_btn.clicked.connect(self.close)
+
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+        title_row.addWidget(self.close_btn)
+        main_layout.addLayout(title_row)
 
         sections_layout = QVBoxLayout()
         sections_layout.setContentsMargins(0, 0, 0, 0)
@@ -1124,6 +1151,7 @@ class RecoveryFilter(QWidget):
             self.date_from,
             self.time_from,
             self._date_from_clear,
+            self._date_from_stack,
         ) = self._build_date_row(True)
 
         (
@@ -1133,6 +1161,7 @@ class RecoveryFilter(QWidget):
             self.date_to,
             self.time_to,
             self._date_to_clear,
+            self._date_to_stack,
         ) = self._build_date_row(False)
 
         self._date_from_placeholder.clicked.connect(lambda: self._activate_date_row(True))
@@ -1425,6 +1454,23 @@ class RecoveryFilter(QWidget):
                 background-color: rgba(0, 0, 0, 10);
                 color: #555555;
             }}
+            QPushButton#closeBtn {{
+                background-color: transparent;
+                border: none;
+                color: #aaaaaa;
+                padding: 0px;
+                min-width: 22px;  max-width: 22px;
+                min-height: 22px; max-height: 22px;
+                border-radius: 11px;
+                qproperty-iconSize: 10px 10px;
+            }}
+            QPushButton#closeBtn:hover {{
+                background-color: rgba(0, 0, 0, 12);
+                color: #555555;
+            }}
+            QPushButton#closeBtn:pressed {{
+                background-color: rgba(0, 0, 0, 22);
+            }}
         """
 
     def _make_section(self, title_text: str) -> QVBoxLayout:
@@ -1451,7 +1497,9 @@ class RecoveryFilter(QWidget):
 
     def _build_date_row(
         self, is_from: bool
-    ) -> tuple[QVBoxLayout, QPushButton, QWidget, QDateEdit, QTimeEdit, QPushButton]:
+    ) -> tuple[
+        QVBoxLayout, QPushButton, QWidget, QDateEdit, QTimeEdit, QPushButton, QStackedWidget
+    ]:
         """Constructs a toggleable date/time input row.
 
         Creates a dual-state UI component: a dashed 'placeholder' button for
@@ -1474,7 +1522,7 @@ class RecoveryFilter(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Inactive placeholders
+        # Inactive placeholder
         label_text = "+  From date" if is_from else "+  To date"
         placeholder = QPushButton(label_text)
         placeholder.setObjectName("addDateBtn")
@@ -1519,10 +1567,17 @@ class RecoveryFilter(QWidget):
         row_layout.addWidget(time_edit)
         row_layout.addWidget(clear_btn)
 
-        outer.addWidget(placeholder)
-        outer.addWidget(active_widget)
+        # Stack: index 0 = placeholder, index 1 = active editors
+        stack = QStackedWidget()
+        stack.addWidget(placeholder)  # index 0
+        stack.addWidget(active_widget)  # index 1
+        stack.setCurrentIndex(0)
+        # Match height to the taller (active) child so the popup doesn't jump
+        stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        return outer, placeholder, active_widget, date_edit, time_edit, clear_btn
+        outer.addWidget(stack)
+
+        return outer, placeholder, active_widget, date_edit, time_edit, clear_btn, stack
 
     def _make_double_spin(self) -> QSpinBox:
         """Factory method to create a standardized QDoubleSpinBox.
@@ -1638,10 +1693,8 @@ class RecoveryFilter(QWidget):
         to determine whether to show the '+ Set date/time' placeholder buttons
         or the actual date/time input editors for both the 'From' and 'To' rows.
         """
-        self._date_from_placeholder.setVisible(not self._from_set)
-        self._date_from_active.setVisible(self._from_set)
-        self._date_to_placeholder.setVisible(not self._to_set)
-        self._date_to_active.setVisible(self._to_set)
+        self._date_from_stack.setCurrentIndex(1 if self._from_set else 0)
+        self._date_to_stack.setCurrentIndex(1 if self._to_set else 0)
 
     def _populate_from(self, f: dict) -> None:
         """Populates the popup widgets with values from a filter dictionary.
@@ -1770,15 +1823,25 @@ class RecoveryFilter(QWidget):
             return
         event.ignore()
         self._closing_animated = True
-        full_h = self.height()
-        anim = QPropertyAnimation(self, b"maximumHeight")
-        anim.setDuration(130)
-        anim.setEasingCurve(QEasingCurve.InCubic)
-        anim.setStartValue(full_h)
-        anim.setEndValue(0)
-        anim.finished.connect(self.close)
-        anim.start()
-        self._close_anim = anim
+
+        height_anim = QPropertyAnimation(self, b"maximumHeight")
+        height_anim.setDuration(180)
+        height_anim.setEasingCurve(QEasingCurve.InCubic)
+        height_anim.setStartValue(self.height())
+        height_anim.setEndValue(0)
+
+        fade_anim = QPropertyAnimation(self, b"windowOpacity")
+        fade_anim.setDuration(180)
+        fade_anim.setEasingCurve(QEasingCurve.InCubic)
+        fade_anim.setStartValue(self.windowOpacity())
+        fade_anim.setEndValue(0.0)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(height_anim)
+        group.addAnimation(fade_anim)
+        group.finished.connect(self.close)  # type: ignore
+        group.start()
+        self._close_anim = group  # keep alive
 
     def _on_apply(self) -> None:
         """Gathers current filter settings and signals the parent to apply them.
@@ -2423,7 +2486,7 @@ class RunRecoveryDialog(QDialog):
             return
 
         popup = RecoveryFilter(self, current_filters=self.active_filters)
-        popup.setAttribute(Qt.WA_DeleteOnClose, True)
+        popup.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         popup.filters_changed.connect(self._on_filters_changed)
 
         popup.adjustSize()
@@ -2441,19 +2504,28 @@ class RunRecoveryDialog(QDialog):
         popup.move(pos)
         self.filter_btn.setChecked(True)
 
-        # Open animation
+        # Open animation: expand height + fade in, anchored to button
         popup.setMaximumHeight(0)
+        popup.setWindowOpacity(0.0)
         popup.show()
-        open_anim = QPropertyAnimation(popup, b"maximumHeight")
-        open_anim.setDuration(180)
-        open_anim.setEasingCurve(QEasingCurve.OutCubic)
-        open_anim.setStartValue(0)
-        open_anim.setEndValue(full_height)
-        open_anim.finished.connect(lambda: popup.setMaximumHeight(16777215))
-        open_anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
-        self._filter_popup = popup
-        popup.destroyed.connect(self._on_filter_popup_closed)
+        height_anim = QPropertyAnimation(popup, b"maximumHeight")
+        height_anim.setDuration(180)
+        height_anim.setEasingCurve(QEasingCurve.OutCubic)
+        height_anim.setStartValue(0)
+        height_anim.setEndValue(full_height)
+
+        fade_anim = QPropertyAnimation(popup, b"windowOpacity")
+        fade_anim.setDuration(180)
+        fade_anim.setEasingCurve(QEasingCurve.OutCubic)
+        fade_anim.setStartValue(0.0)
+        fade_anim.setEndValue(1.0)
+
+        open_group = QParallelAnimationGroup(popup)
+        open_group.addAnimation(height_anim)
+        open_group.addAnimation(fade_anim)
+        open_group.finished.connect(lambda: popup.setMaximumHeight(16777215))
+        open_group.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _on_filter_popup_closed(self) -> None:
         """
@@ -3104,19 +3176,22 @@ class RunRecoveryDialog(QDialog):
                 orig_rects[id(item)] = rect
 
                 if rect.height() > 0:
-                    pixmap = self.runs_list.viewport().grab(rect)
-                    overlay = QLabel(self.runs_list.viewport())
-                    overlay.setPixmap(pixmap)
-                    overlay.setScaledContents(True)
-                    overlay.setGeometry(rect)
-                    opacity = QGraphicsOpacityEffect(overlay)
-                    opacity.setOpacity(1.0)
-                    overlay.setGraphicsEffect(opacity)
-                    overlay.show()
-                    overlays.append((item, overlay, opacity))
+                    viewport = self.runs_list.viewport()
+                    if viewport is not None:
+                        pixmap = viewport.grab(rect)
+                        overlay = QLabel(viewport)
+                        overlay.setPixmap(pixmap)
+                        overlay.setScaledContents(True)
+                        overlay.setGeometry(rect)
 
-                item.setBackground(QBrush(Qt.transparent))
-                item.setForeground(QBrush(Qt.transparent))
+                        opacity = QGraphicsOpacityEffect(overlay)
+                        opacity.setOpacity(1.0)
+                        overlay.setGraphicsEffect(opacity)
+                        overlay.show()
+                        overlays.append((item, overlay, opacity))
+
+                item.setBackground(QBrush(Qt.GlobalColor.transparent))
+                item.setForeground(QBrush(Qt.GlobalColor.transparent))
 
             anim = QVariantAnimation(self)
             anim.setDuration(220)
