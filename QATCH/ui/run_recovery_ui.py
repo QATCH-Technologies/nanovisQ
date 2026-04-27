@@ -178,7 +178,7 @@ class RecoveryWorker(QThread):
         self.device_name = device_name
         self.initials = initials
 
-        self.logged_data_base = os.path.join(Architecture.get_path(), Constants.log_export_path)
+        self.logged_data_base = Constants.log_prefer_path  # user's preferred path
 
     def run(self):
         """Executes the recovery logic in a separate thread.
@@ -186,6 +186,10 @@ class RecoveryWorker(QThread):
         Performs XML manipulation, hashing for integrity signatures, file renaming,
         and directory relocation.
         """
+        # variables required for history logging:
+        old_folder_path = "UNKNOWN"
+        final_destination = "UNKNOWN"
+        task_result = "UNKNOWN"
         try:
             self.progress.emit(10)
             old_folder_path = os.path.abspath(self.run_metadata.filepath)
@@ -228,7 +232,9 @@ class RecoveryWorker(QThread):
 
             # Generate top-level signature
             run_info_sig = hashlib.sha256(
-                f"RUNINFO_{self.new_name}_{dt.datetime.now().isoformat()}".encode("utf-8")
+                f"RUNINFO_{self.new_name}_{dt.datetime.now().isoformat()}".encode(
+                    "utf-8"
+                )
             ).hexdigest()
             xml.setAttribute("signature", run_info_sig)
 
@@ -287,7 +293,9 @@ class RecoveryWorker(QThread):
             audit_sig = hashlib.sha256(raw_sig_string.encode("utf-8")).hexdigest()
 
             audit = run_doc.createElement("audit")
-            audit.setAttribute("profile", getattr(self, "profile_id", "recovery_default"))
+            audit.setAttribute(
+                "profile", getattr(self, "profile_id", "recovery_default")
+            )
             audit.setAttribute("action", audit_action)
             audit.setAttribute("recorded", recorded_time)
 
@@ -297,7 +305,9 @@ class RecoveryWorker(QThread):
                 machine_name = os.name
 
             audit.setAttribute("machine", machine_name)
-            audit.setAttribute("username", getattr(self, "username", "System Administrator"))
+            audit.setAttribute(
+                "username", getattr(self, "username", "System Administrator")
+            )
             audit.setAttribute("initials", self.initials)
             audit.setAttribute("role", "ADMIN")
             audit.setAttribute("signature", audit_sig)
@@ -310,9 +320,9 @@ class RecoveryWorker(QThread):
             with open(target_xml_path, "w", encoding="utf-8") as xml_file:
                 run_doc.writexml(xml_file, indent="  ", addindent="  ", newl="\n")
 
-            if existing_xml_path and os.path.abspath(existing_xml_path) != os.path.abspath(
-                target_xml_path
-            ):
+            if existing_xml_path and os.path.abspath(
+                existing_xml_path
+            ) != os.path.abspath(target_xml_path):
                 os.remove(existing_xml_path)
 
             self.progress.emit(60)
@@ -337,9 +347,34 @@ class RecoveryWorker(QThread):
 
             self.progress.emit(100)
             self.finished_task.emit(True, "")
+            task_result = "SUCCESS"
 
         except Exception as e:
             self.finished_task.emit(False, str(e))
+            task_result = "FAILURE"
+
+        finally:
+            history_path = os.path.join(
+                os.getcwd(), Constants.log_export_path, "export_history.log"
+            )
+            if os.path.exists(history_path):
+                with open(history_path, "r") as f:
+                    log_lines = f.read()
+            else:
+                log_lines = ""
+            with open(history_path, "w") as f:
+                f.write(
+                    f"<b>Recovered 1 run(s) at {str(dt.datetime.now()).split('.')[0]}</b><br/>\n"
+                )
+                f.write(f'<small>from "{old_folder_path}" <br/>\n')
+                f.write(f'to "{final_destination}"</small><br/>\n')
+                f.write(f"<small>Settings: ")
+                f.write(f'new_name = "{self.new_name}", ')
+                f.write(f'device_name = "{self.device_name}", ')
+                f.write(f'initials = "{self.initials}", ')
+                f.write(f'result = "{task_result}"')
+                f.write("</small><br/>\n<br/>\n")
+                f.write(log_lines)
 
 
 class ScanWorker(QThread):
@@ -441,14 +476,18 @@ class ScanWorker(QThread):
                         if "T" in csv_timestamp:
                             start_dt = datetime.fromisoformat(csv_timestamp)
                         else:
-                            start_dt = datetime.strptime(csv_timestamp, "%Y-%m-%d %H:%M:%S")
+                            start_dt = datetime.strptime(
+                                csv_timestamp, "%Y-%m-%d %H:%M:%S"
+                            )
 
                         stop_dt = start_dt + timedelta(seconds=float(duration))
 
                         start_iso = start_dt.isoformat(timespec="seconds")
                         stop_iso = stop_dt.isoformat(timespec="seconds")
                     except (ValueError, TypeError):
-                        start_iso = csv_timestamp  # Fallback to raw string if parsing fails
+                        start_iso = (
+                            csv_timestamp  # Fallback to raw string if parsing fails
+                        )
 
                 runs.append(
                     RunMetadata(
@@ -494,7 +533,11 @@ class ScanWorker(QThread):
 
         try:
             zip_filename = next(
-                (name for name in os.listdir(folderpath) if name.lower().endswith(".zip")),
+                (
+                    name
+                    for name in os.listdir(folderpath)
+                    if name.lower().endswith(".zip")
+                ),
                 None,
             )
             if not zip_filename:
@@ -508,7 +551,8 @@ class ScanWorker(QThread):
                     (
                         name
                         for name in z.namelist()
-                        if name.endswith(".csv") and not name.split("/")[-1].startswith("._")
+                        if name.endswith(".csv")
+                        and not name.split("/")[-1].startswith("._")
                     ),
                     None,
                 )
@@ -542,8 +586,12 @@ class ScanWorker(QThread):
                                 if "Relative_time" in header_row
                                 else -1
                             )
-                            date_idx = header_row.index("Date") if "Date" in header_row else -1
-                            time_idx = header_row.index("Time") if "Time" in header_row else -1
+                            date_idx = (
+                                header_row.index("Date") if "Date" in header_row else -1
+                            )
+                            time_idx = (
+                                header_row.index("Time") if "Time" in header_row else -1
+                            )
                         continue
 
                     num_points += 1
@@ -675,7 +723,9 @@ class SignatureDialog(QDialog):
                     with open(Constants.auto_sign_key_path, "r") as f:
                         auto_sign_key = f.readline()
 
-                session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+                session_key_path = os.path.join(
+                    Constants.user_profiles_path, "session.key"
+                )
                 if os.path.exists(session_key_path):
                     with open(session_key_path, "r") as f:
                         session_key = f.readline()
@@ -717,7 +767,9 @@ class SignatureDialog(QDialog):
 
         TODO: Needs to be implemented fully!
         """
-        QMessageBox.information(self, "Switch User", "Switch User functionality invoked.")
+        QMessageBox.information(
+            self, "Switch User", "Switch User functionality invoked."
+        )
 
     def validate_and_accept(self) -> None:
         """Validates the input initials against expected session data.
@@ -785,7 +837,9 @@ class RecoverDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(350)
         self.setWindowIcon(
-            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "restore.svg"))
+            QIcon(
+                os.path.join(Architecture.get_path(), "QATCH", "icons", "restore.svg")
+            )
         )
 
         self.run_metadata = run_metadata
@@ -869,7 +923,9 @@ class RecoverDialog(QDialog):
 
                 self.device_combo.setCurrentText(device_name)
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Could not create device folder:\n{str(e)}")
+                QMessageBox.critical(
+                    self, "Error", f"Could not create device folder:\n{str(e)}"
+                )
 
     def _on_recover_clicked(self) -> None:
         """Starts the worker thread and disables UI inputs after capturing signature.
@@ -960,7 +1016,11 @@ class ToggleListWidget(QListWidget):
             and event.modifiers() == Qt.KeyboardModifier.NoModifier
         ):
             item = self.itemAt(event.pos())
-            if item is not None and item.isSelected() and len(self.selectedItems()) == 1:
+            if (
+                item is not None
+                and item.isSelected()
+                and len(self.selectedItems()) == 1
+            ):
                 self.clearSelection()
                 self.setCurrentItem(None)
                 event.accept()
@@ -1044,7 +1104,9 @@ class RecoveryFilter(QWidget):
     _SHADOW_MARGIN_R = 28
     _SHADOW_MARGIN_B = 32  # extra to accommodate offset(0, 4)
 
-    def __init__(self, parent: QWidget | None = None, current_filters: dict | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, current_filters: dict | None = None
+    ) -> None:
         """Initializes the RecoveryFilter with customizable UI elements and initial state.
 
         The constructor builds a multi-section layout containing status selection,
@@ -1093,8 +1155,12 @@ class RecoveryFilter(QWidget):
 
         self.setStyleSheet(
             RecoveryFilter._build_stylesheet(
-                icon_cal=os.path.join(Architecture.get_path(), "QATCH", "icons", "date-range.svg"),
-                icon_up=os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg"),
+                icon_cal=os.path.join(
+                    Architecture.get_path(), "QATCH", "icons", "date-range.svg"
+                ),
+                icon_up=os.path.join(
+                    Architecture.get_path(), "QATCH", "icons", "up-chevron.svg"
+                ),
                 icon_down=os.path.join(
                     Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
                 ),
@@ -1164,9 +1230,13 @@ class RecoveryFilter(QWidget):
             self._date_to_stack,
         ) = self._build_date_row(False)
 
-        self._date_from_placeholder.clicked.connect(lambda: self._activate_date_row(True))
+        self._date_from_placeholder.clicked.connect(
+            lambda: self._activate_date_row(True)
+        )
         self._date_from_clear.clicked.connect(lambda: self._clear_date_row(True))
-        self._date_to_placeholder.clicked.connect(lambda: self._activate_date_row(False))
+        self._date_to_placeholder.clicked.connect(
+            lambda: self._activate_date_row(False)
+        )
         self._date_to_clear.clicked.connect(lambda: self._clear_date_row(False))
 
         date_section.addLayout(from_row_layout)
@@ -1179,7 +1249,9 @@ class RecoveryFilter(QWidget):
         self.duration_max.setToolTip("Any = no upper limit")
         self.duration_max.setSpecialValueText("Any")
         sections_layout.addLayout(
-            self._make_range_section("DURATION (s)", self.duration_min, self.duration_max)
+            self._make_range_section(
+                "DURATION (s)", self.duration_min, self.duration_max
+            )
         )
 
         self.points_min = self._make_int_spin()
@@ -1228,7 +1300,9 @@ class RecoveryFilter(QWidget):
         self._populate_from(current_filters or {})
 
     @staticmethod
-    def _build_stylesheet(icon_cal: str = "", icon_up: str = "", icon_down: str = "") -> str:
+    def _build_stylesheet(
+        icon_cal: str = "", icon_up: str = "", icon_down: str = ""
+    ) -> str:
         """Generates the Qt Style Sheet (QSS) for the Recovery Filter popup.
 
         This method constructs a comprehensive CSS-like string used to style the
@@ -1495,10 +1569,14 @@ class RecoveryFilter(QWidget):
         section.addWidget(lbl)
         return section
 
-    def _build_date_row(
-        self, is_from: bool
-    ) -> tuple[
-        QVBoxLayout, QPushButton, QWidget, QDateEdit, QTimeEdit, QPushButton, QStackedWidget
+    def _build_date_row(self, is_from: bool) -> tuple[
+        QVBoxLayout,
+        QPushButton,
+        QWidget,
+        QDateEdit,
+        QTimeEdit,
+        QPushButton,
+        QStackedWidget,
     ]:
         """Constructs a toggleable date/time input row.
 
@@ -1540,7 +1618,9 @@ class RecoveryFilter(QWidget):
         bound_lbl.setObjectName("dateRangeLbl")
 
         default_dt = (
-            QDateTime.currentDateTime().addDays(-30) if is_from else QDateTime.currentDateTime()
+            QDateTime.currentDateTime().addDays(-30)
+            if is_from
+            else QDateTime.currentDateTime()
         )
 
         date_edit = QDateEdit()
@@ -1747,13 +1827,21 @@ class RecoveryFilter(QWidget):
             0.0 if (d_max is None or d_max == float("inf")) else float(d_max)
         )
 
-        self.points_min.setValue(int(f["points_min"]) if f.get("points_min") is not None else 0)
+        self.points_min.setValue(
+            int(f["points_min"]) if f.get("points_min") is not None else 0
+        )
         p_max = f.get("points_max")
-        self.points_max.setValue(0 if (p_max is None or p_max == float("inf")) else int(p_max))
+        self.points_max.setValue(
+            0 if (p_max is None or p_max == float("inf")) else int(p_max)
+        )
 
-        self.size_min.setValue(float(f["size_min"]) if f.get("size_min") is not None else 0.0)
+        self.size_min.setValue(
+            float(f["size_min"]) if f.get("size_min") is not None else 0.0
+        )
         s_max = f.get("size_max")
-        self.size_max.setValue(0.0 if (s_max is None or s_max == float("inf")) else float(s_max))
+        self.size_max.setValue(
+            0.0 if (s_max is None or s_max == float("inf")) else float(s_max)
+        )
 
     def _collect(self) -> dict:
         """Collects all current UI values into a filter criteria dictionary.
@@ -1783,7 +1871,9 @@ class RecoveryFilter(QWidget):
                 self.date_from.date(), self.time_from.time()
             ).toPyDateTime()
         if self._to_set:
-            filters["date_to"] = QDateTime(self.date_to.date(), self.time_to.time()).toPyDateTime()
+            filters["date_to"] = QDateTime(
+                self.date_to.date(), self.time_to.time()
+            ).toPyDateTime()
 
         d_min = self.duration_min.value()
         d_max = self.duration_max.value()
@@ -1900,7 +1990,9 @@ class RunRecoveryDialog(QDialog):
             floating filter menu.
     """
 
-    _UNNAMED_DIR: str = os.path.join(Architecture.get_path(), Constants.log_export_path, "_unnamed")
+    _UNNAMED_DIR: str = os.path.join(
+        Architecture.get_path(), Constants.log_export_path, "_unnamed"
+    )
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Initializes the RunRecoveryDialog.
@@ -1918,7 +2010,7 @@ class RunRecoveryDialog(QDialog):
         self.is_preview_visible: bool = True
         self._filter_popup: Optional[QWidget] = None
         self.setup_ui()
-        self.load_unnamed_runs()
+        # self.load_unnamed_runs()  # defer to show()
 
     def setup_ui(self) -> None:
         """
@@ -1950,7 +2042,9 @@ class RunRecoveryDialog(QDialog):
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText("Search...")
         self.search_icon_action = self.search_bar.addAction(
-            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "search.svg")),
+            QIcon(
+                os.path.join(Architecture.get_path(), "QATCH", "icons", "search.svg")
+            ),
             QLineEdit.LeadingPosition,
         )
         self.search_bar.setStyleSheet(
@@ -2004,7 +2098,9 @@ class RunRecoveryDialog(QDialog):
         self._rescan_icon_path: str = os.path.join(
             Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg"
         )
-        self._rescan_base_pixmap: QPixmap = QIcon(self._rescan_icon_path).pixmap(QSize(16, 16))
+        self._rescan_base_pixmap: QPixmap = QIcon(self._rescan_icon_path).pixmap(
+            QSize(16, 16)
+        )
         # This tracks a float from 0.0 to 360.0
         self._rescan_animation: QVariantAnimation = QVariantAnimation(self)
         self._rescan_animation.setStartValue(0.0)
@@ -2122,7 +2218,11 @@ class RunRecoveryDialog(QDialog):
         self._sort_ascending = False  # newest first by default
         self.sort_dir_btn = QPushButton()
         self.sort_dir_btn.setIcon(
-            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "descending.svg"))
+            QIcon(
+                os.path.join(
+                    Architecture.get_path(), "QATCH", "icons", "descending.svg"
+                )
+            )
         )
         self.sort_dir_btn.setObjectName("sortDir")
         self.sort_dir_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -2232,7 +2332,9 @@ class RunRecoveryDialog(QDialog):
         details_form.setContentsMargins(0, 0, 0, 0)
         details_form.setSpacing(6)
         details_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
-        details_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        details_form.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
+        )
 
         def make_key_label(text):
             lbl = QLabel(text)
@@ -2273,7 +2375,9 @@ class RunRecoveryDialog(QDialog):
         self.recover_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.recover_button.setEnabled(False)
         self.recover_button.setIcon(
-            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "restore.svg"))
+            QIcon(
+                os.path.join(Architecture.get_path(), "QATCH", "icons", "restore.svg")
+            )
         )
         self.recover_button.setIconSize(QSize(14, 14))
         self.recover_button.setStyleSheet(
@@ -2463,6 +2567,17 @@ class RunRecoveryDialog(QDialog):
         main_layout.addLayout(top_master_layout, stretch=1)
         self.setLayout(main_layout)
 
+    def show(self) -> None:
+        """
+        Overrides the default show method to trigger the initial data load.
+
+        This ensures that the potentially time-consuming scan of the unnamed runs
+        directory only occurs when the dialog is actually presented to the user,
+        after user preferences are loaded, rather than during initial construction.
+        """
+        super().show()
+        self.load_unnamed_runs()
+
     def show_filter_menu(self) -> None:
         """
         Handles the creation, positioning, and animation of the recovery filter popup.
@@ -2539,7 +2654,9 @@ class RunRecoveryDialog(QDialog):
         self._filter_popup = None
         self.filter_btn.setChecked(bool(self.active_filters))
         self._filter_popup_just_closed = True
-        QTimer.singleShot(150, lambda: setattr(self, "_filter_popup_just_closed", False))
+        QTimer.singleShot(
+            150, lambda: setattr(self, "_filter_popup_just_closed", False)
+        )
 
     def _on_filters_changed(self, filters: Dict[str, Any]) -> None:
         """
@@ -2574,20 +2691,28 @@ class RunRecoveryDialog(QDialog):
 
             # Search
             if query:
-                matches = query in run.display_name.lower() or query in run.ruling.lower()
+                matches = (
+                    query in run.display_name.lower() or query in run.ruling.lower()
+                )
 
             # Status
             if matches and "status" in self.active_filters:
                 matches = run.ruling == self.active_filters["status"]
 
             # Date / time range
-            if matches and "date_from" in self.active_filters and "date_to" in self.active_filters:
+            if (
+                matches
+                and "date_from" in self.active_filters
+                and "date_to" in self.active_filters
+            ):
                 run_dt = self._parse_timestamp(run.start)
                 if run_dt is None:
                     matches = False
                 else:
                     matches = (
-                        self.active_filters["date_from"] <= run_dt <= self.active_filters["date_to"]
+                        self.active_filters["date_from"]
+                        <= run_dt
+                        <= self.active_filters["date_to"]
                     )
 
             # Duration range
@@ -2623,7 +2748,9 @@ class RunRecoveryDialog(QDialog):
             if self.runs_list.count() == 0:
                 self.empty_list_placeholder.setText("No recoverable runs")
             else:
-                self.empty_list_placeholder.setText("No runs match the current search / filter")
+                self.empty_list_placeholder.setText(
+                    "No runs match the current search / filter"
+                )
             self.list_stack.setCurrentIndex(1)
         else:
             self.list_stack.setCurrentIndex(0)
@@ -2700,7 +2827,9 @@ class RunRecoveryDialog(QDialog):
             self.rescan_btn.setEnabled(True)
 
             if hasattr(self, "_blur_effect") and self._blur_effect is not None:
-                self._blur_out_anim = QPropertyAnimation(self._blur_effect, b"blurRadius", self)
+                self._blur_out_anim = QPropertyAnimation(
+                    self._blur_effect, b"blurRadius", self
+                )
                 self._blur_out_anim.setDuration(250)  # Smooth fade out
                 self._blur_out_anim.setStartValue(self._blur_effect.blurRadius())
                 self._blur_out_anim.setEndValue(0.0)
@@ -2746,12 +2875,18 @@ class RunRecoveryDialog(QDialog):
         ascending and descending SVG assets, and triggers a re-sort of the runs list.
         """
         self._sort_ascending = not self._sort_ascending
-        icon_asc = QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "ascending.svg"))
-        icon_desc = QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "descending.svg"))
+        icon_asc = QIcon(
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "ascending.svg")
+        )
+        icon_desc = QIcon(
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "descending.svg")
+        )
         new_icon = icon_asc if self._sort_ascending else icon_desc
         self.sort_dir_btn.setIcon(new_icon)
         self.sort_dir_btn.setText("")  # Ensure text is cleared
-        self.sort_dir_btn.setToolTip("Ascending" if self._sort_ascending else "Descending")
+        self.sort_dir_btn.setToolTip(
+            "Ascending" if self._sort_ascending else "Descending"
+        )
         self._sort_runs()
 
     def _sort_runs(self) -> None:
@@ -2791,7 +2926,8 @@ class RunRecoveryDialog(QDialog):
             )
 
         selected_runs = {
-            item.data(Qt.ItemDataRole.UserRole) for item in self.runs_list.selectedItems()
+            item.data(Qt.ItemDataRole.UserRole)
+            for item in self.runs_list.selectedItems()
         }
 
         self.runs_list.blockSignals(True)
@@ -2840,17 +2976,22 @@ class RunRecoveryDialog(QDialog):
             self._blur_anim.start()
 
         if self.runs_list.count() == 0:
-            self.empty_list_placeholder.setText("Scanning for recoverable runs…")
+            self.empty_list_placeholder.setText("Scanning for runs…")
             self.list_stack.setCurrentIndex(1)
             self._placeholder_blur = QGraphicsBlurEffect(self.empty_list_placeholder)
             self.empty_list_placeholder.setGraphicsEffect(self._placeholder_blur)
-            self._placeholder_anim = QPropertyAnimation(self._placeholder_blur, b"blurRadius")
+            self._placeholder_anim = QPropertyAnimation(
+                self._placeholder_blur, b"blurRadius"
+            )
             self._placeholder_anim.setDuration(400)
             self._placeholder_anim.setStartValue(10.0)
             self._placeholder_anim.setEndValue(0.0)
             self._placeholder_anim.start()
 
         self._start_rescan_animation()
+        self._UNNAMED_DIR = os.path.join(
+            Constants.log_prefer_path, "_unnamed"
+        )  # from user's preferred path
         self._scan_worker = ScanWorker(self._UNNAMED_DIR)
 
         # Signals
@@ -3140,7 +3281,9 @@ class RunRecoveryDialog(QDialog):
             self.on_selection_changed()
             self.refilter_list()
 
-    def _animate_delete_items(self, runs_to_remove: List[Tuple[QListWidgetItem, Any]]) -> None:
+    def _animate_delete_items(
+        self, runs_to_remove: List[Tuple[QListWidgetItem, Any]]
+    ) -> None:
         """Animates the removal of list items by turning them red, then collapsing vertically.
 
         The process follows three stages:
@@ -3311,7 +3454,10 @@ class RunRecoveryDialog(QDialog):
         dialog = RecoverDialog(run_to_recover, devices, parent=self)
 
         if dialog.exec_() == QDialog.Accepted:
-            Log.i(TAG, f"Successfully recovered run to {dialog.device_combo.currentText()}")
+            Log.i(
+                TAG,
+                f"Successfully recovered run to {dialog.device_combo.currentText()}",
+            )
             row = self.runs_list.row(selected_items[0])
             self.runs_list.takeItem(row)
 
