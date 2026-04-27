@@ -15,10 +15,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-18
+    2026-04-14
 
 Version:
-    1.9
+    1.9.1
 """
 
 import json
@@ -196,7 +196,6 @@ class Database:
             rf"""
             CREATE TABLE IF NOT EXISTS buffer (
                 ingredient_id INTEGER PRIMARY KEY,
-                pH REAL,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """
@@ -254,6 +253,7 @@ class Database:
                 ingredient_id INTEGER NOT NULL,
                 concentration REAL NOT NULL,
                 units TEXT NOT NULL,
+                pH REAL,
                 PRIMARY KEY (formulation_id, component_type),
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
@@ -263,11 +263,12 @@ class Database:
         c.execute(
             rf"""
             CREATE TABLE IF NOT EXISTS viscosity_profile (
-                formulation_id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                formulation_id INTEGER NOT NULL UNIQUE,
                 shear_rates TEXT NOT NULL,
                 viscosities TEXT NOT NULL,
                 units TEXT NOT NULL,
-                is_measured INTEGER NOT NULL,
+                is_measured INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE
             )
         """
@@ -326,7 +327,7 @@ class Database:
                 (db_id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
             )
         elif isinstance(ing, Buffer):
-            c.execute("INSERT INTO buffer VALUES (?, ?)", (db_id, ing.pH))
+            c.execute("INSERT INTO buffer (ingredient_id) VALUES (?)", (db_id,))
         elif isinstance(ing, Stabilizer):
             c.execute("INSERT INTO stabilizer VALUES (?)", (db_id,))
         elif isinstance(ing, Surfactant):
@@ -384,10 +385,7 @@ class Database:
                 id=id,
             )
         elif typ == "Buffer":
-            c.execute("SELECT pH FROM buffer WHERE ingredient_id = ?", (id,))
-            (pH,) = c.fetchone()
-            ing = Buffer(enc_id, name, pH)
-
+            ing = Buffer(enc_id=enc_id, name=name, id=id)
         elif typ == "Stabilizer":
             ing = Stabilizer(enc_id, name)
 
@@ -528,7 +526,7 @@ class Database:
                 (id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
             )
         elif isinstance(ing, Buffer):
-            c.execute("INSERT INTO buffer VALUES (?, ?)", (id, ing.pH))
+            c.execute("INSERT INTO buffer (ingredient_id) VALUES (?)", (id,))
         elif isinstance(ing, Stabilizer):
             c.execute("INSERT INTO stabilizer VALUES (?)", (id,))
         elif isinstance(ing, Surfactant):
@@ -575,15 +573,15 @@ class Database:
             )
             f.id = c.lastrowid  # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
         comp_rows = [
-            (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units)
+            (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units, comp.pH)
             for f in forms
             for comp_type, comp in f._components.items()
             if comp is not None
         ]
         c.executemany(
             "INSERT INTO formulation_component "
-            "(formulation_id, component_type, ingredient_id, concentration, units) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             comp_rows,
         )
         vp_rows = [
@@ -644,9 +642,9 @@ class Database:
             )
             c.execute(
                 "INSERT INTO formulation_component "
-                "(formulation_id, component_type, ingredient_id, concentration, units) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (fid, comp_type, iid, comp.concentration, comp.units),
+                "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (fid, comp_type, iid, comp.concentration, comp.units, comp.pH),
             )
 
         # Insert viscosity profile if present
@@ -709,18 +707,16 @@ class Database:
         form.last_model = last_model
 
         c.execute(
-            "SELECT component_type, ingredient_id, concentration, units "
+            "SELECT component_type, ingredient_id, concentration, units, pH "
             "FROM formulation_component WHERE formulation_id = ?",
             (id,),
         )
         rows = c.fetchall()
-
         for r in rows:
-            comp_type, iid, conc, units = r
+            comp_type, iid, conc, units, ph = r
             ingredient = self.get_ingredient(iid)
-            if ingredient:
-                if comp_type in form._components:
-                    form._components[comp_type] = Component(ingredient, conc, units)
+            if ingredient and comp_type in form._components:
+                form._components[comp_type] = Component(ingredient, conc, units, pH=ph)
 
         c.execute(
             "SELECT shear_rates, viscosities, units, is_measured "
@@ -919,23 +915,56 @@ class Database:
         try:
             self._enc_metadata = b"\x45{}\n"  # default: nop seed with empty dict
             self.metadata = {}
+            self._has_metadata = False
+
+            if not self.db_path.exists():
+                Log.e(TAG, "Database file does not exist. Creating empty metadata.")
+                return
+
             with open(self.db_path, "rb") as f:
+                magic_header = f.read(16)
+                if magic_header == b"SQLite format 3\x00":
+                    Log.i(TAG, "Standard SQLite binary format detected. Bypassing encryption.")
+                    self.use_encryption = False
+                    return
+
+                # Check if it looks like a raw SQL script instead of custom DB
+                f.seek(0)
+                first_chars = f.read(20).upper()
+                if first_chars.startswith(b"BEGIN TRANSACTION") or first_chars.startswith(
+                    b"PRAGMA"
+                ):
+                    Log.i(
+                        TAG,
+                        "Plain SQL script detected. Treating as unencrypted DB without metadata.",
+                    )
+                    return
+
+                f.seek(0)
                 self._enc_metadata = f.readline()
                 enc_metadata = self._enc_metadata.decode(
                     self.metadata.get("app_encoding", "utf-8")
                 ).rsplit("\n", 1)[
                     0
                 ]  # remove at most 1 trailing '\n'
+
+                if not enc_metadata:
+                    Log.w(TAG, "Database file is empty. Bypassing encryption load.")
+                    self.use_encryption = False
+                    return
+
                 seed = ord(enc_metadata[0])
                 shuffled = enc_metadata[1:]
                 enc_metadata = self._shuffle_text(shuffled, seed)
                 shift_by = -len(enc_metadata)
                 str_metadata = self._caesar_cipher(enc_metadata, shift_by)
                 self.metadata = json.loads(str_metadata)
-        except FileNotFoundError:
-            Log.e(TAG, "Database file does not exist. Creating empty metadata.")
-        except Exception:
-            Log.e(TAG, "No readable metadata found in database file.")
+                self._has_metadata = True
+
+        except Exception as e:
+            Log.e(TAG, f"No readable metadata found in database file. Error: {e}")
+            self._has_metadata = False
+            self._enc_metadata = b"\x45{}\n"  # Restore default so we don't write garbage later
 
     def _shuffle_text(self, text: str, seed: Union[int, None] = None) -> str:
         """Shuffles the characters of a given `text` string in a pseudo-random order.
@@ -1065,7 +1094,11 @@ class Database:
         con = sqlite3.connect(":memory:")
         if os.path.isfile(filepath):
             self.file_handle = open(filepath, "rb")
-            self._enc_metadata = self.file_handle.readline()
+
+            # Only consume the first line if we successfully validated it as metadata
+            if getattr(self, "_has_metadata", False):
+                self._enc_metadata = self.file_handle.readline()
+
             secure_bytes = self.file_handle.read()
             if password:
                 # Decrypt the file content

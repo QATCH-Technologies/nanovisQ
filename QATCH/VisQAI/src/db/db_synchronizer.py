@@ -11,10 +11,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-25
+    2026-04-14
 
 Version:
-    1.0
+    1.0.1
 """
 
 import sqlite3
@@ -223,10 +223,19 @@ class DatabaseSynchronizer:
                 col_def = f"{col_name} {col_type}"
                 if dflt_value is not None:
                     # Quote string literals; leave numeric/keyword literals bare
-                    if isinstance(dflt_value, str) and not dflt_value.upper() in (
-                        "NULL", "TRUE", "FALSE", "CURRENT_TIME", "CURRENT_DATE",
-                        "CURRENT_TIMESTAMP",
-                    ) and not dflt_value.lstrip("-").replace(".", "", 1).isdigit():
+                    if (
+                        isinstance(dflt_value, str)
+                        and not dflt_value.upper()
+                        in (
+                            "NULL",
+                            "TRUE",
+                            "FALSE",
+                            "CURRENT_TIME",
+                            "CURRENT_DATE",
+                            "CURRENT_TIMESTAMP",
+                        )
+                        and not dflt_value.lstrip("-").replace(".", "", 1).isdigit()
+                    ):
                         escaped = dflt_value.replace("'", "''")
                         col_def += f" DEFAULT '{escaped}'"
                     else:
