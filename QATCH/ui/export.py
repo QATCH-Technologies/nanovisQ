@@ -523,7 +523,7 @@ class Ui_Export(QtWidgets.QWidget):
         self.main = Thread(target=self.mainTask)
         self.main.start()
 
-        self.tabs.widget(2).show()  # load unnamed runs on Recover tab
+        # self.tabs.widget(2).show()  # load unnamed runs on Recover tab
 
     def do_clearAllHistory(self):
         history_path = os.path.join(
