@@ -366,6 +366,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[0].addAction("&Analyze Data", self.analyze_data)
         self.menubar[0].addAction("&Import Data", self.import_data)
         self.menubar[0].addAction("&Export Data", self.export_data)
+        self.menubar[0].addAction("&Recover Data", self.recover_data)
         # self.menubar[0].addAction('&Configure Data', self.configure_data)
         self.menubar[0].addAction("&Preferences", self.preferences)
         self.menubar[0].addAction("&Find Devices", self.scan_subnets)
@@ -499,6 +500,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
 
     def export_data(self):
         self.ui_export.showNormal(1)
+
+    def recover_data(self):
+        self.ui_export.showNormal(2)
 
     # def configure_data(self):
     #     self.ui_configure_data.show()
@@ -6350,7 +6354,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     # Partial success
                     Log.w(f"User canceled resource download: Updated {i} of {num_files} files.")
                     with open(working_file_compare, "a") as f:
-                        f.write("* (Partial download)")
+                        f.write("*,(Partial download)")
                     Log.w("Marked resources for future update again.")
                     PopUp.question_FW(
                         self,
