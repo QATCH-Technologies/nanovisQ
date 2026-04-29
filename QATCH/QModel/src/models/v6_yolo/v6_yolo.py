@@ -191,6 +191,7 @@ class QModelV6YOLO_FillClassifier:
             (QModelV6Config.FILL_INFERENCE_W, QModelV6Config.FILL_INFERENCE_H),
             interpolation=cv2.INTER_AREA,
         )
+        self._last_image = img_input
         # # --- Debugging for live fill frames and type cls ---
         # debug_dir = os.path.join(os.getcwd(), "debug_frames")
         # os.makedirs(debug_dir, exist_ok=True)
@@ -600,6 +601,8 @@ class QModelV6YOLO:
         df: pd.DataFrame | None = None,
         visualize: bool = False,
         num_channels: int | None = None,
+        avg_res_freq: Optional[float] = None,
+        avg_diss: Optional[float] = None,
     ) -> Tuple[Dict[str, Dict[str, List]], int]:
         """
         Executes the QModel V6 YOLO prediction pipeline on the provided data.
@@ -623,18 +626,26 @@ class QModelV6YOLO:
             num_channels (int, optional): The number of channels to enforce. If None,
                 the fill classifier is used to automatically determine the channel count.
                 Defaults to None.
+            avg_res_freq (Optional[float]): Pre-computed baseline mean of
+                `Resonance_Frequency` from the pre-fill window. When provided together
+                with `avg_diss`, the baseline window search inside `preprocess_dataframe`
+                is bypassed. This is required for live inference once the rolling buffer
+                has trimmed past the baseline window and the early reference data is no
+                longer present in the DataFrame.
+            avg_diss (Optional[float]): Pre-computed baseline mean of `Dissipation` from
+                the pre-fill window. See `avg_res_freq` for details.
 
         Returns:
             Tuple[Dict[str, Dict[str, List]], int]: A tuple containing:
                 1. A dictionary of predictions mapping POI names to their results:
-                   {
-                       "POI_NAME": {
-                           "indices": [int],       # Row indices in the raw DataFrame
-                           "confidences": [float], # Model confidence scores
-                           "time": [float]         # (Optional) Time values if retained
-                       },
-                       ...
-                   }
+                {
+                    "POI_NAME": {
+                        "indices": [int],       # Row indices in the raw DataFrame
+                        "confidences": [float], # Model confidence scores
+                        "time": [float]         # (Optional) Time values if retained
+                    },
+                    ...
+                }
                 2. The integer number of channels detected (or enforced) for this run.
 
         Note:
@@ -653,9 +664,12 @@ class QModelV6YOLO:
             if progress_signal:
                 progress_signal.emit(10, "Data Loaded")
 
-            master_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(raw_df.copy())
+            master_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(
+                raw_df.copy(),
+                baseline_freq=avg_res_freq,
+                baseline_diss=avg_diss,
+            )
 
-            # --- UPDATE: Preprocessing Complete ---
             if progress_signal:
                 progress_signal.emit(20, "Preprocessing Data...")
 
