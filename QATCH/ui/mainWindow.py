@@ -3902,19 +3902,31 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Check rate-limit; update timestamp if ready
         if now - getattr(self, "_last_forecaster_push_time", 0.0) > 0.2:
-            self._last_forecaster_push_time = now
-
-            # Only push if queue is empty to prevent backlog
             if self.worker._forecaster_in.empty():
-                self.worker._forecaster_in.put(
-                    WorkerSnapshot(
-                        self.worker.get_t1_buffer(0)[-500:],
-                        data_resonance_frequency[-500:],
-                        data_dissipation[-500:],
-                    )
-                )
+                t_buf = np.asarray(self.worker.get_t1_buffer(0), dtype=np.float64).copy()
+                f_buf = np.asarray(data_resonance_frequency, dtype=np.float64).copy()
+                d_buf = np.asarray(data_dissipation, dtype=np.float64).copy()
 
-        # Keep checking the output queue.
+                # Align to the shortest buffer to defend against mismatched lengths
+                # between t1/d1/d2 caused by the worker appending mid-fetch.
+                n = min(len(t_buf), len(f_buf), len(d_buf))
+                if n == 0:
+                    return
+                t_buf, f_buf, d_buf = t_buf[:n], f_buf[:n], d_buf[:n]
+                last_t = getattr(self, "_last_pushed_relative_time", -float("inf"))
+                new_mask = t_buf > last_t
+                if not new_mask.any():
+                    return
+                MAX_PAYLOAD = 2000
+                t_send = t_buf[new_mask][-MAX_PAYLOAD:]
+                f_send = f_buf[new_mask][-MAX_PAYLOAD:]
+                d_send = d_buf[new_mask][-MAX_PAYLOAD:]
+
+                self.worker._forecaster_in.put(
+                    WorkerSnapshot(t_send, f_send, d_send)
+                )
+                self._last_pushed_relative_time = float(t_send[-1])
+                self._last_forecaster_push_time = now
         if self.worker._forecaster_out.empty():
             return
 
@@ -3922,7 +3934,6 @@ class MainWindow(QtWidgets.QMainWindow):
             pred_int, _, display_msg = self.worker._forecaster_out.get()
             if display_msg is not None:
                 self._fill_display_msg = display_msg
-
             if not all(self._drop_applied):
                 # Mirror dry/drop status before the drop is confirmed
                 status_msg = "Add sample" if self._last_dry_status else self._last_dry_msg
