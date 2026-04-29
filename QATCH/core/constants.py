@@ -44,8 +44,7 @@ class Constants:
     app_title = "QATCH nanovisQ Real-Time GUI"
     app_version = "v2.6b70"
     app_date = "2026-03-03"
-    app_sources = ["Calibration Qatch Q-1 Device",
-                   "Measurement Qatch Q-1 Device"]
+    app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
     app_encoding = "utf-8"
@@ -54,9 +53,7 @@ class Constants:
     # RECOMMENDED firmware #
     ########################
     best_fw_version = app_version  # may specify an exact version if needed
-    do_legacy_updates = (
-        False  # only use on FW v2.5b23 or older; will break newer devices!
-    )
+    do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
 
     #################
     # FEATURE FLAGS #
@@ -85,6 +82,38 @@ class Constants:
     dissipation_factor_1st_mode = 2.4942e-4
     dissipation_factor_3rd_mode = 1.4400e-4
     dissipation_factor_5th_mode = 1.1154e-4
+
+    ###########################
+    # DryDetection parameters #
+    ###########################
+    """
+    The number of samples to evaluate for stability and flatness.
+    - Higher: Increases reliability and noise filtering, but delays detection.
+    - Lower: Faster detection, but higher risk of false positives from noise.
+    """
+    DRYING_WINDOW_SIZE = 100
+    """
+    The maximum allowed standard deviation (noise floor) for the normalized
+    dissipation signal. Range is [0, 1] due to normalization.
+    - Higher: More "lenient"; triggers even if the signal is jittery.
+    - Lower: More "strict"; requires the signal to be extremely quiet.
+    """
+    DRYING_SNR_STABLE_DISSIPATION = 3e-8
+    """
+    The maximum allowed standard deviation (noise floor) for the normalized
+    frequency signal. Range is [0, 1] due to normalization.
+    - Higher: Ignores small vibrations or electronic noise in frequency.
+    - Lower: Requires frequency to be perfectly stable.
+    """
+    DRYING_SNR_STABLE_FREQUENCY = 9e-1
+    """
+    The maximum allowed absolute slope (drift) of the normalized windows.
+    This ensures the signal has reached a true plateau.
+    - Higher: Triggers "dry" earlier, even if the signal is still slightly trending.
+    - Lower: Requires a near-perfectly flat line; ensures drying is 100% complete.
+    """
+    DRYING_FLAT_SLOPE_EPS_FREQUENCY = 2.9e-2
+    DRYING_FLAT_SLOPE_EPS_DISSIPATION = 6e-10
 
     ###########################
     # FW FILTERING parameters #
@@ -152,6 +181,10 @@ class Constants:
         "#4dbeee",
         "#a2142f",
     ]
+    _CSS_YELLOW = "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
+    _CSS_RED = "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    _CSS_GREEN = "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
+    _NUM_DISPLAY_POINTS = 12_000
     plot_max_lines = len(plot_colors)
     plot_min_range_freq = 1000  # Hz
     plot_min_range_diss = 10e-6  # Hz
@@ -238,23 +271,16 @@ class Constants:
     )
     csv_calibration_export_path = os.path.join(local_app_data_path, "config")
     user_profiles_path = os.path.join(local_app_data_path, "profiles", "users")
-    run_profiles_path = os.path.join(
-        local_app_data_path, "profiles", "runs"
-    )  # future use
+    run_profiles_path = os.path.join(local_app_data_path, "profiles", "runs")  # future use
     query_info_recall_path = os.path.join(local_app_data_path, "recall.xml")
-    user_constants_path = os.path.join(
-        local_app_data_path, "settings", "userConstants.py"
-    )
-    auto_sign_key_path = os.path.join(
-        local_app_data_path, "tokens", "auto_sign_key.pem"
-    )
+    user_constants_path = os.path.join(local_app_data_path, "settings", "userConstants.py")
+    auto_sign_key_path = os.path.join(local_app_data_path, "tokens", "auto_sign_key.pem")
     license_cache_path = os.path.join(local_app_data_path, "license_cache")
     invalidChars = "\\/:*?\"'<>|"
 
     select_tag_prompt = "-- Select Tag --"
     subfolder_field = f"/ (Subfolder)"
-    valid_tags = ["Username", "Initials", "Device",
-                  "Runname", "Date", "Time", "Port"]
+    valid_tags = ["Username", "Initials", "Device", "Runname", "Date", "Time", "Port"]
     path_delimiters = ["_", "-", " "]
     date_formats = ["YYYY-MM-DD", "DD-MM-YYYY", "MM-DD-YYYY"]
     time_formats = ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"]
@@ -316,9 +342,7 @@ class Constants:
     new_files_path = csv_export_path + slash + "new_files.txt"
 
     # Log file for storing the output of the TEC temperature controller
-    tec_log_path = (
-        csv_export_path + slash + tbd_active_device_name_path + slash + "output_tec.csv"
-    )
+    tec_log_path = csv_export_path + slash + tbd_active_device_name_path + slash + "output_tec.csv"
 
     ##########################
     # CALIBRATION parameters #
@@ -363,8 +387,7 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    list_predict_models = ["ModelData",
-                           "QModel v4 (Fusion)", "QModel V6 (YOLO26)"]
+    list_predict_models = ["ModelData", "QModel v4 (Fusion)", "QModel V6 (YOLO26)"]
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
@@ -380,10 +403,19 @@ class Constants:
         1: "Run: %v/%m (Filling)",
         2: "Run: %v/%m (Full Fill)",
     }
+    _FILL_STATE_MAP: dict[int, tuple[int, str]] = {
+        -1: (1, "Sample detected"),
+        0: (2, "Filling started"),
+        1: (3, "Filling"),
+        2: (4, "Almost full"),
+        3: (5, "Complete, stop"),
+    }
+
     ######################
     # ANALYZE parameters #
     ######################
     export_file_format = "_analyze_out.csv"
+    result_file_format = "_analyze_result.csv"
     channel_thickness = 2.25e-6
     smooth_factor_ratio = 0.75
     super_smooth_factor_ratio = 25.0
@@ -466,13 +498,11 @@ class Constants:
         try:
             # pull in lookup table from resources
             # prefer working resource path, if exists
-            working_resource_path = os.path.join(
-                os.getcwd(), "QATCH/resources/")
+            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
             # bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH/resources/") # otherwise, use bundled resource path
             # if os.path.exists(working_resource_path) else bundled_resource_path
             resource_path = working_resource_path
-            batch_params_file = os.path.join(
-                resource_path, "lookup_batch_params.csv")
+            batch_params_file = os.path.join(resource_path, "lookup_batch_params.csv")
             detected_delimeter = "\t"
             with open(batch_params_file, "r") as f:
                 first_line = f.readline()
@@ -520,9 +550,7 @@ class Constants:
         # if given 'param' ALL, return entire list of params for 'batch'
         if param == "ALL":
             if batch_in_csv_file:
-                idx_of_batch = np.where(batches == batch_upper)[
-                    0
-                ]  # batches.index(batch)
+                idx_of_batch = np.where(batches == batch_upper)[0]  # batches.index(batch)
                 all_params = data[idx_of_batch[0]]
                 return dict(zip(params_orig_case, all_params))
             else:
@@ -536,9 +564,7 @@ class Constants:
         # print(f"batch_in_csv_file: {batch_in_csv_file}")
 
         # param does not exist, anywhere
-        if param_in_py_file == False and (
-            param_in_csv_file == False or batch_in_csv_file == False
-        ):
+        if param_in_py_file == False and (param_in_csv_file == False or batch_in_csv_file == False):
             default_val = 0  # getattr(Constants, param)
             Log.e(
                 f"get_batch_param(): PARAM '{param}' is not found (using {default_val}). Please specify a default value in Constants.py."
@@ -546,9 +572,7 @@ class Constants:
             return str(default_val)
 
         # param only exists in Constants.py
-        if param_in_py_file == True and (
-            param_in_csv_file == False or batch_in_csv_file == False
-        ):
+        if param_in_py_file == True and (param_in_csv_file == False or batch_in_csv_file == False):
             default_val = getattr(Constants, param)
             Log.w(
                 f"get_batch_param(): PARAM '{param}' is not found for BATCH '{batch}' (using {default_val}). Please add the batch/param to lookup_BATCH#.csv."
@@ -556,10 +580,8 @@ class Constants:
             return str(default_val)
 
         # batch and param exists in lookup_BATCH, so return the lookup pair
-        idx_of_param = np.where(params == param_upper)[
-            0]  # params.index(param)
-        idx_of_batch = np.where(batches == batch_upper)[
-            0]  # batches.index(batch)
+        idx_of_param = np.where(params == param_upper)[0]  # params.index(param)
+        idx_of_batch = np.where(batches == batch_upper)[0]  # batches.index(batch)
         found_param = data[idx_of_batch[0], idx_of_param[0]]
 
         # check for dups and report the warning if so
