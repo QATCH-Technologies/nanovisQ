@@ -8,7 +8,7 @@ import os
 import sys
 import threading
 from io import BytesIO
-from time import localtime, sleep, strftime
+from time import localtime, sleep, strftime, monotonic
 from typing import Optional
 from xml.dom import minidom
 
@@ -21,7 +21,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QCompleter
 from scipy import interpolate
-
+import atexit
+from concurrent.futures import ThreadPoolExecutor
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
 from QATCH.common.fileStorage import FileStorage, secure_open
@@ -48,7 +49,10 @@ from QATCH.ui.runInfo import QueryRunInfo
 
 TAG = "[Analyze]"
 
-
+_LOAD_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="visq-load")
+atexit.register(lambda: _LOAD_EXECUTOR.shutdown(wait=False, cancel_futures=True))
+ 
+_DEV_MODE_TTL_SECONDS = 30.0
 ###############################################################################
 # Elaborate on the raw data gathered from the SerialProcess in parallel timing
 ###############################################################################
@@ -2730,14 +2734,167 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.cBox_Runs.setFixedWidth(w)
         self.sort_by_widget.setFixedWidth(self.cBox_Runs.width())
 
+    def _start_qmodel_preload(self):
+        """
+        Kick off background loading of V4/V6 predictors if their respective
+        Constants.QModel{4,6}_predict flags are set and they aren't already
+        loaded or in flight. Idempotent and safe to call repeatedly.
+ 
+        The flags are read at submit time, so a user toggling models via
+        set_new_prediction_model() before this call is honored. If the
+        flags change AFTER submit, the in-flight load completes anyway --
+        same effective behavior as the original inline code path.
+        """
+        if not hasattr(self, "_qmodel_v4_future"):
+            self._qmodel_v4_future = None
+        if not hasattr(self, "_qmodel_v6_future"):
+            self._qmodel_v6_future = None
+ 
+        try:
+            if (
+                getattr(Constants, "QModel4_predict", False)
+                and not self.QModel_v4_modules_loaded
+                and self._qmodel_v4_future is None
+            ):
+                self._qmodel_v4_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v4)
+        except Exception as e:
+            Log.e("ERROR:", e)
+            Log.e("Failed to schedule 'QModel v4 (Fusion)' preload.")
+ 
+        try:
+            if (
+                getattr(Constants, "QModel6_predict", False)
+                and not self.QModel_v6_modules_loaded
+                and self._qmodel_v6_future is None
+            ):
+                self._qmodel_v6_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v6)
+        except Exception as e:
+            Log.e("ERROR:", e)
+            Log.e("Failed to schedule 'QModel v6 (YOLO26)' preload.")
+ 
+    @staticmethod
+    def _load_qmodel_v4():
+        """Worker: build V4 Fusion predictor. Runs off the UI thread."""
+        base = os.path.join(
+            Architecture.get_path(),
+            "QATCH",
+            "QModel",
+            "SavedModels",
+            "qmodel_v4_fusion",
+        )
+        return QModelV4Fusion(
+            reg_path_1=os.path.join(base, "poi_model_mini_window_0_1600.pth"),
+            reg_path_2=os.path.join(base, "poi_model_mini_window_1_1600.pth"),
+            clf_path=os.path.join(base, "v4_model_pytorch_2100.pth"),
+            reg_batch_size=2048,
+            clf_batch_size=1024,
+        )
+ 
+    @staticmethod
+    def _load_qmodel_v6():
+        """Worker: build V6 YOLO26 predictor. Runs off the UI thread."""
+        base = os.path.join(
+            Architecture.get_path(),
+            "QATCH",
+            "QModel",
+            "SavedModels",
+            "qmodel_v6_yolo",
+        )
+        model_assets = {
+            "fill_classifier": os.path.join(
+                base, "classifiers", "fill_classifier", "type_cls.pt"
+            ),
+            "detectors": {
+                "init": os.path.join(base, "detectors", "init_detector", "init.pt"),
+                "ch1": os.path.join(base, "detectors", "ch1_detector", "ch1.pt"),
+                "ch2": os.path.join(base, "detectors", "ch2_detector", "ch2.pt"),
+                "ch3": os.path.join(base, "detectors", "ch3_detector", "ch3.pt"),
+                "poi5_fine": os.path.join(
+                    base, "detectors", "eof_detector", "eof.pt"
+                ),
+            },
+        }
+        return QModelV6YOLO(model_assets=model_assets)
+ 
+    def _await_qmodels(self, timeout=120.0):
+        """
+        Block until any in-flight model loads complete, install results
+        onto self, and reset the future slots. Errors mirror the original
+        inline try/except behavior in loadRun(): logged, not raised.
+        """
+        v4_fut = getattr(self, "_qmodel_v4_future", None)
+        if v4_fut is not None and not self.QModel_v4_modules_loaded:
+            try:
+                self.QModel_v4_predictor = v4_fut.result(timeout=timeout)
+                self.QModel_v4_modules_loaded = True
+            except Exception as e:
+                Log.e("ERROR:", e)
+                Log.e("Failed to load 'QModel v4 (Fusion)' modules at load of run.")
+            self._qmodel_v4_future = None
+ 
+        v6_fut = getattr(self, "_qmodel_v6_future", None)
+        if v6_fut is not None and not self.QModel_v6_modules_loaded:
+            try:
+                self.QModel_v6_predictor = v6_fut.result(timeout=timeout)
+                self.QModel_v6_modules_loaded = True
+                Log.i(TAG, "'QModel v6 (YOLO26)' Modules loaded successfully.")
+            except Exception as e:
+                Log.e("ERROR:", e)
+                Log.e("Failed to load 'QModel v6 (YOLO26)' modules at load of run.")
+            self._qmodel_v6_future = None
+ 
+    # -------- Dev-mode cache -----------------------------------------------
+ 
+    def _check_dev_mode_cached(self, force_refresh=False):
+        """
+        Cached wrapper around UserProfiles.checkDevMode(). Cached value is
+        reused for up to _DEV_MODE_TTL_SECONDS to avoid repeated fs hits
+        on every load. Pass force_refresh=True to invalidate.
+        """
+        now = monotonic()
+        if (
+            force_refresh
+            or not hasattr(self, "_dev_mode_cache_value")
+            or (now - getattr(self, "_dev_mode_cache_time", 0.0)) > _DEV_MODE_TTL_SECONDS
+        ):
+            self._dev_mode_cache_value = UserProfiles.checkDevMode()
+            self._dev_mode_cache_time = now
+        return self._dev_mode_cache_value
+ 
+    # -------- Folder lookup cache ------------------------------------------
+ 
+    def _compute_folder_from_run(self, run_string):
+        """Original O(n) computation; used as cache-miss fallback."""
+        idx = run_string.rfind("(")
+        folder = run_string[: idx - 1] if idx > 0 else run_string
+        try:
+            values_list = list(self.run_names.values())
+            keys_list = list(self.run_names.keys())
+            dict_key = keys_list[values_list.index(folder)]
+            return dict_key[: dict_key.find(":")]
+        except (ValueError, IndexError):
+            # Preserve original behavior: fall back to the parsed folder
+            # rather than raising.
+            return folder
+ 
+    def getFolderFromRun(self, run_string):
+        if not hasattr(self, "_run_to_folder_cache"):
+            self._run_to_folder_cache = {}
+        cached = self._run_to_folder_cache.get(run_string)
+        if cached is not None:
+            return cached
+        folder = self._compute_folder_from_run(run_string)
+        self._run_to_folder_cache[run_string] = folder
+        return folder
+ 
     def load_all_from_folder(self, from_folder=None):
         self.action_cancel()  # ask them if they want to lose unsaved changes
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
-
+ 
         all_runs, new_runs, run_names = [], [], []
-
+ 
         if from_folder:
             selected_directory = from_folder  # use given folder
         else:
@@ -2745,15 +2902,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
             selected_directory = QtWidgets.QFileDialog.getExistingDirectory(
                 self, "Select Directory", Constants.log_prefer_path
             )
-
+ 
         if selected_directory and selected_directory.startswith(Constants.log_prefer_path):
             Log.i(f'Batch loading from "{selected_directory}"')
-
+ 
+            # Start preloading models early -- batch loads will need them.
+            self._start_qmodel_preload()
+ 
             # Gather list of all runs contained in this directory
             sub_dirs = selected_directory.replace(Constants.log_prefer_path, "").strip("/\\")
             dev_name, run_name = os.path.split(sub_dirs)
             # Log.d(f"dev_name = {dev_name}, run_name = {run_name}")
-
+ 
             if len(dev_name) == 0:
                 if len(run_name) == 0:
                     # user selected root logged_data folder,
@@ -2776,28 +2936,49 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.w("User selected a single run folder for batch loading")
                 Log.w("NOTE: Use the normal Load button for single run operation")
                 return
-
-            # Filter out runs that have already been analyzed
+ 
+            # Filter out runs that have already been analyzed.
+            # Parallelize FileStorage I/O across many runs.
             if all_runs:
-                for dev, run in all_runs:
-                    files = FileStorage.DEV_get_logged_data_files(dev, run)
-                    if "_unnamed" in [dev, run]:
-                        continue  # skip unnamed runs
-                    if files and not "analyze-1.zip" in files:
+                # Skip unnamed runs before dispatch so threads aren't wasted.
+                scan_items = [
+                    (dev, run) for (dev, run) in all_runs if "_unnamed" not in (dev, run)
+                ]
+ 
+                def _scan(dev_run):
+                    dev, run = dev_run
+                    try:
+                        files = FileStorage.DEV_get_logged_data_files(dev, run)
+                    except Exception as e:
+                        Log.w(f"Error scanning {dev}/{run}: {e}")
+                        files = None
+                    return dev, run, files
+ 
+                if scan_items:
+                    with ThreadPoolExecutor(
+                        max_workers=min(8, len(scan_items)),
+                        thread_name_prefix="batch-scan",
+                    ) as ex:
+                        results = list(ex.map(_scan, scan_items))
+                else:
+                    results = []
+ 
+                for dev, run, files in results:
+                    if files and "analyze-1.zip" not in files:
                         new_runs.append(run)
                     elif not files:
                         Log.w(f"No files found for run: {dev}/{run}")
             else:
                 Log.w("No runs found in the selected folder")
                 return
-
+ 
             # Load the first run, sorted alphabetically;
             Log.i("New runs to be analyzed:", new_runs)
             runs = [self.cBox_Runs.itemText(i) for i in range(self.cBox_Runs.count())]
             for run in runs:
                 run_name, _ = run.rsplit(" ", 1)
                 run_names.append(run_name)
-
+ 
             sorted_new_runs = []
             for new_run in new_runs:
                 if new_run in run_names:
@@ -2805,20 +2986,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     sorted_new_runs.append(runs[i])
                 else:
                     Log.e("Cannot load missing run:", new_run)
-
-            # BATCH PROCESSING ENABLE:
-            # Method: Change dropdown list of runs to a subset of runs that need to be loaded,
-            #         and restore to the full list of runs only if the user clicks "Close".
-            #         This method allows the user to then auto-sort by date or filename normally.
-
+ 
             # re-populate cBox_Runs with subset of run names (sorted accordingly)
             self._batched_runs = sorted_new_runs
             self.showRunsFromAllDevices_clicked()
-
+ 
+            # cBox_Runs items have been replaced; clear stale folder cache.
+            self._run_to_folder_cache = {}
+ 
             Log.i(f"Loading first batch run: {self.cBox_Runs.itemText(0)} (at idx={0})")
             self.cBox_Runs.setCurrentIndex(0)
             self.btn_Load.click()
-
+ 
             PopUp.information(
                 self,
                 "Batch Processing Mode Started",
@@ -2827,95 +3006,25 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 + 'click "Load" again to move to the next queued run.<br/>'
                 + "You'll get another popup when the batch is finished.",
             )
-
+ 
         else:
             Log.w("User selected an inaccessible directory for batch loading")
             Log.w("NOTE: The load directory must be within the working directory")
-
+ 
     def loadRun(self):
         self.action_cancel()  # ask them if they want to lose unsaved changes
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
-
+ 
         # if self.AI_SelectTool_Frame.isVisible():
         #     self.AI_SelectTool_Frame.setVisible(
         #         False
         #     )  # require re-click to show popup tool incorrect position
-
-        # ---------- LOADING QMODEL V4 (Fusion) -----------#
-        try:
-            if Constants.QModel4_predict and not self.QModel_v4_modules_loaded:
-                reg_path_1 = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH",
-                    "QModel",
-                    "SavedModels",
-                    "qmodel_v4_fusion",
-                    "poi_model_mini_window_0_1600.pth",
-                )
-                reg_path_2 = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH",
-                    "QModel",
-                    "SavedModels",
-                    "qmodel_v4_fusion",
-                    "poi_model_mini_window_1_1600.pth",
-                )
-                clf_path = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH",
-                    "QModel",
-                    "SavedModels",
-                    "qmodel_v4_fusion",
-                    "v4_model_pytorch_2100.pth",
-                )
-                self.QModel_v4_predictor = QModelV4Fusion(
-                    reg_path_1=reg_path_1,
-                    reg_path_2=reg_path_2,
-                    clf_path=clf_path,
-                    reg_batch_size=2048,
-                    clf_batch_size=1024,
-                )
-
-                self.QModel_v4_modules_loaded = True
-
-        except Exception as e:
-            Log.e("ERROR:", e)
-            Log.e("Failed to load 'QModel v4 (Fusion)' modules at load of run.")
-
-        # ---------- LOADING QMODEL V6 (YOLO26) -----------#
-        try:
-            if Constants.QModel6_predict and not self.QModel_v6_modules_loaded:
-                v6_base_path = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH",
-                    "QModel",
-                    "SavedModels",
-                    "qmodel_v6_yolo",
-                )
-                model_assets = {
-                    "fill_classifier": os.path.join(
-                        v6_base_path, "classifiers", "fill_classifier", "type_cls.pt"
-                    ),
-                    "detectors": {
-                        "init": os.path.join(v6_base_path, "detectors", "init_detector", "init.pt"),
-                        "ch1": os.path.join(v6_base_path, "detectors", "ch1_detector", "ch1.pt"),
-                        "ch2": os.path.join(v6_base_path, "detectors", "ch2_detector", "ch2.pt"),
-                        "ch3": os.path.join(v6_base_path, "detectors", "ch3_detector", "ch3.pt"),
-                        "poi5_fine": os.path.join(
-                            v6_base_path, "detectors", "eof_detector", "eof.pt"
-                        ),
-                    },
-                }
-                self.QModel_v6_predictor = QModelV6YOLO(model_assets=model_assets)
-                self.QModel_v6_modules_loaded = True
-                Log.i(TAG, "'QModel v6 (YOLO26)' Modules loaded successfully.")
-        except Exception as e:
-            Log.e("ERROR:", e)
-            Log.e("Failed to load 'QModel v6 (YOLO26)' modules at load of run.")
-
-        enabled, error, expires = UserProfiles.checkDevMode()
+ 
+        self._start_qmodel_preload()
+ 
+        enabled, error, expires = self._check_dev_mode_cached()
         if enabled == False and (error == True or expires != ""):
             PopUp.warning(
                 self,
@@ -2923,7 +3032,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 "Developer Mode has expired and these analysis results will be encrypted.\n"
                 + 'An admin must renew or disable "Developer Mode" to suppress this warning.',
             )
-
+ 
         # DevMode enabled, check if auto-sign (do not ask again) key is active
         if enabled:
             auto_sign_key = None
@@ -2941,7 +3050,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.sign_do_not_ask.setChecked(False)
                 if os.path.exists(Constants.auto_sign_key_path):
                     os.remove(Constants.auto_sign_key_path)
-
+ 
             # NOTE: This check is needed for Analyze since it persists across run loads
             #       and is only init'd once per application instance (across sessions).
             # just in case, make it visible
@@ -2951,10 +3060,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.sign_do_not_ask.setChecked(False)  # uncheck
             self.sign_do_not_ask.setEnabled(False)  # disable
             self.sign_do_not_ask.setVisible(False)  # hide
-
+ 
         self.askForPOIs = True
         self.btn_Next.setText("Next")
-
+ 
         self._text1 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
         self._text1.setHtml("<span style='font-size: 14pt'>Loading data for analysis... </span>")
         self._text2 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
@@ -2966,12 +3075,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._text1.setPos(0.5, 0.50)
         self._text2.setPos(0.5, 0.40)
         self._text3.setPos(0.5, 0.25)
-
+ 
         ax = self.graphWidget  # .plot(hour, temperature)
         ax1 = self.graphWidget1
         ax2 = self.graphWidget2
         ax3 = self.graphWidget3
-
+ 
         elems = [ax, ax1, ax2, ax3]
         for e in elems:
             if e != None:
@@ -2981,34 +3090,28 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 e.setYRange(min=0, max=1)
             if e is ax:
                 e.addItem(self._text1, ignoreBounds=True)
-
+ 
         try:
             self.progressBar.valueChanged.disconnect(self._update_progress_value)
         except:
             Log.w("Cannot disconnect non-existent method from ProgressBar.")
-
+ 
         self.enable_buttons(False, False)
-
+ 
         # reset internal buffer with 0
         self._update_analyze_progress(0, "Reading Run Data...")
         self._update_analyze_progress(
             75, "Reading Run Data..."
         )  # run up to 75% then slow, stop @ 99% until loaded
-
-        # call as timer to allow repaint of pyqtgraph TextItems (loading)
-        QtCore.QTimer.singleShot(500, self.action_load_run)
-
-    def getFolderFromRun(self, run_string):
-        idx = run_string.rfind("(")
-        if idx > 0:
-            folder = run_string[0 : idx - 1]
-        else:
-            folder = run_string
-        dict_key = list(self.run_names.keys())[list(self.run_names.values()).index(folder)]
-        folder = dict_key[0 : dict_key.find(":")]
-        # Log.w(f"folder from run = '{folder}'")
-        return folder
-
+ 
+        # Force one paint cycle so the loading TextItems become visible,
+        # then dispatch action_load_run on the next event loop tick (zero
+        # delay). The original 500 ms timer was a workaround to ensure the
+        # paint; processEvents() handles that explicitly without the wait.
+        QtWidgets.QApplication.processEvents()
+        QtCore.QTimer.singleShot(0, self.action_load_run)
+ 
+ 
     def action_load_run(self):
         try:
             # if batch processing, auto-increment to next run if Load is clicked for the currently selected run
@@ -3035,6 +3138,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     # Clicking "Close" button also ends the batch processing mode (clears '_batched_runs').
                     return
 
+            self._await_qmodels()
+ 
             self.moved_markers = [False, False, False, False, False, False]
             self.parent.analyze_data(
                 self.cBox_Devices.currentText(),
@@ -3042,7 +3147,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 None,
             )
             self.enable_buttons()
-
+ 
         except Exception as e:
             Log.e(f"An error occurred while loading the selected run: {str(e)}")
             self.action_cancel()
