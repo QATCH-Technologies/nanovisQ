@@ -272,6 +272,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     ys_freq = avg - resonance_frequency
                     # ys_freq_fit = savgol_filter(ys_freq, smooth_factor, 1)
 
+                    # needed for invert curve detection, but use unfitted curves (raw is fine)
+                    ys_fit = ys.copy()
+                    ys_freq_fit = ys_freq.copy()
+
                     baseline = np.average(dissipation[t_0p5:t_1p0])
                     diff_factor = Constants.default_diff_factor  # 1.0 if baseline < 50e-6 else 1.5
                     # if hasattr(self, "diff_factor"):
@@ -6020,6 +6024,8 @@ class AnalyzerWorker(QtCore.QObject):
             smooth_factor = int(smooth_factor) + (int(smooth_factor + 1) % 2)
             if smooth_factor < 3:
                 smooth_factor = 3
+            if smooth_factor > 69:
+                smooth_factor = 69
             Log.i(TAG, f"Total run time: {total_runtime} secs")
             # the nearest odd number of seconds (runtime)
             Log.d(TAG, f"Smoothing: {smooth_factor}")
@@ -6283,7 +6289,7 @@ class AnalyzerWorker(QtCore.QObject):
                 else:
                     try:
                         t0 = next(x for x, t in enumerate(xs) if t > t0)
-                    except:
+                    except StopIteration:
                         Log.d("Re-interpreting user input as an index, not a timestamp")
                         t0 = int(t0)
                 if not done:
@@ -6330,7 +6336,7 @@ class AnalyzerWorker(QtCore.QObject):
                 else:
                     try:
                         t1 = next(x for x, t in enumerate(xs) if t > t1)
-                    except:
+                    except StopIteration:
                         Log.d("Re-interpreting user input as an index, not a timestamp")
                         t1 = int(t1)
                 if not done:
@@ -6377,7 +6383,7 @@ class AnalyzerWorker(QtCore.QObject):
                 else:
                     try:
                         tp = next(x for x, t in enumerate(xs) if t > tp)
-                    except:
+                    except StopIteration:
                         Log.d("Re-interpreting user input as an index, not a timestamp")
                         tp = int(tp)
                 if not done:
@@ -6474,9 +6480,13 @@ class AnalyzerWorker(QtCore.QObject):
             t_filling = line1_x[-1]
             Log.i(f"t_filling = {t_filling} secs")
             if enable_bandaid_code and t_filling > 1.5:  # t_filling > 1 sec
-                Log.w("Applying polynomial correction to initial fill region (for long runs)")
-                line1_y = np.sqrt(np.polyval([0.3, 0.7, 0], normal_y)) * distances[0]
-                line1_y_fit = np.sqrt(np.polyval([0.3, 0.7, 0], best_fit_pts)) * distances[0]
+                Log.w(
+                    "Applying polynomial correction to initial fill region (for long runs)"
+                )
+                line1_y = np.sqrt(np.polyval([0.1, 0.9, 0], normal_y)) * distances[0]
+                line1_y_fit = (
+                    np.sqrt(np.polyval([0.1, 0.9, 0], best_fit_pts)) * distances[0]
+                )
             else:
                 line1_y = np.sqrt(normal_y) * distances[0]
                 line1_y_fit = np.sqrt(best_fit_pts) * distances[0]
@@ -6573,7 +6583,7 @@ class AnalyzerWorker(QtCore.QObject):
                 try:
                     this_min = next(t for t, y in minima_sort if t > key)
                     this_zero = next(t for t in zeros2 if t > key)
-                except:
+                except StopIteration:
                     this_min = len(ys_diss_2ndd) - 1
                     this_zero = len(ys_diss_2ndd) - 2
                 if this_max > this_zero or this_min < this_zero:
@@ -6800,8 +6810,10 @@ class AnalyzerWorker(QtCore.QObject):
                     else:
                         try:
                             time = next(x for x, t in enumerate(xs) if t > time)
-                        except:
-                            Log.d("Re-interpreting user input as an index, not a timestamp")
+                        except StopIteration:
+                            Log.d(
+                                "Re-interpreting user input as an index, not a timestamp"
+                            )
                             time = int(time)
                     if not done:
                         return
@@ -6899,8 +6911,13 @@ class AnalyzerWorker(QtCore.QObject):
             Log.i("(The following midpoints are shown as blue Xs on Figure 1):")
 
             if len(times) >= 2:
+                # NOTE: Channel 1 midpoint uses dissipation deliberately
+                #       whereas 2nd and 3rd channels are frequency derived
                 midpoint_ch1_y = (ys_fit[times[1]] + ys_fit[times[0]]) / 2
-                midpoint_ch1_i = next(x for x, y in enumerate(ys_fit) if y > midpoint_ch1_y)
+                midpoint_ch1_i = next(
+                    (x for x, y in enumerate(ys_fit) if y > midpoint_ch1_y),
+                    int(np.average([times[0:2]])),
+                )
                 midpoint_ch1_x = xs[midpoint_ch1_i]
                 Log.i(
                     f"1st channel dissipation midpoint = {midpoint_ch1_y:2.2f} Hz @ {midpoint_ch1_x:2.2f} secs"
@@ -6919,7 +6936,10 @@ class AnalyzerWorker(QtCore.QObject):
 
             if len(times) >= 4:
                 midpoint_ch2_y = (ys_freq_fit[times[2]] + ys_freq_fit[times[1]]) / 2
-                midpoint_ch2_i = next(x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch2_y)
+                midpoint_ch2_i = next(
+                    (x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch2_y),
+                    int(np.average([times[1:3]])),
+                )
                 midpoint_ch2_x = xs[midpoint_ch2_i]
                 Log.i(
                     f"2nd channel frequency midpoint = {midpoint_ch2_y:2.2f} Hz @ {midpoint_ch2_x:2.2f} secs"
@@ -6938,7 +6958,10 @@ class AnalyzerWorker(QtCore.QObject):
 
             if len(times) >= 6:
                 midpoint_ch3_y = (ys_freq_fit[times[3]] + ys_freq_fit[times[2]]) / 2
-                midpoint_ch3_i = next(x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch3_y)
+                midpoint_ch3_i = next(
+                    (x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch3_y),
+                    int(np.average([times[2:4]])),
+                )
                 midpoint_ch3_x = xs[midpoint_ch3_i]
                 Log.i(
                     f"3rd channel frequency midpoint = {midpoint_ch3_y:2.2f} Hz @ {midpoint_ch3_x:2.2f} secs"
@@ -6995,7 +7018,13 @@ class AnalyzerWorker(QtCore.QObject):
             idx_of_normal_pts_to_remove = []
             idx_of_normal_pts_to_retain = []
             for p in normal_pts:
-                midpoint_p_i = next(x for x, y in enumerate(ys_normal) if y >= p) + tp
+                try:
+                    midpoint_p_i = (
+                        next(x for x, y in enumerate(ys_normal) if y >= p) + tp
+                    )
+                except StopIteration:
+                    Log.w(f"Failed to find 1st channel dissipation @ {p:0.1f}")
+                    continue
                 midpoint_p_x = xs[midpoint_p_i]
                 midpoint_p_y = ys_fit[midpoint_p_i]
                 Log.i(
@@ -7118,6 +7147,9 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
+            # Parallel view of initial_fill that will undergo the same filter pipeline
+            # as the initial-fill portion of log_velocity / log_velocity_46.
+            initial_fill_tracked = np.asarray(initial_fill, dtype=float).copy()
             dropUnder2 = 0
             ####################################
             # NEW CODE for 2023-11-07 TESTING:
@@ -7138,6 +7170,7 @@ class AnalyzerWorker(QtCore.QObject):
                     Log.d(f"Dropped {i} initial samples under 2 Hz threshold")
                     log_velocity = log_velocity[i:]
                     log_position = log_position[i:]
+                    initial_fill_tracked = initial_fill_tracked[i:]
                     dropUnder2 = i
                     ####################################
                     # NEW CODE for 02/03/2023 TESTING:
@@ -7155,8 +7188,8 @@ class AnalyzerWorker(QtCore.QObject):
             log_velocity_46 = log_velocity
             log_position_46 = log_position
             Log.d(f"log_velocity = {log_velocity}")
-            Log.d(f"initial_fill = {initial_fill}")
-            if initial_fill[-1] < 90:
+            Log.d(f"initial_fill_tracked = {initial_fill_tracked}")
+            if initial_fill_tracked[-1] < 90:
                 log_velocity_46 = log_velocity_46[-len(distances) :]
                 log_position_46 = log_position_46[-len(distances) :]
                 cp = xs[all_times[FILL_IDX]] / 2
@@ -7164,12 +7197,26 @@ class AnalyzerWorker(QtCore.QObject):
                 ax3.annotate("Not Analyzed", (cp, 0), ha="center")
                 ax4.annotate("Not Analyzed", (cp, 0), ha="center")
             else:
-                for i in range(len(initial_fill)):
-                    if initial_fill[i] > 46:
-                        Log.d(f"Dropped {i} initial samples under 46 Hz threshold")
-                        log_velocity_46 = log_velocity_46[i:]
-                        log_position_46 = log_position_46[i:]
+                drop_46 = 0
+                for i in range(len(initial_fill_tracked)):
+                    if initial_fill_tracked[i] > 46:
+                        drop_46 = i
+                        Log.d(f"Dropped {i} initial samples under 46 Hz threshold.")
                         break
+
+                # Never trim into the distances region. The subsequent
+                # np.delete calls assume at least len(distances) samples remain.
+                max_drop = max(0, len(log_velocity_46) - len(distances))
+                if drop_46 > max_drop:
+                    Log.w(
+                        f"46 Hz threshold at tracked index {drop_46} would leave "
+                        f"fewer than len(distances)={len(distances)} samples; "
+                        f"clamping to {max_drop}"
+                    )
+                    drop_46 = max_drop
+
+                log_velocity_46 = log_velocity_46[drop_46:]
+                log_position_46 = log_position_46[drop_46:]
 
             self.update(status_label)
 
@@ -7196,6 +7243,10 @@ class AnalyzerWorker(QtCore.QObject):
             log_position_skip = log_position[~keep_ids]
             log_velocity = log_velocity[keep_ids]
             log_position = log_position[keep_ids]
+            # Apply the same filter to the tracked initial-fill view. keep_ids is sized
+            # to log_velocity (initial fill + distances)
+            initial_fill_keep = keep_ids[: len(initial_fill_tracked)]
+            initial_fill_tracked = initial_fill_tracked[initial_fill_keep]
             Log.d(
                 f"Rejected {len(log_position_skip)} samples as initial outliers: {log_position_skip}"
             )
@@ -7444,8 +7495,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            if len(all_times) >= 6:
-                high_shear_15x = 15e6
+            if len(all_times) > BLIP1_IDX:
                 f0 = ys_freq[all_times[FILL_IDX]]
                 d0 = dissipation[all_times[FILL_IDX]]
                 f2 = ys_freq[all_times[BLIP1_IDX]]
@@ -7454,189 +7504,248 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.i(f"f2 = {f2:2.2f} Hz")
                 Log.i(f"f2-f0 = {f2-f0} Hz")
 
-                self.update(status_label)
+                # PR #377: Guardrail: Check Frequency/Dissipation Ratio for High Shear-Rate Calculation
+                frequency_shift = f2 - f0
+                dissipation_shift = d2 - d0
+                ratio = frequency_shift / dissipation_shift * 1e-6
 
-                if f2 - f0 > float(Constants.get_batch_param(batch, "freq_delta_15MHz")):
-                    freq_factor_15MHz = float(Constants.get_batch_param(batch, "freq_factor_15MHz"))
-                    high_shear_15y = (((f2 - f0) * freq_factor_15MHz) ** 2) / DENSITY
-                    Log.i(
-                        f"15MHz High shear = ((f2-f0) * {freq_factor_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
-                    )
-                else:
-                    diss_factor1_15MHz = float(
-                        Constants.get_batch_param(batch, "diss_factor1_15MHz")
-                    )
-                    diss_factor2_15MHz = float(
-                        Constants.get_batch_param(batch, "diss_factor2_15MHz")
-                    )
-                    bandaid_compensate_high_shear_viscosity = False
-                    if bandaid_compensate_high_shear_viscosity:
-                        E3 = (
-                            ys_freq[all_times[FILL_IDX]] - ys_freq[all_times[START_IDX]]
-                        )  # from CAL file (Freq_fill)
-                        D = (d2 - d0) - ((0.023112 * (E3) / DENSITY - 4.6868) * 1e-6)
+                # Adjust limits for the guardrails as needed
+                freq_limit = 1000
+                ratio_limit = 40
+                if abs(frequency_shift) < freq_limit and abs(ratio) < ratio_limit:
+
+                    # Calculate high shear-rate viscosity
+                    high_shear_15x = 15e6
+
+                    self.update(status_label)
+
+                    if frequency_shift > float(
+                        Constants.get_batch_param(batch, "freq_delta_15MHz")
+                    ):
+                        freq_factor_15MHz = float(
+                            Constants.get_batch_param(batch, "freq_factor_15MHz")
+                        )
                         high_shear_15y = (
-                            (D * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
+                            (frequency_shift * freq_factor_15MHz) ** 2
                         ) / DENSITY
-                    else:
-                        high_shear_15y = (
-                            ((d2 - d0) * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
-                        ) / DENSITY
-                    Log.i(f"d0 = {d0:1.4E}")
-                    Log.i(f"d2 = {d2:1.4E}")
-                    Log.i(f"d2-d0 = {d2-d0:1.4E}")
-                    if bandaid_compensate_high_shear_viscosity:
-                        Log.i(f"E3 = {E3}")
-                        Log.i(f"D = {D}")
                         Log.i(
-                            f"15MHz High shear = ({D} * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
+                            f"15MHz High shear = ((f2-f0) * {freq_factor_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
                         )
                     else:
-                        Log.i(
-                            f"15MHz High shear = ((d2-d0) * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
+                        diss_factor1_15MHz = float(
+                            Constants.get_batch_param(batch, "diss_factor1_15MHz")
                         )
-                high_shear_15x = self.correctHighShear(high_shear_15x, high_shear_15y)
-                ax7.plot(high_shear_15x, high_shear_15y, "bd")
-                ax7.errorbar(
-                    high_shear_15x,
-                    high_shear_15y,
-                    0.30 * high_shear_15y,
-                    fmt="b.",
-                    ecolor="blue",
-                    capsize=3,
-                )
-
-                self.update(status_label)
-
-                if True:
-                    data_path_fun = data_path.replace("_3rd.csv", "_lower.csv")
-                    fun_file_exists = secure_open.file_exists(data_path_fun, "capture")
-
-                if f2 - f0 < 900 and fun_file_exists:  # frequency check added 2023-02-01
-                    if True:
-                        with secure_open(data_path_fun, "r", "capture") as f:
-                            csv_headers_fun = next(f)
-
-                            if isinstance(csv_headers_fun, bytes):
-                                csv_headers_fun = csv_headers_fun.decode()
-
-                            if "Ambient" in csv_headers_fun:
-                                csv_cols_fun = (2, 4, 6, 7)
-                            else:
-                                csv_cols_fun = (2, 3, 5, 6)
-
-                            data_fun = loadtxt(
-                                f.readlines(),
-                                delimiter=",",
-                                skiprows=0,
-                                usecols=csv_cols_fun,
+                        diss_factor2_15MHz = float(
+                            Constants.get_batch_param(batch, "diss_factor2_15MHz")
+                        )
+                        bandaid_compensate_high_shear_viscosity = False
+                        if bandaid_compensate_high_shear_viscosity:
+                            E3 = (
+                                ys_freq[all_times[FILL_IDX]]
+                                - ys_freq[all_times[START_IDX]]
+                            )  # from CAL file (Freq_fill)
+                            D = dissipation_shift - (
+                                (0.023112 * (E3) / DENSITY - 4.6868) * 1e-6
                             )
-
-                    self.update(status_label)
-
-                    relative_time_fun = data_fun[:, 0]
-                    temperature_fun = data_fun[:, 1]
-                    resonance_frequency_fun = data_fun[:, 2]
-                    dissipation_fun = data_fun[:, 3]
-
-                    self.update(status_label)
-
-                    Log.i("Analyzing fundamental frequency dataset...")
-                    times_fun = []
-                    for i in range(len(all_times)):
-                        t_fun = 0
-                        try:
-                            t_fun = (
-                                next(
-                                    x
-                                    for x, t in enumerate(relative_time_fun)
-                                    if t >= xs[all_times[i]] - xs[0]
+                            high_shear_15y = (
+                                (D * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
+                            ) / DENSITY
+                        else:
+                            high_shear_15y = (
+                                (
+                                    dissipation_shift * diss_factor1_15MHz
+                                    - diss_factor2_15MHz
                                 )
-                                - 1
-                            )
-                        except:
-                            Log.e(
-                                f"Failed to locate POI_{i} @ timestamp {xs[all_times[i]] - xs[0]} from fundamental dataset. Attempting to proceed with index 0..."
-                            )
-                        Log.d(f"time[{i}] must be >= {xs[all_times[i]] - xs[0]}")
-                        Log.d(f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}")
-                        times_fun.append(t_fun)
-                    ys_freq_fun = (
-                        np.average(resonance_frequency_fun[0 : times_fun[FILL_IDX]])
-                        - resonance_frequency_fun
-                    )
-                    high_shear_5x = 5e6
-                    xp = relative_time_fun
-                    fp = ys_freq_fun
-                    # absolute time of 15MHz start idx
-                    t0 = xs[all_times[FILL_IDX]] - xs[0]
-                    # absolute time of 15MHz blip1 idx
-                    t2 = xs[all_times[BLIP1_IDX]] - xs[0]
-                    f0 = np.interp(t0, xp, fp)
-                    d0 = dissipation_fun[10]
-                    f2 = np.interp(t2, xp, fp)
-                    d2 = dissipation_fun[times_fun[BLIP1_IDX]]
-                    Log.d(f"fun values to interpolate: [{t0}, {t2}]")
-                    Log.d(f"{0}: ({xp[0]}, {fp[0]})")
-                    Log.d("...")
-                    for i in range(len(xp)):
-                        if xp[i - 1] <= t0 and xp[i] >= t0:
-                            Log.d(f"{i-1}: ({xp[i-1]}, {fp[i-1]})")
-                            Log.d(f"## INTERP t0 HERE: ({t0}, {f0})")
-                            Log.d(f"{i+1}: ({xp[i+1]}, {fp[i+1]})")
-                            Log.d("...")
-                        if xp[i - 1] <= t2 and xp[i] >= t2:
-                            Log.d(f"{i-1}: ({xp[i-1]}, {fp[i-1]})")
-                            Log.d(f"## INTERP t2 HERE: ({t2}, {f2})")
-                            Log.d(f"{i+1}: ({xp[i+1]}, {fp[i+1]})")
-                            Log.d("...")
-                        # Log.d(f"{i}: ({xp[i]}, {fp[i]})")
-                    # ending 'i' from last 'for' loop
-                    Log.d(f"{i}: ({xp[i]}, {fp[i]})")
-                    Log.i(f"f0 = {f0:2.2f} Hz")
-                    Log.i(f"f2 = {f2:2.2f} Hz")
-                    Log.i(f"f2-f0 = {f2-f0} Hz")
-                    if f2 - f0 > float(Constants.get_batch_param(batch, "freq_delta_5MHz")):
-                        freq_factor_5MHz = float(
-                            Constants.get_batch_param(batch, "freq_factor_5MHz")
-                        )
-                        high_shear_5y = (((f2 - f0) * freq_factor_5MHz) ** 2) / DENSITY
-                        Log.i(
-                            f"5MHz High shear = ((f2-f0) * {freq_factor_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
-                        )
-                    else:
-                        diss_factor1_5MHz = float(
-                            Constants.get_batch_param(batch, "diss_factor1_5MHz")
-                        )
-                        diss_factor2_5MHz = float(
-                            Constants.get_batch_param(batch, "diss_factor2_5MHz")
-                        )
-                        high_shear_5y = (
-                            ((d2 - d0) * diss_factor1_5MHz - diss_factor2_5MHz) ** 2
-                        ) / DENSITY
+                                ** 2
+                            ) / DENSITY
                         Log.i(f"d0 = {d0:1.4E}")
                         Log.i(f"d2 = {d2:1.4E}")
-                        Log.i(f"d2-d0 = {d2-d0:1.4E}")
-                        Log.i(
-                            f"5MHz High shear = ((d2-d0) * {diss_factor1_5MHz}-{diss_factor2_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
-                        )
-                    high_shear_5x = self.correctHighShear(high_shear_5x, high_shear_5y)
-                    ax7.plot(high_shear_5x, high_shear_5y, "bd")
+                        Log.i(f"d2-d0 = {dissipation_shift:1.4E}")
+                        if bandaid_compensate_high_shear_viscosity:
+                            Log.i(f"E3 = {E3}")
+                            Log.i(f"D = {D}")
+                            Log.i(
+                                f"15MHz High shear = ({D} * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
+                            )
+                        else:
+                            Log.i(
+                                f"15MHz High shear = ((d2-d0) * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
+                            )
+                    high_shear_15x = self.correctHighShear(
+                        high_shear_15x, high_shear_15y
+                    )
+                    ax7.plot(high_shear_15x, high_shear_15y, "bd")
                     ax7.errorbar(
-                        high_shear_5x,
-                        high_shear_5y,
-                        0.30 * high_shear_5y,
+                        high_shear_15x,
+                        high_shear_15y,
+                        0.30 * high_shear_15y,
                         fmt="b.",
                         ecolor="blue",
                         capsize=3,
                     )
-                else:
-                    Log.w("5 MHz high-shear calculation not available from dataset.")
-                    if not fun_file_exists:
-                        Log.w("The 5 MHz mode does not exist in the dataset for this captured run.")
+
+                    self.update(status_label)
+
+                    if True:
+                        data_path_fun = data_path.replace("_3rd.csv", "_lower.csv")
+                        fun_file_exists = secure_open.file_exists(
+                            data_path_fun, "capture"
+                        )
+
+                    if (
+                        frequency_shift < 900 and fun_file_exists
+                    ):  # frequency check added 2023-02-01
+                        if True:
+                            with secure_open(data_path_fun, "r", "capture") as f:
+                                csv_headers_fun = next(f)
+
+                                if isinstance(csv_headers_fun, bytes):
+                                    csv_headers_fun = csv_headers_fun.decode()
+
+                                if "Ambient" in csv_headers_fun:
+                                    csv_cols_fun = (2, 4, 6, 7)
+                                else:
+                                    csv_cols_fun = (2, 3, 5, 6)
+
+                                data_fun = loadtxt(
+                                    f.readlines(),
+                                    delimiter=",",
+                                    skiprows=0,
+                                    usecols=csv_cols_fun,
+                                )
+
+                        self.update(status_label)
+
+                        relative_time_fun = data_fun[:, 0]
+                        temperature_fun = data_fun[:, 1]
+                        resonance_frequency_fun = data_fun[:, 2]
+                        dissipation_fun = data_fun[:, 3]
+
+                        self.update(status_label)
+
+                        Log.i("Analyzing fundamental frequency dataset...")
+                        times_fun = []
+                        for i in range(len(all_times)):
+                            t_fun = 0
+                            try:
+                                t_fun = (
+                                    next(
+                                        x
+                                        for x, t in enumerate(relative_time_fun)
+                                        if t >= xs[all_times[i]] - xs[0]
+                                    )
+                                    - 1
+                                )
+                            except StopIteration:
+                                Log.e(
+                                    f"Failed to locate POI_{i} @ timestamp {xs[all_times[i]] - xs[0]} from fundamental dataset. Attempting to proceed with index 0..."
+                                )
+                            Log.d(f"time[{i}] must be >= {xs[all_times[i]] - xs[0]}")
+                            Log.d(
+                                f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}"
+                            )
+                            times_fun.append(t_fun)
+                        ys_freq_fun = (
+                            np.average(resonance_frequency_fun[0 : times_fun[FILL_IDX]])
+                            - resonance_frequency_fun
+                        )
+                        high_shear_5x = 5e6
+                        xp = relative_time_fun
+                        fp = ys_freq_fun
+                        # absolute time of 15MHz start idx
+                        t0 = xs[all_times[FILL_IDX]] - xs[0]
+                        # absolute time of 15MHz blip1 idx
+                        t2 = xs[all_times[BLIP1_IDX]] - xs[0]
+                        f0 = np.interp(t0, xp, fp)
+                        d0 = dissipation_fun[10]
+                        f2 = np.interp(t2, xp, fp)
+                        d2 = dissipation_fun[times_fun[BLIP1_IDX]]
+                        Log.d(f"fun values to interpolate: [{t0}, {t2}]")
+                        Log.d(f"{0}: ({xp[0]}, {fp[0]})")
+                        Log.d("...")
+                        for i in range(len(xp)):
+                            if xp[i - 1] <= t0 and xp[i] >= t0:
+                                Log.d(f"{i-1}: ({xp[i-1]}, {fp[i-1]})")
+                                Log.d(f"## INTERP t0 HERE: ({t0}, {f0})")
+                                Log.d(f"{i+1}: ({xp[i+1]}, {fp[i+1]})")
+                                Log.d("...")
+                            if xp[i - 1] <= t2 and xp[i] >= t2:
+                                Log.d(f"{i-1}: ({xp[i-1]}, {fp[i-1]})")
+                                Log.d(f"## INTERP t2 HERE: ({t2}, {f2})")
+                                Log.d(f"{i+1}: ({xp[i+1]}, {fp[i+1]})")
+                                Log.d("...")
+                            # Log.d(f"{i}: ({xp[i]}, {fp[i]})")
+                        # ending 'i' from last 'for' loop
+                        Log.d(f"{i}: ({xp[i]}, {fp[i]})")
+                        Log.i(f"f0 = {f0:2.2f} Hz")
+                        Log.i(f"f2 = {f2:2.2f} Hz")
+                        Log.i(f"f2-f0 = {f2-f0} Hz")
+                        if f2 - f0 > float(
+                            Constants.get_batch_param(batch, "freq_delta_5MHz")
+                        ):
+                            freq_factor_5MHz = float(
+                                Constants.get_batch_param(batch, "freq_factor_5MHz")
+                            )
+                            high_shear_5y = (
+                                ((f2 - f0) * freq_factor_5MHz) ** 2
+                            ) / DENSITY
+                            Log.i(
+                                f"5MHz High shear = ((f2-f0) * {freq_factor_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
+                            )
+                        else:
+                            diss_factor1_5MHz = float(
+                                Constants.get_batch_param(batch, "diss_factor1_5MHz")
+                            )
+                            diss_factor2_5MHz = float(
+                                Constants.get_batch_param(batch, "diss_factor2_5MHz")
+                            )
+                            high_shear_5y = (
+                                ((d2 - d0) * diss_factor1_5MHz - diss_factor2_5MHz) ** 2
+                            ) / DENSITY
+                            Log.i(f"d0 = {d0:1.4E}")
+                            Log.i(f"d2 = {d2:1.4E}")
+                            Log.i(f"d2-d0 = {d2-d0:1.4E}")
+                            Log.i(
+                                f"5MHz High shear = ((d2-d0) * {diss_factor1_5MHz}-{diss_factor2_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
+                            )
+                        high_shear_5x = self.correctHighShear(
+                            high_shear_5x, high_shear_5y
+                        )
+                        ax7.plot(high_shear_5x, high_shear_5y, "bd")
+                        ax7.errorbar(
+                            high_shear_5x,
+                            high_shear_5y,
+                            0.30 * high_shear_5y,
+                            fmt="b.",
+                            ecolor="blue",
+                            capsize=3,
+                        )
                     else:
                         Log.w(
-                            "The frequency shift of the initial fill region is too small (<900 Hz) for high-shear calculation accuracy."
+                            "5 MHz high-shear calculation not available from dataset."
+                        )
+                        if not fun_file_exists:
+                            Log.w(
+                                "The 5 MHz mode does not exist in the dataset for this captured run."
+                            )
+                        else:
+                            Log.w(
+                                "The frequency shift of the initial fill region is too small (<900 Hz) for high-shear calculation accuracy."
+                            )
+                else:
+                    Log.w("5 MHz high-shear calculation not available from dataset.")
+                    Log.w("15 MHz high-shear calculation not available from dataset.")
+
+                    if not frequency_shift < freq_limit:
+                        Log.w("Reason: Frequency shift limit exceeded.")
+                        Log.d(
+                            f"Detail: Must be less than {freq_limit}. Actual: {frequency_shift:2.2f}."
+                        )
+
+                    if not ratio < ratio_limit:
+                        Log.w("Reason: Ratio threshold limit exceeded.")
+                        Log.d(
+                            f"Detail: Must be less than {ratio_limit}. Actual: {ratio:2.2f}."
                         )
             else:
                 Log.w("5 MHz high-shear calculation not available from dataset.")
@@ -7910,7 +8019,13 @@ class AnalyzerWorker(QtCore.QObject):
                 local_temp = []
                 # skip first point, reverse order
                 for pt in shear_points[1:][::-1]:
-                    idx = next(x for x, y in enumerate(in_shear_rate) if y <= pt)
+                    try:
+                        idx = next(x for x, y in enumerate(in_shear_rate) if y <= pt)
+                    except StopIteration:
+                        Log.e(
+                            f"Failed to find index for shear point {pt:2.2f}. Cannot plot this index."
+                        )
+                        continue
                     local_shear.append(in_shear_rate[idx])
                     local_visc.append(sm_trendline[idx])
                     local_linv.append(lin_viscosity[idx])
@@ -8139,7 +8254,12 @@ class AnalyzerWorker(QtCore.QObject):
                     )
                     visc_interp = float(interp_func(shear_interp))
                     i_l, i_r = next(
-                        (i - 1, i) for i, s in enumerate(in_shear_san_60_80) if s > shear_interp
+                        (
+                            (i - 1, i)
+                            for i, s in enumerate(in_shear_san_60_80)
+                            if s > shear_interp
+                        ),
+                        (-1, len(in_shear_san_60_80)),
                     )
                     if i_l == -1 or i_r == len(in_shear_san_60_80):
                         # indicate 10% error when extrapolating beyond left or right of the shear array
@@ -8174,12 +8294,25 @@ class AnalyzerWorker(QtCore.QObject):
                         len(in_shear_rate) - 1,
                         max(2, values_to_average - 1),
                     )
-                    visc_avg = np.average(in_viscosity[idx_start : idx_end + 1])
-                    visc_std = np.std(in_viscosity[idx_start : idx_end + 1])
+                    # Make sure NOT to include high-shear(s) in average viscosity calculation
+                    visc_subset = in_viscosity[idx_start : idx_end + 1]
+                    if high_shear_15x != 0:
+                        if high_shear_15y in visc_subset:
+                            # assumes 15MHz is last in list
+                            visc_subset = visc_subset[:-1]
+                            idx_end -= 1
+                    if high_shear_5x != 0:
+                        if high_shear_5y in visc_subset:
+                            # assumes 5MHz is last in list
+                            visc_subset = visc_subset[:-1]
+                            idx_end -= 1
+                    # Calculate average +/- deviation from viscosity subset
+                    visc_avg = np.average(visc_subset)
+                    visc_std = np.std(visc_subset)
                     shear_min = in_shear_rate[idx_start]
                     shear_max = in_shear_rate[idx_end]
 
-                    summary_text += "\nAverage viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rates in range {:2.0f} - {:2.0f} s⁻¹.".format(
+                    summary_text += "\nAverage viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rates {:2.0f} - {:2.0f} s⁻¹.".format(
                         visc_avg, visc_std, shear_min, shear_max
                     )
                     plot_text += "\n\n{:2.2f} \u00b1 {:2.2f} cP\n({:2.0f} - {:2.0f}) s⁻¹".format(
