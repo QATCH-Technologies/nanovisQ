@@ -10,7 +10,7 @@ import subprocess
 import sys
 import threading
 from collections import deque
-from time import localtime, mktime, strftime, strptime, time
+from time import localtime, mktime, strftime, strptime, time, monotonic
 from typing import List, Optional
 from xml.dom import minidom
 import numpy as np
@@ -1251,7 +1251,64 @@ class Rename_Output_Files(QtCore.QObject):
         # For 4x1 system: expect pid 1-4, return "1" thru "4"
         # For 4x6 system: expect pid 0xA1-0xD6, return "A1" thru "D6"
         return hex(pid)[2:].upper()
+class RoundedProgressBar(QtWidgets.QWidget):
+    """Progress bar widget with guaranteed rounded corners at every fill level.
 
+    Qt5's CSS engine does not reliably apply border-radius to the start-edge
+    (left side) of ``QProgressBar::chunk`` at partial fill values — the corner
+    either clips to a square or flickers on rapid value changes.  This widget
+    bypasses the CSS paint path entirely: it draws the track and fill directly
+    with QPainter so both ends stay rounded from 0 % to 100 %.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._value = 0
+        self._maximum = 100
+        self._chunk_color = QtGui.QColor("#2E9BDA")
+        self._track_color = QtGui.QColor("#e8f4fb")
+
+    def setRange(self, minimum, maximum):
+        self._maximum = maximum
+
+    def setValue(self, value):
+        clamped = max(0, min(int(value), self._maximum))
+        if clamped != self._value:
+            self._value = clamped
+            self.update()
+
+    def value(self):
+        return self._value
+
+    def setTextVisible(self, visible):
+        pass  # no text display; kept for API compatibility
+
+    def setChunkColor(self, hex_color):
+        color = QtGui.QColor(hex_color)
+        if color != self._chunk_color:
+            self._chunk_color = color
+            self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        r = QtCore.QRectF(self.rect())
+        radius = r.height() / 2.0
+
+        # Track
+        painter.setBrush(QtGui.QBrush(self._track_color))
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawRoundedRect(r, radius, radius)
+
+        # Fill: clip to the fill width so the right edge is flat when partial,
+        # while the left end always inherits the full-bar radius.
+        if self._value > 0 and self._maximum > 0:
+            fill_w = r.width() * self._value / self._maximum
+            painter.setClipRect(QtCore.QRectF(r.x(), r.y(), fill_w, r.height()))
+            painter.setBrush(QtGui.QBrush(self._chunk_color))
+            painter.drawRoundedRect(r, radius, radius)
+
+        painter.end()
 
 # ------------------------------------------------------------------------------
 class _PlotDimAnimator(QtCore.QObject):
@@ -1918,7 +1975,6 @@ class MainWindow(QtWidgets.QMainWindow):
         Returns:
             None to caller on error.
         """
-        Log.w(TAG, "[START-TRACE] enter start()")
         # Validate if a userprofile can perform the capture action.
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
@@ -2192,7 +2248,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self._enable_ui(True)
             return
 
-        Log.w(TAG, f"[START-TRACE] before try-block, source={self._get_source()}")
         self.PlotsWin.setUpdatesEnabled(False)
         try:
             # Capture plot identity so we can tell whether set_multi_mode()
@@ -2201,6 +2256,19 @@ class MainWindow(QtWidgets.QMainWindow):
             # a same-source Start (e.g. restart after Stop) would otherwise
             # get an unwanted dim blink over its existing curves.
             _before_plt2_id = id(self._plt2_arr[0]) if self._plt2_arr[0] is not None else None
+
+            # Detect Initialize → Initialize: calibration overlay is currently showing
+            # (whether in-progress or at the success/ready state).  We will reset the
+            # overlay in-place instead of fading it out then back in.
+            # The _calib_overlay_live flag ensures this only fires when the overlay
+            # belongs to an uninterrupted Initialize session — any intervening Reset
+            # or Stop clears the flag via _fade_out/_hide, so those paths fall back
+            # to the normal fade-out → fade-in behaviour.
+            self._reinit_calib_overlay = (
+                self._get_source() == OperationType.calibration
+                and getattr(self, "_calib_overlay_items", [None])[0] is not None
+                and getattr(self, "_calib_overlay_live", False)
+            )
 
             # Set the number of plots to display for multiplex devices based on the number of devices connected.
             self.set_multi_mode()
@@ -2216,7 +2284,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self._remove_welcome_text()
 
             if self._get_source() == OperationType.measurement:
-                Log.w(TAG, "[START-TRACE] entered measurement branch")
                 color_err = "#333333"
                 labelbar = "Starting..."
                 self.ControlsWin.ui1.infobar.setText(
@@ -2265,17 +2332,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._set_plots_dimmed(amplitude=True, temperature=True, animate=False)
         finally:
             self.PlotsWin.setUpdatesEnabled(True)
-        Log.w(TAG, "[START-TRACE] exited try/finally")
         # Start worker thread.
         worker_check = self.worker.start()
         if worker_check == 1:
             # Gets frequency range
             self._readFREQ = self.worker.get_frequency_range()
 
-            # Duplicate frequencies
-            self._hide_calibration_plot_overlay()  # flush any orphaned error overlay
+            # Flush the calibration overlay.  On a normal start (or first Initialize)
+            # tear it down completely; on Initialize → Initialize, reset it in-place so
+            # the overlay never disappears and there is no fade-out / fade-in cycle.
+            if getattr(self, "_reinit_calib_overlay", False):
+                self._reset_calibration_overlay_inplace()
+                self._reinit_calib_overlay = False
+            else:
+                self._hide_calibration_plot_overlay()  # flush any orphaned error overlay
+                self._calib_overlay_items = [None] * 4
             self._hide_calib_ready_text()  # flush any persisted text
-            self._calib_overlay_items = [None] * 4
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
             self._drop_epoch_sent = False
@@ -2638,21 +2710,85 @@ class MainWindow(QtWidgets.QMainWindow):
             except RuntimeError:
                 pass
             setattr(self, attr, None)
+    def _fade_out_welcome_text(self):
+        """Smoothly fades out the welcome text before cleanly removing it."""
+        texts_to_fade = []
+        for attr in ('_text1', '_text2', '_text3'):
+            t = getattr(self, attr, None)
+            if t is not None and t.isVisible() and t.opacity() > 0:
+                texts_to_fade.append(t)
+
+        if not texts_to_fade:
+            self._remove_welcome_text()
+            return
+
+        # Keep a reference to the animations so they aren't garbage collected
+        self._welcome_fade_anims = []
+        
+        for i, t in enumerate(texts_to_fade):
+            anim = QtCore.QVariantAnimation()
+            anim.setDuration(400)
+            anim.setStartValue(t.opacity())
+            anim.setEndValue(0.0)
+            
+            anim.valueChanged.connect(lambda val, item=t: item.setOpacity(val))
+            
+            # On the final item fading out, trigger the full memory teardown
+            if i == len(texts_to_fade) - 1:
+                anim.finished.connect(self._remove_welcome_text)
+            else:
+                anim.finished.connect(lambda item=t: item.setVisible(False))
+                
+            self._welcome_fade_anims.append(anim)
+            anim.start()
+
+    def _fade_out_calibration_plot_overlay(self):
+        """Smoothly fades out the calibration progress overlay."""
+        # Create a persistent list so the animations aren't garbage collected
+        self._fade_anims = [] 
+        
+        for overlay in getattr(self, "_calib_overlay_items", []):
+            if overlay is None:
+                continue
+            proxy, dim_rect, _, _ = overlay
+            
+            # Only animate if it's actually visible on screen
+            if proxy.isVisible() and proxy.opacity() > 0:
+                anim = QtCore.QVariantAnimation()
+                anim.setDuration(400) # 400ms gentle fade out
+                anim.setStartValue(proxy.opacity())
+                anim.setEndValue(0.0)
+                
+                # Update opacity on every frame
+                anim.valueChanged.connect(
+                    lambda val, p=proxy, d=dim_rect: (p.setOpacity(val), d.setOpacity(val))
+                )
+                
+                # Fully hide the widgets from the rendering engine once faded
+                anim.finished.connect(
+                    lambda p=proxy, d=dim_rect: (p.setVisible(False), d.setVisible(False))
+                )
+                
+                self._fade_anims.append(anim)
+                anim.start()
+                
+        # Reset the ready flag so the UI knows calibration is totally finished
+        self._calib_overlay_ready = False
 
     def _show_calibration_plot_overlay(self) -> None:
         """
         Initializes and displays a modal-like progress overlay on the plots.
-
-        This method:
-        1. Clears any existing overlays or welcome text.
-        2. Creates a semi-transparent dimming rectangle (QGraphicsRectItem).
-        3. Injects a QProgressBar and status label via a QGraphicsProxyWidget.
-        4. Establishes a dynamic centering callback that adjusts the overlay
-           position whenever the plot view is resized.
-        5. Stores the UI components in `_calib_overlay_items` for future updates.
         """
         self._hide_calibration_plot_overlay()
-        self._remove_welcome_text()
+        
+        # 1. FIX: Trigger the smooth text fade out instead of instant removal
+        if hasattr(self, '_fade_out_welcome_text'):
+            self._fade_out_welcome_text()
+        else:
+            self._remove_welcome_text()
+
+        # Create a container to hold the fade animations so they aren't garbage collected
+        self._overlay_anims = []
 
         for i, plt2 in enumerate(self._plt2_arr):
             if plt2 is None:
@@ -2666,6 +2802,11 @@ class MainWindow(QtWidgets.QMainWindow):
             dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
             dim_rect.setParentItem(plt2.graphicsItem())
             dim_rect.setZValue(999)
+            
+            # 2. FIX: Keep dim_rect fully transparent! 
+            # The background is already dimmed by the global standby state. 
+            # Animating this would cause the plot to turn completely white.
+            dim_rect.setOpacity(0.0)  
             dim_rect.setVisible(False)
 
             # Progress container
@@ -2681,15 +2822,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 "  font-size: 10pt;"
                 "  color: #333333;"
                 "}"
-                "QProgressBar {"
-                "  border: none;"
-                "  border-radius: 3px;"
-                "  background: #e8f4fb;"
-                "}"
-                "QProgressBar::chunk {"
-                "  background: #2E9BDA;"
-                "  border-radius: 3px;"
-                "}"
             )
 
             layout = QtWidgets.QVBoxLayout(container)
@@ -2700,7 +2832,7 @@ class MainWindow(QtWidgets.QMainWindow):
             status_label.setAlignment(QtCore.Qt.AlignCenter)
             status_label.setWordWrap(True)  # prevents clipping on long strings
 
-            progress_bar = QtWidgets.QProgressBar()
+            progress_bar = RoundedProgressBar()
             progress_bar.setRange(0, 100)
             progress_bar.setValue(0)
             progress_bar.setTextVisible(False)
@@ -2713,6 +2845,7 @@ class MainWindow(QtWidgets.QMainWindow):
             proxy.setWidget(container)
             proxy.setParentItem(plt2.graphicsItem())
             proxy.setZValue(1000)
+            proxy.setOpacity(0.0)  # The UI elements start completely transparent
             proxy.setVisible(False)
 
             # Geometry sync
@@ -2753,6 +2886,27 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self._calib_overlay_items[i] = (proxy, dim_rect, progress_bar, status_label)
 
+            # --- Setup Fade-In Animation ---
+            anim = QtCore.QVariantAnimation()
+            anim.setDuration(400) # 400ms fade duration
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            
+            # 3. FIX: Only animate the proxy widget (progress bar/text). 
+            # Leave the dim_rect alone so it doesn't double-dim the plot.
+            anim.valueChanged.connect(
+                lambda val, p=proxy: p.setOpacity(val)
+            )
+            
+            self._overlay_anims.append(anim)
+            
+            # Delay the animation start slightly to sync with the singleShot rendering
+            QtCore.QTimer.singleShot(100, anim.start)
+
+        # Mark this overlay as belonging to a live Initialize session so that a
+        # second Initialize can detect it and reset in-place instead of fading.
+        self._calib_overlay_live = True
+
     def _hide_calibration_plot_overlay(self) -> None:
         """
         Tears down the calibration progress overlay and cleans up resources.
@@ -2764,6 +2918,7 @@ class MainWindow(QtWidgets.QMainWindow):
         3. Resetting the internal overlay tracking list to its default state.
         """
         self._calib_overlay_ready = False
+        self._calib_overlay_live = False
         for i, overlay in enumerate(self._calib_overlay_items):
             if overlay is None:
                 continue
@@ -2785,6 +2940,81 @@ class MainWindow(QtWidgets.QMainWindow):
                     pass
             self._calib_overlay_items[i] = None
 
+    def _reset_calibration_overlay_inplace(self) -> None:
+        """Resets the calibration progress overlay in-place for Initialize → Initialize.
+
+        Rather than fading the overlay out then back in, this method:
+          1. Cancels any in-flight fade-in or fade-out animations.
+          2. Snaps the proxy widget back to full opacity (in case a fade was partial).
+          3. Animates the progress-bar fill draining back to 0 over 300 ms so the
+             reset feels intentional rather than jarring.
+          4. Immediately resets the bar colour to blue and the label to the default
+             "Calibration Processing" text.
+
+        The overlay container stays on-screen throughout, so there is no flicker.
+        """
+        # Cancel any in-flight fade-out animations (started by _fade_out_calibration_plot_overlay)
+        for anim in getattr(self, "_fade_anims", []):
+            try:
+                anim.stop()
+            except Exception:
+                pass
+        self._fade_anims = []
+
+        # Cancel any in-flight fade-in animations (started by _show_calibration_plot_overlay)
+        for anim in getattr(self, "_overlay_anims", []):
+            try:
+                anim.stop()
+            except Exception:
+                pass
+        self._overlay_anims = []
+
+        reset_html = (
+            "<b>Calibration Processing</b><br/>"
+            "<span style='font-size:9pt; color:#333333;'>"
+            "The operation will take a few seconds to complete\u2026 please wait\u2026"
+            "</span>"
+        )
+
+        # Keep references so the GC doesn't collect mid-animation
+        self._reset_bar_anims = []
+        for overlay in self._calib_overlay_items:
+            if overlay is None:
+                continue
+            proxy, _, progress_bar, status_label = overlay
+
+            # Ensure the proxy is fully visible regardless of where any fade left it
+            proxy.setOpacity(1.0)
+            proxy.setVisible(True)
+
+            # Animate the fill draining back to 0 so the reset looks deliberate
+            current_val = progress_bar.value()
+            if current_val > 0:
+                bar_anim = QtCore.QVariantAnimation()
+                bar_anim.setDuration(300)
+                bar_anim.setStartValue(float(current_val))
+                bar_anim.setEndValue(0.0)
+                bar_anim.valueChanged.connect(
+                    lambda val, b=progress_bar: b.setValue(int(val))
+                )
+                # Remove from the active list once the drain finishes so that
+                # _update_calibration_ui resumes normal setValue control.
+                bar_anim.finished.connect(
+                    lambda a=bar_anim: self._reset_bar_anims.remove(a)
+                    if hasattr(self, "_reset_bar_anims") and a in self._reset_bar_anims
+                    else None
+                )
+                bar_anim.start()
+                self._reset_bar_anims.append(bar_anim)
+
+            # Reset chunk colour to blue and restore the default label immediately
+            progress_bar.setChunkColor("#2E9BDA")
+            status_label.setTextFormat(QtCore.Qt.RichText)
+            status_label.setText(reset_html)
+
+        self._calib_overlay_ready = False
+
+        
     def _apply_plot_dim(self, plot_item, dim: bool, animate: bool = True) -> None:
         """
         Applies or removes a semi-transparent 'dim' overlay on a single PlotItem.
@@ -2866,12 +3096,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 in_scene = animator._item.scene() is not None
             except RuntimeError:
                 current_op, rect_sz, in_scene = "DEAD", "DEAD", False
-            Log.w(
-                TAG,
-                f"[DIM] plot={id(plot_item)} dim={dim} animate={animate} "
-                f"cur_op={current_op} target={target_opacity} "
-                f"rect={rect_sz} in_scene={in_scene}",
-            )
             animator.fade_to(target_opacity, duration_ms=duration)
             return
 
@@ -2909,11 +3133,6 @@ class MainWindow(QtWidgets.QMainWindow):
         animator = _PlotDimAnimator(dim_rect, parent=self)
         self._dim_overlays[key] = (dim_rect, _resize_cb, animator)
         QtCore.QTimer.singleShot(0, _resize_cb)
-        Log.w(
-            TAG,
-            f"[DIM-NEW] plot={id(plot_item)} dim={dim} animate={animate} "
-            f"initial_rect={dim_rect.rect()} opacity={dim_rect.opacity()}",
-        )
         if animate:
             animator.fade_to(target_opacity, duration_ms=duration)
 
@@ -3444,9 +3663,25 @@ class MainWindow(QtWidgets.QMainWindow):
             plots_already_built = any(p is not None for p in self._plt0_arr) or any(
                 p is not None for p in self._plt2_arr
             )
-            if new_count == current_count and plots_already_built and current_source == new_source:
-                return
 
+            if new_count == current_count and plots_already_built:
+                if current_source != new_source:
+                    # Determine if we are moving into a run state
+                    # If so, we want to suppress the welcome text!
+                    show_text = (new_source != OperationType.measurement)
+                    
+                    # 1. Shift the layouts (Blazing fast)
+                    self._soft_update_plot_layout(new_source)
+                    self._last_configured_source = new_source
+                    
+                    # 2. FIX: Clear old data, re-init lines, AND pass the welcome flag
+                    self.clear(_reinit_curves=True, _show_welcome=show_text)
+                    
+                    # 3. FIX: Ensure the plots are correctly dimmed for the Standby state
+                    self._set_plots_dimmed(
+                        amplitude=True, rf_diss=True, temperature=True, animate=False
+                    )
+                return
             self._last_configured_source = new_source
             self.multiplex_plots = new_count
             if hasattr(self, "_calib_overlay_items"):
@@ -3465,22 +3700,18 @@ class MainWindow(QtWidgets.QMainWindow):
             plt_widget.setUpdatesEnabled(False)
             pltB_widget.setUpdatesEnabled(False)
             try:
+                # If we are moving into a measurement/run mode, suppress the welcome text
+                show_text = (new_source != OperationType.measurement)
+
                 plt_widget.clear()
                 pltB_widget.clear()
-                self.clear(_reinit_curves=False)
-                self._configure_plot()
-                # Leave the newly-built plots in the dim state. animate=False
-                # snaps the dim_rects to opacity 1.0 synchronously. The next
-                # paint (triggered by setUpdatesEnabled(True) below) shows
-                # dim plots directly; there is no bright-frame for the user
-                # to see, no subsequent sudden-dim on Start press. The
-                # internal _set_plots_dimmed call inside clear(_reinit_curves
-                # =False) targets the outgoing plots in self._plt*_arr before
-                # _configure_plot swaps them out, so it does not achieve
-                # this - its dim rects end up parented to orphaned PlotItems
-                # that are about to be GC'd. We need a separate call here,
-                # *after* _configure_plot has populated self._plt*_arr with
-                # the new plots.
+                
+                # Pass the flag to clear
+                self.clear(_reinit_curves=False, _show_welcome=show_text)
+                
+                # Pass the flag to configure_plot
+                self._configure_plot(_show_welcome=show_text)
+                
                 self._set_plots_dimmed(
                     amplitude=True, rf_diss=True, temperature=True, animate=False
                 )
@@ -3823,8 +4054,45 @@ class MainWindow(QtWidgets.QMainWindow):
     ###########################################################################
     # Updates and redraws the graphics in the plot.
     ###########################################################################
+    def _soft_update_plot_layout(self, new_source):
+        """
+        Rapidly repositions existing Amplitude plots based on the current operation mode
+        without destroying and recreating the heavy C++ UI elements.
+        """
+        # The target layout containing the Amplitude plots
+        plt_widget = self.PlotsWin.ui2.plt
+        
+        # Suppress repaints while we shift items around
+        plt_widget.setUpdatesEnabled(False)
+        try:
+            for i in range(len(self._plt0_arr)):
+                plot_layout = self._plt0_arr[i]
+                if plot_layout is None:
+                    continue
 
-    def _configure_plot(self):
+                # Calculate the new target positions
+                span, visible = 1, True
+                x, y = i % 2, (i // 2) + 1
+
+                if new_source == OperationType.measurement:
+                    visible = i == 0
+                    if i == 0:
+                        span, y = 2, 0
+
+                # 1. Update Visibility
+                plot_layout.setVisible(visible)
+
+                # 2. Shift position in the grid
+                # Removing and re-adding an existing item in a pyqtgraph layout is 
+                # nearly instantaneous compared to rebuilding it from scratch.
+                plt_widget.removeItem(plot_layout)
+                plt_widget.addItem(plot_layout, row=y, col=x, colspan=span)
+                
+        finally:
+            # Trigger a single, smooth repaint
+            plt_widget.setUpdatesEnabled(True)
+
+    def _configure_plot(self, _show_welcome=True):
         """Initializes and configures the layout for all PyQtGraph plots.
 
         This method sets up the visual environment for several plot types, including
@@ -3988,7 +4256,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self._plt2_arr[i] = multi_plot
             self._plt3_arr[i] = plot_layout
 
-        self._annotate_welcome_text()
+        if _show_welcome:
+            self._annotate_welcome_text()
+        else:
+            self._remove_welcome_text()
 
         # Configures elements of the PyQtGraph plots: Temperature.
         self._plt4 = self.PlotsWin.ui2.plt.addPlot(
@@ -4448,7 +4719,10 @@ class MainWindow(QtWidgets.QMainWindow):
         layout_info_win.l6a.setText("<font color=#0000ff>  Temperature </font>not available")
         layout_info_win.l6.setText("<font color=#0000ff>  Dissipation </font>not available")
         layout_info_win.l7.setText("<font color=#0000ff>  Resonance Frequency </font>not available")
-
+        if stop_flag:
+            progress_val = 100 if label_status == "Calibration Success" else int(self._completed)
+        else:
+            progress_val = int(self._completed + 1)
         # Progress bar value (hold at 0 on terminal states so bar doesn't jump to 100)
         progress_val = 0 if stop_flag else int(self._completed + 1)
         self.ControlsWin.ui1.run_progress_bar.setValue(progress_val)
@@ -4462,25 +4736,23 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             _, _, _qbar, _lbl = overlay
 
-            _qbar.setValue(progress_val)
-
+            # Don't compete with the drain animation: if _reset_bar_anims is
+            # non-empty we're still draining back to 0, so leave setValue alone
+            # until the animation finishes and clears the list.
+            if not getattr(self, "_reset_bar_anims", []):
+                _qbar.setValue(progress_val)
             # Recolor the progress bar chunk to reflect the current state
-            _qbar.setStyleSheet(
-                "QProgressBar {"
-                "  border: none;"
-                "  border-radius: 3px;"
-                "  background: #e8f4fb;"
-                "}"
-                f"QProgressBar::chunk {{"
-                f"  background: {overlay_bar_color};"
-                "  border-radius: 3px;"
-                "}"
-            )
-            _lbl.setText(
+            _qbar.setChunkColor(overlay_bar_color)
+
+            new_html = (
                 f"<b>{label_status}</b><br/>"
                 f"<span style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</span>"
             )
-            _lbl.setTextFormat(QtCore.Qt.RichText)
+
+            # 4. FIX: Stop HTML Thrashing. Only update the label if the text actually changed!
+            if _lbl.text() != new_html:
+                _lbl.setTextFormat(QtCore.Qt.RichText)
+                _lbl.setText(new_html)
 
         # Tear down
         if stop_flag:
@@ -5591,7 +5863,7 @@ class MainWindow(QtWidgets.QMainWindow):
         device_ports = []
         dev_pids = []
         # Cache results of Discovery().ping() and Discovery().doDiscover()
-        _now = time.monotonic() if hasattr(time, "monotonic") else time.time()
+        _now = monotonic() if hasattr(locals, "monotonic") else time()
         _DISCOVER_TTL_S = 10.0
         _last_discover = getattr(self, "_last_full_discover_ts", 0.0)
         _use_discover_cache = (_now - _last_discover) < _DISCOVER_TTL_S
@@ -5901,7 +6173,7 @@ class MainWindow(QtWidgets.QMainWindow):
     ###########################################################################
     # Cleans history plot
     ###########################################################################
-    def clear(self, _reinit_curves=True):
+    def clear(self, _reinit_curves=True, _show_welcome=True):
         # Batch plot mutations behind setUpdatesEnabled(False/True) on the parent
         # graphics widgets. Without this, each setLimits/setXRange/setYRange call
         # triggers its own scene update, producing visible flicker when Reset or
@@ -5915,7 +6187,11 @@ class MainWindow(QtWidgets.QMainWindow):
             pltB_widget.setUpdatesEnabled(False)
         try:
             if hasattr(self, "_calib_overlay_items"):
-                self._hide_calibration_plot_overlay()
+                if getattr(self, "_reinit_calib_overlay", False):
+                    pass  # Overlay stays intact; start() will reset it in-place
+                else:
+                    # FIX 1: Smoothly fade out the overlay instead of hiding it instantly
+                    self._fade_out_calibration_plot_overlay()
 
             elems = self._plt0_arr + [self._plt1] + self._plt2_arr + self._plt3_arr + [self._plt4]
             for e in elems:
@@ -5924,8 +6200,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     e.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
                     e.setXRange(min=0, max=1)
                     e.setYRange(min=0, max=1)
+            
             if self._plt2_arr[0] != None:
-                self._annotate_welcome_text()
+                # FIX 2: Check the flag before drawing the welcome text!
+                if _show_welcome:
+                    self._annotate_welcome_text()
+                else:
+                    self._remove_welcome_text()
+                    
             self.ControlsWin.ui1.run_progress_bar.setValue(0)
 
             if _reinit_curves and getattr(self, "_plt4", None) is not None:
@@ -5936,14 +6218,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 plt_widget.setUpdatesEnabled(True)
             if pltB_widget is not None:
                 pltB_widget.setUpdatesEnabled(True)
-
+                
     ###########################################################################
     # Reference set/reset
     ###########################################################################
 
     def reference(self):
-        import numpy as np
-
         # import sys
         self._reference_value_frequency.clear()
         self._vector_reference_frequency.clear()
