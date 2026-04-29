@@ -351,7 +351,6 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                 baseline_diss=self._cached_baseline_diss,
             )
             if processed_df is not None and not processed_df.empty:
-                Log.d(self.TAG, f"Running inference on {len(processed_df)}-row input.")
                 pred = self.predict(processed_df)
                 if pred == self._debounce_candidate:
                     self._debounce_count += 1
