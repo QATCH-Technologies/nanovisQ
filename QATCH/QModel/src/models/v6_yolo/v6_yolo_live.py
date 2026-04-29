@@ -86,18 +86,17 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     DEBOUNCE_THRESHOLD = 3
 
     # Per-channel fill duration rules for confirmed channels.
-    # Timed thresholds are re-evaluated each debounce-satisfied cycle so
-    # warnings can fire even when the channel remains stable.
+    # Timed thresholds are measured from the moment Channel 0 (Initial Fill)
+    # is first confirmed.
     # Key   : channel count (matches current_prediction after state change)
     # Value : (threshold_seconds, display_message)
-    #   threshold_seconds = None  -> message fires unconditionally on confirmation.
-    #   threshold_seconds = float -> message fires only if the run's Relative_time at
-    #                               confirmation equals or exceeds the threshold.
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min at Initial Fill, no ch1 yet
-        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min at ch1, no ch2 yet
+        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min since Initial Fill confirmed, no ch1 yet
+        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min since Initial Fill confirmed, no ch2 yet
         3: (None, "Data Ready, Stop"),  # always on 3-channel confirmation
     }
+
+    # Fires directly if stuck in CH0 for 3 mins
     INITIAL_FILL_TIMEOUT_S: float = 180.0
 
     def __init__(self, model_path: str, buffer_window_size: Optional[int] = None):
@@ -226,7 +225,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         """
         if self._initial_fill_timeout_fired:
             return
-        if self.current_prediction < 1:
+
+        # If we are at 1, 2, or 3, this timeout no longer applies.
+        if self.current_prediction >= 1:
             return
 
         ch0_time = self._channel_confirm_times.get(0)
@@ -454,12 +455,8 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         """Evaluates timed fill-duration thresholds for the currently stable channel.
 
         Called on every classification cycle (not just at state transitions) so
-        that 120 s / 240 s warnings fire even when the channel has been
-        stable since its first confirmation.
-
-        Only channels with a non-``None`` threshold in :attr:`DURATION_THRESHOLDS`
-        are evaluated.  Each warning fires at most once per channel, guarded by
-        :attr:`_channel_warning_fired`.
+        that duration warnings fire even when the channel has been stable. Elapsed
+        time is strictly measured from the moment Initial Fill (Channel 0) was confirmed.
 
         Args:
             channel (int): The currently confirmed channel count.
@@ -475,15 +472,13 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         if self._channel_warning_fired.get(channel, False):
             return
 
-        confirm_time = self._channel_confirm_times.get(channel)
-        if confirm_time is None:
-            return
-
-        if self._fill_epoch is None:
-            return  # drop epoch not yet established; cannot evaluate fill duration
+        # BASELINE SHIFT: Fetch the exact time Initial Fill was confirmed
+        ch0_time = self._channel_confirm_times.get(0)
+        if ch0_time is None:
+            return  # Initial fill hasn't happened yet, cannot evaluate fill duration
 
         current_time: float = max(self._last_max_time, 0.0)
-        elapsed_s: float = current_time - self._fill_epoch
+        elapsed_s: float = current_time - ch0_time
 
         if elapsed_s >= threshold_s:
             threshold_min = threshold_s / 60.0
@@ -491,12 +486,12 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             Log.w(
                 self.TAG,
                 f"Extended fill detected: channel {channel} at {elapsed_s:.1f} s "
-                f"since fill epoch (threshold {threshold_min:.0f} min, "
+                f"since Initial Fill (threshold {threshold_min:.0f} min, "
                 f"elapsed {elapsed_min:.2f} min). Latching display message until "
                 f"next channel is confirmed: '{message}'",
             )
-            # Do NOT emit the display message here. Instead arm the latch so that
-            # _on_channel_confirmed will emit it once the next channel is detected.
+            # Arm the latch so that _on_channel_confirmed will emit it
+            # once the next channel is detected.
             self._extended_fill_latched[channel] = True
             self._channel_warning_fired[channel] = True
 
