@@ -37,36 +37,6 @@ class UpdateEngines(Enum):
 # Common constants and parameters for the application.
 ###############################################################################
 class Constants:
-    ###########################
-    # DryDetection parameters #
-    ###########################
-    """
-    The number of samples to evaluate for stability and flatness.
-    - Higher: Increases reliability and noise filtering, but delays detection.
-    - Lower: Faster detection, but higher risk of false positives from noise.
-    """
-    DRYING_WINDOW_SIZE = 2000
-    """
-    The maximum allowed standard deviation (noise floor) for the normalized
-    dissipation signal. Range is [0, 1] due to normalization.
-    - Higher: More "lenient"; triggers even if the signal is jittery.
-    - Lower: More "strict"; requires the signal to be extremely quiet.
-    """
-    DRYING_SIGMA_STABLE_DISSIPATION = 0.25
-    """
-    The maximum allowed standard deviation (noise floor) for the normalized
-    frequency signal. Range is [0, 1] due to normalization.
-    - Higher: Ignores small vibrations or electronic noise in frequency.
-    - Lower: Requires frequency to be perfectly stable.
-    """
-    DRYING_SIGMA_STABLE_FREQUENCY = 0.25
-    """
-    The maximum allowed absolute slope (drift) of the normalized windows.
-    This ensures the signal has reached a true plateau.
-    - Higher: Triggers "dry" earlier, even if the signal is still slightly trending.
-    - Lower: Requires a near-perfectly flat line; ensures drying is 100% complete.
-    """
-    DRYING_FLAT_SLOPE_EPS = 0.000015
 
     ##########################
     # APPLICATION parameters #
@@ -112,6 +82,38 @@ class Constants:
     dissipation_factor_1st_mode = 2.4942e-4
     dissipation_factor_3rd_mode = 1.4400e-4
     dissipation_factor_5th_mode = 1.1154e-4
+
+    ###########################
+    # DryDetection parameters #
+    ###########################
+    """
+    The number of samples to evaluate for stability and flatness.
+    - Higher: Increases reliability and noise filtering, but delays detection.
+    - Lower: Faster detection, but higher risk of false positives from noise.
+    """
+    DRYING_WINDOW_SIZE = 100
+    """
+    The maximum allowed standard deviation (noise floor) for the normalized
+    dissipation signal. Range is [0, 1] due to normalization.
+    - Higher: More "lenient"; triggers even if the signal is jittery.
+    - Lower: More "strict"; requires the signal to be extremely quiet.
+    """
+    DRYING_SNR_STABLE_DISSIPATION = 3e-8
+    """
+    The maximum allowed standard deviation (noise floor) for the normalized
+    frequency signal. Range is [0, 1] due to normalization.
+    - Higher: Ignores small vibrations or electronic noise in frequency.
+    - Lower: Requires frequency to be perfectly stable.
+    """
+    DRYING_SNR_STABLE_FREQUENCY = 9e-1
+    """
+    The maximum allowed absolute slope (drift) of the normalized windows.
+    This ensures the signal has reached a true plateau.
+    - Higher: Triggers "dry" earlier, even if the signal is still slightly trending.
+    - Lower: Requires a near-perfectly flat line; ensures drying is 100% complete.
+    """
+    DRYING_FLAT_SLOPE_EPS_FREQUENCY = 2.9e-2
+    DRYING_FLAT_SLOPE_EPS_DISSIPATION = 6e-10
 
     ###########################
     # FW FILTERING parameters #
@@ -179,6 +181,10 @@ class Constants:
         "#4dbeee",
         "#a2142f",
     ]
+    _CSS_YELLOW = "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
+    _CSS_RED = "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+    _CSS_GREEN = "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
+    _NUM_DISPLAY_POINTS = 12_000
     plot_max_lines = len(plot_colors)
     plot_min_range_freq = 1000  # Hz
     plot_min_range_diss = 10e-6  # Hz
@@ -397,10 +403,19 @@ class Constants:
         1: "Run: %v/%m (Filling)",
         2: "Run: %v/%m (Full Fill)",
     }
+    _FILL_STATE_MAP: dict[int, tuple[int, str]] = {
+        -1: (1, "Sample detected"),
+        0: (2, "Filling started"),
+        1: (3, "Filling"),
+        2: (4, "Almost full"),
+        3: (5, "Complete, stop"),
+    }
+
     ######################
     # ANALYZE parameters #
     ######################
     export_file_format = "_analyze_out.csv"
+    result_file_format = "_analyze_result.csv"
     channel_thickness = 2.25e-6
     smooth_factor_ratio = 0.75
     super_smooth_factor_ratio = 25.0
