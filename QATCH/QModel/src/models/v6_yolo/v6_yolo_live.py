@@ -10,10 +10,10 @@ for the main application.
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-04-10
+    2026-04-29
 
 Version:
-    2.1.3
+    2.1.4
 """
 
 import logging
@@ -23,7 +23,6 @@ import sys
 from logging.handlers import QueueHandler
 from queue import Empty
 from typing import Dict, NamedTuple, Optional, Tuple
-
 import pandas as pd
 
 from QATCH.common.architecture import Architecture
@@ -87,18 +86,17 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     DEBOUNCE_THRESHOLD = 3
 
     # Per-channel fill duration rules for confirmed channels.
-    # Timed thresholds are re-evaluated each debounce-satisfied cycle so
-    # warnings can fire even when the channel remains stable.
+    # Timed thresholds are measured from the moment Channel 0 (Initial Fill)
+    # is first confirmed.
     # Key   : channel count (matches current_prediction after state change)
     # Value : (threshold_seconds, display_message)
-    #   threshold_seconds = None  -> message fires unconditionally on confirmation.
-    #   threshold_seconds = float -> message fires only if the run's Relative_time at
-    #                               confirmation equals or exceeds the threshold.
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min at Initial Fill, no ch1 yet
-        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min at ch1, no ch2 yet
+        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min since Initial Fill confirmed, no ch1 yet
+        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min since Initial Fill confirmed, no ch2 yet
         3: (None, "Data Ready, Stop"),  # always on 3-channel confirmation
     }
+
+    # Fires directly if stuck in CH0 for 3 mins
     INITIAL_FILL_TIMEOUT_S: float = 180.0
 
     def __init__(self, model_path: str, buffer_window_size: Optional[int] = None):
@@ -142,7 +140,47 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         self._cal_csv_path: str = os.path.join(
             Architecture.get_path(), "QATCH", "QModel", "logs", "fill_calibration_30s.csv"
         )
+        self._cached_baseline_freq: Optional[float] = None
+        self._cached_baseline_diss: Optional[float] = None
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
+
+    def _try_cache_baseline(self) -> None:
+        """Captures and caches baseline sensor values from the pre-fill window.
+
+        This method attempts to calculate the mean resonance frequency and
+        dissipation over a predefined time window (defined by
+        `BASELINE_START_TIME` and `BASELINE_END_TIME`). It requires a minimum
+        of 10 data points within this window to ensure statistical validity.
+
+        Once successfully calculated, the baseline values are locked in for
+        the remainder of the run. Subsequent calls to this method will return
+        immediately without recalculating.
+        """
+        if self._cached_baseline_freq is not None:
+            return  # already locked in
+        if self._data is None:
+            return
+
+        mask = (
+            self._data[QModelV6YOLO_DataProcessor.COL_TIME]
+            >= QModelV6YOLO_DataProcessor.BASELINE_START_TIME
+        ) & (
+            self._data[QModelV6YOLO_DataProcessor.COL_TIME]
+            <= QModelV6YOLO_DataProcessor.BASELINE_END_TIME
+        )
+        if mask.sum() < 10:
+            return  # not enough baseline data yet
+
+        self._cached_baseline_freq = self._data.loc[
+            mask, QModelV6YOLO_DataProcessor.COL_FREQ
+        ].mean()
+        self._cached_baseline_diss = self._data.loc[
+            mask, QModelV6YOLO_DataProcessor.COL_DISS
+        ].mean()
+        Log.i(
+            self.TAG,
+            f"Baseline locked: freq={self._cached_baseline_freq:.2f}, diss={self._cached_baseline_diss:.6f}",
+        )
 
     def set_drop_applied_timestamp(self, relative_time: float) -> None:
         """Seeds the fill epoch from the UI-detected drop-application timestamp.
@@ -187,7 +225,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         """
         if self._initial_fill_timeout_fired:
             return
-        if self.current_prediction < 1:
+
+        # If we are at 1, 2, or 3, this timeout no longer applies.
+        if self.current_prediction >= 1:
             return
 
         ch0_time = self._channel_confirm_times.get(0)
@@ -222,17 +262,20 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             Log.e(self.TAG, f"Failed to add chunk: {e}")
 
     def _extend_buffer(self, new_data: pd.DataFrame) -> None:
-        """Extends the internal data buffer with new unique data points.
+        """Extends the internal data buffer with new time-series data.
 
-        Ensures time monotonicity by only adding rows with 'Relative_time' greater
-        than the previously recorded maximum. Also handles sorting and trimming the
-        buffer to the defined `buffer_window_size`.
+        Ensures time monotonicity by filtering the incoming chunk to only include
+        rows where 'Relative_time' is strictly greater than the previously recorded
+        maximum time. If an incoming chunk contains no new data beyond this watermark,
+        a warning is logged and the data is ignored. After appending valid data,
+        the buffer is sorted by time and trimmed to maintain the defined
+        `buffer_window_size`.
 
         Args:
             new_data (pd.DataFrame): DataFrame containing new data to be appended.
 
         Raises:
-            ValueError: If `new_data` is not a DataFrame or is missing the
+            ValueError: If `new_data` is not a pandas DataFrame or is missing the
                 'Relative_time' column.
         """
         if not isinstance(new_data, pd.DataFrame):
@@ -250,10 +293,18 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         else:
             new_data_filtered = new_data[new_data["Relative_time"] > self._last_max_time]
 
-            if not new_data_filtered.empty:
+            if new_data_filtered.empty and not new_data.empty:
+                Log.w(
+                    self.TAG,
+                    f"Received new data chunk with max Relative_time "
+                    f"{new_data['Relative_time'].max():.2f} s, which is not greater than "
+                    f"current buffer max {self._last_max_time:.2f} s. No new rows added.",
+                )
+            elif not new_data_filtered.empty:
                 new_data_aligned = new_data_filtered.reindex(columns=self._data.columns)
                 self._data = pd.concat([self._data, new_data_aligned], ignore_index=True)
                 self._prediction_buffer_size += len(new_data_filtered)
+
         if self._data is not None and not self._data.empty:
             self._last_max_time = self._data["Relative_time"].max()
             self._data.sort_values(by="Relative_time", ascending=True, inplace=True)
@@ -266,20 +317,24 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         """Executes the classification pipeline on the current buffered data.
 
         This method validates data length against `QModelV6Config.MIN_SLICE_LENGTH`,
-        filters for valid time ranges (Relative_time > 0.05), applies preprocessing,
-        and runs the model inference.
+        filters for valid time ranges (Relative_time > 0.05), caches pre-fill baselines
+        if available, applies preprocessing, and runs the model inference.
 
-        When debounce confirms a new channel state this method also:
+        It utilizes a debounce mechanism to stabilize the raw model predictions.
+        Additionally, this method manages live diagnostic states:
 
-        * Records the confirmation time in ``_channel_confirm_times``.
-        * Compares the elapsed run time against ``DURATION_THRESHOLDS``.
-        * Emits a ``Log.w`` warning if the fill exceeded the expected duration.
-        * Stores a one-shot display message in ``_pending_display_message`` for the
-          process layer to forward to the main UI.
+        * State Transitions: When debounce confirms a *new* channel state, it triggers
+          one-time bookkeeping (recording confirmation time and emitting immediate,
+          unconditional display messages).
+        * Duration Monitoring: Re-evaluates timed duration thresholds
+          (DURATION_THRESHOLDS) every cycle for the currently confirmed channel,
+          ensuring extended-fill warnings fire even if the channel has been stable.
+        * Timeout Checks: Evaluates `_check_initial_fill_timeout` on every successful
+          inference cycle to ensure the process hasn't stalled at the 'Initial Fill' stage.
 
         Returns:
             int: The classification result class ID. Returns the previous `current_prediction`
-            if the buffer is insufficient, empty, or if inference fails.
+            if the buffer is insufficient, empty, or if preprocessing/inference fails.
         """
         if self._data is None or len(self._data) < QModelV6Config.MIN_SLICE_LENGTH:
             return self.current_prediction
@@ -290,7 +345,12 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                 Log.d(self.TAG, "Waiting for > 0.05s of buffer data.")
                 return self.current_prediction
 
-            processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(filtered.copy())
+            self._try_cache_baseline()
+            processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(
+                filtered.copy(),
+                baseline_freq=self._cached_baseline_freq,
+                baseline_diss=self._cached_baseline_diss,
+            )
             if processed_df is not None and not processed_df.empty:
                 pred = self.predict(processed_df)
                 if pred == self._debounce_candidate:
@@ -311,11 +371,12 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                     # when the channel has been stable since first confirmation.
                     self._evaluate_duration_threshold(self.current_prediction)
                 self._check_initial_fill_timeout()
+
             else:
                 Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
 
         except Exception as e:
-            Log.e(self.TAG, f"Inference failed: {str(e)}")
+            Log.e(self.TAG, f"Inference failed at buffer size {len(self._data)}: {str(e)}")
 
         return self.current_prediction
 
@@ -394,12 +455,8 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         """Evaluates timed fill-duration thresholds for the currently stable channel.
 
         Called on every classification cycle (not just at state transitions) so
-        that 120 s / 240 s warnings fire even when the channel has been
-        stable since its first confirmation.
-
-        Only channels with a non-``None`` threshold in :attr:`DURATION_THRESHOLDS`
-        are evaluated.  Each warning fires at most once per channel, guarded by
-        :attr:`_channel_warning_fired`.
+        that duration warnings fire even when the channel has been stable. Elapsed
+        time is strictly measured from the moment Initial Fill (Channel 0) was confirmed.
 
         Args:
             channel (int): The currently confirmed channel count.
@@ -415,15 +472,13 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         if self._channel_warning_fired.get(channel, False):
             return
 
-        confirm_time = self._channel_confirm_times.get(channel)
-        if confirm_time is None:
-            return
-
-        if self._fill_epoch is None:
-            return  # drop epoch not yet established; cannot evaluate fill duration
+        # BASELINE SHIFT: Fetch the exact time Initial Fill was confirmed
+        ch0_time = self._channel_confirm_times.get(0)
+        if ch0_time is None:
+            return  # Initial fill hasn't happened yet, cannot evaluate fill duration
 
         current_time: float = max(self._last_max_time, 0.0)
-        elapsed_s: float = current_time - self._fill_epoch
+        elapsed_s: float = current_time - ch0_time
 
         if elapsed_s >= threshold_s:
             threshold_min = threshold_s / 60.0
@@ -431,12 +486,12 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             Log.w(
                 self.TAG,
                 f"Extended fill detected: channel {channel} at {elapsed_s:.1f} s "
-                f"since fill epoch (threshold {threshold_min:.0f} min, "
+                f"since Initial Fill (threshold {threshold_min:.0f} min, "
                 f"elapsed {elapsed_min:.2f} min). Latching display message until "
                 f"next channel is confirmed: '{message}'",
             )
-            # Do NOT emit the display message here. Instead arm the latch so that
-            # _on_channel_confirmed will emit it once the next channel is detected.
+            # Arm the latch so that _on_channel_confirmed will emit it
+            # once the next channel is detected.
             self._extended_fill_latched[channel] = True
             self._channel_warning_fired[channel] = True
 
@@ -585,8 +640,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             mp_logger.setLevel(logging.WARNING)
 
             self._classifier = QModelV6YOLO_Live(
-                model_path=self.model_path,
-                buffer_window_size=self.buffer_window_size,
+                model_path=self.model_path, buffer_window_size=self.buffer_window_size
             )
             Log.i(TAG, "YOLO Live Process Started and Model Loaded.")
 
@@ -631,7 +685,6 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 if data_received:
                     pred_int = self._classifier.attempt_classification()
                     pred_str = self._classifier.get_status_str()
-                    # Consume the one-shot display message (None if nothing pending).
                     display_message: Optional[str] = (
                         self._classifier.get_and_clear_display_message()
                     )

@@ -1,5 +1,6 @@
-# module: QModelV6Dataprocessor.py
 """
+QModelV6Dataprocessor.py
+
 This module provides the data preprocessing and visualization logic required for the
 QModel V6 YOLO pipeline. It handles the transformation of raw sensor CSV data into
 interpolated time-series data, computes derived features (like the Difference curve),
@@ -14,19 +15,21 @@ Dependencies:
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-01-09
+    2026-04-29
 
 Version:
-    6.0.1
+    6.0.2
 """
 
+import os
+import datetime
 from typing import Any
 
 import cv2
 import numpy as np
 import pandas as pd
 from scipy.signal import medfilt
-
+from typing import Optional
 from QATCH.common.logger import Logger as Log
 
 
@@ -139,7 +142,9 @@ class QModelV6YOLO_DataProcessor:
         return df
 
     @classmethod
-    def preprocess_dataframe(cls, df: pd.DataFrame) -> pd.DataFrame:
+    def preprocess_dataframe(
+        cls, df: pd.DataFrame, baseline_freq: float, baseline_diss: float
+    ) -> pd.DataFrame:
         """
         Cleans, interpolates, and enriches the raw sensor dataframe.
 
@@ -169,7 +174,7 @@ class QModelV6YOLO_DataProcessor:
         combined_index = df.index.union(new_time_grid).sort_values()
         df = df.reindex(combined_index).interpolate(method="index").loc[new_time_grid]
         df = df.reset_index().rename(columns={"index": cls.COL_TIME})
-        diff_series = cls._compute_difference_curve(df)
+        diff_series = cls._compute_difference_curve(df, baseline_freq, baseline_diss)
         df[cls.COL_DIFF] = diff_series if diff_series is not None else 0.0
         for col in df.columns:
             if col != cls.COL_TIME and pd.api.types.is_numeric_dtype(df[col]):
@@ -177,16 +182,32 @@ class QModelV6YOLO_DataProcessor:
         return df
 
     @classmethod
-    def _compute_difference_curve(cls, df: pd.DataFrame) -> pd.Series:
+    def _compute_difference_curve(
+        cls,
+        df: pd.DataFrame,
+        avg_res_freq: Optional[float] = None,
+        avg_diss: Optional[float] = None,
+    ) -> pd.Series:
         """
         Computes the 'Difference' signal derived from Dissipation and Resonance Frequency.
 
         The calculation uses a baseline window (defined by `BASELINE_START_TIME` and
         `BASELINE_END_TIME`) to normalize the signals before computing the difference.
+        If pre-computed baseline values are supplied (e.g. cached before the rolling
+        buffer evicts early data), those are used directly and the window search is
+        skipped entirely.  This ensures the Difference curve remains anchored to the
+        true pre-fill reference even after the buffer has been trimmed past the
+        baseline window.
 
         Args:
             df (pd.DataFrame): The dataframe containing `Dissipation`,
                 `Resonance_Frequency`, and `Relative_time`.
+            avg_res_freq (Optional[float]): Pre-computed baseline mean of
+                `Resonance_Frequency`.  When provided together with `avg_diss`,
+                the baseline window search is bypassed.
+            avg_diss (Optional[float]): Pre-computed baseline mean of
+                `Dissipation`.  When provided together with `avg_res_freq`,
+                the baseline window search is bypassed.
 
         Returns:
             pd.Series: A pandas Series containing the computed difference values,
@@ -199,17 +220,25 @@ class QModelV6YOLO_DataProcessor:
         xs = df[cls.COL_TIME].values
         if len(xs) == 0:
             return None
-        i = np.searchsorted(xs, cls.BASELINE_START_TIME)
-        j = np.searchsorted(xs, cls.BASELINE_END_TIME)
 
-        if i == j and j < len(xs):
-            j = np.searchsorted(xs, xs[j] + cls.BASELINE_WINDOW_OFFSET)
+        # Only run the window search when the caller has not supplied a cached
+        # baseline.  Once the rolling buffer trims past BASELINE_END_TIME the
+        # search degenerates and returns mid-run data as the reference, which
+        # produces a permanently shifted Difference curve.
+        if avg_res_freq is None or avg_diss is None:
+            i = np.searchsorted(xs, cls.BASELINE_START_TIME)
+            j = np.searchsorted(xs, cls.BASELINE_END_TIME)
 
-        if i >= len(df) or j > len(df) or i == j:
-            i, j = 0, min(100, len(df))
+            # Baseline window collapsed to a single point
+            if i == j and j < len(xs):
+                j = np.searchsorted(xs, xs[j] + cls.BASELINE_WINDOW_OFFSET)
 
-        avg_res_freq = df[cls.COL_FREQ].iloc[i:j].mean()
-        avg_diss = df[cls.COL_DISS].iloc[i:j].mean()
+            # Window is still degenerate or out of range
+            if i >= len(df) or j > len(df) or i == j:
+                i, j = 0, min(100, len(df))
+
+            avg_res_freq = df[cls.COL_FREQ].iloc[i:j].mean()
+            avg_diss = df[cls.COL_DISS].iloc[i:j].mean()
 
         ys_diss = (df[cls.COL_DISS].values - avg_diss) * avg_res_freq / 2
         ys_freq = avg_res_freq - df[cls.COL_FREQ].values
@@ -315,7 +344,17 @@ class QModelV6YOLO_DataProcessor:
                 thickness=1,
                 lineType=cv2.LINE_AA,
             )
+        # try:
+        #     debug_dir = "debug_vision"
+        #     os.makedirs(debug_dir, exist_ok=True)
 
+        #     # Use a high-precision timestamp so frames processed in the same second don't overwrite
+        #     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        #     filepath = os.path.join(debug_dir, f"fill_cls_{timestamp}.png")
+
+        #     cv2.imwrite(filepath, img)
+        # except Exception as e:
+        #     print(f"Failed to save debug image: {e}")k
         return img
 
     @classmethod

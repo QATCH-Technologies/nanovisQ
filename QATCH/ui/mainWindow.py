@@ -1481,7 +1481,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_dry_msg: str = "Preparing sensor..."
         self._last_dry_status: bool = False
         self.dry_detect = []
-        for _ in range(4):
+        n_devices = self.ControlsWin.ui1.cBox_Port.count() - 1
+        for _ in range(n_devices):
             self.dry_detect.append(
                 DryingDetection(
                     window_size=Constants.DRYING_WINDOW_SIZE,
@@ -3902,19 +3903,31 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Check rate-limit; update timestamp if ready
         if now - getattr(self, "_last_forecaster_push_time", 0.0) > 0.2:
-            self._last_forecaster_push_time = now
-
-            # Only push if queue is empty to prevent backlog
             if self.worker._forecaster_in.empty():
-                self.worker._forecaster_in.put(
-                    WorkerSnapshot(
-                        self.worker.get_t1_buffer(0)[-500:],
-                        data_resonance_frequency[-500:],
-                        data_dissipation[-500:],
-                    )
-                )
+                t_buf = np.asarray(self.worker.get_t1_buffer(0), dtype=np.float64).copy()
+                f_buf = np.asarray(data_resonance_frequency, dtype=np.float64).copy()
+                d_buf = np.asarray(data_dissipation, dtype=np.float64).copy()
 
-        # Keep checking the output queue.
+                # Align to the shortest buffer to defend against mismatched lengths
+                # between t1/d1/d2 caused by the worker appending mid-fetch.
+                n = min(len(t_buf), len(f_buf), len(d_buf))
+                if n == 0:
+                    return
+                t_buf, f_buf, d_buf = t_buf[:n], f_buf[:n], d_buf[:n]
+                last_t = getattr(self, "_last_pushed_relative_time", -float("inf"))
+                new_mask = t_buf > last_t
+                if not new_mask.any():
+                    return
+                MAX_PAYLOAD = 2000
+                t_send = t_buf[new_mask][-MAX_PAYLOAD:]
+                f_send = f_buf[new_mask][-MAX_PAYLOAD:]
+                d_send = d_buf[new_mask][-MAX_PAYLOAD:]
+
+                self.worker._forecaster_in.put(
+                    WorkerSnapshot(t_send, f_send, d_send)
+                )
+                self._last_pushed_relative_time = float(t_send[-1])
+                self._last_forecaster_push_time = now
         if self.worker._forecaster_out.empty():
             return
 
@@ -3922,7 +3935,6 @@ class MainWindow(QtWidgets.QMainWindow):
             pred_int, _, display_msg = self.worker._forecaster_out.get()
             if display_msg is not None:
                 self._fill_display_msg = display_msg
-
             if not all(self._drop_applied):
                 # Mirror dry/drop status before the drop is confirmed
                 status_msg = "Add sample" if self._last_dry_status else self._last_dry_msg
@@ -7494,7 +7506,6 @@ class TECTask(QtCore.QThread):
         #         return net_exists
         return False
 
-
 class DryingDetection:
     """State machine for detecting when a sensor has dried.
 
@@ -7519,6 +7530,7 @@ class DryingDetection:
         snr_stable_diss: float,
         flat_slope_eps_diss: float,
         flat_slope_eps_freq: float,
+        debug_plot: bool = False,
     ) -> None:
         self.win_n = int(window_size)
         self.freq_w = deque(maxlen=self.win_n)
@@ -7532,6 +7544,10 @@ class DryingDetection:
         self._last_message: str = ""
         self._init_exec: bool = True
         self._start_time = 0.0
+        self.debug_plot = debug_plot
+        if self.debug_plot:
+            self.plotter = LivePlotHelper()
+
         self.reset()
 
     def reset(self) -> None:
@@ -7610,19 +7626,27 @@ class DryingDetection:
         self.freq_w.extend(f_arr)
         self.diss_w.extend(d_arr)
         self.time_w.extend(t_arr)
-
         current_time = float(t_arr.max())
-
-        if np.max(t_arr) < 10.0 and self._sample_count < self.win_n:
-            self._last_message = "Calibrating..."
-            return False, self._last_message
-
         arr_f = np.array(self.freq_w, dtype=float)
         arr_d = np.array(self.diss_w, dtype=float)
         snr_f = self._compute_snr(arr_f)
         snr_d = self._compute_snr(arr_d)
         slope_f = self._compute_slope(arr_f)
         slope_d = self._compute_slope(arr_d)
+        if getattr(self, "debug_plot", False):
+            current_stats = {"snr_f": snr_f, "slope_f": slope_f, "snr_d": snr_d, "slope_d": slope_d}
+            thresholds = {
+                "snr_f": self.snr_stable_freq,
+                "slope_f": self.flat_eps_freq,
+                "snr_d": self.snr_stable_diss,
+                "slope_d": self.flat_eps_diss,
+            }
+            self.plotter.render_frame(
+                self.time_w, self.freq_w, self.diss_w, current_stats, thresholds
+            )
+        if np.max(t_arr) < 10.0:
+            self._last_message = "Calibrating..."
+            return False, self._last_message
 
         sensor_not_dry = (
             snr_f >= self.snr_stable_freq
@@ -7677,3 +7701,85 @@ class DryingDetection:
         # return np.power(float(np.nanmean(arr)), 2) / sigma
         sigma = float(np.nanstd(arr))
         return sigma
+
+
+class LivePlotHelper:
+
+    def __init__(self):
+        
+
+        plt.ion()
+        self.fig, (self.ax_freq, self.ax_diss) = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
+        self.fig.canvas.manager.set_window_title("Drying Detection Live View")
+        self.fig.suptitle("Live View")
+
+        (self.line_freq,) = self.ax_freq.plot([], [], "b-", linewidth=1.5, label="Resonance Freq")
+        (self.line_diss,) = self.ax_diss.plot([], [], "r-", linewidth=1.5, label="Dissipation")
+
+        self.ax_freq.set_ylabel("Frequency")
+        self.ax_freq.legend(loc="upper right")
+        self.ax_freq.grid(True, linestyle="--", alpha=0.6)
+
+        self.ax_diss.set_ylabel("Dissipation")
+        self.ax_diss.set_xlabel("Relative Time")
+        self.ax_diss.legend(loc="upper right")
+        self.ax_diss.grid(True, linestyle="--", alpha=0.6)
+        box_props = dict(boxstyle="round,pad=0.5", facecolor="white", alpha=0.8, edgecolor="gray")
+        self.text_freq = self.ax_freq.text(
+            0.02,
+            0.95,
+            "",
+            transform=self.ax_freq.transAxes,
+            fontsize=10,
+            verticalalignment="top",
+            bbox=box_props,
+            family="monospace",
+        )
+        self.text_diss = self.ax_diss.text(
+            0.02,
+            0.95,
+            "",
+            transform=self.ax_diss.transAxes,
+            fontsize=10,
+            verticalalignment="top",
+            bbox=box_props,
+            family="monospace",
+        )
+
+        self.fig.tight_layout()
+
+    def render_frame(self, time_w, freq_w, diss_w, stats: dict, thresholds: dict):
+        if not time_w:
+            return
+        t_arr = np.array(time_w)
+        self.line_freq.set_data(t_arr, np.array(freq_w))
+        self.line_diss.set_data(t_arr, np.array(diss_w))
+        f_snr_ok = "✗" if stats["snr_f"] >= thresholds["snr_f"] else "✓"
+        f_slp_ok = "✗" if abs(stats["slope_f"]) >= thresholds["slope_f"] else "✓"
+
+        freq_str = (
+            f"StdDev: {stats['snr_f']:.3e} / {thresholds['snr_f']:.3e} [{f_snr_ok}]\n"
+            f"Slope (Abs):  {abs(stats['slope_f']):.3e} / {thresholds['slope_f']:.3e} [{f_slp_ok}]"
+        )
+        self.text_freq.set_text(freq_str)
+
+        d_snr_ok = "✗" if stats["snr_d"] >= thresholds["snr_d"] else "✓"
+        d_slp_ok = "✗" if abs(stats["slope_d"]) >= thresholds["slope_d"] else "✓"
+
+        diss_str = (
+            f"StdDev: {stats['snr_d']:.3e} / {thresholds['snr_d']:.3e} [{d_snr_ok}]\n"
+            f"Slope (Abs):  {abs(stats['slope_d']):.3e} / {thresholds['slope_d']:.3e} [{d_slp_ok}]"
+        )
+        self.text_diss.set_text(diss_str)
+        self.ax_freq.relim()
+        self.ax_freq.autoscale_view(scalex=True, scaley=True)
+        self.ax_diss.relim()
+        self.ax_diss.autoscale_view(scalex=True, scaley=True)
+
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+
+    def close(self):
+        plt.ioff()
+        plt.close(self.fig)
+
