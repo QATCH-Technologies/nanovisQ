@@ -62,9 +62,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
-        return ST1  # always
 
-        # NOTE: This function is not currently used; returning constant value above
+        if concentration <= 123:  # mg/mL
+            return ST1
+
+        # See issue #383: Concentration-Based Surface Tension Correction Formula
+        correction = np.polyval([0.0016, 0.8026], concentration)
+        return round(ST1 / correction, 1)
+
+        # NOTE: The rest of function is not currently used; returning corrected value above
         if concentration > 2:  # mg/mL
             ST1 = 57.5
         return ST1  # always
@@ -6593,7 +6599,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             # calculate normalized curve
             normal_x = xs[t0 : t1 + 1]
-            normal_y = ys_diff[t0 : t1 + 1]
+            normal_y = ys_freq[t0 : t1 + 1]
             n_max = np.amax(normal_y)
             n_min = np.amin(normal_y)
 
