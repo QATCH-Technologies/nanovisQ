@@ -9,7 +9,7 @@ import sys
 import threading
 from io import BytesIO
 from time import localtime, sleep, strftime
-from typing import Optional
+from typing import Optional, cast
 from xml.dom import minidom
 
 import numpy as np
@@ -1197,13 +1197,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.v6_predict_progress.connect(self._QModel_v6_progress_update)
 
     def _show_analyze_plot_overlay(self) -> None:
-        """Creates the 'Analyze in-progress' placeholder figure, embeds a
-        progress overlay into it, and places it into ``results_split.widget(1)``.
+        """Creates and displays a progress overlay on the analysis plot.
 
-        The overlay is a semi-transparent ``QWidget`` (status label +
-        ``QProgressBar``) wrapped in a ``QGraphicsProxyWidget`` and parented to
-        the ``PlotItem``'s ``graphicsItem()``, consistent with the calibration
-        overlay pattern in ``mainWindow.py``.
+        This method initializes a placeholder ``pg.PlotWidget``, embeds a 
+        semi-transparent status overlay (containing a label and a progress bar), 
+        and inserts it into the results splitter. The overlay is wrapped in a 
+        ``QGraphicsProxyWidget`` to float above the ``PlotItem``.
+
+        The overlay is automatically centered within the ViewBox using a 
+        single-shot timer to ensure layout calculations are complete before 
+        positioning.
         """
         self._hide_analyze_plot_overlay()
         results_figure = pg.PlotWidget()
@@ -1212,7 +1215,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         plot_text = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
         plot_text.setHtml("<span style='font-size: 10pt'>Analyze in-progress...</span>")
         plot_text.setPos(0.5, 0.5)
-        results_figure.addItem(plot_text, ignoreBounds=True)
+
+        plot_text.setFlag(plot_text.GraphicsItemFlag.ItemHasNoContents, False) 
+        results_figure.addItem(plot_text)
         self.results_split.replaceWidget(1, results_figure)
         self.results_split.setEnabled(False)
         self._analyze_results_figure = results_figure
@@ -1248,7 +1253,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         layout.setSpacing(6)
 
         status_label = QtWidgets.QLabel("Starting\u2026")
-        status_label.setAlignment(QtCore.Qt.AlignCenter)
+        status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         progress_bar = QtWidgets.QProgressBar()
         progress_bar.setRange(0, 100)
@@ -1261,11 +1266,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         proxy = QtWidgets.QGraphicsProxyWidget()
         proxy.setWidget(container)
-        proxy.setParentItem(plot_item.graphicsItem())
+        plot_item = cast(pg.PlotItem, results_figure.getPlotItem())
+        graphics_container = plot_item.graphicsItem()
+
+        if graphics_container:
+            proxy.setParentItem(graphics_container)
         proxy.setZValue(1000)
 
         def _center() -> None:
             try:
+                plot_item = results_figure.getPlotItem()
+                if plot_item is None:
+                    return
                 vb = plot_item.getViewBox()
                 vb_rect = vb.mapRectToItem(plot_item.graphicsItem(), vb.boundingRect())
                 pw = proxy.boundingRect().width()
@@ -1282,12 +1294,24 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._analyze_overlay = (proxy, progress_bar, status_label)
 
     def _update_analyze_plot_overlay(self, value: int, status: str) -> None:
-        """Updates the in-plot Analyze overlay with the latest progress value
-        and status text.
+        """Updates the progress percentage and status message on the plot overlay.
+
+        This method updates the visual state of the ``QProgressBar`` and 
+        ``QLabel`` stored in the overlay tuple. It caps the progress bar value 
+        at 99 to prevent it from showing a "Complete" state before the 
+        finalization logic triggers. It also forces a UI event loop process 
+        to ensure the display refreshes during long-running operations.
 
         Args:
-            value (int): Current progress percentage (0-100).
-            status (str): Human-readable description of the current step.
+            value: The current progress percentage, typically between 0 and 100.
+                The visual bar is capped at 99 internally.
+            status: A string description of the current analysis step (e.g., 
+                "Calculating FFT...", "Filtering data...").
+
+        Note:
+            This method calls ``QCoreApplication.processEvents()``, which 
+            temporarily allows the UI to stay responsive but should be used 
+            cautiously to avoid re-entrancy issues.
         """
         overlay = getattr(self, "_analyze_overlay", None)
         if overlay is None:
@@ -1300,13 +1324,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
         QtCore.QCoreApplication.processEvents()
 
     def _hide_analyze_plot_overlay(self) -> None:
-        """Removes the in-plot Analyze overlay and handles task failure.
+        """Removes the analysis progress overlay and handles task termination state.
 
-        On success the bar briefly advances to 100 % before teardown.  On
-        failure a warning popup is raised, identical to the previous
-        ``_close_analyze_progress_dialog`` behaviour.
+        This method cleans up the graphics overlay by detaching the proxy widget
+        from the scene. If the underlying analysis task finished successfully, 
+        the progress bar is briefly set to 100%. If the task failed (based on 
+        the worker's exit code), a warning dialog is displayed to the user.
 
-        Safe to call even when no overlay exists.
+        The method is designed to be idempotent and is safe to call even if the 
+        overlay has already been removed or was never initialized.
+
+        Raises:
+            RuntimeError: Silently handles cases where the underlying Qt objects 
+                have already been deleted by the C++ runtime.
         """
         overlay = getattr(self, "_analyze_overlay", None)
         if overlay is None:
@@ -1333,12 +1363,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._analyze_overlay = None
 
     def _show_qmodel_plot_overlay(self) -> None:
-        """Embeds a dimming layer and progress overlay into ``self.graphWidget``
-        during QModel inference, without clearing or replacing the existing plot.
+        """Embeds a dimming layer and progress overlay into the main graph widget.
 
-        Both items are parented to the PlotItem's ``graphicsItem()`` and tracked
-        in ``self._qmodel_overlay`` as ``(proxy, dim_rect, progress_bar,
-        status_label)`` for update and teardown.
+        This method initializes a visual overlay for QModel inference. Unlike the 
+        analysis plot, this does not replace the widget; instead, it layers a 
+        semi-transparent ``QGraphicsRectItem`` over the existing plot to "dim" it, 
+        then places a progress bar and label on top. 
+
+        The dimming rectangle and the progress widget are both parented to the 
+        ``PlotItem``'s graphics item and managed via a tracking tuple for 
+        dynamic resizing and eventual removal.
+
+        Note:
+            Uses a single-shot timer to execute centering logic (``_center``) 
+            to ensure that the ``ViewBox`` geometry is fully calculated before 
+            the dimming rectangle is drawn.
         """
         self._hide_qmodel_plot_overlay()
 
@@ -1412,38 +1451,85 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self._qmodel_overlay = (proxy, dim_rect, progress_bar, status_label)
 
-
     def _update_qmodel_plot_overlay(self, pct: int, status: str) -> None:
-        """Updates the QModel overlay's progress bar and status label.
+        """Updates the QModel overlay with smoothed progress and status text.
 
-        Switches the bar from indeterminate to determinate on the first real
-        percentage value received, then drives the bar and label text normally.
+        This method implements a animation pattern to decouple 
+        the UI refresh rate from the worker signal frequency. It uses a 
+        high-precision range (0-10,000) and a 60 FPS timer to animate the 
+        progress bar toward the target value using a liquid ease-out effect 
+        (interpolating 10% of the remaining distance per frame).
+
+        The animation protects the UI from 'jitter' caused by rapid, successive 
+        progress updates from the inference worker.
 
         Args:
-            pct (int): Current progress percentage (0-100).
-            status (str): Human-readable description of the current model step.
+            pct: The current progress percentage (0-100). The visual target 
+                is capped at 99 internally until the hide method is called.
+            status: A human-readable string describing the current inference 
+                step.
         """
         overlay = getattr(self, "_qmodel_overlay", None)
         if overlay is None:
             return
-        _proxy, _dim, progress_bar, status_label = overlay
-
+            
+        _proxy, _dim_rect, progress_bar, status_label = overlay
         if pct > 0 and progress_bar.maximum() == 0:
-            progress_bar.setRange(0, 100) 
+            progress_bar.setRange(0, 10000)
 
-        progress_bar.setValue(pct)
+        target_value = int(min(pct, 99) * 100)
+        if not hasattr(progress_bar, "_chase_timer"):
+            progress_bar._target_value = 0
+            progress_bar._current_float = float(progress_bar.value())
+            progress_bar._chase_timer = QtCore.QTimer()
+            progress_bar._chase_timer.setInterval(16)
+            
+            def chase_target():
+                # Calculate distance to target
+                diff = progress_bar._target_value - progress_bar._current_float
+                
+                if abs(diff) < 5.0:
+                    progress_bar._current_float = float(progress_bar._target_value)
+                    progress_bar.setValue(int(progress_bar._current_float))
+                    progress_bar._chase_timer.stop()
+                else:
+                    progress_bar._current_float += diff * 0.10
+                    progress_bar.setValue(int(progress_bar._current_float))
+                    
+            progress_bar._chase_timer.timeout.connect(chase_target)
+
+        progress_bar._target_value = target_value
+        if not progress_bar._chase_timer.isActive():
+            progress_bar._chase_timer.start()
+
         if status and len(status):
             status_label.setText(status)
-
+            
         QtCore.QCoreApplication.processEvents()
 
-    def _hide_qmodel_plot_overlay(self) -> None:
-        """Removes the QModel dim layer and progress overlay from ``graphWidget``."""
+    def _hide_qmodel_plot_overlay(self, failed: bool = False) -> None:
+        """Removes the QModel dimming layer and progress overlay.
+
+        This method performs a comprehensive cleanup of the QModel UI state. It 
+        stops the internal animation timer (Target Chaser), optionally snaps 
+        the progress bar to 100% on success, and removes both the 
+        ``QGraphicsProxyWidget`` and the ``QGraphicsRectItem`` from the scene.
+
+        Args:
+            failed: If True, skips the 100% progress snap and displays a 
+                warning popup. Defaults to False.
+        """
         overlay = getattr(self, "_qmodel_overlay", None)
         if overlay is None:
             return
 
-        proxy, dim_rect, _qbar, _lbl = overlay
+        proxy, dim_rect, progress_bar, _status_label = overlay
+        if hasattr(progress_bar, "_chase_timer"):
+            progress_bar._chase_timer.stop()
+        if not failed and progress_bar.maximum() > 0:
+            progress_bar.setValue(10000)
+            QtCore.QCoreApplication.processEvents()
+
         for item in (proxy, dim_rect):
             try:
                 item.setParentItem(None)
@@ -1454,6 +1540,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 pass
 
         self._qmodel_overlay = None
+
+        if failed:
+            PopUp.warning(self, Constants.app_title, "QModel inference failed.")
 
     def _validate_run(self):
         """
