@@ -6,13 +6,11 @@ import hashlib
 # from QATCH.QModel.q_data_pipeline import QDataPipeline
 import os
 import sys
-import threading
 from io import BytesIO
-from typing import Optional, cast, List, Tuple
+from typing import Optional, cast, List, Tuple, Any, Dict
 from time import monotonic
-from typing import Optional
 from xml.dom import minidom
-
+import xml.etree.ElementTree as ET
 import numpy as np
 import pyqtgraph as pg
 import pyzipper
@@ -1616,7 +1614,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def showRunsFromAllDevices_clicked(self):
         self.cBox_Devices.setEnabled(not self.showRunsFromAllDevices.isChecked())
-        self.updateRun(self.cBox_Devices.currentIndex())
+        self.update_run(self.cBox_Devices.currentIndex())
 
     def switch_user_at_sign_time(self):
         new_username, new_initials, new_userrole = UserProfiles.change(UserRoles.ANALYZE)
@@ -1675,9 +1673,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             Log.d("User did not authenticate for role to switch users.")
 
-    def action_sort_by_name(self, obj):
+    def action_sort_by_name(self, obj: Any) -> None:
+        """Sets the run sorting order to alphabetical by name and updates the UI.
+
+        Updates the internal sort order state to 0 (name), triggers a refresh 
+        of the run selection combobox, and applies bold CSS styling to the 
+        'sort by name' label while resetting the 'sort by date' label.
+
+        Args:
+            obj (Any): The event object passed by the Qt signal (e.g., a 
+                QMouseEvent), or None if called programmatically.
+        """
         self.sort_order = 0
-        self.updateRun(self.cBox_Devices.currentIndex())
+        self._refresh_cbox_runs()
         self.sort_by_name.setStyleSheet(
             "color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;"
         )
@@ -1685,9 +1693,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
             "color: #0D4AAF; text-decoration: none; padding-left: 15px;"
         )
 
-    def action_sort_by_date(self, obj):
+    def action_sort_by_date(self, obj: Any) -> None:
+        """Sets the run sorting order to chronological by date and updates the UI.
+
+        Updates the internal sort order state to 1 (date), triggers a refresh 
+        of the run selection combobox, and applies bold CSS styling to the 
+        'sort by date' label while resetting the 'sort by name' label.
+
+        Args:
+            obj (Any): The event object passed by the Qt signal (e.g., a 
+                QMouseEvent), or None if called programmatically.
+        """
         self.sort_order = 1
-        self.updateRun(self.cBox_Devices.currentIndex())
+        self._refresh_cbox_runs()
         self.sort_by_name.setStyleSheet(
             "color: #0D4AAF; text-decoration: none; padding-left: 15px;"
         )
@@ -2234,29 +2252,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.clear()
 
-    def find_most_recent_run(self):
-        device_idx = 0
-        most_recent = "0 / No Date"
-        self.enable_buttons(False, False)
-        self._update_progress_value(1, f"Loading...")
-        for idx in range(self.cBox_Devices.count()):
-            try:
-                self.updateRun(idx)
-                most_recent_run_this_dev = self.sorted_runs[0][1]
-                compare = [most_recent, most_recent_run_this_dev]
-                if compare[1] == sorted(compare)[1]:
-                    device_idx = idx
-                    most_recent = most_recent_run_this_dev
-            except:
-                Log.w(f"Device {self.cBox_Devices.itemText(idx)} has no available runs!")
-        Log.d(
-            f"Most recent run detected on device {self.cBox_Devices.itemText(device_idx)} from {most_recent}."
-        )
-
-        self.progressBar.setValue(0)  # Not started
-        self.cBox_Devices.setCurrentIndex(device_idx)
-        self.action_sort_by_date(None)  # dummy 'obj' passed
-        self.enable_buttons()
 
     def clear(self):
         self.text_Created.clear()
@@ -2705,140 +2700,368 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def updateRunOnChange(self, idx):
         if not self.showRunsFromAllDevices.isChecked():
-            self.updateRun(idx)
+            self.update_run(idx)
 
-    def updateRun(self, idx):
-        runs = FileStorage.DEV_get_logged_data_folders(self.cBox_Devices.itemText(idx))
-        runs = [x for x in runs if not x == "_unnamed"]  # remove _unnamed
-        unchecked_runs = [
-            x
-            for x in list(self.run_timestamps.keys())
-            if x.endswith(self.cBox_Devices.itemText(idx))
-        ]
-        for run in runs:
-            try:
-                data_device = self.cBox_Devices.itemText(idx)
-                data_folder = run
-                data_files = FileStorage.DEV_get_logged_data_files(data_device, data_folder)
-                dict_key = f"{data_folder}:{data_device}"
-                self.run_names[dict_key] = data_folder
-                if self.run_timestamps.get(dict_key) == None:
-                    doc = None
-                    zn = os.path.join(
-                        Constants.log_prefer_path, data_device, data_folder, "audit.zip"
+    @staticmethod
+    def _scan_run(data_device: str, data_folder: str, parse_xml: bool = True) -> Dict[str, Any]:
+        """Scans a single run to fetch its file list and extract metadata.
+
+        Worker (thread-safe): for one run, fetches its file list and, if 
+        parse_xml is True, extracts the 'start' metric and 'run_name' 
+        parameter from its XML metadata. 
+
+        This method uses ElementTree (much faster than minidom on small 
+        documents) and reports warnings or errors via the returned dictionary 
+        instead of modifying shared state directly.
+
+        Args:
+            data_device (str): The name of the device associated with the run.
+            data_folder (str): The specific folder name containing the run data.
+            parse_xml (bool, optional): Whether to parse the XML file for 
+                metadata. Defaults to True.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the scan results. Keys include:
+                - "device" (str): The device name.
+                - "folder" (str): The folder name.
+                - "dict_key" (str): A unique key formatted as "{folder}:{device}".
+                - "files" (List[str]): A list of data files (may be empty on error).
+                - "timestamp" (Optional[str]): The value of the <metric name="start">.
+                - "run_name" (Optional[str]): The value of the <param name="run_name">.
+                - "warnings" (List[str]): Warnings to be logged on the UI thread.
+                - "error" (Optional[str]): Error messages to be logged via Log.e.
+        """
+        result = {
+            "device": data_device,
+            "folder": data_folder,
+            "dict_key": f"{data_folder}:{data_device}",
+            "files": [],
+            "timestamp": None,
+            "run_name": None,
+            "warnings": [],
+            "error": None,
+        }
+ 
+        try:
+            data_files = FileStorage.DEV_get_logged_data_files(
+                data_device, data_folder
+            )
+            result["files"] = data_files or []
+ 
+            if not parse_xml:
+                return result
+ 
+            root = None
+ 
+            zn = os.path.join(
+                Constants.log_prefer_path, data_device, data_folder, "audit.zip"
+            )
+            if FileManager.file_exists(zn):
+                with pyzipper.AESZipFile(
+                    zn,
+                    "r",
+                    compression=pyzipper.ZIP_DEFLATED,
+                    allowZip64=True,
+                    encryption=pyzipper.WZ_AES,
+                ) as zf:
+                    try:
+                        zf.testzip()
+                    except Exception:
+                        zf.setpassword(
+                            hashlib.sha256(zf.comment).hexdigest().encode()
+                        )
+                    files = zf.namelist()
+                    xml_filename = next(
+                        (x for x in files if x.endswith(".xml")), None
                     )
-                    if FileManager.file_exists(zn):
-                        with pyzipper.AESZipFile(
-                            zn,
-                            "r",
-                            compression=pyzipper.ZIP_DEFLATED,
-                            allowZip64=True,
-                            encryption=pyzipper.WZ_AES,
-                        ) as zf:
-                            # Add a protected file to the zip archive
-                            try:
-                                zf.testzip()
-                            except:
-                                zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
-                            files = zf.namelist()
-                            xml_filename = [x for x in files if x.endswith(".xml")][0]
-                            with zf.open(xml_filename, "r") as fh:
-                                xml_str = fh.read().decode()
-                            doc = minidom.parseString(xml_str)
-                    else:
-                        try:
-                            xml_filename = [x for x in data_files if x.endswith(".xml")][0]
-                            xml_path = os.path.join(
-                                Constants.log_prefer_path,
-                                data_device,
-                                data_folder,
-                                xml_filename,
-                            )
-                            if os.path.exists(xml_path):
-                                doc = minidom.parse(xml_path)
-                        except IndexError as e:
-                            Log.w(
-                                f'WARNING: XML file not found in data files for run "{data_folder}"'
-                            )
-                            Log.w('Unable to parse "Date" without XML file. Treating as "Undated".')
-                            Log.d(f"Warning debug: {data_device}/{data_folder}/{data_files}")
-                        except Exception as e:
-                            raise e  # throw it, not an expected error condition
-
-                    if doc != None:
-                        metrics = doc.getElementsByTagName("metric")
-                        for m in metrics:
-                            name = m.getAttribute("name")
-                            value = m.getAttribute("value")
-                            if name == "start":
-                                # value[0:value.find("T")]
-                                captured_datetime = value
-                                self.run_timestamps[dict_key] = captured_datetime
-                        params = doc.getElementsByTagName("param")
-                        for p in params:
-                            name = p.getAttribute("name")
-                            value = p.getAttribute("value")
-                            if name == "run_name":
-                                self.run_names[dict_key] = value
-                                self.run_devices[value] = data_device
-                # folder exists, but does a file still exist?
-                if len(data_files) > 0:  # files exist
-                    if dict_key in unchecked_runs:
-                        # it's been checked, and is not blank
-                        unchecked_runs.remove(dict_key)
-                    if self.run_timestamps.get(dict_key) == None:
-                        self.run_timestamps[dict_key] = "0 / No Date"
+                    if xml_filename is not None:
+                        with zf.open(xml_filename, "r") as fh:
+                            xml_bytes = fh.read()
+                        root = ET.fromstring(xml_bytes)
+            else:
+                xml_filename = next(
+                    (x for x in result["files"] if x.endswith(".xml")), None
+                )
+                if xml_filename is None:
+                    result["warnings"].append(
+                        f'WARNING: XML file not found in data files for run "{data_folder}"'
+                    )
+                    result["warnings"].append(
+                        'Unable to parse "Date" without XML file. Treating as "Undated".'
+                    )
                 else:
-                    Log.w(f"Removing empty run info ({dict_key})")
-                self.run_devices[run] = data_device
-            except Exception as e:
-                # import traceback
-                # traceback.print_exc()
+                    xml_path = os.path.join(
+                        Constants.log_prefer_path,
+                        data_device,
+                        data_folder,
+                        xml_filename,
+                    )
+                    if os.path.exists(xml_path):
+                        root = ET.parse(xml_path).getroot()
+ 
+            if root is not None:
+                for m in root.iter("metric"):
+                    if m.get("name") == "start":
+                        result["timestamp"] = m.get("value")
+                        break
+                for p in root.iter("param"):
+                    if p.get("name") == "run_name":
+                        result["run_name"] = p.get("value")
+                        break
+ 
+        except Exception as e:
+            result["error"] = str(e)
+ 
+        return result
+    
+    def _apply_scan_results(
+        self, 
+        scan_results: List[Dict[str, Any]], 
+        data_device: str, 
+        unchecked_runs: List[str]
+    ) -> None:
+        """Merges the background scan results into the shared state dictionaries.
+
+        Iterates through the parsed results from the background thread, logs any 
+        warnings or errors, and updates the internal state trackers (`run_names`, 
+        `run_timestamps`, and `run_devices`). Also handles cleaning up runs that 
+        are empty or no longer exist on the filesystem.
+
+        Args:
+            scan_results (List[Dict[str, Any]]): A list of dictionaries containing 
+                the parsed metadata for each run (typically the output from `_scan_run`).
+            data_device (str): The name of the device associated with these runs.
+            unchecked_runs (List[str]): A list of dict keys (formatted as 
+                "{folder}:{device}") representing runs that were previously known 
+                but need verification of their continued existence.
+        """
+        for r in scan_results:
+            data_folder = r["folder"]
+            dict_key = r["dict_key"]
+            data_files = r["files"]
+
+            for msg in r["warnings"]: Log.w(msg)
+            if r["error"] is not None:
                 Log.e(f'Error getting timestamp from XML for run "{data_folder}"!')
-                Log.d(f"Error message: {str(e)}")
+                Log.d(f"Error message: {r['error']}")
+
+            self.run_names[dict_key] = data_folder
+
+            if self.run_timestamps.get(dict_key) is None:
+                if r["timestamp"] is not None:
+                    self.run_timestamps[dict_key] = r["timestamp"]
+                if r["run_name"] is not None:
+                    self.run_names[dict_key] = r["run_name"]
+                    self.run_devices[r["run_name"]] = data_device
+
+            if len(data_files) > 0:
+                if dict_key in unchecked_runs:
+                    unchecked_runs.remove(dict_key)
+                if self.run_timestamps.get(dict_key) is None:
+                    self.run_timestamps[dict_key] = "0 / No Date"
+            else:
+                Log.w(f"Removing empty run info ({dict_key})")
+
+            self.run_devices[data_folder] = data_device
 
         for dict_key in unchecked_runs:
             Log.w(f"Removing missing run info ({dict_key})")
             self.run_timestamps.pop(dict_key, None)
 
-        sort_options = [[0, False], [1, True]]
-        sort_select = self.sort_order  # 0 = by name, 1 = by date
-        self.sorted_runs = list(
-            sorted(
-                self.run_timestamps.items(),
-                key=lambda item: item[sort_options[sort_select][0]].lower(),
-                reverse=sort_options[sort_select][1],
-            )
+    def _refresh_cbox_runs(self) -> None:
+        """Sorts the cached run data and repopulates the UI run selection combobox.
+
+        This method takes the current state of `run_timestamps`, sorts them based on 
+        the user's selected preference (alphabetical by name or chronological by date), 
+        and filters them according to the selected device or active batch subsets. 
+        It then updates the `cBox_Runs` widget and adjusts the UI layout width 
+        to fit the new content.
+
+        The sorting logic follows:
+            - `self.sort_order = 0`: Sort by Name (Ascending)
+            - `self.sort_order = 1`: Sort by Date (Descending)
+        """
+        # Define sorting configuration for readability: {order_index: (sort_key_index, reverse_bool)}
+        # item[0] is the dict_key (name-based), item[1] is the timestamp
+        sort_config = {
+            0: (0, False),  # Name: Ascending
+            1: (1, True)    # Date: Descending
+        }
+        
+        key_idx, is_reverse = sort_config.get(self.sort_order, (1, True))
+
+        # Sort the items based on the current UI selection
+        self.sorted_runs: List[Tuple[str, str]] = sorted(
+            self.run_timestamps.items(),
+            key=lambda item: item[key_idx].lower(),
+            reverse=is_reverse
         )
-        runs = []
-        for run in self.sorted_runs:
-            run_name = run[0]
-            device_name = run_name[run_name.find(":") + 1 :]
-            # run_name[0:run_name.find(":")]
-            run_name = self.run_names[run_name]
-            captured_datetime = run[1]
+
+        display_runs: List[str] = []
+        selected_device = self.cBox_Devices.currentText()
+        show_all = self.showRunsFromAllDevices.isChecked()
+
+        for dict_key, captured_datetime in self.sorted_runs:
+            # Extract device name from f"{folder}:{device}"
+            device_name = dict_key.split(":")[-1] if ":" in dict_key else ""
+            run_name = self.run_names.get(dict_key, dict_key)
+
+            # Format the date string
             if captured_datetime == "0 / No Date":
                 captured_date = "Undated"
             else:
-                captured_date = captured_datetime[0 : captured_datetime.find("T")]
-            # If batch processing a subset of all runs, only show the subset in the dropdown menu
-            if hasattr(self, "_batched_runs") and self._batched_runs:
-                if f"{run_name} ({captured_date})" not in self._batched_runs:
-                    continue  # skip it, don't show
-            if (
-                self.showRunsFromAllDevices.isChecked()
-                or self.cBox_Devices.currentText() == device_name
-            ):
-                # append date to run name
-                runs.append(f"{run_name} ({captured_date})")
+                captured_date = captured_datetime.split("T")[0]
 
+            formatted_display_name = f"{run_name} ({captured_date})"
+
+            # Filter: Check if we are restricted to a specific batch subset
+            if hasattr(self, "_batched_runs") and self._batched_runs and formatted_display_name not in self._batched_runs:
+                continue
+                    
+            # Filter: Check device ownership
+            if show_all or selected_device == device_name:
+                display_runs.append(formatted_display_name)
+
+        # Update UI Components
         self.cBox_Runs.clear()
-        self.cBox_Runs.addItems(runs)
-        w = self.cBox_Runs.sizeHint().width()
-        if w < 200:
-            w = 200
-        self.cBox_Runs.setFixedWidth(w)
-        self.sort_by_widget.setFixedWidth(self.cBox_Runs.width())
+        self.cBox_Runs.addItems(display_runs)
+
+        # Reset internal lookup caches if they exist
+        if hasattr(self, "_run_to_folder_cache"):
+            self._run_to_folder_cache = {}
+        
+        # Dynamically resize the combobox and associated widgets
+        new_width = max(self.cBox_Runs.sizeHint().width(), 200)
+        self.cBox_Runs.setFixedWidth(new_width)
+        self.sort_by_widget.setFixedWidth(new_width)
+
+    def find_most_recent_run(self) -> None:
+        """Initiates an asynchronous background scan to find the most recent run across all devices.
+
+        This method prepares the UI by disabling buttons and initializing the progress 
+        bar. It then identifies all available devices from the `cBox_Devices` combobox 
+        and launches a `RunScanWorker` thread to scan each device's file system 
+        without freezing the main UI thread. 
+
+        The results are processed incrementally via the `_on_find_most_recent_scanned` 
+        slot as each device scan completes.
+        """
+        # Prevent user interaction during initial scan
+        self.enable_buttons(False, False)
+        self._update_progress_value(1, "Loading runs...")
+        self.progressBar.setValue(0) 
+
+        # Collect device names and existing cache keys for the worker
+        devices: List[str] = [
+            self.cBox_Devices.itemText(i) for i in range(self.cBox_Devices.count())
+        ]
+        known_keys: List[str] = list(self.run_timestamps.keys())
+        self._async_best_date: str = "0 / No Date"
+        self._async_best_dev_idx: int = 0
+        self.multi_scan_worker = RunScanWorker(devices, known_keys, parent=self)
+        
+        # Connect the signal to the handler that merges results and updates the UI
+        self.multi_scan_worker.scan_finished.connect(self._on_find_most_recent_scanned)
+        
+        self.multi_scan_worker.start()
+
+    @QtCore.pyqtSlot(list, str, list, bool)
+    def _on_find_most_recent_scanned(
+        self, 
+        scan_results: List[Dict[str, Any]], 
+        data_device: str, 
+        unchecked_runs: List[str], 
+        is_last: bool
+    ) -> None:
+        """Handles the incremental results from the background most-recent-run scan.
+
+        This slot is triggered whenever the `RunScanWorker` finishes scanning a 
+        specific device. It updates the internal state with the new results and 
+        tracks the globally "most recent" run across all processed devices. Once 
+        the final device is scanned, it finalizes the UI state.
+
+        Args:
+            scan_results (List[Dict[str, Any]]): The metadata results for the 
+                runs found on the scanned device.
+            data_device (str): The name of the device that was just scanned.
+            unchecked_runs (List[str]): List of run keys to be verified/removed 
+                if they no longer exist on disk.
+            is_last (bool): Flag indicating if this was the last device in the 
+                scanning queue.
+        """
+        # Merge results from this device into the main state dictionaries
+        self._apply_scan_results(scan_results, data_device, unchecked_runs)
+        dev_idx: int = self.cBox_Devices.findText(data_device)
+        
+        if dev_idx != -1:
+            for r in scan_results:
+                timestamp: str = r.get("timestamp") or "0 / No Date"
+                if timestamp > self._async_best_date:
+                    self._async_best_date = timestamp
+                    self._async_best_dev_idx = dev_idx
+
+        if is_last:
+            Log.d(
+                f"Most recent run detected on device "
+                f"{self.cBox_Devices.itemText(self._async_best_dev_idx)} "
+                f"from {self._async_best_date}."
+            )
+            
+            self.cBox_Devices.setCurrentIndex(self._async_best_dev_idx)
+            self.action_sort_by_date(None)
+            self.enable_buttons()
+
+    def update_run(self, idx: int) -> None:
+        """Initiates an asynchronous background scan for runs associated with a specific device.
+
+        This method serves as the entry point for refreshing the run list when a user 
+        selects a new device or a manual refresh is triggered. It disables UI 
+        interaction, identifies the target device based on the provided index, and 
+        offloads the file system scanning and XML parsing to a `RunScanWorker` thread.
+
+        The results are processed by the `_on_single_device_scanned` slot once the 
+        background task completes.
+
+        Args:
+            idx (int): The index of the device in the `cBox_Devices` combobox 
+                to be scanned.
+        """
+        self.enable_buttons(False, False)
+        data_device: str = self.cBox_Devices.itemText(idx)
+        
+        # Provide the worker with current cache keys to avoid redundant XML parsing
+        known_keys: List[str] = list(self.run_timestamps.keys())
+        self.single_scan_worker = RunScanWorker([data_device], known_keys, parent=self)
+        self.single_scan_worker.scan_finished.connect(self._on_single_device_scanned)
+        self.single_scan_worker.start()
+
+    @QtCore.pyqtSlot(list, str, list, bool)
+    def _on_single_device_scanned(
+        self, 
+        scan_results: List[Dict[str, Any]], 
+        data_device: str, 
+        unchecked_runs: List[str], 
+        is_last: bool
+    ) -> None:
+        """Handles the results of a background scan for a single device selection.
+
+        This slot is triggered when the `RunScanWorker` completes the scanning 
+        process for the currently selected device. It updates the internal state 
+        dictionaries with the new results, refreshes the run selection combobox 
+        to reflect changes, and re-enables the UI buttons for user interaction.
+
+        Args:
+            scan_results (List[Dict[str, Any]]): A list of dictionaries containing 
+                parsed run metadata (timestamp, name, files, etc.) for the device.
+            data_device (str): The name of the device that was scanned.
+            unchecked_runs (List[str]): Keys of runs that were previously cached 
+                but were not found during this scan and should be purged.
+            is_last (bool): Flag indicating if this was the final device in the 
+                worker's queue (always True for single-device updates).
+        """
+        self._apply_scan_results(scan_results, data_device, unchecked_runs)
+        self._refresh_cbox_runs()
+        self.enable_buttons()
 
     def _load_qmodels(self) -> None:
         """
@@ -3265,7 +3488,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # Ensure Analyze visibility since it persists across run loads
             self.sign_do_not_ask.setVisible(True)
-            
+
         else:
             # DevMode disabled: Force compliance by revoking auto-sign UI
             self.sign_do_not_ask.setChecked(False)
@@ -4967,7 +5190,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             loaded_idx = self.cBox_Runs.currentIndex()
             devs = FileStorage.DEV_get_all_device_dirs()
             for i, _ in enumerate(devs):
-                self.updateRun(i)
+                self.update_run(i)
             self.cBox_Runs.setCurrentIndex(loaded_idx)
 
     def Analyze_Data(self, data_path):
@@ -9154,7 +9377,79 @@ class AnalyzerWorker(QtCore.QObject):
         except Exception as e:
             Log.e("ERROR:", e)
         return np.round(output, 2)
+    
+class RunScanWorker(QtCore.QThread):
+    """Background thread to handle run scanning without freezing the UI.
+    
+    This worker offloads heavy filesystem I/O and XML parsing from the main 
+    event loop. It iterates through a list of devices, identifies data folders, 
+    and uses a ThreadPoolExecutor to parse individual run metadata in parallel 
+    within this background thread.
+    
+    Attributes:
+        scan_finished (QtCore.pyqtSignal): Signal emitted after each device is 
+            processed. Emits:
+            - List[Dict[str, Any]]: The parsed scan results.
+            - str: The name of the device just scanned.
+            - List[str]: Keys of runs that were not found on disk.
+            - bool: True if this was the last device in the queue.
+    """
+    scan_finished = QtCore.pyqtSignal(list, str, list, bool)
 
+    def __init__(
+        self, 
+        devices_to_scan: List[str], 
+        known_timestamps: List[str], 
+        parent: Optional[QtCore.QObject] = None
+    ) -> None:
+        """Initializes the worker with device and cache context.
+
+        Args:
+            devices_to_scan (List[str]): List of device names to be audited.
+            known_timestamps (List[str]): Current keys in the timestamp cache 
+                to determine if a run needs a fresh XML parse.
+            parent (Optional[QtCore.QObject]): The Qt parent object.
+        """
+        super().__init__(parent)
+        self.devices_to_scan = devices_to_scan
+        self.known_timestamps = known_timestamps
+
+    def run(self) -> None:
+        """Executes the background scanning logic.
+        
+        For each device, it identifies existing folders and calculates which 
+        cached runs are missing. It then uses a thread pool to perform parallel 
+        scans of individual run folders.
+        """
+        num_devices = len(self.devices_to_scan)
+        
+        for i, data_device in enumerate(self.devices_to_scan):
+            # Fetch directories, excluding internal naming conventions
+            runs = FileStorage.DEV_get_logged_data_folders(data_device)
+            runs = [x for x in runs if x != "_unnamed"]
+            unchecked_runs = [
+                x for x in self.known_timestamps if x.endswith(data_device)
+            ]
+
+            scan_args = []
+            for run in runs:
+                dict_key = f"{run}:{data_device}"
+                # Only parse XML if the run is new (not in known_timestamps)
+                needs_parse = dict_key not in self.known_timestamps
+                scan_args.append((data_device, run, needs_parse))
+
+            scan_results: List[Dict[str, Any]] = []
+            if scan_args:
+                with ThreadPoolExecutor(
+                    max_workers=min(8, len(scan_args)), 
+                    thread_name_prefix=f"scan-{data_device}"
+                ) as ex:
+                    scan_results = list(
+                        ex.map(lambda a: AnalyzeProcess._scan_run(*a), scan_args)
+                    )
+
+            is_last = (i == num_devices - 1)
+            self.scan_finished.emit(scan_results, data_device, unchecked_runs, is_last)
 
 class TableView(QtWidgets.QTableWidget):
 
