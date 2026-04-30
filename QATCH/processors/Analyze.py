@@ -8,20 +8,18 @@ import os
 import sys
 import threading
 from io import BytesIO
-from typing import Optional, cast
-from time import localtime, sleep, strftime, monotonic
+from typing import Optional, cast, List, Tuple
+from time import monotonic
 from typing import Optional
 from xml.dom import minidom
 
 import numpy as np
-import pandas as pd
 import pyqtgraph as pg
 import pyzipper
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QCompleter
-from scipy import interpolate
 import atexit
 from concurrent.futures import ThreadPoolExecutor
 from QATCH.common.architecture import Architecture
@@ -50,8 +48,26 @@ from QATCH.ui.runInfo import QueryRunInfo
 
 TAG = "[Analyze]"
 
+
+# A shared thread pool used exclusively for heavy background operations
+# (e.g., preloading machine learning models, batch processing file I/O).
+# Limiting the max_workers to 4 prevents thread exhaustion and memory bloat,
+# while sharing a single executor prevents spawning runaway threads on rapid UI clicks.
 _LOAD_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="visq-load")
-atexit.register(lambda: _LOAD_EXECUTOR.shutdown(wait=False, cancel_futures=True))
+
+def _shutdown_executor() -> None:
+    """
+    Ensures the background executor tears down cleanly when the application exits.
+    
+    - wait=False: Prevents the main application thread from hanging indefinitely 
+                  if a background task is currently stuck or executing.
+    - cancel_futures=True: Ensures any pending tasks in the queue that haven't 
+                           started yet are immediately discarded (Requires Python 3.9+).
+    """
+    _LOAD_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+
+# Register the cleanup handler to fire automatically upon Python interpreter exit
+atexit.register(_shutdown_executor)
  
 _DEV_MODE_TTL_SECONDS = 30.0
 ###############################################################################
@@ -350,8 +366,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             parent (QWidget | None): Optional parent widget for the AnalyzeProcess window; used to integrate with the hosting application and to read/write session-related state such as signed user metadata.
 
         Notes:
-        - The constructor performs UI layout, installs event filters, and connects many signals to action handlers (e.g., loadRun, getPoints, goBack, action_analyze, onClick) so the widget is immediately interactive after construction.
-        - Several predictive/modeling modules are only lazily loaded later (on loadRun) and are initialized here as placeholders.
+        - The constructor performs UI layout, installs event filters, and connects many signals to action handlers (e.g., load_run, getPoints, goBack, action_analyze, onClick) so the widget is immediately interactive after construction.
+        - Several predictive/modeling modules are only lazily loaded later (on load_run) and are initialized here as placeholders.
         - A QThread is created for running analyzer tasks; the worker itself is started later when analysis is requested.
         """
         super(AnalyzeProcess, self).__init__(None)
@@ -530,7 +546,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tBtn_Load.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tBtn_Load.setIcon(icon_load)  # normal and disabled pixmaps
         self.tBtn_Load.setText("Load")
-        self.tBtn_Load.clicked.connect(self.loadRun)  # main action
+        self.tBtn_Load.clicked.connect(self.load_run)  # main action
 
         # Create dropdown menu
         menu = QtWidgets.QMenu()
@@ -1095,7 +1111,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.cBox_Runs.setEditText("No Runs Found")
         self.cBox_Runs.currentIndexChanged.connect(self.updateDev)
         self.cBox_Devices.currentIndexChanged.connect(self.updateRunOnChange)
-        self.btn_Load.pressed.connect(self.loadRun)
+        self.btn_Load.pressed.connect(self.load_run)
         self.btn_Back.pressed.connect(self.goBack)
         self.btn_Next.pressed.connect(self.getPoints)
         self.sign.textEdited.connect(self.sign_edit)
@@ -1968,7 +1984,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     if hasattr(self, "diff_factor"):
                         del self.diff_factor  # unset to revert to default auto-calc value
                         Log.d("Difference Factor deleted")
-                self.loadRun()  # refresh plots to show new diff factor
+                self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
 
@@ -1983,7 +1999,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     if hasattr(self, "diff_factor"):
                         del self.diff_factor  # unset to revert to default auto-calc value
                         Log.d("Difference Factor deleted")
-                self.loadRun()  # refresh plots to show new diff factor
+                self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
 
@@ -1995,7 +2011,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         the acceptable range defined by `self.validFactor`. If valid, it confirms
         any unsaved changes before proceeding to update the `diff_factor` with the
         provided input. If the input is invalid, it logs an error message. After
-        updating the difference factor, it refreshes the plots by calling `self.loadRun()`.
+        updating the difference factor, it refreshes the plots by calling `self.load_run()`.
 
         Raises an error if the process fails.
 
@@ -2033,7 +2049,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     if hasattr(self, "diff_factor"):
                         del self.diff_factor  # unset to revert to default auto-calc value
                         Log.d("Difference Factor deleted")
-                self.loadRun()  # refresh plots to show new diff factor
+                self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
 
@@ -2824,422 +2840,534 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.cBox_Runs.setFixedWidth(w)
         self.sort_by_widget.setFixedWidth(self.cBox_Runs.width())
 
-    def _start_qmodel_preload(self):
+    def _load_qmodels(self) -> None:
         """
-        Kick off background loading of V4/V6 predictors if their respective
-        Constants.QModel{4,6}_predict flags are set and they aren't already
-        loaded or in flight. Idempotent and safe to call repeatedly.
- 
-        The flags are read at submit time, so a user toggling models via
-        set_new_prediction_model() before this call is honored. If the
-        flags change AFTER submit, the in-flight load completes anyway --
-        same effective behavior as the original inline code path.
+        Asynchronously schedules the loading of QModel predictive models.
+
+        This method submits the heavy model-loading routines to a background thread pool 
+        executor (`_LOAD_EXECUTOR`). It is fully idempotent and safe to call repeatedly 
+        (e.g., in a polling loop or UI refresh cycle).
+
+        Configuration constraints:
+            - Models are only loaded if their respective prediction flags 
+            (`QModel4_predict` / `QModel6_predict`) are active in `Constants`.
+            - Models are skipped if they are already successfully loaded.
+            - Models are skipped if a loading task is already in-flight (tracked via futures).
         """
+        # Ensure future tracking attributes exist (fallback if not set in __init__)
         if not hasattr(self, "_qmodel_v4_future"):
             self._qmodel_v4_future = None
         if not hasattr(self, "_qmodel_v6_future"):
             self._qmodel_v6_future = None
- 
+
+        # QModel V4 (Fusion) Preload
         try:
-            if (
-                getattr(Constants, "QModel4_predict", False)
-                and not self.QModel_v4_modules_loaded
-                and self._qmodel_v4_future is None
-            ):
+            requires_v4 = getattr(Constants, "QModel4_predict", False)
+            is_v4_pending = self._qmodel_v4_future is not None
+            
+            if requires_v4 and not self.QModel_v4_modules_loaded and not is_v4_pending:
                 self._qmodel_v4_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v4)
+                
         except Exception as e:
-            Log.e("ERROR:", e)
-            Log.e("Failed to schedule 'QModel v4 (Fusion)' preload.")
- 
+            Log.e("ERROR", f"Failed to schedule 'QModel v4 (Fusion)' preload. Details: {e}")
+
+        # QModel V6 (YOLO26) Preload
         try:
-            if (
-                getattr(Constants, "QModel6_predict", False)
-                and not self.QModel_v6_modules_loaded
-                and self._qmodel_v6_future is None
-            ):
+            requires_v6 = getattr(Constants, "QModel6_predict", False)
+            is_v6_pending = self._qmodel_v6_future is not None
+            
+            if requires_v6 and not self.QModel_v6_modules_loaded and not is_v6_pending:
                 self._qmodel_v6_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v6)
+                
         except Exception as e:
-            Log.e("ERROR:", e)
-            Log.e("Failed to schedule 'QModel v6 (YOLO26)' preload.")
- 
+            Log.e("ERROR", f"Failed to schedule 'QModel v6 (YOLO26)' preload. Details: {e}")
+
     @staticmethod
-    def _load_qmodel_v4():
-        """Worker: build V4 Fusion predictor. Runs off the UI thread."""
-        base = os.path.join(
+    def _load_qmodel_v4() -> 'QModelV4Fusion':
+        """
+        Instantiates and loads the V4 Fusion prediction model into memory.
+
+        This worker method performs heavy disk I/O to load PyTorch model weights 
+        (.pth files) for both regressors and classifiers. It is designed to be 
+        executed safely off the main UI thread via a concurrent futures executor.
+
+        Returns:
+            QModelV4Fusion: A fully initialized V4 prediction model ready for inference.
+        """
+        base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
             "QModel",
             "SavedModels",
             "qmodel_v4_fusion",
         )
+        
         return QModelV4Fusion(
-            reg_path_1=os.path.join(base, "poi_model_mini_window_0_1600.pth"),
-            reg_path_2=os.path.join(base, "poi_model_mini_window_1_1600.pth"),
-            clf_path=os.path.join(base, "v4_model_pytorch_2100.pth"),
+            reg_path_1=os.path.join(base_path, "poi_model_mini_window_0_1600.pth"),
+            reg_path_2=os.path.join(base_path, "poi_model_mini_window_1_1600.pth"),
+            clf_path=os.path.join(base_path, "v4_model_pytorch_2100.pth"),
             reg_batch_size=2048,
             clf_batch_size=1024,
         )
- 
+
     @staticmethod
-    def _load_qmodel_v6():
-        """Worker: build V6 YOLO26 predictor. Runs off the UI thread."""
-        base = os.path.join(
+    def _load_qmodel_v6() -> 'QModelV6YOLO':
+        """
+        Instantiates and loads the V6 YOLO26 prediction model into memory.
+
+        This worker method constructs the asset map and performs heavy disk I/O 
+        to load the YOLO-based PyTorch weights (.pt files) for various detectors 
+        and classifiers. It is designed to be executed off the main UI thread.
+
+        Returns:
+            QModelV6YOLO: A fully initialized V6 prediction model ready for inference.
+        """
+        base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
             "QModel",
             "SavedModels",
             "qmodel_v6_yolo",
         )
+        
+        # Map out the required weights files for the YOLO26 model suite
         model_assets = {
             "fill_classifier": os.path.join(
-                base, "classifiers", "fill_classifier", "type_cls.pt"
+                base_path, "classifiers", "fill_classifier", "type_cls.pt"
             ),
             "detectors": {
-                "init": os.path.join(base, "detectors", "init_detector", "init.pt"),
-                "ch1": os.path.join(base, "detectors", "ch1_detector", "ch1.pt"),
-                "ch2": os.path.join(base, "detectors", "ch2_detector", "ch2.pt"),
-                "ch3": os.path.join(base, "detectors", "ch3_detector", "ch3.pt"),
-                "poi5_fine": os.path.join(
-                    base, "detectors", "eof_detector", "eof.pt"
-                ),
+                "init": os.path.join(base_path, "detectors", "init_detector", "init.pt"),
+                "ch1": os.path.join(base_path, "detectors", "ch1_detector", "ch1.pt"),
+                "ch2": os.path.join(base_path, "detectors", "ch2_detector", "ch2.pt"),
+                "ch3": os.path.join(base_path, "detectors", "ch3_detector", "ch3.pt"),
+                "poi5_fine": os.path.join(base_path, "detectors", "eof_detector", "eof.pt"),
             },
         }
+        
         return QModelV6YOLO(model_assets=model_assets)
  
-    def _await_qmodels(self, timeout=120.0):
+    def _await_qmodels(self, timeout: float = 120.0) -> None:
         """
-        Block until any in-flight model loads complete, install results
-        onto self, and reset the future slots. Errors mirror the original
-        inline try/except behavior in loadRun(): logged, not raised.
+        Blocks the calling thread until in-flight prediction models finish loading.
+
+        This method resolves the asynchronous futures generated by `_load_qmodels()`. 
+        Once a future completes, it installs the resulting model instance onto the 
+        class and updates the corresponding load-state flags.
+
+        Args:
+            timeout: Maximum seconds to wait for a model load to complete before 
+                    a TimeoutError is raised. Defaults to 120.0 seconds.
+
+        Notes:
+            - Errors encountered during model instantiation are caught and logged 
+            (not raised), mimicking the original synchronous `try/except` behavior.
+            - Future attributes are explicitly nulled out after resolution to 
+            prevent memory leaks and allow for clean reloading later.
         """
+        # Resolve QModel V4 (Fusion)
         v4_fut = getattr(self, "_qmodel_v4_future", None)
-        if v4_fut is not None and not self.QModel_v4_modules_loaded:
+        
+        if v4_fut is not None and not getattr(self, "QModel_v4_modules_loaded", False):
             try:
+                # Block and wait for the thread pool to return the loaded V4 model
                 self.QModel_v4_predictor = v4_fut.result(timeout=timeout)
                 self.QModel_v4_modules_loaded = True
+                Log.i(TAG, "'QModel v4 (Fusion)' modules loaded successfully.")
             except Exception as e:
-                Log.e("ERROR:", e)
-                Log.e("Failed to load 'QModel v4 (Fusion)' modules at load of run.")
-            self._qmodel_v4_future = None
- 
+                Log.e(TAG, f"Failed to load 'QModel v4 (Fusion)' modules. Details: {e}")
+            finally:
+                self._qmodel_v4_future = None
+
+        # Resolve QModel V6 (YOLO26)
         v6_fut = getattr(self, "_qmodel_v6_future", None)
-        if v6_fut is not None and not self.QModel_v6_modules_loaded:
+        
+        if v6_fut is not None and not getattr(self, "QModel_v6_modules_loaded", False):
             try:
+                # Block and wait for the thread pool to return the loaded V6 model
                 self.QModel_v6_predictor = v6_fut.result(timeout=timeout)
                 self.QModel_v6_modules_loaded = True
-                Log.i(TAG, "'QModel v6 (YOLO26)' Modules loaded successfully.")
+                Log.i(TAG, "'QModel v6 (YOLO26)' modules loaded successfully.")
             except Exception as e:
-                Log.e("ERROR:", e)
-                Log.e("Failed to load 'QModel v6 (YOLO26)' modules at load of run.")
-            self._qmodel_v6_future = None
- 
-    # -------- Dev-mode cache -----------------------------------------------
- 
-    def _check_dev_mode_cached(self, force_refresh=False):
+                Log.e(TAG, f"Failed to load 'QModel v6 (YOLO26)' modules. Details: {e}")
+            finally:
+                self._qmodel_v6_future = None
+  
+    def _check_dev_mode_cached(self, force_refresh: bool = False) -> bool:
         """
-        Cached wrapper around UserProfiles.checkDevMode(). Cached value is
-        reused for up to _DEV_MODE_TTL_SECONDS to avoid repeated fs hits
-        on every load. Pass force_refresh=True to invalidate.
+        Retrieves the developer mode status, utilizing a time-to-live (TTL) cache.
+
+        This acts as a high-performance wrapper around `UserProfiles.checkDevMode()`. 
+        Because checking dev mode requires file system I/O, the result is cached for 
+        `_DEV_MODE_TTL_SECONDS` to prevent UI bottlenecks during rapid reloads or 
+        frequent polling.
+
+        Args:
+            force_refresh: If True, bypasses the cache, forces a fresh file system 
+                        read, and resets the TTL timer. Defaults to False.
+
+        Returns:
+            bool: True if developer mode is active, False otherwise.
         """
         now = monotonic()
-        if (
-            force_refresh
-            or not hasattr(self, "_dev_mode_cache_value")
-            or (now - getattr(self, "_dev_mode_cache_time", 0.0)) > _DEV_MODE_TTL_SECONDS
-        ):
+        
+        # Evaluate cache validity
+        is_missing = not hasattr(self, "_dev_mode_cache_value")
+        is_expired = (now - getattr(self, "_dev_mode_cache_time", 0.0)) > _DEV_MODE_TTL_SECONDS
+        
+        if force_refresh or is_missing or is_expired:
+            # Cache miss or invalidation: fetch fresh data and reset the timer
             self._dev_mode_cache_value = UserProfiles.checkDevMode()
             self._dev_mode_cache_time = now
+            
         return self._dev_mode_cache_value
- 
-    # -------- Folder lookup cache ------------------------------------------
- 
-    def _compute_folder_from_run(self, run_string):
-        """Original O(n) computation; used as cache-miss fallback."""
+  
+    def _compute_folder_from_run(self, run_string: str) -> str:
+        """
+        Extracts the parent folder identifier from a formatted run string.
+
+        This acts as a cache-miss fallback for resolving a folder name. It parses 
+        the base folder name by stripping the run suffix (e.g., "(Run 1)"), then 
+        performs an O(N) reverse lookup in `self.run_names` to find the corresponding 
+        key prefix.
+
+        Args:
+            run_string: The formatted run string (e.g., "Experiment_A (1)").
+
+        Returns:
+            str: The extracted key prefix (e.g., "KeyPrefix" from "KeyPrefix:Details"),
+                or the raw parsed folder name if the reverse lookup fails.
+        """
+        # Parse the base folder name by stripping the trailing " (" suffix
         idx = run_string.rfind("(")
-        folder = run_string[: idx - 1] if idx > 0 else run_string
+        folder_name = run_string[: idx - 1] if idx > 0 else run_string
+
         try:
-            values_list = list(self.run_names.values())
-            keys_list = list(self.run_names.keys())
-            dict_key = keys_list[values_list.index(folder)]
-            return dict_key[: dict_key.find(":")]
-        except (ValueError, IndexError):
-            # Preserve original behavior: fall back to the parsed folder
-            # rather than raising.
-            return folder
+            matching_key = next(
+                key for key, value in self.run_names.items() if value == folder_name
+            )
+            return matching_key.split(":", 1)[0]
+            
+        except StopIteration:
+            return folder_name
  
-    def getFolderFromRun(self, run_string):
+    def get_folder_from_run(self, run_string: str) -> str:
+        """
+        Retrieves the folder identifier for a given run string using a memoized cache.
+
+        This acts as a high-performance wrapper around `_compute_folder_from_run`. 
+        It prevents redundant O(N) reverse dictionary lookups by caching previously 
+        resolved run strings in memory, which is especially useful during rapid UI 
+        refreshes or batch processing.
+
+        Args:
+            run_string: The formatted run string (e.g., "Experiment_A (1)").
+
+        Returns:
+            str: The extracted folder identifier or key prefix.
+        """
+        # Lazy-initialize the cache dictionary if it doesn't exist
         if not hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache = {}
-        cached = self._run_to_folder_cache.get(run_string)
-        if cached is not None:
-            return cached
+            
+        # Return the cached result immediately if it's already been computed
+        if run_string in self._run_to_folder_cache:
+            return self._run_to_folder_cache[run_string]
+            
+        # Cache miss
         folder = self._compute_folder_from_run(run_string)
         self._run_to_folder_cache[run_string] = folder
+        
         return folder
- 
-    def load_all_from_folder(self, from_folder=None):
-        self.action_cancel()  # ask them if they want to lose unsaved changes
+    
+    def load_all_from_folder(self, from_folder: Optional[str] = None) -> None:
+        """
+        Initiates a batch-loading process for all unanalyzed runs within a selected directory.
+
+        This method scans a target directory (either the root data folder or a specific 
+        device folder) for runs. It uses a ThreadPoolExecutor to rapidly scan the file 
+        system for runs that lack an 'analyze-1.zip' file. Unanalyzed runs are queued 
+        up in the UI, and the first run is automatically loaded.
+
+        Args:
+            from_folder: An optional absolute path to bypass the file dialog. 
+                        Must be a subdirectory of `Constants.log_prefer_path`.
+        """
+        # Guard: Check for unsaved changes
+        self.action_cancel()  
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
- 
-        all_runs, new_runs, run_names = [], [], []
- 
-        if from_folder:
-            selected_directory = from_folder  # use given folder
+
+        # Determine target directory
+        selected_directory = from_folder or QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Directory", Constants.log_prefer_path
+        )
+
+        # Guard: Ensure directory is valid and within the allowed working path
+        if not selected_directory:
+            return
+        if not selected_directory.startswith(Constants.log_prefer_path):
+            Log.w("User selected an inaccessible directory for batch loading")
+            Log.w("NOTE: The load directory must be within the working directory")
+            return
+
+        Log.i(f'Batch loading from "{selected_directory}"')
+
+        # Preload ML models early since batch loads will require them
+        self._load_qmodels()
+
+        # Parse the directory depth to determine intent (Root vs Device vs Single Run)
+        rel_path = os.path.relpath(selected_directory, Constants.log_prefer_path)
+        path_parts = [p for p in rel_path.replace('\\', '/').split('/') if p and p != '.']
+        
+        all_runs = []
+
+        if len(path_parts) == 0:
+            # Root folder selected: gather all runs from all devices
+            for dev_name in getattr(self.parent, "data_devices", []):
+                for run in FileStorage.DEV_get_logged_data_folders(dev_name):
+                    all_runs.append((dev_name, run))
+                    
+        elif len(path_parts) == 1:
+            # Device folder selected: gather all runs for this specific device
+            dev_name = path_parts[0]
+            for run in FileStorage.DEV_get_logged_data_folders(dev_name):
+                all_runs.append((dev_name, run))
+                
         else:
-            # Request folder from user, must be within working read directory
-            selected_directory = QtWidgets.QFileDialog.getExistingDirectory(
-                self, "Select Directory", Constants.log_prefer_path
-            )
- 
-        if selected_directory and selected_directory.startswith(Constants.log_prefer_path):
-            Log.i(f'Batch loading from "{selected_directory}"')
- 
-            # Start preloading models early -- batch loads will need them.
-            self._start_qmodel_preload()
- 
-            # Gather list of all runs contained in this directory
-            sub_dirs = selected_directory.replace(Constants.log_prefer_path, "").strip("/\\")
-            dev_name, run_name = os.path.split(sub_dirs)
-            # Log.d(f"dev_name = {dev_name}, run_name = {run_name}")
- 
-            if len(dev_name) == 0:
-                if len(run_name) == 0:
-                    # user selected root logged_data folder,
-                    # pull all device files
-                    all_devices = self.parent.data_devices
-                    for dev_name in all_devices:
-                        folder_name = dev_name
-                        dev_runs = FileStorage.DEV_get_logged_data_folders(folder_name)
-                        for run in dev_runs:
-                            all_runs.append((folder_name, run))
-                else:
-                    # if only given a device name,
-                    # switch the parameters as split() puts
-                    # it in the wrong place by default:
-                    folder_name = run_name
-                    dev_runs = FileStorage.DEV_get_logged_data_folders(folder_name)
-                    for run in dev_runs:
-                        all_runs.append((folder_name, run))
-            else:
-                Log.w("User selected a single run folder for batch loading")
-                Log.w("NOTE: Use the normal Load button for single run operation")
-                return
- 
-            # Filter out runs that have already been analyzed.
-            # Parallelize FileStorage I/O across many runs.
-            if all_runs:
-                # Skip unnamed runs before dispatch so threads aren't wasted.
-                scan_items = [
-                    (dev, run) for (dev, run) in all_runs if "_unnamed" not in (dev, run)
-                ]
- 
-                def _scan(dev_run):
-                    dev, run = dev_run
-                    try:
-                        files = FileStorage.DEV_get_logged_data_files(dev, run)
-                    except Exception as e:
-                        Log.w(f"Error scanning {dev}/{run}: {e}")
-                        files = None
-                    return dev, run, files
- 
-                if scan_items:
-                    with ThreadPoolExecutor(
-                        max_workers=min(8, len(scan_items)),
-                        thread_name_prefix="batch-scan",
-                    ) as ex:
-                        results = list(ex.map(_scan, scan_items))
-                else:
-                    results = []
- 
-                for dev, run, files in results:
+            # Single run folder selected (depth >= 2)
+            Log.w("User selected a single run folder for batch loading")
+            Log.w("NOTE: Use the normal Load button for single run operation")
+            return
+
+        if not all_runs:
+            Log.w("No runs found in the selected folder")
+            return
+
+        # Filter out unnamed runs before dispatching to threads
+        scan_items = [
+            (dev, run) for dev, run in all_runs 
+            if "_unnamed" not in dev and "_unnamed" not in run
+        ]
+
+        # Parallel I/O Scan: Check for missing 'analyze-1.zip' files
+        def _scan(dev_run: Tuple[str, str]) -> Tuple[str, str, Optional[List[str]]]:
+            dev, run = dev_run
+            try:
+                files = FileStorage.DEV_get_logged_data_files(dev, run)
+                return dev, run, files
+            except Exception as e:
+                Log.w(f"Error scanning {dev}/{run}: {e}")
+                return dev, run, None
+
+        new_runs = []
+        if scan_items:
+            with ThreadPoolExecutor(max_workers=min(8, len(scan_items)), thread_name_prefix="batch-scan") as ex:
+                for dev, run, files in ex.map(_scan, scan_items):
                     if files and "analyze-1.zip" not in files:
                         new_runs.append(run)
                     elif not files:
                         Log.w(f"No files found for run: {dev}/{run}")
+
+        Log.i(f"New runs to be analyzed: {new_runs}")
+        if not new_runs:
+            Log.w("No new runs require analysis.")
+            return
+
+        # Synchronize found runs with the UI Combo Box
+        # Build a fast O(1) lookup dictionary: {"RunBaseName": "RunBaseName (idx)"}
+        combo_texts = [self.cBox_Runs.itemText(i) for i in range(self.cBox_Runs.count())]
+        run_name_to_combo_text = {
+            text.rsplit(" ", 1)[0]: text for text in combo_texts
+        }
+
+        sorted_new_runs = []
+        for new_run in new_runs:
+            if new_run in run_name_to_combo_text:
+                sorted_new_runs.append(run_name_to_combo_text[new_run])
             else:
-                Log.w("No runs found in the selected folder")
-                return
- 
-            # Load the first run, sorted alphabetically;
-            Log.i("New runs to be analyzed:", new_runs)
-            runs = [self.cBox_Runs.itemText(i) for i in range(self.cBox_Runs.count())]
-            for run in runs:
-                run_name, _ = run.rsplit(" ", 1)
-                run_names.append(run_name)
- 
-            sorted_new_runs = []
-            for new_run in new_runs:
-                if new_run in run_names:
-                    i = run_names.index(new_run)
-                    sorted_new_runs.append(runs[i])
-                else:
-                    Log.e("Cannot load missing run:", new_run)
- 
-            # re-populate cBox_Runs with subset of run names (sorted accordingly)
-            self._batched_runs = sorted_new_runs
-            self.showRunsFromAllDevices_clicked()
- 
-            # cBox_Runs items have been replaced; clear stale folder cache.
-            self._run_to_folder_cache = {}
- 
-            Log.i(f"Loading first batch run: {self.cBox_Runs.itemText(0)} (at idx={0})")
-            self.cBox_Runs.setCurrentIndex(0)
-            self.btn_Load.click()
- 
-            PopUp.information(
-                self,
-                "Batch Processing Mode Started",
-                f"<b>SUCCESS: {len(sorted_new_runs)} runs found for batch processing.</b><br/><br/>"
-                + "When finished analyzing a run (or to skip a run), <br/>"
-                + 'click "Load" again to move to the next queued run.<br/>'
-                + "You'll get another popup when the batch is finished.",
-            )
- 
-        else:
-            Log.w("User selected an inaccessible directory for batch loading")
-            Log.w("NOTE: The load directory must be within the working directory")
- 
-    def loadRun(self):
-        self.action_cancel()  # ask them if they want to lose unsaved changes
+                Log.e(f"Cannot load missing run (not found in UI): {new_run}")
+
+        # Apply batch state and trigger the first load
+        self._batched_runs = sorted_new_runs
+        self.showRunsFromAllDevices_clicked()
+        
+        # Clear the folder cache since the cBox_Runs items have been entirely replaced
+        if hasattr(self, "_run_to_folder_cache"):
+            self._run_to_folder_cache.clear()
+
+        Log.i(f"Loading first batch run: {self.cBox_Runs.itemText(0)} (at idx=0)")
+        self.cBox_Runs.setCurrentIndex(0)
+        self.btn_Load.click()
+
+        # Notify the user
+        PopUp.information(
+            self,
+            "Batch Processing Mode Started",
+            f"<b>SUCCESS: {len(sorted_new_runs)} runs found for batch processing.</b><br/><br/>"
+            "When finished analyzing a run (or to skip a run), <br/>"
+            'click "Load" again to move to the next queued run.<br/>'
+            "You'll get another popup when the batch is finished."
+        )
+    
+    def load_run(self) -> None:
+        """
+        Prepares the UI and application state for loading a new analysis run.
+
+        This method acts as a pre-flight coordinator. It ensures unsaved changes 
+        are handled, verifies Developer Mode compliance (for encrypted results), 
+        evaluates auto-signing session keys, resets the plotting UI into a "Loading" 
+        state, and finally queues the actual heavy data-load operation on the event loop.
+        """
+        # Guard: Check for unsaved changes before proceeding
+        self.action_cancel()  
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
- 
-        # if self.AI_SelectTool_Frame.isVisible():
-        #     self.AI_SelectTool_Frame.setVisible(
-        #         False
-        #     )  # require re-click to show popup tool incorrect position
- 
-        self._start_qmodel_preload()
- 
+
+        # Kick off background preloading of ML models early
+        self._load_qmodels()
+
+        # Developer Mode & Encryption Compliance
         enabled, error, expires = self._check_dev_mode_cached()
-        if enabled == False and (error == True or expires != ""):
+        
+        if not enabled and (error or expires):
             PopUp.warning(
                 self,
                 "Developer Mode Expired",
                 "Developer Mode has expired and these analysis results will be encrypted.\n"
-                + 'An admin must renew or disable "Developer Mode" to suppress this warning.',
+                "An admin must renew or disable 'Developer Mode' to suppress this warning."
             )
- 
-        # DevMode enabled, check if auto-sign (do not ask again) key is active
+
+        # Handle Auto-Sign Session Keys
         if enabled:
             auto_sign_key = None
             session_key = None
+            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+
+            # Safely read keys, stripping whitespace/newlines to prevent mismatch bugs
             if os.path.exists(Constants.auto_sign_key_path):
                 with open(Constants.auto_sign_key_path, "r") as f:
-                    auto_sign_key = f.readline()
-            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+                    auto_sign_key = f.readline().strip()
+                    
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
-                    session_key = f.readline()
-            if auto_sign_key == session_key and session_key != None:
+                    session_key = f.readline().strip()
+
+            # Evaluate session match
+            if session_key is not None and auto_sign_key == session_key:
                 self.sign_do_not_ask.setChecked(True)
             else:
                 self.sign_do_not_ask.setChecked(False)
+                # Purge the invalid/expired auto-sign key
                 if os.path.exists(Constants.auto_sign_key_path):
                     os.remove(Constants.auto_sign_key_path)
- 
-            # NOTE: This check is needed for Analyze since it persists across run loads
-            #       and is only init'd once per application instance (across sessions).
-            # just in case, make it visible
+
+            # Ensure Analyze visibility since it persists across run loads
             self.sign_do_not_ask.setVisible(True)
-        else:  # DevMode may have been manually disabled since last run load
-            # Force compliance by removing auto-sign feature support
-            self.sign_do_not_ask.setChecked(False)  # uncheck
-            self.sign_do_not_ask.setEnabled(False)  # disable
-            self.sign_do_not_ask.setVisible(False)  # hide
- 
+            
+        else:
+            # DevMode disabled: Force compliance by revoking auto-sign UI
+            self.sign_do_not_ask.setChecked(False)
+            self.sign_do_not_ask.setEnabled(False)
+            self.sign_do_not_ask.setVisible(False)
+
+        # Reset UI Control States
         self.askForPOIs = True
         self.btn_Next.setText("Next")
- 
-        self._text1 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
+
+        # Build and position Loading Annotations
+        self._text1 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
         self._text1.setHtml("<span style='font-size: 14pt'>Loading data for analysis... </span>")
-        self._text2 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        self._text2.setHtml("<span style='font-size: 10pt'>(may take a few seconds) </span>")
-        self._text3 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        self._text3.setHtml(
-            "<span style='font-size: 10pt'>Please be more patient with longer runs. </span>"
-        )
         self._text1.setPos(0.5, 0.50)
+        
+        self._text2 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        self._text2.setHtml("<span style='font-size: 10pt'>(may take a few seconds) </span>")
         self._text2.setPos(0.5, 0.40)
+        
+        self._text3 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        # self._text3.setHtml("<span style='font-size: 10pt'>Please be more patient with longer runs. </span>")
+        self._text3.setHtml("")
         self._text3.setPos(0.5, 0.25)
- 
-        ax = self.graphWidget  # .plot(hour, temperature)
-        ax1 = self.graphWidget1
-        ax2 = self.graphWidget2
-        ax3 = self.graphWidget3
- 
-        elems = [ax, ax1, ax2, ax3]
-        for e in elems:
-            if e != None:
-                e.clear()
-                e.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
-                e.setXRange(min=0, max=1)
-                e.setYRange(min=0, max=1)
-            if e is ax:
-                e.addItem(self._text1, ignoreBounds=True)
- 
+
+        # Clear plotting canvases and apply Loading text
+        primary_ax = self.graphWidget
+        plot_elements = [primary_ax, self.graphWidget1, self.graphWidget2, self.graphWidget3]
+        
+        for plot_item in plot_elements:
+            if plot_item is not None:
+                plot_item.clear()
+                plot_item.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
+                plot_item.setXRange(min=0, max=1)
+                plot_item.setYRange(min=0, max=1)
+                
+                # Inject text onto the main plotting axis
+                if plot_item is primary_ax:
+                    plot_item.addItem(self._text1, ignoreBounds=True)
+                    plot_item.addItem(self._text2, ignoreBounds=True)
+                    plot_item.addItem(self._text3, ignoreBounds=True)
+
+        # Reset Progress Bar and decouple previous signals
         try:
             self.progressBar.valueChanged.disconnect(self._update_progress_value)
-        except:
+        except Exception:
+            # Fails silently if the signal was never connected in the first place
             Log.w("Cannot disconnect non-existent method from ProgressBar.")
- 
+
         self.enable_buttons(False, False)
- 
-        # reset internal buffer with 0
         self._update_analyze_progress(0, "Reading Run Data...")
-        self._update_analyze_progress(
-            75, "Reading Run Data..."
-        )  # run up to 75% then slow, stop @ 99% until loaded
- 
-        # Force one paint cycle so the loading TextItems become visible,
-        # then dispatch action_load_run on the next event loop tick (zero
-        # delay). The original 500 ms timer was a workaround to ensure the
-        # paint; processEvents() handles that explicitly without the wait.
+        self._update_analyze_progress(75, "Reading Run Data...")
         QtWidgets.QApplication.processEvents()
         QtCore.QTimer.singleShot(0, self.action_load_run)
  
- 
-    def action_load_run(self):
-        try:
-            # if batch processing, auto-increment to next run if Load is clicked for the currently selected run
-            if hasattr(self, "_batched_runs") and self._batched_runs:
-                if (
-                    hasattr(self, "_current_run")
-                    and self.cBox_Runs.currentText() in self._current_run
-                    and self.cBox_Runs.currentText()
-                    != self.cBox_Runs.itemText(self.cBox_Runs.count() - 1)
-                ):
-                    Log.i(
-                        TAG,
-                        "Incrementing batch processing to next file in subset of list",
-                    )
-                    self.cBox_Runs.setCurrentIndex(self.cBox_Runs.currentIndex() + 1)
-                elif (
-                    self.cBox_Runs.count() > 1
-                    and self.cBox_Runs.currentText()
-                    == self.cBox_Runs.itemText(self.cBox_Runs.count() - 1)
-                ):
-                    Log.w(TAG, "No more runs to batch process. Finished batch processing!")
-                    # Close the currently open run when finished batch processing, with flag to exit mode.
-                    self.action_cancel(exit_batched_processing_mode=True)
-                    # Clicking "Close" button also ends the batch processing mode (clears '_batched_runs').
-                    return
+    def action_load_run(self) -> None:
+        """
+        Executes the final stages of loading a run and triggers data analysis.
 
+        This method acts as the execution phase following `loadRun()`. It handles:
+        1. Batch Processing Navigation: If in batch mode and the current run is 
+        already loaded, it auto-increments the UI to the next run in the queue, 
+        or exits batch mode if the queue is finished.
+        2. Model Synchronization: Blocks until background ML models finish loading.
+        3. Data Analysis: Dispatches the selected run to the parent coordinator 
+        for processing and resets UI interaction states.
+        """
+        try:
+            # Handle Batch Processing Queue Navigation
+            if getattr(self, "_batched_runs", None):
+                current_text = self.cBox_Runs.currentText()
+                current_idx = self.cBox_Runs.currentIndex()
+                last_idx = self.cBox_Runs.count() - 1
+                current_run = getattr(self, "_current_run", "")
+
+                # If the currently selected run is already loaded, "Load" acts as a "Next" button
+                if current_run and current_text in current_run:
+                    if current_idx < last_idx:
+                        Log.i(TAG, "Incrementing batch processing to next file in subset of list.")
+                        self.cBox_Runs.setCurrentIndex(current_idx + 1)
+                    else:
+                        # We reached the end of the batch list
+                        Log.w(TAG, "No more runs to batch process. Finished batch processing!")
+                        self.action_cancel(exit_batched_processing_mode=True)
+                        return
+
+            # Synchronize ML Models
             self._await_qmodels()
- 
+
+            # Reset state and trigger analysis
             self.moved_markers = [False, False, False, False, False, False]
-            self.parent.analyze_data(
-                self.cBox_Devices.currentText(),
-                self.getFolderFromRun(self.cBox_Runs.currentText()),
-                None,
-            )
+            
+            # Use the memoized folder lookup to prevent redundant file system reads
+            folder_name = self.get_folder_from_run(self.cBox_Runs.currentText())
+            device_name = self.cBox_Devices.currentText()
+            
+            self.parent.analyze_data(device_name, folder_name, None)
+            
+            # Re-enable the UI controls post-analysis
             self.enable_buttons()
- 
+
         except Exception as e:
-            Log.e(f"An error occurred while loading the selected run: {str(e)}")
+            Log.e(f"An error occurred while loading the selected run: {e}")
             self.action_cancel()
 
     def goBack(self):
@@ -3272,7 +3400,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # ):
             # self.parent.analyze_data(
             #     self.cBox_Devices.currentText(),
-            #     self.getFolderFromRun(self.cBox_Runs.currentText()),
+            #     self.get_folder_from_run(self.cBox_Runs.currentText()),
             #     None,
             # )  # force back to step 1 of 6
             # else:
@@ -4418,7 +4546,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # ):
             # self.parent.analyze_data(
             #     self.cBox_Devices.currentText(),
-            #     self.getFolderFromRun(self.cBox_Runs.currentText()),
+            #     self.get_folder_from_run(self.cBox_Runs.currentText()),
             #     None,
             # )  # force back to step 1 of 6
             # self.enable_buttons()
