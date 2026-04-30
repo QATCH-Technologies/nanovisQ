@@ -47,6 +47,7 @@ from QATCH.ui.runInfo import QueryRunInfo
 # import matplotlib.pyplot as plt # lazy load
 
 TAG = "[Analyze]"
+USE_NEW_FILL_METHOD = True
 
 
 ###############################################################################
@@ -8270,6 +8271,7 @@ class AnalyzerWorker(QtCore.QObject):
                 local_visc = []
                 local_linv = []
                 local_temp = []
+                last_idx = -1
                 # skip first point, reverse order
                 for pt in shear_points[1:][::-1]:
                     try:
@@ -8279,6 +8281,42 @@ class AnalyzerWorker(QtCore.QObject):
                             f"Failed to find index for shear point {pt:2.2f}. Cannot plot this index."
                         )
                         continue
+
+                    if USE_NEW_FILL_METHOD:
+                        # NEW METHOD:
+                        if last_idx == -1:
+                            mv = fill_pos[idx] / (fill_time[idx] * (n + 1) / n)
+                            mp = (fill_pos[idx] / 2) * ((n + 1) / n)
+                        else:
+                            mv = (fill_pos[idx] - fill_pos[last_idx]) / (
+                                fill_time[idx] - fill_time[last_idx]
+                            )
+                            mp = (fill_pos[idx] + fill_pos[last_idx]) / 2
+                        last_idx = idx
+                        mid_visc = (
+                            ST
+                            * np.cos(np.radians(CA))
+                            * Constants.channel_thickness
+                            * 1e6
+                            / ((mp * mv * 1e6) * (2 / 3 + 1 / 3 / n))
+                        ) * 2e5  # TODO: why is this needed?
+                        mid_shear = (
+                            6
+                            * mv
+                            / Constants.channel_thickness
+                            * (2 / 3 + 1 / 3 / n)
+                            * 1e-3
+                        )
+                        ax7.scatter(
+                            in_shear_rate[idx],
+                            sm_trendline[idx],
+                            marker="d",
+                            s=15,
+                            c="red",
+                        )
+                        sm_trendline[idx] = mid_visc
+                        in_shear_rate[idx] = mid_shear
+
                     local_shear.append(in_shear_rate[idx])
                     local_visc.append(sm_trendline[idx])
                     local_linv.append(lin_viscosity[idx])
