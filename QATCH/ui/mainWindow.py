@@ -6050,7 +6050,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Block signals to prevent unwanted triggers during refresh
         self.ControlsWin.ui1.cBox_Port.blockSignals(True)
+
+        # Wrap signal-blocked code in try-finally to restore signals on error
         try:
+
             # Clears boxes before adding new
             self.ControlsWin.ui1.cBox_Port.clear()
 
@@ -6142,8 +6145,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         Log.d("Device info queried. Waiting to refresh ports on next call.")
                         # Ensure the combo box signals are re-enabled before the
                         # early return; the recursive _refresh_ports() call will
-                        # re-block them itself.
-                        self.ControlsWin.ui1.cBox_Port.blockSignals(False)
+                        # re-block them itself. (Handled automatically in finally block now)
                         return  # fwUpdater.run() calls _refresh_ports() when devinfo written, stop stop here
                         # NOTE: Each subsequent call to _refresh_ports() will parse one pending device info.
 
@@ -6239,74 +6241,74 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.d(f"found pre-selected port = {common_port.split(':')[0]}")
                 selected_port = common_port
 
+        finally:
+
             # Unblock signals before setCurrentIndex so the final port-change
             # notification propagates exactly once (instead of once per addItem
             # during the repopulate loop above).
             self.ControlsWin.ui1.cBox_Port.blockSignals(False)
 
-            if selected_port in ports:
-                i = self.ControlsWin.ui1.cBox_Port.findData(selected_port)
-                self.ControlsWin.ui1.cBox_Port.setCurrentIndex(i)
+        if selected_port in ports:
+            i = self.ControlsWin.ui1.cBox_Port.findData(selected_port)
+            self.ControlsWin.ui1.cBox_Port.setCurrentIndex(i)
 
-                # RESET PORT MSGBOX
-                try:
-                    _serial = serial.Serial()
-                    _serial.port = selected_port
-                    _serial.baudrate = Constants.serial_default_speed  # 115200
-                    _serial.stopbits = serial.STOPBITS_ONE
-                    _serial.bytesize = serial.EIGHTBITS
-                    _serial.timeout = Constants.serial_timeout_ms
-                    _serial.write_timeout = Constants.serial_writetimeout_ms
-                    _serial.open()
-                    _serial.write(b"MSGBOX\n")
-                    _serial.close()
-                except Exception as e:
-                    Log.e("ERROR: Unable to clear messagebox on device.")
-                    Log.e(e)
+            # RESET PORT MSGBOX
+            try:
+                _serial = serial.Serial()
+                _serial.port = selected_port
+                _serial.baudrate = Constants.serial_default_speed  # 115200
+                _serial.stopbits = serial.STOPBITS_ONE
+                _serial.bytesize = serial.EIGHTBITS
+                _serial.timeout = Constants.serial_timeout_ms
+                _serial.write_timeout = Constants.serial_writetimeout_ms
+                _serial.open()
+                _serial.write(b"MSGBOX\n")
+                _serial.close()
+            except Exception as e:
+                Log.e("ERROR: Unable to clear messagebox on device.")
+                Log.e(e)
 
+        else:
+            self.ControlsWin.ui1.cBox_Port.setCurrentIndex(-1)
+            if len(selected_port) > 0:
+                Log.w(f"The selected port ({selected_port.split(':')[0]}) is no longer available.")
+                Log.w("Please check connection or select a new port.")
+                # PopUp.warning(self, "Missing COM Port",
+                #     "The selected port ({}) is no longer available.\n\n".format(selected_port) +
+                #     "Please check connection or select a new port.")
+            elif len(ports) == 1 or len(ports) == len(dev_pids):
+                self.ControlsWin.ui1.cBox_Port.setCurrentIndex(0)
+                self._port_changed()
+
+        # Remove FLUX controller from list of PIDs connected (if exists)
+        if "80" in dev_pids:
+            dev_pids.remove("80")
+
+        restore_idx = self.ControlsWin.ui1.cBox_MultiMode.currentIndex()
+        self.ControlsWin.ui1.cBox_MultiMode.clear()
+        multi_channel_count = 4 * 1
+        if "A" in dev_pids:
+            multi_channel_count = 4 * 6
+        multi_channel_items = [
+            f"{i + 1} Channel" + ("s" if i > 0 else "") for i in range(multi_channel_count)
+        ]
+        self.ControlsWin.ui1.cBox_MultiMode.addItems(multi_channel_items)
+        if self.ControlsWin.ui1.chBox_MultiAuto.isChecked():
+            idx = max(0, min(len(dev_pids), multi_channel_count) - 1)
+            Log.d(f"Auto-Detect Channel Count: {idx + 1}")
+        else:
+            if self.ControlsWin.ui1.cBox_MultiMode.count() > restore_idx:
+                idx = restore_idx
             else:
-                self.ControlsWin.ui1.cBox_Port.setCurrentIndex(-1)
-                if len(selected_port) > 0:
-                    Log.w(f"The selected port ({selected_port.split(':')[0]}) is no longer available.")
-                    Log.w("Please check connection or select a new port.")
-                    # PopUp.warning(self, "Missing COM Port",
-                    #     "The selected port ({}) is no longer available.\n\n".format(selected_port) +
-                    #     "Please check connection or select a new port.")
-                elif len(ports) == 1 or len(ports) == len(dev_pids):
-                    self.ControlsWin.ui1.cBox_Port.setCurrentIndex(0)
-                    self._port_changed()
-
-            # Remove FLUX controller from list of PIDs connected (if exists)
-            if "80" in dev_pids:
-                dev_pids.remove("80")
-
-            restore_idx = self.ControlsWin.ui1.cBox_MultiMode.currentIndex()
-            self.ControlsWin.ui1.cBox_MultiMode.clear()
-            multi_channel_count = 4 * 1
-            if "A" in dev_pids:
-                multi_channel_count = 4 * 6
-            multi_channel_items = [
-                f"{i + 1} Channel" + ("s" if i > 0 else "") for i in range(multi_channel_count)
-            ]
-            self.ControlsWin.ui1.cBox_MultiMode.addItems(multi_channel_items)
-            if self.ControlsWin.ui1.chBox_MultiAuto.isChecked():
-                idx = max(0, min(len(dev_pids), multi_channel_count) - 1)
-                Log.d(f"Auto-Detect Channel Count: {idx + 1}")
+                Log.w("Too few channels to restore prior selection.")
+                idx = self.ControlsWin.ui1.cBox_MultiMode.count() - 1
+        self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(idx)
+        for i in range(self.ControlsWin.ui1.cBox_MultiMode.count()):
+            if i < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1) - 1:
+                enable = True
             else:
-                if self.ControlsWin.ui1.cBox_MultiMode.count() > restore_idx:
-                    idx = restore_idx
-                else:
-                    Log.w("Too few channels to restore prior selection.")
-                    idx = self.ControlsWin.ui1.cBox_MultiMode.count() - 1
-            self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(idx)
-            for i in range(self.ControlsWin.ui1.cBox_MultiMode.count()):
-                if i < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1) - 1:
-                    enable = True
-                else:
-                    enable = False
-                self.ControlsWin.ui1.cBox_MultiMode.model().item(i).setEnabled(enable)
-        finally:
-            self.ControlsWin.ui1.cBox_Port.blockSignals(False)
+                enable = False
+            self.ControlsWin.ui1.cBox_MultiMode.model().item(i).setEnabled(enable)
 
     ###########################################################################
     # Updates the speeds and depending boxes on change

@@ -6,22 +6,19 @@ import hashlib
 # from QATCH.QModel.q_data_pipeline import QDataPipeline
 import os
 import sys
-import threading
 from io import BytesIO
-from typing import Optional, cast
-from time import localtime, sleep, strftime, monotonic
-from typing import Optional
+from typing import Optional, cast, List, Tuple, Any, Dict
+from time import monotonic, localtime, strftime  # sleep
+from scipy import interpolate
 from xml.dom import minidom
-
+import xml.etree.ElementTree as ET
 import numpy as np
-import pandas as pd
 import pyqtgraph as pg
 import pyzipper
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QCompleter
-from scipy import interpolate
 import atexit
 from concurrent.futures import ThreadPoolExecutor
 from QATCH.common.architecture import Architecture
@@ -51,8 +48,26 @@ from QATCH.ui.runInfo import QueryRunInfo
 TAG = "[Analyze]"
 USE_NEW_FILL_METHOD = True
 
+
+# A shared thread pool used exclusively for heavy background operations
+# (e.g., preloading machine learning models, batch processing file I/O).
+# Limiting the max_workers to 4 prevents thread exhaustion and memory bloat,
+# while sharing a single executor prevents spawning runaway threads on rapid UI clicks.
 _LOAD_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="visq-load")
-atexit.register(lambda: _LOAD_EXECUTOR.shutdown(wait=False, cancel_futures=True))
+
+def _shutdown_executor() -> None:
+    """
+    Ensures the background executor tears down cleanly when the application exits.
+    
+    - wait=False: Prevents the main application thread from hanging indefinitely 
+                  if a background task is currently stuck or executing.
+    - cancel_futures=True: Ensures any pending tasks in the queue that haven't 
+                           started yet are immediately discarded (Requires Python 3.9+).
+    """
+    _LOAD_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+
+# Register the cleanup handler to fire automatically upon Python interpreter exit
+atexit.register(_shutdown_executor)
  
 _DEV_MODE_TTL_SECONDS = 30.0
 ###############################################################################
@@ -357,8 +372,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             parent (QWidget | None): Optional parent widget for the AnalyzeProcess window; used to integrate with the hosting application and to read/write session-related state such as signed user metadata.
 
         Notes:
-        - The constructor performs UI layout, installs event filters, and connects many signals to action handlers (e.g., loadRun, getPoints, goBack, action_analyze, onClick) so the widget is immediately interactive after construction.
-        - Several predictive/modeling modules are only lazily loaded later (on loadRun) and are initialized here as placeholders.
+        - The constructor performs UI layout, installs event filters, and connects many signals to action handlers (e.g., load_run, getPoints, goBack, action_analyze, onClick) so the widget is immediately interactive after construction.
+        - Several predictive/modeling modules are only lazily loaded later (on load_run) and are initialized here as placeholders.
         - A QThread is created for running analyzer tasks; the worker itself is started later when analysis is requested.
         """
         super(AnalyzeProcess, self).__init__(None)
@@ -537,7 +552,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tBtn_Load.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tBtn_Load.setIcon(icon_load)  # normal and disabled pixmaps
         self.tBtn_Load.setText("Load")
-        self.tBtn_Load.clicked.connect(self.loadRun)  # main action
+        self.tBtn_Load.clicked.connect(self.load_run)  # main action
 
         # Create dropdown menu
         menu = QtWidgets.QMenu()
@@ -1102,7 +1117,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.cBox_Runs.setEditText("No Runs Found")
         self.cBox_Runs.currentIndexChanged.connect(self.updateDev)
         self.cBox_Devices.currentIndexChanged.connect(self.updateRunOnChange)
-        self.btn_Load.pressed.connect(self.loadRun)
+        self.btn_Load.pressed.connect(self.load_run)
         self.btn_Back.pressed.connect(self.goBack)
         self.btn_Next.pressed.connect(self.getPoints)
         self.sign.textEdited.connect(self.sign_edit)
@@ -1607,7 +1622,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def showRunsFromAllDevices_clicked(self):
         self.cBox_Devices.setEnabled(not self.showRunsFromAllDevices.isChecked())
-        self.updateRun(self.cBox_Devices.currentIndex())
+        self.update_run(self.cBox_Devices.currentIndex())
 
     def switch_user_at_sign_time(self):
         new_username, new_initials, new_userrole = UserProfiles.change(UserRoles.ANALYZE)
@@ -1666,9 +1681,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             Log.d("User did not authenticate for role to switch users.")
 
-    def action_sort_by_name(self, obj):
+    def action_sort_by_name(self, obj: Any) -> None:
+        """Sets the run sorting order to alphabetical by name and updates the UI.
+
+        Updates the internal sort order state to 0 (name), triggers a refresh 
+        of the run selection combobox, and applies bold CSS styling to the 
+        'sort by name' label while resetting the 'sort by date' label.
+
+        Args:
+            obj (Any): The event object passed by the Qt signal (e.g., a 
+                QMouseEvent), or None if called programmatically.
+        """
         self.sort_order = 0
-        self.updateRun(self.cBox_Devices.currentIndex())
+        self._refresh_cbox_runs()
         self.sort_by_name.setStyleSheet(
             "color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;"
         )
@@ -1676,9 +1701,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
             "color: #0D4AAF; text-decoration: none; padding-left: 15px;"
         )
 
-    def action_sort_by_date(self, obj):
+    def action_sort_by_date(self, obj: Any) -> None:
+        """Sets the run sorting order to chronological by date and updates the UI.
+
+        Updates the internal sort order state to 1 (date), triggers a refresh 
+        of the run selection combobox, and applies bold CSS styling to the 
+        'sort by date' label while resetting the 'sort by name' label.
+
+        Args:
+            obj (Any): The event object passed by the Qt signal (e.g., a 
+                QMouseEvent), or None if called programmatically.
+        """
         self.sort_order = 1
-        self.updateRun(self.cBox_Devices.currentIndex())
+        self._refresh_cbox_runs()
         self.sort_by_name.setStyleSheet(
             "color: #0D4AAF; text-decoration: none; padding-left: 15px;"
         )
@@ -1975,7 +2010,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     if hasattr(self, "diff_factor"):
                         del self.diff_factor  # unset to revert to default auto-calc value
                         Log.d("Difference Factor deleted")
-                self.loadRun()  # refresh plots to show new diff factor
+                self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
 
@@ -1990,7 +2025,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     if hasattr(self, "diff_factor"):
                         del self.diff_factor  # unset to revert to default auto-calc value
                         Log.d("Difference Factor deleted")
-                self.loadRun()  # refresh plots to show new diff factor
+                self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
 
@@ -2002,7 +2037,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         the acceptable range defined by `self.validFactor`. If valid, it confirms
         any unsaved changes before proceeding to update the `diff_factor` with the
         provided input. If the input is invalid, it logs an error message. After
-        updating the difference factor, it refreshes the plots by calling `self.loadRun()`.
+        updating the difference factor, it refreshes the plots by calling `self.load_run()`.
 
         Raises an error if the process fails.
 
@@ -2040,7 +2075,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     if hasattr(self, "diff_factor"):
                         del self.diff_factor  # unset to revert to default auto-calc value
                         Log.d("Difference Factor deleted")
-                self.loadRun()  # refresh plots to show new diff factor
+                self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
 
@@ -2225,29 +2260,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.clear()
 
-    def find_most_recent_run(self):
-        device_idx = 0
-        most_recent = "0 / No Date"
-        self.enable_buttons(False, False)
-        self._update_progress_value(1, f"Loading...")
-        for idx in range(self.cBox_Devices.count()):
-            try:
-                self.updateRun(idx)
-                most_recent_run_this_dev = self.sorted_runs[0][1]
-                compare = [most_recent, most_recent_run_this_dev]
-                if compare[1] == sorted(compare)[1]:
-                    device_idx = idx
-                    most_recent = most_recent_run_this_dev
-            except:
-                Log.w(f"Device {self.cBox_Devices.itemText(idx)} has no available runs!")
-        Log.d(
-            f"Most recent run detected on device {self.cBox_Devices.itemText(device_idx)} from {most_recent}."
-        )
-
-        self.progressBar.setValue(0)  # Not started
-        self.cBox_Devices.setCurrentIndex(device_idx)
-        self.action_sort_by_date(None)  # dummy 'obj' passed
-        self.enable_buttons()
 
     def clear(self):
         self.text_Created.clear()
@@ -2696,557 +2708,897 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def updateRunOnChange(self, idx):
         if not self.showRunsFromAllDevices.isChecked():
-            self.updateRun(idx)
+            self.update_run(idx)
 
-    def updateRun(self, idx):
-        runs = FileStorage.DEV_get_logged_data_folders(self.cBox_Devices.itemText(idx))
-        runs = [x for x in runs if not x == "_unnamed"]  # remove _unnamed
-        unchecked_runs = [
-            x
-            for x in list(self.run_timestamps.keys())
-            if x.endswith(self.cBox_Devices.itemText(idx))
-        ]
-        for run in runs:
-            try:
-                data_device = self.cBox_Devices.itemText(idx)
-                data_folder = run
-                data_files = FileStorage.DEV_get_logged_data_files(data_device, data_folder)
-                dict_key = f"{data_folder}:{data_device}"
-                self.run_names[dict_key] = data_folder
-                if self.run_timestamps.get(dict_key) == None:
-                    doc = None
-                    zn = os.path.join(
-                        Constants.log_prefer_path, data_device, data_folder, "audit.zip"
+    @staticmethod
+    def _scan_run(data_device: str, data_folder: str, parse_xml: bool = True) -> Dict[str, Any]:
+        """Scans a single run to fetch its file list and extract metadata.
+
+        Worker (thread-safe): for one run, fetches its file list and, if 
+        parse_xml is True, extracts the 'start' metric and 'run_name' 
+        parameter from its XML metadata. 
+
+        This method uses ElementTree (much faster than minidom on small 
+        documents) and reports warnings or errors via the returned dictionary 
+        instead of modifying shared state directly.
+
+        Args:
+            data_device (str): The name of the device associated with the run.
+            data_folder (str): The specific folder name containing the run data.
+            parse_xml (bool, optional): Whether to parse the XML file for 
+                metadata. Defaults to True.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the scan results. Keys include:
+                - "device" (str): The device name.
+                - "folder" (str): The folder name.
+                - "dict_key" (str): A unique key formatted as "{folder}:{device}".
+                - "files" (List[str]): A list of data files (may be empty on error).
+                - "timestamp" (Optional[str]): The value of the <metric name="start">.
+                - "run_name" (Optional[str]): The value of the <param name="run_name">.
+                - "warnings" (List[str]): Warnings to be logged on the UI thread.
+                - "error" (Optional[str]): Error messages to be logged via Log.e.
+        """
+        result = {
+            "device": data_device,
+            "folder": data_folder,
+            "dict_key": f"{data_folder}:{data_device}",
+            "files": [],
+            "timestamp": None,
+            "run_name": None,
+            "warnings": [],
+            "error": None,
+        }
+ 
+        try:
+            data_files = FileStorage.DEV_get_logged_data_files(
+                data_device, data_folder
+            )
+            result["files"] = data_files or []
+ 
+            if not parse_xml:
+                return result
+ 
+            root = None
+ 
+            zn = os.path.join(
+                Constants.log_prefer_path, data_device, data_folder, "audit.zip"
+            )
+            if FileManager.file_exists(zn):
+                with pyzipper.AESZipFile(
+                    zn,
+                    "r",
+                    compression=pyzipper.ZIP_DEFLATED,
+                    allowZip64=True,
+                    encryption=pyzipper.WZ_AES,
+                ) as zf:
+                    try:
+                        zf.testzip()
+                    except Exception:
+                        zf.setpassword(
+                            hashlib.sha256(zf.comment).hexdigest().encode()
+                        )
+                    files = zf.namelist()
+                    xml_filename = next(
+                        (x for x in files if x.endswith(".xml")), None
                     )
-                    if FileManager.file_exists(zn):
-                        with pyzipper.AESZipFile(
-                            zn,
-                            "r",
-                            compression=pyzipper.ZIP_DEFLATED,
-                            allowZip64=True,
-                            encryption=pyzipper.WZ_AES,
-                        ) as zf:
-                            # Add a protected file to the zip archive
-                            try:
-                                zf.testzip()
-                            except:
-                                zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
-                            files = zf.namelist()
-                            xml_filename = [x for x in files if x.endswith(".xml")][0]
-                            with zf.open(xml_filename, "r") as fh:
-                                xml_str = fh.read().decode()
-                            doc = minidom.parseString(xml_str)
-                    else:
-                        try:
-                            xml_filename = [x for x in data_files if x.endswith(".xml")][0]
-                            xml_path = os.path.join(
-                                Constants.log_prefer_path,
-                                data_device,
-                                data_folder,
-                                xml_filename,
-                            )
-                            if os.path.exists(xml_path):
-                                doc = minidom.parse(xml_path)
-                        except IndexError as e:
-                            Log.w(
-                                f'WARNING: XML file not found in data files for run "{data_folder}"'
-                            )
-                            Log.w('Unable to parse "Date" without XML file. Treating as "Undated".')
-                            Log.d(f"Warning debug: {data_device}/{data_folder}/{data_files}")
-                        except Exception as e:
-                            raise e  # throw it, not an expected error condition
-
-                    if doc != None:
-                        metrics = doc.getElementsByTagName("metric")
-                        for m in metrics:
-                            name = m.getAttribute("name")
-                            value = m.getAttribute("value")
-                            if name == "start":
-                                # value[0:value.find("T")]
-                                captured_datetime = value
-                                self.run_timestamps[dict_key] = captured_datetime
-                        params = doc.getElementsByTagName("param")
-                        for p in params:
-                            name = p.getAttribute("name")
-                            value = p.getAttribute("value")
-                            if name == "run_name":
-                                self.run_names[dict_key] = value
-                                self.run_devices[value] = data_device
-                # folder exists, but does a file still exist?
-                if len(data_files) > 0:  # files exist
-                    if dict_key in unchecked_runs:
-                        # it's been checked, and is not blank
-                        unchecked_runs.remove(dict_key)
-                    if self.run_timestamps.get(dict_key) == None:
-                        self.run_timestamps[dict_key] = "0 / No Date"
+                    if xml_filename is not None:
+                        with zf.open(xml_filename, "r") as fh:
+                            xml_bytes = fh.read()
+                        root = ET.fromstring(xml_bytes)
+            else:
+                xml_filename = next(
+                    (x for x in result["files"] if x.endswith(".xml")), None
+                )
+                if xml_filename is None:
+                    result["warnings"].append(
+                        f'WARNING: XML file not found in data files for run "{data_folder}"'
+                    )
+                    result["warnings"].append(
+                        'Unable to parse "Date" without XML file. Treating as "Undated".'
+                    )
                 else:
-                    Log.w(f"Removing empty run info ({dict_key})")
-                self.run_devices[run] = data_device
-            except Exception as e:
-                # import traceback
-                # traceback.print_exc()
+                    xml_path = os.path.join(
+                        Constants.log_prefer_path,
+                        data_device,
+                        data_folder,
+                        xml_filename,
+                    )
+                    if os.path.exists(xml_path):
+                        root = ET.parse(xml_path).getroot()
+ 
+            if root is not None:
+                for m in root.iter("metric"):
+                    if m.get("name") == "start":
+                        result["timestamp"] = m.get("value")
+                        break
+                for p in root.iter("param"):
+                    if p.get("name") == "run_name":
+                        result["run_name"] = p.get("value")
+                        break
+ 
+        except Exception as e:
+            result["error"] = str(e)
+ 
+        return result
+    
+    def _apply_scan_results(
+        self, 
+        scan_results: List[Dict[str, Any]], 
+        data_device: str, 
+        unchecked_runs: List[str]
+    ) -> None:
+        """Merges the background scan results into the shared state dictionaries.
+
+        Iterates through the parsed results from the background thread, logs any 
+        warnings or errors, and updates the internal state trackers (`run_names`, 
+        `run_timestamps`, and `run_devices`). Also handles cleaning up runs that 
+        are empty or no longer exist on the filesystem.
+
+        Args:
+            scan_results (List[Dict[str, Any]]): A list of dictionaries containing 
+                the parsed metadata for each run (typically the output from `_scan_run`).
+            data_device (str): The name of the device associated with these runs.
+            unchecked_runs (List[str]): A list of dict keys (formatted as 
+                "{folder}:{device}") representing runs that were previously known 
+                but need verification of their continued existence.
+        """
+        for r in scan_results:
+            data_folder = r["folder"]
+            dict_key = r["dict_key"]
+            data_files = r["files"]
+
+            for msg in r["warnings"]: Log.w(msg)
+            if r["error"] is not None:
                 Log.e(f'Error getting timestamp from XML for run "{data_folder}"!')
-                Log.d(f"Error message: {str(e)}")
+                Log.d(f"Error message: {r['error']}")
+
+            self.run_names[dict_key] = data_folder
+
+            if self.run_timestamps.get(dict_key) is None:
+                if r["timestamp"] is not None:
+                    self.run_timestamps[dict_key] = r["timestamp"]
+                if r["run_name"] is not None:
+                    self.run_names[dict_key] = r["run_name"]
+                    self.run_devices[r["run_name"]] = data_device
+
+            if len(data_files) > 0:
+                if dict_key in unchecked_runs:
+                    unchecked_runs.remove(dict_key)
+                if self.run_timestamps.get(dict_key) is None:
+                    self.run_timestamps[dict_key] = "0 / No Date"
+            else:
+                Log.w(f"Removing empty run info ({dict_key})")
+
+            self.run_devices[data_folder] = data_device
 
         for dict_key in unchecked_runs:
             Log.w(f"Removing missing run info ({dict_key})")
             self.run_timestamps.pop(dict_key, None)
 
-        sort_options = [[0, False], [1, True]]
-        sort_select = self.sort_order  # 0 = by name, 1 = by date
-        self.sorted_runs = list(
-            sorted(
-                self.run_timestamps.items(),
-                key=lambda item: item[sort_options[sort_select][0]].lower(),
-                reverse=sort_options[sort_select][1],
-            )
+    def _refresh_cbox_runs(self) -> None:
+        """Sorts the cached run data and repopulates the UI run selection combobox.
+
+        This method takes the current state of `run_timestamps`, sorts them based on 
+        the user's selected preference (alphabetical by name or chronological by date), 
+        and filters them according to the selected device or active batch subsets. 
+        It then updates the `cBox_Runs` widget and adjusts the UI layout width 
+        to fit the new content.
+
+        The sorting logic follows:
+            - `self.sort_order = 0`: Sort by Name (Ascending)
+            - `self.sort_order = 1`: Sort by Date (Descending)
+        """
+        # Define sorting configuration for readability: {order_index: (sort_key_index, reverse_bool)}
+        # item[0] is the dict_key (name-based), item[1] is the timestamp
+        sort_config = {
+            0: (0, False),  # Name: Ascending
+            1: (1, True)    # Date: Descending
+        }
+        
+        key_idx, is_reverse = sort_config.get(self.sort_order, (1, True))
+
+        # Sort the items based on the current UI selection
+        self.sorted_runs: List[Tuple[str, str]] = sorted(
+            self.run_timestamps.items(),
+            key=lambda item: item[key_idx].lower(),
+            reverse=is_reverse
         )
-        runs = []
-        for run in self.sorted_runs:
-            run_name = run[0]
-            device_name = run_name[run_name.find(":") + 1 :]
-            # run_name[0:run_name.find(":")]
-            run_name = self.run_names[run_name]
-            captured_datetime = run[1]
+
+        display_runs: List[str] = []
+        selected_device = self.cBox_Devices.currentText()
+        show_all = self.showRunsFromAllDevices.isChecked()
+
+        for dict_key, captured_datetime in self.sorted_runs:
+            # Extract device name from f"{folder}:{device}"
+            device_name = dict_key.split(":")[-1] if ":" in dict_key else ""
+            run_name = self.run_names.get(dict_key, dict_key)
+
+            # Format the date string
             if captured_datetime == "0 / No Date":
                 captured_date = "Undated"
             else:
-                captured_date = captured_datetime[0 : captured_datetime.find("T")]
-            # If batch processing a subset of all runs, only show the subset in the dropdown menu
-            if hasattr(self, "_batched_runs") and self._batched_runs:
-                if f"{run_name} ({captured_date})" not in self._batched_runs:
-                    continue  # skip it, don't show
-            if (
-                self.showRunsFromAllDevices.isChecked()
-                or self.cBox_Devices.currentText() == device_name
-            ):
-                # append date to run name
-                runs.append(f"{run_name} ({captured_date})")
+                captured_date = captured_datetime.split("T")[0]
 
+            formatted_display_name = f"{run_name} ({captured_date})"
+
+            # Filter: Check if we are restricted to a specific batch subset
+            if hasattr(self, "_batched_runs") and self._batched_runs and formatted_display_name not in self._batched_runs:
+                continue
+                    
+            # Filter: Check device ownership
+            if show_all or selected_device == device_name:
+                display_runs.append(formatted_display_name)
+
+        # Update UI Components
         self.cBox_Runs.clear()
-        self.cBox_Runs.addItems(runs)
-        w = self.cBox_Runs.sizeHint().width()
-        if w < 200:
-            w = 200
-        self.cBox_Runs.setFixedWidth(w)
-        self.sort_by_widget.setFixedWidth(self.cBox_Runs.width())
+        self.cBox_Runs.addItems(display_runs)
 
-    def _start_qmodel_preload(self):
+        # Reset internal lookup caches if they exist
+        if hasattr(self, "_run_to_folder_cache"):
+            self._run_to_folder_cache = {}
+        
+        # Dynamically resize the combobox and associated widgets
+        new_width = max(self.cBox_Runs.sizeHint().width(), 200)
+        self.cBox_Runs.setFixedWidth(new_width)
+        self.sort_by_widget.setFixedWidth(new_width)
+
+    def find_most_recent_run(self) -> None:
+        """Initiates an asynchronous background scan to find the most recent run across all devices.
+
+        This method prepares the UI by disabling buttons and initializing the progress 
+        bar. It then identifies all available devices from the `cBox_Devices` combobox 
+        and launches a `RunScanWorker` thread to scan each device's file system 
+        without freezing the main UI thread. 
+
+        The results are processed incrementally via the `_on_find_most_recent_scanned` 
+        slot as each device scan completes.
         """
-        Kick off background loading of V4/V6 predictors if their respective
-        Constants.QModel{4,6}_predict flags are set and they aren't already
-        loaded or in flight. Idempotent and safe to call repeatedly.
- 
-        The flags are read at submit time, so a user toggling models via
-        set_new_prediction_model() before this call is honored. If the
-        flags change AFTER submit, the in-flight load completes anyway --
-        same effective behavior as the original inline code path.
+        # Prevent user interaction during initial scan
+        self.enable_buttons(False, False)
+        self._update_progress_value(1, "Loading runs...")
+        self.progressBar.setValue(0) 
+
+        # Collect device names and existing cache keys for the worker
+        devices: List[str] = [
+            self.cBox_Devices.itemText(i) for i in range(self.cBox_Devices.count())
+        ]
+        known_keys: List[str] = list(self.run_timestamps.keys())
+        self._async_best_date: str = "0 / No Date"
+        self._async_best_dev_idx: int = 0
+        self.multi_scan_worker = RunScanWorker(devices, known_keys, parent=self)
+        
+        # Connect the signal to the handler that merges results and updates the UI
+        self.multi_scan_worker.scan_finished.connect(self._on_find_most_recent_scanned)
+        
+        self.multi_scan_worker.start()
+
+    @QtCore.pyqtSlot(list, str, list, bool)
+    def _on_find_most_recent_scanned(
+        self, 
+        scan_results: List[Dict[str, Any]], 
+        data_device: str, 
+        unchecked_runs: List[str], 
+        is_last: bool
+    ) -> None:
+        """Handles the incremental results from the background most-recent-run scan.
+
+        This slot is triggered whenever the `RunScanWorker` finishes scanning a 
+        specific device. It updates the internal state with the new results and 
+        tracks the globally "most recent" run across all processed devices. Once 
+        the final device is scanned, it finalizes the UI state.
+
+        Args:
+            scan_results (List[Dict[str, Any]]): The metadata results for the 
+                runs found on the scanned device.
+            data_device (str): The name of the device that was just scanned.
+            unchecked_runs (List[str]): List of run keys to be verified/removed 
+                if they no longer exist on disk.
+            is_last (bool): Flag indicating if this was the last device in the 
+                scanning queue.
         """
+        # Merge results from this device into the main state dictionaries
+        self._apply_scan_results(scan_results, data_device, unchecked_runs)
+        dev_idx: int = self.cBox_Devices.findText(data_device)
+        
+        if dev_idx != -1:
+            for r in scan_results:
+                timestamp: str = r.get("timestamp") or "0 / No Date"
+                if timestamp > self._async_best_date:
+                    self._async_best_date = timestamp
+                    self._async_best_dev_idx = dev_idx
+
+        if is_last:
+            Log.d(
+                f"Most recent run detected on device "
+                f"{self.cBox_Devices.itemText(self._async_best_dev_idx)} "
+                f"from {self._async_best_date}."
+            )
+            
+            self.cBox_Devices.setCurrentIndex(self._async_best_dev_idx)
+            self.action_sort_by_date(None)
+            self.enable_buttons()
+
+    def update_run(self, idx: int) -> None:
+        """Initiates an asynchronous background scan for runs associated with a specific device.
+
+        This method serves as the entry point for refreshing the run list when a user 
+        selects a new device or a manual refresh is triggered. It disables UI 
+        interaction, identifies the target device based on the provided index, and 
+        offloads the file system scanning and XML parsing to a `RunScanWorker` thread.
+
+        The results are processed by the `_on_single_device_scanned` slot once the 
+        background task completes.
+
+        Args:
+            idx (int): The index of the device in the `cBox_Devices` combobox 
+                to be scanned.
+        """
+        self.enable_buttons(False, False)
+        data_device: str = self.cBox_Devices.itemText(idx)
+        
+        # Provide the worker with current cache keys to avoid redundant XML parsing
+        known_keys: List[str] = list(self.run_timestamps.keys())
+        self.single_scan_worker = RunScanWorker([data_device], known_keys, parent=self)
+        self.single_scan_worker.scan_finished.connect(self._on_single_device_scanned)
+        self.single_scan_worker.start()
+
+    @QtCore.pyqtSlot(list, str, list, bool)
+    def _on_single_device_scanned(
+        self, 
+        scan_results: List[Dict[str, Any]], 
+        data_device: str, 
+        unchecked_runs: List[str], 
+        is_last: bool
+    ) -> None:
+        """Handles the results of a background scan for a single device selection.
+
+        This slot is triggered when the `RunScanWorker` completes the scanning 
+        process for the currently selected device. It updates the internal state 
+        dictionaries with the new results, refreshes the run selection combobox 
+        to reflect changes, and re-enables the UI buttons for user interaction.
+
+        Args:
+            scan_results (List[Dict[str, Any]]): A list of dictionaries containing 
+                parsed run metadata (timestamp, name, files, etc.) for the device.
+            data_device (str): The name of the device that was scanned.
+            unchecked_runs (List[str]): Keys of runs that were previously cached 
+                but were not found during this scan and should be purged.
+            is_last (bool): Flag indicating if this was the final device in the 
+                worker's queue (always True for single-device updates).
+        """
+        self._apply_scan_results(scan_results, data_device, unchecked_runs)
+        self._refresh_cbox_runs()
+        self.enable_buttons()
+
+    def _load_qmodels(self) -> None:
+        """
+        Asynchronously schedules the loading of QModel predictive models.
+
+        This method submits the heavy model-loading routines to a background thread pool 
+        executor (`_LOAD_EXECUTOR`). It is fully idempotent and safe to call repeatedly 
+        (e.g., in a polling loop or UI refresh cycle).
+
+        Configuration constraints:
+            - Models are only loaded if their respective prediction flags 
+            (`QModel4_predict` / `QModel6_predict`) are active in `Constants`.
+            - Models are skipped if they are already successfully loaded.
+            - Models are skipped if a loading task is already in-flight (tracked via futures).
+        """
+        # Ensure future tracking attributes exist (fallback if not set in __init__)
         if not hasattr(self, "_qmodel_v4_future"):
             self._qmodel_v4_future = None
         if not hasattr(self, "_qmodel_v6_future"):
             self._qmodel_v6_future = None
- 
+
+        # QModel V4 (Fusion) Preload
         try:
-            if (
-                getattr(Constants, "QModel4_predict", False)
-                and not self.QModel_v4_modules_loaded
-                and self._qmodel_v4_future is None
-            ):
+            requires_v4 = getattr(Constants, "QModel4_predict", False)
+            is_v4_pending = self._qmodel_v4_future is not None
+            
+            if requires_v4 and not self.QModel_v4_modules_loaded and not is_v4_pending:
                 self._qmodel_v4_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v4)
+                
         except Exception as e:
-            Log.e("ERROR:", e)
-            Log.e("Failed to schedule 'QModel v4 (Fusion)' preload.")
- 
+            Log.e("ERROR", f"Failed to schedule 'QModel v4 (Fusion)' preload. Details: {e}")
+
+        # QModel V6 (YOLO26) Preload
         try:
-            if (
-                getattr(Constants, "QModel6_predict", False)
-                and not self.QModel_v6_modules_loaded
-                and self._qmodel_v6_future is None
-            ):
+            requires_v6 = getattr(Constants, "QModel6_predict", False)
+            is_v6_pending = self._qmodel_v6_future is not None
+            
+            if requires_v6 and not self.QModel_v6_modules_loaded and not is_v6_pending:
                 self._qmodel_v6_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v6)
+                
         except Exception as e:
-            Log.e("ERROR:", e)
-            Log.e("Failed to schedule 'QModel v6 (YOLO26)' preload.")
- 
+            Log.e("ERROR", f"Failed to schedule 'QModel v6 (YOLO26)' preload. Details: {e}")
+
     @staticmethod
-    def _load_qmodel_v4():
-        """Worker: build V4 Fusion predictor. Runs off the UI thread."""
-        base = os.path.join(
+    def _load_qmodel_v4() -> 'QModelV4Fusion':
+        """
+        Instantiates and loads the V4 Fusion prediction model into memory.
+
+        This worker method performs heavy disk I/O to load PyTorch model weights 
+        (.pth files) for both regressors and classifiers. It is designed to be 
+        executed safely off the main UI thread via a concurrent futures executor.
+
+        Returns:
+            QModelV4Fusion: A fully initialized V4 prediction model ready for inference.
+        """
+        base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
             "QModel",
             "SavedModels",
             "qmodel_v4_fusion",
         )
+        
         return QModelV4Fusion(
-            reg_path_1=os.path.join(base, "poi_model_mini_window_0_1600.pth"),
-            reg_path_2=os.path.join(base, "poi_model_mini_window_1_1600.pth"),
-            clf_path=os.path.join(base, "v4_model_pytorch_2100.pth"),
+            reg_path_1=os.path.join(base_path, "poi_model_mini_window_0_1600.pth"),
+            reg_path_2=os.path.join(base_path, "poi_model_mini_window_1_1600.pth"),
+            clf_path=os.path.join(base_path, "v4_model_pytorch_2100.pth"),
             reg_batch_size=2048,
             clf_batch_size=1024,
         )
- 
+
     @staticmethod
-    def _load_qmodel_v6():
-        """Worker: build V6 YOLO26 predictor. Runs off the UI thread."""
-        base = os.path.join(
+    def _load_qmodel_v6() -> 'QModelV6YOLO':
+        """
+        Instantiates and loads the V6 YOLO26 prediction model into memory.
+
+        This worker method constructs the asset map and performs heavy disk I/O 
+        to load the YOLO-based PyTorch weights (.pt files) for various detectors 
+        and classifiers. It is designed to be executed off the main UI thread.
+
+        Returns:
+            QModelV6YOLO: A fully initialized V6 prediction model ready for inference.
+        """
+        base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
             "QModel",
             "SavedModels",
             "qmodel_v6_yolo",
         )
+        
+        # Map out the required weights files for the YOLO26 model suite
         model_assets = {
             "fill_classifier": os.path.join(
-                base, "classifiers", "fill_classifier", "type_cls.pt"
+                base_path, "classifiers", "fill_classifier", "type_cls.pt"
             ),
             "detectors": {
-                "init": os.path.join(base, "detectors", "init_detector", "init.pt"),
-                "ch1": os.path.join(base, "detectors", "ch1_detector", "ch1.pt"),
-                "ch2": os.path.join(base, "detectors", "ch2_detector", "ch2.pt"),
-                "ch3": os.path.join(base, "detectors", "ch3_detector", "ch3.pt"),
-                "poi5_fine": os.path.join(
-                    base, "detectors", "eof_detector", "eof.pt"
-                ),
+                "init": os.path.join(base_path, "detectors", "init_detector", "init.pt"),
+                "ch1": os.path.join(base_path, "detectors", "ch1_detector", "ch1.pt"),
+                "ch2": os.path.join(base_path, "detectors", "ch2_detector", "ch2.pt"),
+                "ch3": os.path.join(base_path, "detectors", "ch3_detector", "ch3.pt"),
+                "poi5_fine": os.path.join(base_path, "detectors", "eof_detector", "eof.pt"),
             },
         }
+        
         return QModelV6YOLO(model_assets=model_assets)
  
-    def _await_qmodels(self, timeout=120.0):
+    def _await_qmodels(self, timeout: float = 120.0) -> None:
         """
-        Block until any in-flight model loads complete, install results
-        onto self, and reset the future slots. Errors mirror the original
-        inline try/except behavior in loadRun(): logged, not raised.
+        Blocks the calling thread until in-flight prediction models finish loading.
+
+        This method resolves the asynchronous futures generated by `_load_qmodels()`. 
+        Once a future completes, it installs the resulting model instance onto the 
+        class and updates the corresponding load-state flags.
+
+        Args:
+            timeout: Maximum seconds to wait for a model load to complete before 
+                    a TimeoutError is raised. Defaults to 120.0 seconds.
+
+        Notes:
+            - Errors encountered during model instantiation are caught and logged 
+            (not raised), mimicking the original synchronous `try/except` behavior.
+            - Future attributes are explicitly nulled out after resolution to 
+            prevent memory leaks and allow for clean reloading later.
         """
+        # Resolve QModel V4 (Fusion)
         v4_fut = getattr(self, "_qmodel_v4_future", None)
-        if v4_fut is not None and not self.QModel_v4_modules_loaded:
+        
+        if v4_fut is not None and not getattr(self, "QModel_v4_modules_loaded", False):
             try:
+                # Block and wait for the thread pool to return the loaded V4 model
                 self.QModel_v4_predictor = v4_fut.result(timeout=timeout)
                 self.QModel_v4_modules_loaded = True
+                Log.i(TAG, "'QModel v4 (Fusion)' modules loaded successfully.")
             except Exception as e:
-                Log.e("ERROR:", e)
-                Log.e("Failed to load 'QModel v4 (Fusion)' modules at load of run.")
-            self._qmodel_v4_future = None
- 
+                Log.e(TAG, f"Failed to load 'QModel v4 (Fusion)' modules. Details: {e}")
+            finally:
+                self._qmodel_v4_future = None
+
+        # Resolve QModel V6 (YOLO26)
         v6_fut = getattr(self, "_qmodel_v6_future", None)
-        if v6_fut is not None and not self.QModel_v6_modules_loaded:
+        
+        if v6_fut is not None and not getattr(self, "QModel_v6_modules_loaded", False):
             try:
+                # Block and wait for the thread pool to return the loaded V6 model
                 self.QModel_v6_predictor = v6_fut.result(timeout=timeout)
                 self.QModel_v6_modules_loaded = True
-                Log.i(TAG, "'QModel v6 (YOLO26)' Modules loaded successfully.")
+                Log.i(TAG, "'QModel v6 (YOLO26)' modules loaded successfully.")
             except Exception as e:
-                Log.e("ERROR:", e)
-                Log.e("Failed to load 'QModel v6 (YOLO26)' modules at load of run.")
-            self._qmodel_v6_future = None
- 
-    # -------- Dev-mode cache -----------------------------------------------
- 
-    def _check_dev_mode_cached(self, force_refresh=False):
+                Log.e(TAG, f"Failed to load 'QModel v6 (YOLO26)' modules. Details: {e}")
+            finally:
+                self._qmodel_v6_future = None
+  
+    def _check_dev_mode_cached(self, force_refresh: bool = False) -> bool:
         """
-        Cached wrapper around UserProfiles.checkDevMode(). Cached value is
-        reused for up to _DEV_MODE_TTL_SECONDS to avoid repeated fs hits
-        on every load. Pass force_refresh=True to invalidate.
+        Retrieves the developer mode status, utilizing a time-to-live (TTL) cache.
+
+        This acts as a high-performance wrapper around `UserProfiles.checkDevMode()`. 
+        Because checking dev mode requires file system I/O, the result is cached for 
+        `_DEV_MODE_TTL_SECONDS` to prevent UI bottlenecks during rapid reloads or 
+        frequent polling.
+
+        Args:
+            force_refresh: If True, bypasses the cache, forces a fresh file system 
+                        read, and resets the TTL timer. Defaults to False.
+
+        Returns:
+            bool: True if developer mode is active, False otherwise.
         """
         now = monotonic()
-        if (
-            force_refresh
-            or not hasattr(self, "_dev_mode_cache_value")
-            or (now - getattr(self, "_dev_mode_cache_time", 0.0)) > _DEV_MODE_TTL_SECONDS
-        ):
+        
+        # Evaluate cache validity
+        is_missing = not hasattr(self, "_dev_mode_cache_value")
+        is_expired = (now - getattr(self, "_dev_mode_cache_time", 0.0)) > _DEV_MODE_TTL_SECONDS
+        
+        if force_refresh or is_missing or is_expired:
+            # Cache miss or invalidation: fetch fresh data and reset the timer
             self._dev_mode_cache_value = UserProfiles.checkDevMode()
             self._dev_mode_cache_time = now
+            
         return self._dev_mode_cache_value
- 
-    # -------- Folder lookup cache ------------------------------------------
- 
-    def _compute_folder_from_run(self, run_string):
-        """Original O(n) computation; used as cache-miss fallback."""
+  
+    def _compute_folder_from_run(self, run_string: str) -> str:
+        """
+        Extracts the parent folder identifier from a formatted run string.
+
+        This acts as a cache-miss fallback for resolving a folder name. It parses 
+        the base folder name by stripping the run suffix (e.g., "(Run 1)"), then 
+        performs an O(N) reverse lookup in `self.run_names` to find the corresponding 
+        key prefix.
+
+        Args:
+            run_string: The formatted run string (e.g., "Experiment_A (1)").
+
+        Returns:
+            str: The extracted key prefix (e.g., "KeyPrefix" from "KeyPrefix:Details"),
+                or the raw parsed folder name if the reverse lookup fails.
+        """
+        # Parse the base folder name by stripping the trailing " (" suffix
         idx = run_string.rfind("(")
-        folder = run_string[: idx - 1] if idx > 0 else run_string
+        folder_name = run_string[: idx - 1] if idx > 0 else run_string
+
         try:
-            values_list = list(self.run_names.values())
-            keys_list = list(self.run_names.keys())
-            dict_key = keys_list[values_list.index(folder)]
-            return dict_key[: dict_key.find(":")]
-        except (ValueError, IndexError):
-            # Preserve original behavior: fall back to the parsed folder
-            # rather than raising.
-            return folder
+            matching_key = next(
+                key for key, value in self.run_names.items() if value == folder_name
+            )
+            return matching_key.split(":", 1)[0]
+            
+        except StopIteration:
+            return folder_name
  
-    def getFolderFromRun(self, run_string):
+    def get_folder_from_run(self, run_string: str) -> str:
+        """
+        Retrieves the folder identifier for a given run string using a memoized cache.
+
+        This acts as a high-performance wrapper around `_compute_folder_from_run`. 
+        It prevents redundant O(N) reverse dictionary lookups by caching previously 
+        resolved run strings in memory, which is especially useful during rapid UI 
+        refreshes or batch processing.
+
+        Args:
+            run_string: The formatted run string (e.g., "Experiment_A (1)").
+
+        Returns:
+            str: The extracted folder identifier or key prefix.
+        """
+        # Lazy-initialize the cache dictionary if it doesn't exist
         if not hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache = {}
-        cached = self._run_to_folder_cache.get(run_string)
-        if cached is not None:
-            return cached
+            
+        # Return the cached result immediately if it's already been computed
+        if run_string in self._run_to_folder_cache:
+            return self._run_to_folder_cache[run_string]
+            
+        # Cache miss
         folder = self._compute_folder_from_run(run_string)
         self._run_to_folder_cache[run_string] = folder
+        
         return folder
- 
-    def load_all_from_folder(self, from_folder=None):
-        self.action_cancel()  # ask them if they want to lose unsaved changes
+    
+    def load_all_from_folder(self, from_folder: Optional[str] = None) -> None:
+        """
+        Initiates a batch-loading process for all unanalyzed runs within a selected directory.
+
+        This method scans a target directory (either the root data folder or a specific 
+        device folder) for runs. It uses a ThreadPoolExecutor to rapidly scan the file 
+        system for runs that lack an 'analyze-1.zip' file. Unanalyzed runs are queued 
+        up in the UI, and the first run is automatically loaded.
+
+        Args:
+            from_folder: An optional absolute path to bypass the file dialog. 
+                        Must be a subdirectory of `Constants.log_prefer_path`.
+        """
+        # Guard: Check for unsaved changes
+        self.action_cancel()  
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
- 
-        all_runs, new_runs, run_names = [], [], []
- 
-        if from_folder:
-            selected_directory = from_folder  # use given folder
+
+        # Determine target directory
+        selected_directory = from_folder or QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Directory", Constants.log_prefer_path
+        )
+
+        # Guard: Ensure directory is valid and within the allowed working path
+        if not selected_directory:
+            return
+        if not selected_directory.startswith(Constants.log_prefer_path):
+            Log.w("User selected an inaccessible directory for batch loading")
+            Log.w("NOTE: The load directory must be within the working directory")
+            return
+
+        Log.i(f'Batch loading from "{selected_directory}"')
+
+        # Preload ML models early since batch loads will require them
+        self._load_qmodels()
+
+        # Parse the directory depth to determine intent (Root vs Device vs Single Run)
+        rel_path = os.path.relpath(selected_directory, Constants.log_prefer_path)
+        path_parts = [p for p in rel_path.replace('\\', '/').split('/') if p and p != '.']
+        
+        all_runs = []
+
+        if len(path_parts) == 0:
+            # Root folder selected: gather all runs from all devices
+            for dev_name in getattr(self.parent, "data_devices", []):
+                for run in FileStorage.DEV_get_logged_data_folders(dev_name):
+                    all_runs.append((dev_name, run))
+                    
+        elif len(path_parts) == 1:
+            # Device folder selected: gather all runs for this specific device
+            dev_name = path_parts[0]
+            for run in FileStorage.DEV_get_logged_data_folders(dev_name):
+                all_runs.append((dev_name, run))
+                
         else:
-            # Request folder from user, must be within working read directory
-            selected_directory = QtWidgets.QFileDialog.getExistingDirectory(
-                self, "Select Directory", Constants.log_prefer_path
-            )
- 
-        if selected_directory and selected_directory.startswith(Constants.log_prefer_path):
-            Log.i(f'Batch loading from "{selected_directory}"')
- 
-            # Start preloading models early -- batch loads will need them.
-            self._start_qmodel_preload()
- 
-            # Gather list of all runs contained in this directory
-            sub_dirs = selected_directory.replace(Constants.log_prefer_path, "").strip("/\\")
-            dev_name, run_name = os.path.split(sub_dirs)
-            # Log.d(f"dev_name = {dev_name}, run_name = {run_name}")
- 
-            if len(dev_name) == 0:
-                if len(run_name) == 0:
-                    # user selected root logged_data folder,
-                    # pull all device files
-                    all_devices = self.parent.data_devices
-                    for dev_name in all_devices:
-                        folder_name = dev_name
-                        dev_runs = FileStorage.DEV_get_logged_data_folders(folder_name)
-                        for run in dev_runs:
-                            all_runs.append((folder_name, run))
-                else:
-                    # if only given a device name,
-                    # switch the parameters as split() puts
-                    # it in the wrong place by default:
-                    folder_name = run_name
-                    dev_runs = FileStorage.DEV_get_logged_data_folders(folder_name)
-                    for run in dev_runs:
-                        all_runs.append((folder_name, run))
-            else:
-                Log.w("User selected a single run folder for batch loading")
-                Log.w("NOTE: Use the normal Load button for single run operation")
-                return
- 
-            # Filter out runs that have already been analyzed.
-            # Parallelize FileStorage I/O across many runs.
-            if all_runs:
-                # Skip unnamed runs before dispatch so threads aren't wasted.
-                scan_items = [
-                    (dev, run) for (dev, run) in all_runs if "_unnamed" not in (dev, run)
-                ]
- 
-                def _scan(dev_run):
-                    dev, run = dev_run
-                    try:
-                        files = FileStorage.DEV_get_logged_data_files(dev, run)
-                    except Exception as e:
-                        Log.w(f"Error scanning {dev}/{run}: {e}")
-                        files = None
-                    return dev, run, files
- 
-                if scan_items:
-                    with ThreadPoolExecutor(
-                        max_workers=min(8, len(scan_items)),
-                        thread_name_prefix="batch-scan",
-                    ) as ex:
-                        results = list(ex.map(_scan, scan_items))
-                else:
-                    results = []
- 
-                for dev, run, files in results:
+            # Single run folder selected (depth >= 2)
+            Log.w("User selected a single run folder for batch loading")
+            Log.w("NOTE: Use the normal Load button for single run operation")
+            return
+
+        if not all_runs:
+            Log.w("No runs found in the selected folder")
+            return
+
+        # Filter out unnamed runs before dispatching to threads
+        scan_items = [
+            (dev, run) for dev, run in all_runs 
+            if "_unnamed" not in dev and "_unnamed" not in run
+        ]
+
+        # Parallel I/O Scan: Check for missing 'analyze-1.zip' files
+        def _scan(dev_run: Tuple[str, str]) -> Tuple[str, str, Optional[List[str]]]:
+            dev, run = dev_run
+            try:
+                files = FileStorage.DEV_get_logged_data_files(dev, run)
+                return dev, run, files
+            except Exception as e:
+                Log.w(f"Error scanning {dev}/{run}: {e}")
+                return dev, run, None
+
+        new_runs = []
+        if scan_items:
+            with ThreadPoolExecutor(max_workers=min(8, len(scan_items)), thread_name_prefix="batch-scan") as ex:
+                for dev, run, files in ex.map(_scan, scan_items):
                     if files and "analyze-1.zip" not in files:
                         new_runs.append(run)
                     elif not files:
                         Log.w(f"No files found for run: {dev}/{run}")
+
+        Log.i(f"New runs to be analyzed: {new_runs}")
+        if not new_runs:
+            Log.w("No new runs require analysis.")
+            return
+
+        # Synchronize found runs with the UI Combo Box
+        # Build a fast O(1) lookup dictionary: {"RunBaseName": "RunBaseName (idx)"}
+        combo_texts = [self.cBox_Runs.itemText(i) for i in range(self.cBox_Runs.count())]
+        run_name_to_combo_text = {
+            text.rsplit(" ", 1)[0]: text for text in combo_texts
+        }
+
+        sorted_new_runs = []
+        for new_run in new_runs:
+            if new_run in run_name_to_combo_text:
+                sorted_new_runs.append(run_name_to_combo_text[new_run])
             else:
-                Log.w("No runs found in the selected folder")
-                return
- 
-            # Load the first run, sorted alphabetically;
-            Log.i("New runs to be analyzed:", new_runs)
-            runs = [self.cBox_Runs.itemText(i) for i in range(self.cBox_Runs.count())]
-            for run in runs:
-                run_name, _ = run.rsplit(" ", 1)
-                run_names.append(run_name)
- 
-            sorted_new_runs = []
-            for new_run in new_runs:
-                if new_run in run_names:
-                    i = run_names.index(new_run)
-                    sorted_new_runs.append(runs[i])
-                else:
-                    Log.e("Cannot load missing run:", new_run)
- 
-            # re-populate cBox_Runs with subset of run names (sorted accordingly)
-            self._batched_runs = sorted_new_runs
-            self.showRunsFromAllDevices_clicked()
- 
-            # cBox_Runs items have been replaced; clear stale folder cache.
-            self._run_to_folder_cache = {}
- 
-            Log.i(f"Loading first batch run: {self.cBox_Runs.itemText(0)} (at idx={0})")
-            self.cBox_Runs.setCurrentIndex(0)
-            self.btn_Load.click()
- 
-            PopUp.information(
-                self,
-                "Batch Processing Mode Started",
-                f"<b>SUCCESS: {len(sorted_new_runs)} runs found for batch processing.</b><br/><br/>"
-                + "When finished analyzing a run (or to skip a run), <br/>"
-                + 'click "Load" again to move to the next queued run.<br/>'
-                + "You'll get another popup when the batch is finished.",
-            )
- 
-        else:
-            Log.w("User selected an inaccessible directory for batch loading")
-            Log.w("NOTE: The load directory must be within the working directory")
- 
-    def loadRun(self):
-        self.action_cancel()  # ask them if they want to lose unsaved changes
+                Log.e(f"Cannot load missing run (not found in UI): {new_run}")
+
+        # Apply batch state and trigger the first load
+        self._batched_runs = sorted_new_runs
+        self.showRunsFromAllDevices_clicked()
+        
+        # Clear the folder cache since the cBox_Runs items have been entirely replaced
+        if hasattr(self, "_run_to_folder_cache"):
+            self._run_to_folder_cache.clear()
+
+        Log.i(f"Loading first batch run: {self.cBox_Runs.itemText(0)} (at idx=0)")
+        self.cBox_Runs.setCurrentIndex(0)
+        self.btn_Load.click()
+
+        # Notify the user
+        PopUp.information(
+            self,
+            "Batch Processing Mode Started",
+            f"<b>SUCCESS: {len(sorted_new_runs)} runs found for batch processing.</b><br/><br/>"
+            "When finished analyzing a run (or to skip a run), <br/>"
+            'click "Load" again to move to the next queued run.<br/>'
+            "You'll get another popup when the batch is finished."
+        )
+    
+    def load_run(self) -> None:
+        """
+        Prepares the UI and application state for loading a new analysis run.
+
+        This method acts as a pre-flight coordinator. It ensures unsaved changes 
+        are handled, verifies Developer Mode compliance (for encrypted results), 
+        evaluates auto-signing session keys, resets the plotting UI into a "Loading" 
+        state, and finally queues the actual heavy data-load operation on the event loop.
+        """
+        # Guard: Check for unsaved changes before proceeding
+        self.action_cancel()  
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
- 
-        # if self.AI_SelectTool_Frame.isVisible():
-        #     self.AI_SelectTool_Frame.setVisible(
-        #         False
-        #     )  # require re-click to show popup tool incorrect position
- 
-        self._start_qmodel_preload()
- 
+
+        # Kick off background preloading of ML models early
+        self._load_qmodels()
+
+        # Developer Mode & Encryption Compliance
         enabled, error, expires = self._check_dev_mode_cached()
-        if enabled == False and (error == True or expires != ""):
+        
+        if not enabled and (error or expires):
             PopUp.warning(
                 self,
                 "Developer Mode Expired",
                 "Developer Mode has expired and these analysis results will be encrypted.\n"
-                + 'An admin must renew or disable "Developer Mode" to suppress this warning.',
+                "An admin must renew or disable 'Developer Mode' to suppress this warning."
             )
- 
-        # DevMode enabled, check if auto-sign (do not ask again) key is active
+
+        # Handle Auto-Sign Session Keys
         if enabled:
             auto_sign_key = None
             session_key = None
+            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+
+            # Safely read keys, stripping whitespace/newlines to prevent mismatch bugs
             if os.path.exists(Constants.auto_sign_key_path):
                 with open(Constants.auto_sign_key_path, "r") as f:
-                    auto_sign_key = f.readline()
-            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+                    auto_sign_key = f.readline().strip()
+                    
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
-                    session_key = f.readline()
-            if auto_sign_key == session_key and session_key != None:
+                    session_key = f.readline().strip()
+
+            # Evaluate session match
+            if session_key is not None and auto_sign_key == session_key:
                 self.sign_do_not_ask.setChecked(True)
             else:
                 self.sign_do_not_ask.setChecked(False)
+                # Purge the invalid/expired auto-sign key
                 if os.path.exists(Constants.auto_sign_key_path):
                     os.remove(Constants.auto_sign_key_path)
- 
-            # NOTE: This check is needed for Analyze since it persists across run loads
-            #       and is only init'd once per application instance (across sessions).
-            # just in case, make it visible
+
+            # Ensure Analyze visibility since it persists across run loads
             self.sign_do_not_ask.setVisible(True)
-        else:  # DevMode may have been manually disabled since last run load
-            # Force compliance by removing auto-sign feature support
-            self.sign_do_not_ask.setChecked(False)  # uncheck
-            self.sign_do_not_ask.setEnabled(False)  # disable
-            self.sign_do_not_ask.setVisible(False)  # hide
- 
+
+        else:
+            # DevMode disabled: Force compliance by revoking auto-sign UI
+            self.sign_do_not_ask.setChecked(False)
+            self.sign_do_not_ask.setEnabled(False)
+            self.sign_do_not_ask.setVisible(False)
+
+        # Reset UI Control States
         self.askForPOIs = True
         self.btn_Next.setText("Next")
- 
-        self._text1 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
+
+        # Build and position Loading Annotations
+        self._text1 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
         self._text1.setHtml("<span style='font-size: 14pt'>Loading data for analysis... </span>")
-        self._text2 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        self._text2.setHtml("<span style='font-size: 10pt'>(may take a few seconds) </span>")
-        self._text3 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        self._text3.setHtml(
-            "<span style='font-size: 10pt'>Please be more patient with longer runs. </span>"
-        )
         self._text1.setPos(0.5, 0.50)
+        
+        self._text2 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        self._text2.setHtml("<span style='font-size: 10pt'>(may take a few seconds) </span>")
         self._text2.setPos(0.5, 0.40)
+        
+        self._text3 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        # self._text3.setHtml("<span style='font-size: 10pt'>Please be more patient with longer runs. </span>")
+        self._text3.setHtml("")
         self._text3.setPos(0.5, 0.25)
- 
-        ax = self.graphWidget  # .plot(hour, temperature)
-        ax1 = self.graphWidget1
-        ax2 = self.graphWidget2
-        ax3 = self.graphWidget3
- 
-        elems = [ax, ax1, ax2, ax3]
-        for e in elems:
-            if e != None:
-                e.clear()
-                e.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
-                e.setXRange(min=0, max=1)
-                e.setYRange(min=0, max=1)
-            if e is ax:
-                e.addItem(self._text1, ignoreBounds=True)
- 
+
+        # Clear plotting canvases and apply Loading text
+        primary_ax = self.graphWidget
+        plot_elements = [primary_ax, self.graphWidget1, self.graphWidget2, self.graphWidget3]
+        
+        for plot_item in plot_elements:
+            if plot_item is not None:
+                plot_item.clear()
+                plot_item.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
+                plot_item.setXRange(min=0, max=1)
+                plot_item.setYRange(min=0, max=1)
+                
+                # Inject text onto the main plotting axis
+                if plot_item is primary_ax:
+                    plot_item.addItem(self._text1, ignoreBounds=True)
+                    plot_item.addItem(self._text2, ignoreBounds=True)
+                    plot_item.addItem(self._text3, ignoreBounds=True)
+
+        # Reset Progress Bar and decouple previous signals
         try:
             self.progressBar.valueChanged.disconnect(self._update_progress_value)
-        except:
+        except Exception:
+            # Fails silently if the signal was never connected in the first place
             Log.w("Cannot disconnect non-existent method from ProgressBar.")
- 
+
         self.enable_buttons(False, False)
- 
-        # reset internal buffer with 0
         self._update_analyze_progress(0, "Reading Run Data...")
-        self._update_analyze_progress(
-            75, "Reading Run Data..."
-        )  # run up to 75% then slow, stop @ 99% until loaded
- 
-        # Force one paint cycle so the loading TextItems become visible,
-        # then dispatch action_load_run on the next event loop tick (zero
-        # delay). The original 500 ms timer was a workaround to ensure the
-        # paint; processEvents() handles that explicitly without the wait.
+        self._update_analyze_progress(75, "Reading Run Data...")
         QtWidgets.QApplication.processEvents()
         QtCore.QTimer.singleShot(0, self.action_load_run)
  
- 
-    def action_load_run(self):
-        try:
-            # if batch processing, auto-increment to next run if Load is clicked for the currently selected run
-            if hasattr(self, "_batched_runs") and self._batched_runs:
-                if (
-                    hasattr(self, "_current_run")
-                    and self.cBox_Runs.currentText() in self._current_run
-                    and self.cBox_Runs.currentText()
-                    != self.cBox_Runs.itemText(self.cBox_Runs.count() - 1)
-                ):
-                    Log.i(
-                        TAG,
-                        "Incrementing batch processing to next file in subset of list",
-                    )
-                    self.cBox_Runs.setCurrentIndex(self.cBox_Runs.currentIndex() + 1)
-                elif (
-                    self.cBox_Runs.count() > 1
-                    and self.cBox_Runs.currentText()
-                    == self.cBox_Runs.itemText(self.cBox_Runs.count() - 1)
-                ):
-                    Log.w(TAG, "No more runs to batch process. Finished batch processing!")
-                    # Close the currently open run when finished batch processing, with flag to exit mode.
-                    self.action_cancel(exit_batched_processing_mode=True)
-                    # Clicking "Close" button also ends the batch processing mode (clears '_batched_runs').
-                    return
+    def action_load_run(self) -> None:
+        """
+        Executes the final stages of loading a run and triggers data analysis.
 
+        This method acts as the execution phase following `loadRun()`. It handles:
+        1. Batch Processing Navigation: If in batch mode and the current run is 
+        already loaded, it auto-increments the UI to the next run in the queue, 
+        or exits batch mode if the queue is finished.
+        2. Model Synchronization: Blocks until background ML models finish loading.
+        3. Data Analysis: Dispatches the selected run to the parent coordinator 
+        for processing and resets UI interaction states.
+        """
+        try:
+            # Handle Batch Processing Queue Navigation
+            if getattr(self, "_batched_runs", None):
+                current_text = self.cBox_Runs.currentText()
+                current_idx = self.cBox_Runs.currentIndex()
+                last_idx = self.cBox_Runs.count() - 1
+                current_run = getattr(self, "_current_run", "")
+
+                # If the currently selected run is already loaded, "Load" acts as a "Next" button
+                if current_run and current_text in current_run:
+                    if current_idx < last_idx:
+                        Log.i(TAG, "Incrementing batch processing to next file in subset of list.")
+                        self.cBox_Runs.setCurrentIndex(current_idx + 1)
+                    else:
+                        # We reached the end of the batch list
+                        Log.w(TAG, "No more runs to batch process. Finished batch processing!")
+                        self.action_cancel(exit_batched_processing_mode=True)
+                        return
+
+            # Synchronize ML Models
             self._await_qmodels()
- 
+
+            # Reset state and trigger analysis
             self.moved_markers = [False, False, False, False, False, False]
-            self.parent.analyze_data(
-                self.cBox_Devices.currentText(),
-                self.getFolderFromRun(self.cBox_Runs.currentText()),
-                None,
-            )
+            
+            # Use the memoized folder lookup to prevent redundant file system reads
+            folder_name = self.get_folder_from_run(self.cBox_Runs.currentText())
+            device_name = self.cBox_Devices.currentText()
+            
+            self.parent.analyze_data(device_name, folder_name, None)
+            
+            # Re-enable the UI controls post-analysis
             self.enable_buttons()
- 
+
         except Exception as e:
-            Log.e(f"An error occurred while loading the selected run: {str(e)}")
+            Log.e(f"An error occurred while loading the selected run: {e}")
             self.action_cancel()
 
     def goBack(self):
@@ -3279,7 +3631,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # ):
             # self.parent.analyze_data(
             #     self.cBox_Devices.currentText(),
-            #     self.getFolderFromRun(self.cBox_Runs.currentText()),
+            #     self.get_folder_from_run(self.cBox_Runs.currentText()),
             #     None,
             # )  # force back to step 1 of 6
             # else:
@@ -4425,7 +4777,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # ):
             # self.parent.analyze_data(
             #     self.cBox_Devices.currentText(),
-            #     self.getFolderFromRun(self.cBox_Runs.currentText()),
+            #     self.get_folder_from_run(self.cBox_Runs.currentText()),
             #     None,
             # )  # force back to step 1 of 6
             # self.enable_buttons()
@@ -4846,7 +5198,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             loaded_idx = self.cBox_Runs.currentIndex()
             devs = FileStorage.DEV_get_all_device_dirs()
             for i, _ in enumerate(devs):
-                self.updateRun(i)
+                self.update_run(i)
             self.cBox_Runs.setCurrentIndex(loaded_idx)
 
     def Analyze_Data(self, data_path):
@@ -9070,7 +9422,79 @@ class AnalyzerWorker(QtCore.QObject):
         except Exception as e:
             Log.e("ERROR:", e)
         return np.round(output, 2)
+    
+class RunScanWorker(QtCore.QThread):
+    """Background thread to handle run scanning without freezing the UI.
+    
+    This worker offloads heavy filesystem I/O and XML parsing from the main 
+    event loop. It iterates through a list of devices, identifies data folders, 
+    and uses a ThreadPoolExecutor to parse individual run metadata in parallel 
+    within this background thread.
+    
+    Attributes:
+        scan_finished (QtCore.pyqtSignal): Signal emitted after each device is 
+            processed. Emits:
+            - List[Dict[str, Any]]: The parsed scan results.
+            - str: The name of the device just scanned.
+            - List[str]: Keys of runs that were not found on disk.
+            - bool: True if this was the last device in the queue.
+    """
+    scan_finished = QtCore.pyqtSignal(list, str, list, bool)
 
+    def __init__(
+        self, 
+        devices_to_scan: List[str], 
+        known_timestamps: List[str], 
+        parent: Optional[QtCore.QObject] = None
+    ) -> None:
+        """Initializes the worker with device and cache context.
+
+        Args:
+            devices_to_scan (List[str]): List of device names to be audited.
+            known_timestamps (List[str]): Current keys in the timestamp cache 
+                to determine if a run needs a fresh XML parse.
+            parent (Optional[QtCore.QObject]): The Qt parent object.
+        """
+        super().__init__(parent)
+        self.devices_to_scan = devices_to_scan
+        self.known_timestamps = known_timestamps
+
+    def run(self) -> None:
+        """Executes the background scanning logic.
+        
+        For each device, it identifies existing folders and calculates which 
+        cached runs are missing. It then uses a thread pool to perform parallel 
+        scans of individual run folders.
+        """
+        num_devices = len(self.devices_to_scan)
+        
+        for i, data_device in enumerate(self.devices_to_scan):
+            # Fetch directories, excluding internal naming conventions
+            runs = FileStorage.DEV_get_logged_data_folders(data_device)
+            runs = [x for x in runs if x != "_unnamed"]
+            unchecked_runs = [
+                x for x in self.known_timestamps if x.endswith(data_device)
+            ]
+
+            scan_args = []
+            for run in runs:
+                dict_key = f"{run}:{data_device}"
+                # Only parse XML if the run is new (not in known_timestamps)
+                needs_parse = dict_key not in self.known_timestamps
+                scan_args.append((data_device, run, needs_parse))
+
+            scan_results: List[Dict[str, Any]] = []
+            if scan_args:
+                with ThreadPoolExecutor(
+                    max_workers=min(8, len(scan_args)), 
+                    thread_name_prefix=f"scan-{data_device}"
+                ) as ex:
+                    scan_results = list(
+                        ex.map(lambda a: AnalyzeProcess._scan_run(*a), scan_args)
+                    )
+
+            is_last = (i == num_devices - 1)
+            self.scan_finished.emit(scan_results, data_device, unchecked_runs, is_last)
 
 class TableView(QtWidgets.QTableWidget):
 
