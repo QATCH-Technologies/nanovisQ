@@ -9,8 +9,7 @@ processing, numerical operations, plotting, and optimization.
 Author(s):
     Alexander Ross (alexander.ross@qatchtech.com)
     Paul MacNichol (paul.macnichol@qatchtech.com)
-    
-Date:
+
 Date:
     2026-04-29
 
@@ -671,7 +670,7 @@ class DropEffectCorrection(CurveOptimizer):
         # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
         if not current_streak:
             Log.d(self.TAG, f"No drop effects detected in {col_name}.")
-            return ([], values)
+            return ([], values, 0)
         min_count = len(current_streak)
         min_drop = min(current_streak)
         sign = 1 if col_name == "Dissipation" else -1
@@ -703,21 +702,42 @@ class DropEffectCorrection(CurveOptimizer):
             # If unacceptable, add it to the list for correction.
             current_streak.append(min_drop)
 
-        # DEBUG: Force add extra padding to the right-side of drop effect region.
-        if col_name == "Dissipation":
-            NUM_PTS = diff_offset
-            max_drop = max(current_streak)
-            beat_value = self._dataframe[col_name].values[region_slice][max_drop]
-            beat_count = 0
+        # Extend the drop region rightward until the raw signal reconverges with the
+        # smooth signal.  Applies to both Dissipation and Resonance_Frequency.
+        #
+        # Recovery criterion: |raw - smooth| < tolerance for NUM_PTS consecutive steps,
+        # where tolerance is 2x the pre-drop standard deviation.  This is direction-
+        # agnostic (works for upward spikes in Dissipation and downward drops in RF)
+        # and scales automatically with signal variability.
+        #
+        # Cap: max(75, 3 x initial-streak-length) -- wide enough for complex multi-phase
+        # events while still terminating quickly for narrow spikes.
+        NUM_PTS = diff_offset
+        max_drop = max(current_streak)
+        if max_drop + 1 < len(values) - 1:
+            # Estimate pre-drop variability from the smooth signal before the anomaly.
+            pre_end = min(current_streak)
+            pre_start = max(0, diff_offset)
+            pre_slice = (
+                values[pre_start:pre_end] if pre_end > pre_start else values[: max(1, pre_end)]
+            )
+            pre_std = np.std(pre_slice) if len(pre_slice) > 1 else np.std(values) * 0.05
+            tolerance = max(2.0 * pre_std, 1e-12)  # guard against near-zero std
+
+            raw_full = self._dataframe[col_name].values[region_slice]
+            recovery_count = 0
             total_dist = 0
+            max_total_dist = max(35, 2 * min_count)
             while True:
                 total_dist += 1
+                if max_drop + 1 >= len(values) - 1:
+                    break
                 max_drop += 1
-                if beat_value < values[max_drop]:  # raw < average
-                    beat_count += 1
+                if abs(raw_full[max_drop] - values[max_drop]) < tolerance:
+                    recovery_count += 1
                 else:
-                    beat_count = 0
-                if beat_count > NUM_PTS or total_dist > 25 or max_drop >= len(values) - 1:
+                    recovery_count = 0
+                if recovery_count > NUM_PTS or total_dist > max_total_dist:
                     break
                 current_streak.append(max_drop)
 
@@ -728,7 +748,10 @@ class DropEffectCorrection(CurveOptimizer):
 
         # Map back to the full dataframe index.
         global_idx = [local_idx + left_idx for local_idx in current_streak]
-        return (global_idx, values)
+        # min_count is the initial streak size BEFORE any left/right expansion.
+        # Callers use it so the skip guard threshold is independent of how far
+        # the region was subsequently expanded.
+        return (global_idx, values, min_count)
 
     def _middle_slice_list(self, whole: list, fraction: float = 0.5) -> list:
         n = len(whole)
@@ -816,10 +839,10 @@ class DropEffectCorrection(CurveOptimizer):
         corrected_rf = original_rf.copy()
 
         # Detect drop effects independently for each curve.
-        (drop_effects_diss, smooth_diss) = self._detect_drop_effects_for_column(
+        drop_effects_diss, smooth_diss, init_count_diss = self._detect_drop_effects_for_column(
             "Dissipation", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
         )
-        (drop_effects_rf, smooth_rf) = self._detect_drop_effects_for_column(
+        drop_effects_rf, smooth_rf, init_count_rf = self._detect_drop_effects_for_column(
             "Resonance_Frequency", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
         )
         drop_effects = list(set(drop_effects_diss + drop_effects_rf))
@@ -880,6 +903,11 @@ class DropEffectCorrection(CurveOptimizer):
             window_length=self._safe_savgol_win(len(original_diss), 11, 3),
             polyorder=3,
         )
+        smooth_rf_full = savgol_filter(
+            original_rf,
+            window_length=self._safe_savgol_win(len(original_rf), 11, 3),
+            polyorder=3,
+        )
         super_smooth_diss_full = savgol_filter(
             original_diss,
             window_length=self._safe_savgol_win(len(original_diss), 69, 3),
@@ -890,19 +918,41 @@ class DropEffectCorrection(CurveOptimizer):
         )
 
         # Process each detected drop effect region for Dissipation and Resonance Frequency.
+        # Skip guard threshold: use the pre-expansion initial streak size so that the
+        # guard does not grow with the region and incorrectly reject legitimate mid-run drops.
+        init_count = max(
+            1,
+            min(
+                init_count_diss if init_count_diss else len(drop_effects_diss),
+                init_count_rf if init_count_rf else len(drop_effects_rf),
+            ),
+        )
         for region in contiguous_regions:
 
-            # Check that the directionality of the region is a spike, not a drop.
-            if smooth_diss_full[region[0]] - smooth_diss_full[region[-1]] > 0:
+            # Directionality check: skip regions with no meaningful upward excursion in
+            # dissipation.  Compare the peak within the region against the lower of the two
+            # endpoints rather than comparing endpoints directly.  This is robust to the
+            # right expansion having extended the region past the spike peak into recovery
+            # (where the endpoint value can drop below the start value even for a genuine
+            # upward spike, causing the old endpoint comparison to wrongly skip the region).
+            region_diss_smooth = smooth_diss_full[region[0] : region[-1] + 1]
+            peak_diss = float(np.max(region_diss_smooth))
+            baseline_diss = min(float(region_diss_smooth[0]), float(region_diss_smooth[-1]))
+            full_range = float(np.max(smooth_diss_full) - np.min(smooth_diss_full))
+            if full_range > 0 and (peak_diss - baseline_diss) / full_range < 0.05:
                 Log.d(
                     self.TAG,
-                    f"Skipping region from {relative_time[region[0]]} to {relative_time[region[-1]]}",
+                    f"Skipping region {relative_time[region[0]]:.3f}–{relative_time[region[-1]]:.3f}: "
+                    f"no significant dissipation excursion (peak-baseline = {peak_diss - baseline_diss:.3e}, "
+                    f"full range = {full_range:.3e})",
                 )
                 continue
 
-            # Skip if the drop effect is at the very beginning.
+            # Skip if the drop starts too close to the start-of-fill boundary.
+            # Uses the pre-expansion initial streak size so the threshold stays small
+            # even when the right expansion has made the total region very wide.
             idx = region[0]
-            if idx - self._left_bound["index"] < len(region) // 2:
+            if idx - self._left_bound["index"] < init_count // 2:
                 Log.d(
                     self.TAG,
                     "Skipped correcting an early region that was too close to start-of-fill.",
@@ -911,6 +961,16 @@ class DropEffectCorrection(CurveOptimizer):
 
             # Record the indices where the correction is applied.
             correction_indices.extend(region)
+
+            # Expand the correction zone by CORRECTION_PADDING indices on each side.
+            # The detection captures the core of the drop; the padding ensures the
+            # cosine bridge also covers the leading and trailing tails, which are
+            # anomalous but may not cross the detection threshold.  Clamped to
+            # [left_bound, right_bound] so we never correct outside the fill window.
+            CORRECTION_PADDING = 10
+            pad_left = max(self._left_bound["index"], region[0] - CORRECTION_PADDING)
+            pad_right = min(self._right_bound["index"], region[-1] + CORRECTION_PADDING)
+            region = list(range(pad_left, pad_right + 1))
 
             # Calculate the difference trendline prior to the drop region.
             # Calculate the difference trendline prior to the drop region.
@@ -963,16 +1023,26 @@ class DropEffectCorrection(CurveOptimizer):
             # Anchor the correction to the last good data point BEFORE the anomaly
             anchor_idx = max(0, region[0] - 1)
 
-            # Create a smooth linspace bridging from the anchor point.
-            # Using avg_diff / len(region) as the start ensures we step cleanly away from the anchor.
-            insert_diss = corrected_diss[anchor_idx] + np.linspace(
-                avg_diff_diss / len(region), avg_diff_diss, len(region)
-            )
-            insert_rf = corrected_rf[anchor_idx] + np.linspace(
-                avg_diff_rf / len(region), avg_diff_rf, len(region)
-            )
+            # Determine the smoothed post-drop target value.
+            # Using the smoothed full-length signal at the first index AFTER the region
+            # guarantees the insert lands at (or extremely close to) the original data,
+            # making the seam invisible and eliminating any need for a post-region offset.
+            post_idx = min(region[-1] + 1, len(original_diss) - 1)
+            end_diss = smooth_diss_full[post_idx]
+            end_rf = smooth_rf_full[post_idx]
 
-            # Only if end-of-fill is contained in the region.
+            # Cosine blend: smooth arc from anchor value -> post-drop endpoint.
+            # Produces zero-derivative connection at both ends (no visible kinks).
+            n = len(region)
+            t = np.linspace(0, 1, n + 2)[1:-1]  # n interior points; excludes endpoints
+            blend = (1 - np.cos(np.pi * t)) / 2  # 0 -> 1 with zero velocity at edges
+            insert_diss = corrected_diss[anchor_idx] + blend * (
+                end_diss - corrected_diss[anchor_idx]
+            )
+            insert_rf = corrected_rf[anchor_idx] + blend * (end_rf - corrected_rf[anchor_idx])
+
+            # Only if end-of-fill is contained in the region: override the cosine insert with
+            # an anchor-aligned super-smooth segment to avoid fighting the fill-event shape.
             if (
                 len(self.bounds) > 1
                 and isinstance(self.bounds[1], int)
@@ -999,20 +1069,21 @@ class DropEffectCorrection(CurveOptimizer):
                 0.0, 0.5 * base_rf_std, size=len(insert_rf)
             )
 
-            # Replace the drop effect region with a smoother insert.
+            # Replace the drop effect region with the cosine-blended insert.
             corrected_diss[region[0] : region[-1] + 1] = insert_diss
             corrected_rf[region[0] : region[-1] + 1] = insert_rf
 
-            # Compute offsets so that the value at the drop matches the previous (good) value.
-            offset_diss = corrected_diss[region[-1]] - original_diss[region[-1]]
-            offset_rf = corrected_rf[region[-1]] - original_rf[region[-1]]
+            # No post-region offset correction is required: the cosine bridge targets
+            # smooth_*_full[post_idx] which is essentially equal to original[post_idx],
+            # so the seam at region[-1]+1 is already continuous.  Applying an offset here
+            # was the source of the large permanent divergence seen in correction plots.
 
-            # Apply the offset correction to the segment.
-            corrected_diss[region[-1] + 1 :] += offset_diss
-            corrected_rf[region[-1] + 1 :] += offset_rf
-
-            Log.d(self.TAG, f"Offset for dissipation data: {offset_diss}")
-            Log.d(self.TAG, f"Offset for resonance data: {offset_rf} Hz")
+            Log.d(
+                self.TAG,
+                f"Cosine-bridged drop region [{region[0]}, {region[-1]}]: "
+                f"diss {corrected_diss[anchor_idx]:.4e}->{end_diss:.4e}, "
+                f"rf {corrected_rf[anchor_idx]:.2f}->{end_rf:.2f} Hz",
+            )
 
         if show_corrections or save_corrections:
             self._plot_corrections(

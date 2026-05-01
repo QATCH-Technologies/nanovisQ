@@ -1,0 +1,141 @@
+/* ui_login_theme.qss */
+
+/* ─── CENTRAL WIDGET ──────────────────────────────────────────────────────── */
+/* Background is painted by _LoginCentralWidget.paintEvent.                   */
+#centralwidget {
+    background: transparent;
+}
+
+/* ─── GLASS CARD ──────────────────────────────────────────────────────────── */
+/* Higher opacity + stronger border so the card reads as a distinct pane.     */
+#loginCard {
+    background-color: transparent
+}
+
+/* ─── WELCOME LABEL ───────────────────────────────────────────────────────── */
+#user_welcome {
+    background: transparent;
+    color: #0f1c2e;
+    font-size: 16pt;
+    font-weight: 700;
+    letter-spacing: -0.2px; /* Tightens large headers for a cleaner look */
+}
+
+/* ─── SIGN-IN REQUIRED LABEL ──────────────────────────────────────────────── */
+#user_label {
+    background: transparent;
+    color: #34495e;
+    font-size: 9.5pt;
+    font-weight: 600;
+    text-transform: uppercase; /* Makes the requirement feel like a clean UI element */
+    letter-spacing: 1px;
+}
+
+/* ─── INPUT FIELDS ────────────────────────────────────────────────────────── */
+QLineEdit#user_initials,
+QLineEdit#user_password {
+    background-color: rgba(255, 255, 255, 80);
+    border: 1px solid rgba(255, 255, 255, 120);
+    /* A slightly larger radius for a modern "pill" or "squircle" feel */
+    border-radius: 12px; 
+    /* Increased height and padding for better vertical balance */
+    padding: 10px 15px; 
+    color: #112233;
+    font-size: 10.5pt;
+    letter-spacing: 0.5px; /* Adds a premium feel to the text */
+}
+#solidBackgroundPane {
+    background-color: #f9f9f9; /* Solid light gray */
+    border-radius: 15px;
+}
+QLineEdit#user_initials:hover,
+QLineEdit#user_password:hover {
+    /* Slight glow effect on hover */
+    background-color: rgba(255, 255, 255, 90);
+    border: 1px solid rgba(255, 255, 255, 180);
+}
+
+QLineEdit#user_initials:focus,
+QLineEdit#user_password:focus {
+    /* Use the QATCH blue but with transparency for the focus ring */
+    background-color: rgba(255, 255, 255, 120);
+    border: 1.5px solid #0AA3E6;
+}
+
+/* ─── SIGN-IN BUTTON ──────────────────────────────────────────────────────── */
+QPushButton#sign_in {
+    /* Keep your gradient but drop the overall opacity slightly */
+    background-color: qlineargradient(
+        x1: 0, y1: 0, x2: 0, y2: 1,
+        stop: 0 rgba(34, 192, 248, 230), stop: 1 rgba(10, 163, 230, 230)
+    );
+    color: #ffffff;
+    border: none; /* Remove harsh borders */
+    border-radius: 10px; /* Match input radius */
+    font-weight: 600;
+}
+
+QPushButton#sign_in:hover {
+    background-color: qlineargradient(
+        x1: 0, y1: 0, x2: 0, y2: 1,
+        stop: 0 #38ccff, stop: 1 #14b2f2
+    );
+}
+
+QPushButton#sign_in:pressed {
+    background-color: qlineargradient(
+        x1: 0, y1: 0, x2: 0, y2: 1,
+        stop: 0 #0890d0, stop: 1 #077ab8
+    );
+    padding-top: 7px;
+    padding-bottom: 5px;
+}
+
+QPushButton#sign_in:disabled {
+    background-color: rgba(180, 205, 220, 150);
+    color: rgba(255, 255, 255, 150);
+    border-color: rgba(160, 190, 210, 130);
+}
+
+/* ─── INFO / ERROR LABELS ─────────────────────────────────────────────────── */
+#user_info {
+    background: transparent;
+    color: #2e5070;
+    font-size: 9pt;
+    font-weight: bold;
+}
+
+#user_error {
+    background: transparent;
+    color: #c0392b;
+    font-size: 9pt;
+}
+
+/* ─── SCROLLBARS ──────────────────────────────────────────────────────────── */
+QScrollBar:horizontal {
+    border: none; background: transparent;
+    height: 10px; margin: 0px 10px;
+}
+QScrollBar:vertical {
+    border: none; background: transparent;
+    width: 10px; margin: 10px 0px;
+}
+QScrollBar::handle:horizontal,
+QScrollBar::handle:vertical {
+    background: rgba(130, 130, 130, 100);
+    border-radius: 5px;
+}
+QScrollBar::handle:horizontal:hover,
+QScrollBar::handle:vertical:hover {
+    background: rgba(130, 130, 130, 180);
+}
+QScrollBar::handle:horizontal { min-width: 20px; }
+QScrollBar::handle:vertical   { min-height: 20px; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+QScrollBar::add-line:vertical,   QScrollBar::sub-line:vertical {
+    width: 0px; height: 0px; background: none;
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal,
+QScrollBar::add-page:vertical,   QScrollBar::sub-page:vertical {
+    background: none;
+}

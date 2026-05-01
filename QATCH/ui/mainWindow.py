@@ -47,6 +47,7 @@ from pathlib import Path
 from sympy import true
 
 from QATCH.ui.ui_main import UIMain
+from QATCH.ui.ui_login import UILogin
 from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.deviceFingerprint import DeviceFingerprint
@@ -77,7 +78,6 @@ from QATCH.ui.mainWindow_ui import (
     Ui_Controls,
     Ui_Info,
     Ui_Logger,
-    Ui_Login,
     Ui_Plots,
 )
 from QATCH.ui.popUp import PopUp, QueryComboBox
@@ -176,8 +176,8 @@ class LoginWindow(QtWidgets.QMainWindow):
             parent (QtWidgets.QMainWindow): The parent widget for this login window.
         """
         super().__init__()
-        self.ui5 = Ui_Login()
-        self.ui5.setupUi(self, parent)
+        self.ui5 = UILogin()
+        self.ui5.setup_ui(self, parent)
 
     def eventFilter(self, obj, event: QtCore.QEvent) -> bool:
         """Intercepts and processes key press events for the login window.
@@ -399,7 +399,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar.append(target.menuBar().addMenu("&View"))
         self.modebar = self.menubar[2].addMenu("&Mode")
         self.modebar.addAction("&1: Run", lambda: self.parent.MainWin.ui0._set_run_mode(None))
-        self.modebar.addAction("&2: Analyze", lambda: self.parent.MainWin.ui0._set_analyze_mode(None))
+        self.modebar.addAction(
+            "&2: Analyze", lambda: self.parent.MainWin.ui0._set_analyze_mode(None)
+        )
         if Constants.show_visQ_in_R_builds:
             self.modebar.addAction(
                 "&3: VisQ.AI", lambda: self.parent.MainWin.ui0._set_learn_mode(None)
@@ -561,7 +563,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 if self.userrole != UserRoles.ADMIN:
                     self.manage.setText("&Change Password...")
         else:
-            if self.parent.MainWin.ui0.setNoUserMode(None):
+            if self.parent.MainWin.ui0._set_no_user_mode(None):
                 UserProfiles().session_end()
                 name = self.username.text()[6:]
                 Log.i(f"Goodbye, {name}! You have been signed out.")
@@ -613,7 +615,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
             self.manage.setText("&Manage Users...")
             self.ui1.tool_User.setText("Anonymous")
             self.parent.AnalyzeProc.tool_User.setText("Anonymous")
-            self.parent.MainWin.ui0.setNoUserMode(None)
+            self.parent.MainWin.ui0._set_no_user_mode(None)
         if admin != name and admin != None:
             Log.d("User name changed. Changing sign-in user info.")
             self.username.setText(f"User: {admin}")
