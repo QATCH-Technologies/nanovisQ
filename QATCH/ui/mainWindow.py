@@ -6039,198 +6039,202 @@ class MainWindow(QtWidgets.QMainWindow):
         # Block signals to prevent unwanted triggers during refresh
         self.ControlsWin.ui1.cBox_Port.blockSignals(True)
 
-        # Clears boxes before adding new
-        self.ControlsWin.ui1.cBox_Port.clear()
+        # Wrap signal-blocked code in try-finally to restore signals on error
+        try:
 
-        # Gets the current source type
-        source = self._get_source()
+            # Clears boxes before adding new
+            self.ControlsWin.ui1.cBox_Port.clear()
 
-        self.ControlsWin.ui1.infobar.setText(
-            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-                "#333333", "Searching for devices... please wait..."
+            # Gets the current source type
+            source = self._get_source()
+
+            self.ControlsWin.ui1.infobar.setText(
+                "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                    "#333333", "Searching for devices... please wait..."
+                )
             )
-        )
-        if Architecture.get_os() == OSType.macosx:
-            self.ControlsWin.ui1.infobar.repaint()
-        else:
-            self.ControlsWin.ui1.infobar.update()
+            if Architecture.get_os() == OSType.macosx:
+                self.ControlsWin.ui1.infobar.repaint()
+            else:
+                self.ControlsWin.ui1.infobar.update()
 
-        ports = self.worker.get_source_ports(source)
+            ports = self.worker.get_source_ports(source)
 
-        self.ControlsWin.ui1.infobar.setText(
-            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333", "")
-        )
+            self.ControlsWin.ui1.infobar.setText(
+                "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333", "")
+            )
 
-        # Check for device info and update port names accordingly
-        port_names = list(ports)  # copy list
-        device_list = FileStorage.DEV_get_device_list()
-        device_ports = []
-        dev_pids = []
-        # Cache results of Discovery().ping() and Discovery().doDiscover()
-        _now = monotonic() if hasattr(locals, "monotonic") else time()
-        _DISCOVER_TTL_S = 10.0
-        _last_discover = getattr(self, "_last_full_discover_ts", 0.0)
-        _use_discover_cache = (_now - _last_discover) < _DISCOVER_TTL_S
-        _ping_cache = getattr(self, "_ping_cache", {})  # {ip: (ts, result)}
-        for i, dev_name in device_list:
-            dev_info = FileStorage.DEV_info_get(i, dev_name)
-            if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
-                _ip = dev_info["IP"]
-                _cached = _ping_cache.get(_ip)
-                if _cached is not None and (_now - _cached[0]) < _DISCOVER_TTL_S:
-                    net_exists = _cached[1]
-                else:
-                    net_exists = Discovery().ping(_ip)
-                    _ping_cache[_ip] = (_now, net_exists)
-            if "NAME" in dev_info and "PORT" in dev_info:
-                try:
-                    device_ports.append(dev_info["PORT"])
-                    if not dev_info["PORT"] in port_names:
-                        continue  # do not throw exception for debugging
-                    i = port_names.index(dev_info["PORT"])
-                    if "PID" in dev_info and not dev_info["PID"] == "FF":
-                        if not dev_info["PID"] in dev_pids:
-                            dev_pids.append(dev_info["PID"])
-                        # shorthand, for dropdown menu only (colon; no underscore)
-                        port_names[i] = "{}:{}".format(dev_info["PID"], dev_info["NAME"])
-                    elif dev_info["NAME"] != dev_name:
-                        port_names[i] = dev_info["NAME"]
-                    elif "COM" in dev_info["PORT"]:
-                        port_names[i] = "{} ({})".format(dev_info["NAME"], dev_info["PORT"])
-                    elif ":" in dev_info["PORT"]:
-                        port_names[i] = dev_info["NAME"]
+            # Check for device info and update port names accordingly
+            port_names = list(ports)  # copy list
+            device_list = FileStorage.DEV_get_device_list()
+            device_ports = []
+            dev_pids = []
+            # Cache results of Discovery().ping() and Discovery().doDiscover()
+            _now = monotonic() if hasattr(locals, "monotonic") else time()
+            _DISCOVER_TTL_S = 10.0
+            _last_discover = getattr(self, "_last_full_discover_ts", 0.0)
+            _use_discover_cache = (_now - _last_discover) < _DISCOVER_TTL_S
+            _ping_cache = getattr(self, "_ping_cache", {})  # {ip: (ts, result)}
+            for i, dev_name in device_list:
+                dev_info = FileStorage.DEV_info_get(i, dev_name)
+                if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
+                    _ip = dev_info["IP"]
+                    _cached = _ping_cache.get(_ip)
+                    if _cached is not None and (_now - _cached[0]) < _DISCOVER_TTL_S:
+                        net_exists = _cached[1]
                     else:
-                        port_names[i] = "{} ({})".format(dev_info["NAME"], "COM" + str((10 + i)))
-                    if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
-                        ports[i] += f";{dev_info['IP']}"
-                        if " (" in port_names[i]:
-                            port_names[i] = "{} ({})".format(
-                                port_names[i][0 : port_names[i].index(" (")],
-                                dev_info["IP"],
-                            )
+                        net_exists = Discovery().ping(_ip)
+                        _ping_cache[_ip] = (_now, net_exists)
+                if "NAME" in dev_info and "PORT" in dev_info:
+                    try:
+                        device_ports.append(dev_info["PORT"])
+                        if not dev_info["PORT"] in port_names:
+                            continue  # do not throw exception for debugging
+                        i = port_names.index(dev_info["PORT"])
+                        if "PID" in dev_info and not dev_info["PID"] == "FF":
+                            if not dev_info["PID"] in dev_pids:
+                                dev_pids.append(dev_info["PID"])
+                            # shorthand, for dropdown menu only (colon; no underscore)
+                            port_names[i] = "{}:{}".format(dev_info["PID"], dev_info["NAME"])
+                        elif dev_info["NAME"] != dev_name:
+                            port_names[i] = dev_info["NAME"]
+                        elif "COM" in dev_info["PORT"]:
+                            port_names[i] = "{} ({})".format(dev_info["NAME"], dev_info["PORT"])
+                        elif ":" in dev_info["PORT"]:
+                            port_names[i] = dev_info["NAME"]
                         else:
-                            port_names[i] += f" ({dev_info['IP']})"
-                        if not net_exists:
-                            Log.e(f"ERROR: Failed to ping device {dev_info['IP']}")
-                except ValueError:
-                    pass  # device not connected, ignore it
-                except:
-                    Log.w(TAG, "WARN: Error while generating port names list.")
+                            port_names[i] = "{} ({})".format(dev_info["NAME"], "COM" + str((10 + i)))
+                        if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
+                            ports[i] += f";{dev_info['IP']}"
+                            if " (" in port_names[i]:
+                                port_names[i] = "{} ({})".format(
+                                    port_names[i][0 : port_names[i].index(" (")],
+                                    dev_info["IP"],
+                                )
+                            else:
+                                port_names[i] += f" ({dev_info['IP']})"
+                            if not net_exists:
+                                Log.e(f"ERROR: Failed to ping device {dev_info['IP']}")
+                    except ValueError:
+                        pass  # device not connected, ignore it
+                    except:
+                        Log.w(TAG, "WARN: Error while generating port names list.")
 
-        for port_name in list(ports):
-            if not port_name in device_ports:
-                # found connected port with no associated device info in config folder
-                # force parse and/or write device info (to update name and/or pid)
-                Log.d(f"New device found: querying device info for {port_name.split(':')[0]}...")
-                self.fwUpdater.checkAgain()
-                self.worker._port = port_name  # used in run()
-                # do NOT ask to update if not ReadyToShow
-                ret = self.fwUpdater.run(self, self.ReadyToShow)
-                if ret == True or ret >= 0:  # not a failed check
-                    Log.d("Device info queried. Waiting to refresh ports on next call.")
-                    # Ensure the combo box signals are re-enabled before the
-                    # early return; the recursive _refresh_ports() call will
-                    # re-block them itself.
-                    self.ControlsWin.ui1.cBox_Port.blockSignals(False)
-                    return  # fwUpdater.run() calls _refresh_ports() when devinfo written, stop stop here
-                    # NOTE: Each subsequent call to _refresh_ports() will parse one pending device info.
+            for port_name in list(ports):
+                if not port_name in device_ports:
+                    # found connected port with no associated device info in config folder
+                    # force parse and/or write device info (to update name and/or pid)
+                    Log.d(f"New device found: querying device info for {port_name.split(':')[0]}...")
+                    self.fwUpdater.checkAgain()
+                    self.worker._port = port_name  # used in run()
+                    # do NOT ask to update if not ReadyToShow
+                    ret = self.fwUpdater.run(self, self.ReadyToShow)
+                    if ret == True or ret >= 0:  # not a failed check
+                        Log.d("Device info queried. Waiting to refresh ports on next call.")
+                        # Ensure the combo box signals are re-enabled before the
+                        # early return; the recursive _refresh_ports() call will
+                        # re-block them itself. (Handled automatically in finally block now)
+                        return  # fwUpdater.run() calls _refresh_ports() when devinfo written, stop stop here
+                        # NOTE: Each subsequent call to _refresh_ports() will parse one pending device info.
 
-        if _use_discover_cache and hasattr(self, "_cached_net_devs"):
-            _net_devs = self._cached_net_devs
-        else:
-            _net_devs = list(Discovery().doDiscover(full_query=True))
-            self._cached_net_devs = _net_devs
-            self._last_full_discover_ts = _now
-        self._ping_cache = _ping_cache
+            if _use_discover_cache and hasattr(self, "_cached_net_devs"):
+                _net_devs = self._cached_net_devs
+            else:
+                _net_devs = list(Discovery().doDiscover(full_query=True))
+                self._cached_net_devs = _net_devs
+                self._last_full_discover_ts = _now
+            self._ping_cache = _ping_cache
 
-        for net_dev in _net_devs:
-            [build, version, date, hw, ip, mac, usb, uid] = net_dev
-            found_new = True
-            found_exist = False
-            for port in ports:  # find if IP already in port list
-                if ip in port:
-                    found_new = False
-                    break
-            if found_new:
-                for name in port_names:  # find if DEV already in port list
-                    if usb in name:
-                        found_exist = True
+            for net_dev in _net_devs:
+                [build, version, date, hw, ip, mac, usb, uid] = net_dev
+                found_new = True
+                found_exist = False
+                for port in ports:  # find if IP already in port list
+                    if ip in port:
                         found_new = False
                         break
-            if found_exist:
-                for i in range(len(port_names)):  # add IP to existing DEV
-                    if usb in port_names[i]:
-                        ports[i] += f";{ip}"
-            if found_new:  # add new IP & DEV to list
-                ports.append(ip)
-                port_names.append("{} ({})".format(usb, ip))
+                if found_new:
+                    for name in port_names:  # find if DEV already in port list
+                        if usb in name:
+                            found_exist = True
+                            found_new = False
+                            break
+                if found_exist:
+                    for i in range(len(port_names)):  # add IP to existing DEV
+                        if usb in port_names[i]:
+                            ports[i] += f";{ip}"
+                if found_new:  # add new IP & DEV to list
+                    ports.append(ip)
+                    port_names.append("{} ({})".format(usb, ip))
 
-        # usb and ethernet icons
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
-        usb_icon = QtGui.QIcon(os.path.join(icon_path, "usb-icon.png"))  # png
-        ethernet_icon = QtGui.QIcon(os.path.join(icon_path, "ethernet-icon.png"))  # png
-        controller_icon = QtGui.QIcon(os.path.join(icon_path, "controller-icon.png"))  # png
+            # usb and ethernet icons
+            icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
+            usb_icon = QtGui.QIcon(os.path.join(icon_path, "usb-icon.png"))  # png
+            ethernet_icon = QtGui.QIcon(os.path.join(icon_path, "ethernet-icon.png"))  # png
+            controller_icon = QtGui.QIcon(os.path.join(icon_path, "controller-icon.png"))  # png
 
-        if ports is not None:
-            controller_port = None
-            for i in range(len(ports)):
-                port_parts = port_names[i].split(" (")
-                dev_name = port_parts[0]
-                is_networked = port_parts[-1].count(".") == 3
-                is_controller = port_names[i].startswith("80:")
-                port_icon = usb_icon
-                if is_controller:
-                    port_icon = controller_icon
-                    flux_controller_exists = True
-                    controller_port = [port_icon, dev_name, ports[i]]
-                    continue  # wait to add it until after sorting other ports
-                elif is_networked:
-                    port_icon = ethernet_icon
-                self.ControlsWin.ui1.cBox_Port.addItem(port_icon, dev_name, ports[i])
-            self.ControlsWin.ui1.cBox_Port.model().sort(0)
-            if controller_port:
-                self.ControlsWin.ui1.cBox_Port.addItem(
-                    controller_port[0], controller_port[1], controller_port[2]
-                )
-            self.ControlsWin.ui1.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
+            if ports is not None:
+                controller_port = None
+                for i in range(len(ports)):
+                    port_parts = port_names[i].split(" (")
+                    dev_name = port_parts[0]
+                    is_networked = port_parts[-1].count(".") == 3
+                    is_controller = port_names[i].startswith("80:")
+                    port_icon = usb_icon
+                    if is_controller:
+                        port_icon = controller_icon
+                        flux_controller_exists = True
+                        controller_port = [port_icon, dev_name, ports[i]]
+                        continue  # wait to add it until after sorting other ports
+                    elif is_networked:
+                        port_icon = ethernet_icon
+                    self.ControlsWin.ui1.cBox_Port.addItem(port_icon, dev_name, ports[i])
+                self.ControlsWin.ui1.cBox_Port.model().sort(0)
+                if controller_port:
+                    self.ControlsWin.ui1.cBox_Port.addItem(
+                        controller_port[0], controller_port[1], controller_port[2]
+                    )
+                self.ControlsWin.ui1.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
 
-        # Show/hide "Next Port" button (as HW supports it)
-        self.ControlsWin.ui1.action_NextPortRow.setVisible(flux_controller_exists)
-        self.ControlsWin.ui1.action_NextPortSep.setVisible(flux_controller_exists)
+            # Show/hide "Next Port" button (as HW supports it)
+            self.ControlsWin.ui1.action_NextPortRow.setVisible(flux_controller_exists)
+            self.ControlsWin.ui1.action_NextPortSep.setVisible(flux_controller_exists)
 
-        # re-home controller if FLUX is connected (on launch and Reset)
-        if self.ControlsWin.ui1.action_NextPortRow.isVisible():  # use action, not tool
-            # To avoid re-homing on run start, only do this if Run button is disabled
-            if self.ControlsWin.ui1.tool_Start.isEnabled():
-                pass  # do nothing, leave cam wheel where it is
-            else:
-                # setting error will force immediate re-home on next update
-                self.ControlsWin.ui1.tool_NextPortRow.setIconError()
-                self.ControlsWin.ui1.tool_NextPortRow.click()  # update
+            # re-home controller if FLUX is connected (on launch and Reset)
+            if self.ControlsWin.ui1.action_NextPortRow.isVisible():  # use action, not tool
+                # To avoid re-homing on run start, only do this if Run button is disabled
+                if self.ControlsWin.ui1.tool_Start.isEnabled():
+                    pass  # do nothing, leave cam wheel where it is
+                else:
+                    # setting error will force immediate re-home on next update
+                    self.ControlsWin.ui1.tool_NextPortRow.setIconError()
+                    self.ControlsWin.ui1.tool_NextPortRow.click()  # update
 
-        # Log.d(selected_port, ports)
-        selected_port_parts = selected_port.split(";")
-        common_port = ""
-        for port in ports:
-            port_parts = port.split(";")
-            for p in port_parts:
-                for sp in selected_port_parts:
-                    # Log.d(f"compare {sp} to {p}")
-                    if sp == p:
-                        common_port = ";".join(port_parts)
+            # Log.d(selected_port, ports)
+            selected_port_parts = selected_port.split(";")
+            common_port = ""
+            for port in ports:
+                port_parts = port.split(";")
+                for p in port_parts:
+                    for sp in selected_port_parts:
+                        # Log.d(f"compare {sp} to {p}")
+                        if sp == p:
+                            common_port = ";".join(port_parts)
+                            break
+                    if common_port != "":
                         break
                 if common_port != "":
                     break
             if common_port != "":
-                break
-        if common_port != "":
-            Log.d(f"found pre-selected port = {common_port.split(':')[0]}")
-            selected_port = common_port
+                Log.d(f"found pre-selected port = {common_port.split(':')[0]}")
+                selected_port = common_port
 
-        # Unblock signals before setCurrentIndex so the final port-change
-        # notification propagates exactly once (instead of once per addItem
-        # during the repopulate loop above).
-        self.ControlsWin.ui1.cBox_Port.blockSignals(False)
+        finally:
+
+            # Unblock signals before setCurrentIndex so the final port-change
+            # notification propagates exactly once (instead of once per addItem
+            # during the repopulate loop above).
+            self.ControlsWin.ui1.cBox_Port.blockSignals(False)
 
         if selected_port in ports:
             i = self.ControlsWin.ui1.cBox_Port.findData(selected_port)
