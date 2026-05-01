@@ -46,6 +46,7 @@ from QATCH.ui.runInfo import QueryRunInfo
 # import matplotlib.pyplot as plt # lazy load
 
 TAG = "[Analyze]"
+USE_NEW_FILL_METHOD = True
 
 
 # A shared thread pool used exclusively for heavy background operations
@@ -82,9 +83,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
-        return ST1  # always
 
-        # NOTE: This function is not currently used; returning constant value above
+        if concentration <= 123:  # mg/mL
+            return ST1
+
+        # See issue #383: Concentration-Based Surface Tension Correction Formula
+        correction = np.polyval([0.0016, 0.8026], concentration)
+        return round(ST1 / correction, 1)
+
+        # NOTE: The rest of function is not currently used; returning corrected value above
         if concentration > 2:  # mg/mL
             ST1 = 57.5
         return ST1  # always
@@ -6968,7 +6975,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             # calculate normalized curve
             normal_x = xs[t0 : t1 + 1]
-            normal_y = ys_diff[t0 : t1 + 1]
+            normal_y = ys_freq[t0 : t1 + 1]
             n_max = np.amax(normal_y)
             n_min = np.amin(normal_y)
 
@@ -8564,6 +8571,7 @@ class AnalyzerWorker(QtCore.QObject):
                 local_visc = []
                 local_linv = []
                 local_temp = []
+                last_idx = -1
                 # skip first point, reverse order
                 for pt in shear_points[1:][::-1]:
                     try:
@@ -8573,6 +8581,42 @@ class AnalyzerWorker(QtCore.QObject):
                             f"Failed to find index for shear point {pt:2.2f}. Cannot plot this index."
                         )
                         continue
+
+                    if USE_NEW_FILL_METHOD:
+                        # NEW METHOD:
+                        if last_idx == -1:
+                            mv = fill_pos[idx] / fill_time[idx]
+                            mp = fill_pos[idx] / 2
+                        else:
+                            mv = (fill_pos[idx] - fill_pos[last_idx]) / (
+                                fill_time[idx] - fill_time[last_idx]
+                            )
+                            mp = (fill_pos[idx] + fill_pos[last_idx]) / 2
+                        last_idx = idx
+                        mid_visc = (
+                            ST
+                            * np.cos(np.radians(CA))
+                            * Constants.channel_thickness
+                            * 1e6
+                            / ((mp * mv * 6) * (2 / 3 + 1 / 3 / n))
+                        )
+                        mid_shear = (
+                            6
+                            * mv
+                            / Constants.channel_thickness
+                            * (2 / 3 + 1 / 3 / n)
+                            * 1e-3
+                        )
+                        ax7.scatter(
+                            in_shear_rate[idx],
+                            sm_trendline[idx],
+                            marker="d",
+                            s=15,
+                            c="red",
+                        )
+                        sm_trendline[idx] = mid_visc
+                        in_shear_rate[idx] = mid_shear
+
                     local_shear.append(in_shear_rate[idx])
                     local_visc.append(sm_trendline[idx])
                     local_linv.append(lin_viscosity[idx])

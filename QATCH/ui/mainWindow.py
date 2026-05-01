@@ -2562,6 +2562,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.ui1.pButton_Clear.setEnabled(False)  # insert
                 self.ControlsWin.ui1.pButton_Reference.setEnabled(False)  # insert
         elif worker_check == 0:
+            if self._get_source() == OperationType.calibration:
+                self._set_plots_dimmed(amplitude=False, temperature=False, animate=False)
+                self._hide_calibration_plot_overlay()
             Log.w(tag=TAG, msg="Port is not available")
             PopUp.warning(
                 self,
@@ -2572,6 +2575,9 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             self._enable_ui(True)
         elif worker_check == -1:
+            if self._get_source() == OperationType.calibration:
+                self._set_plots_dimmed(amplitude=False, temperature=False, animate=False)
+                self._hide_calibration_plot_overlay()
             Log.w(tag=TAG, msg="No peak magnitudes found. Rerun Initialize.")
             PopUp.warning(
                 self,
@@ -2879,6 +2885,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Create a persistent list so the animations aren't garbage collected
         self._fade_anims = []
 
+        active_anims = []
         for overlay in getattr(self, "_calib_overlay_items", []):
             if overlay is None:
                 continue
@@ -2901,10 +2908,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     lambda p=proxy, d=dim_rect: (p.setVisible(False), d.setVisible(False))
                 )
 
+                active_anims.append(anim)
                 self._fade_anims.append(anim)
                 anim.start()
 
-        # Reset the ready flag so the UI knows calibration is totally finished
+        if active_anims:
+            active_anims[-1].finished.connect(self._hide_calibration_plot_overlay)
+        else:
+            self._hide_calibration_plot_overlay()
+
         self._calib_overlay_ready = False
         self._calib_overlay_live = False
 
