@@ -8285,8 +8285,8 @@ class AnalyzerWorker(QtCore.QObject):
                     if USE_NEW_FILL_METHOD:
                         # NEW METHOD:
                         if last_idx == -1:
-                            mv = fill_pos[idx] / (fill_time[idx] * (n + 1) / n)
-                            mp = (fill_pos[idx] / 2) * ((n + 1) / n)
+                            mv = fill_pos[idx] / fill_time[idx]
+                            mp = fill_pos[idx] / 2
                         else:
                             mv = (fill_pos[idx] - fill_pos[last_idx]) / (
                                 fill_time[idx] - fill_time[last_idx]
