@@ -1,19 +1,18 @@
-# from QATCH.QModel.QModel import QModelPredict
-# import joblib
-# from QATCH.QModel.q_data_pipeline import QDataPipeline
-import time
+# Standard Library
+import atexit
 import datetime as dt
 import hashlib
 import os
 import sys
+import time
 import traceback
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-from typing import Optional, cast, List, Tuple, Any, Dict, Callable, Union
-from time import monotonic, strftime, localtime
+from time import localtime, monotonic, strftime
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 from xml.dom import minidom
-from scipy.signal import argrelextrema, savgol_filter
-from scipy.interpolate import interp1d
+
 import numpy as np
 import pyqtgraph as pg
 import pyzipper
@@ -21,8 +20,9 @@ from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QCompleter
-import atexit
-from concurrent.futures import ThreadPoolExecutor
+from scipy.interpolate import interp1d
+from scipy.signal import argrelextrema, savgol_filter
+
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
 from QATCH.common.fileStorage import FileStorage, secure_open
@@ -38,14 +38,6 @@ from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
 from QATCH.QModel.src.models.v6_yolo.v6_yolo import QModelV6YOLO
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
-
-# from scipy.interpolate import UnivariateSpline # unused
-# from scipy.optimize import curve_fit # lazy load
-# from scipy.signal import argrelextrema # lazy load
-# from scipy.signal import savgol_filter # lazy load
-
-# import matplotlib.backends.backend_pdf # lazy load
-# import matplotlib.pyplot as plt # lazy load
 
 TAG = "[Analyze]"
 
