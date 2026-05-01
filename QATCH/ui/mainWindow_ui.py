@@ -2188,8 +2188,17 @@ class Ui_Plots(object):
             self.btnExpand.setVisible(False)
             width = self.Layout_graphs.width()
             self.Layout_graphs.setSizes([int(width * 0.65), int(width * 0.35)])
-
     def retranslateUi(self, MainWindow2):
+        _translate = QtCore.QCoreApplication.translate
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
+        MainWindow2.setWindowIcon(QtGui.QIcon(icon_path))  # .png
+        MainWindow2.setWindowTitle(
+            _translate(
+                "MainWindow2",
+                "{} {} - Plots".format(Constants.app_title, Constants.app_version),
+            )
+        )
+    def Ui(self, MainWindow2):
         _translate = QtCore.QCoreApplication.translate
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow2.setWindowIcon(QtGui.QIcon(icon_path))  # .png

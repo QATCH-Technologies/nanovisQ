@@ -1,7 +1,9 @@
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph import GraphicsLayoutWidget
-
+import os
+from QATCH.common.architecture import Architecture
+from QATCH.core.constants import Constants
 
 class Ui_Plots(object):
     def setupUi(self, MainWindow):
