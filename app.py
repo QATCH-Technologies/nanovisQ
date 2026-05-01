@@ -4,7 +4,7 @@ import sys
 import time
 from multiprocessing import freeze_support
 
-from PyQt5 import QtCore, QtGui
+from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QApplication
 
@@ -140,11 +140,15 @@ class QATCH:
     def run(self):
         # lazy load imports
         from QATCH.ui import mainWindow
-
+        
         if Architecture.is_python_version(
             MinimalPython.major, minor=MinimalPython.minor
         ):
             Log.i(TAG, "Application started")
+            if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
+                QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+            if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
+                QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
             self.win = mainWindow.MainWindow(samples=self._args.get_user_samples())
             # win.setWindowTitle("{} - {}".format(Constants.app_title, Constants.app_version))
             # win.move(500, 20) #GUI position (x,y) on the screen

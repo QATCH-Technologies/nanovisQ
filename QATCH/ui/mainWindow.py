@@ -46,6 +46,7 @@ from pathlib import Path
 
 from sympy import true
 
+from QATCH.ui.ui_main import UIMain
 from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.deviceFingerprint import DeviceFingerprint
@@ -77,7 +78,6 @@ from QATCH.ui.mainWindow_ui import (
     Ui_Info,
     Ui_Logger,
     Ui_Login,
-    Ui_Main,
     Ui_Plots,
 )
 from QATCH.ui.popUp import PopUp, QueryComboBox
@@ -99,8 +99,8 @@ class _MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent):
         super().__init__()
         parent.ControlsWin._createMenu(self)
-        self.ui0 = Ui_Main()
-        self.ui0.setupUi(self, parent)
+        self.ui0 = UIMain()
+        self.ui0.setup_ui(self, parent)
 
         # Get the application instance safely and connect the signals
         app_instance = QtWidgets.QApplication.instance()
@@ -116,10 +116,10 @@ class _MainWindow(QtWidgets.QMainWindow):
             allow_hide = True
             if widget_clicked is self.ui0.mode_learn:
                 allow_hide = False
-            if widget_clicked is self.ui0.mode_learn_text:
-                allow_hide = False
-            if widget_clicked is self.ui0.mode_learn_arrow:
-                allow_hide = False
+            # if widget_clicked is self.ui0.mode_learn_text:
+            #     allow_hide = False
+            # if widget_clicked is self.ui0.mode_learn_arrow:
+            #     allow_hide = False
             if self.ui0.floating_widget.isVisible() and allow_hide:
                 self.ui0.floating_widget.hide()
         return super().eventFilter(obj, event)
@@ -398,11 +398,11 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.userrole = UserRoles.NONE
         self.menubar.append(target.menuBar().addMenu("&View"))
         self.modebar = self.menubar[2].addMenu("&Mode")
-        self.modebar.addAction("&1: Run", lambda: self.parent.MainWin.ui0.setRunMode(None))
-        self.modebar.addAction("&2: Analyze", lambda: self.parent.MainWin.ui0.setAnalyzeMode(None))
+        self.modebar.addAction("&1: Run", lambda: self.parent.MainWin.ui0._set_run_mode(None))
+        self.modebar.addAction("&2: Analyze", lambda: self.parent.MainWin.ui0._set_analyze_mode(None))
         if Constants.show_visQ_in_R_builds:
             self.modebar.addAction(
-                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0.setLearnMode(None)
+                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0._set_learn_mode(None)
             )
         self.chk1 = self.menubar[2].addAction("&Console", self.toggle_console)
         self.chk1.setCheckable(True)
@@ -511,7 +511,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(100, self.toggle_RandD)
 
     def analyze_data(self):
-        self.parent.MainWin.ui0.setAnalyzeMode(self)
+        self.parent.MainWin.ui0._set_analyze_mode(self)
 
     def import_data(self):
         self.ui_export.showNormal(0)
@@ -577,7 +577,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
     def manage_user_profiles(self):
         # dissallow user management if Analyze mode still has unsaved changes (after prompt to close)
         # still logged in, but user cannot stay in Analyze mode
-        if not self.parent.MainWin.ui0.setRunMode(None):
+        if not self.parent.MainWin.ui0._set_run_mode(None):
             Log.d("User has unsaved changes in Analyze mode. Manage users aborted.")
             return
 
