@@ -8298,8 +8298,8 @@ class AnalyzerWorker(QtCore.QObject):
                             * np.cos(np.radians(CA))
                             * Constants.channel_thickness
                             * 1e6
-                            / ((mp * mv * 1e6) * (2 / 3 + 1 / 3 / n))
-                        ) * 2e5  # TODO: why is this needed?
+                            / ((mp * mv * 6) * (2 / 3 + 1 / 3 / n))
+                        )
                         mid_shear = (
                             6
                             * mv
