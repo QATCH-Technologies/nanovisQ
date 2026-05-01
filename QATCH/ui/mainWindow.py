@@ -2,8 +2,8 @@
 mainWindow.py
 
 The primary container for the QATCH Q-1 application, responsible for initializing and managing the main user interface.
-This module defines the main window of the application, which includes the menu bar, user profile management, 
-and the central widget that contains the various UI components. It also handles user interactions such as toggling views, 
+This module defines the main window of the application, which includes the menu bar, user profile management,
+and the central widget that contains the various UI components. It also handles user interactions such as toggling views,
 managing user profiles, and responding to menu actions, etc.
 
 Author(s):
@@ -16,6 +16,7 @@ Date:
 Version:
     x.x.x?
 """
+
 from datetime import datetime, timezone, timedelta, date
 import hashlib
 import logging
@@ -1905,7 +1906,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self.AnalyzeProc, "_batched_runs") and self.AnalyzeProc._batched_runs:
             self.AnalyzeProc._current_run = self.AnalyzeProc.text_Created.text()
 
-        self.AnalyzeProc.Analyze_Data(data_path)
+        self.AnalyzeProc.analyze_data(data_path)
 
     def refresh_data_files(self):
         Log.i(TAG, "Refreshing data files...")

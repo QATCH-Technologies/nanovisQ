@@ -1,16 +1,19 @@
-import datetime as dt
-import hashlib
-
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
 # from QATCH.QModel.q_data_pipeline import QDataPipeline
+import time
+import datetime as dt
+import hashlib
 import os
 import sys
-from io import BytesIO
-from typing import Optional, cast, List, Tuple, Any, Dict
-from time import monotonic
-from xml.dom import minidom
+import traceback
 import xml.etree.ElementTree as ET
+from io import BytesIO
+from typing import Optional, cast, List, Tuple, Any, Dict, Callable, Union
+from time import monotonic, strftime, localtime
+from xml.dom import minidom
+from scipy.signal import argrelextrema, savgol_filter
+from scipy.interpolate import interp1d
 import numpy as np
 import pyqtgraph as pg
 import pyzipper
@@ -46,28 +49,27 @@ from QATCH.ui.runInfo import QueryRunInfo
 
 TAG = "[Analyze]"
 
+_DEV_MODE_TTL_SECONDS = 30.0
 
-# A shared thread pool used exclusively for heavy background operations
-# (e.g., preloading machine learning models, batch processing file I/O).
-# Limiting the max_workers to 4 prevents thread exhaustion and memory bloat,
-# while sharing a single executor prevents spawning runaway threads on rapid UI clicks.
-_LOAD_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="visq-load")
+_LOAD_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="qmodel-preload")
+
 
 def _shutdown_executor() -> None:
     """
     Ensures the background executor tears down cleanly when the application exits.
-    
-    - wait=False: Prevents the main application thread from hanging indefinitely 
+
+    - wait=False: Prevents the main application thread from hanging indefinitely
                   if a background task is currently stuck or executing.
-    - cancel_futures=True: Ensures any pending tasks in the queue that haven't 
+    - cancel_futures=True: Ensures any pending tasks in the queue that haven't
                            started yet are immediately discarded (Requires Python 3.9+).
     """
     _LOAD_EXECUTOR.shutdown(wait=False, cancel_futures=True)
 
+
 # Register the cleanup handler to fire automatically upon Python interpreter exit
 atexit.register(_shutdown_executor)
- 
-_DEV_MODE_TTL_SECONDS = 30.0
+
+
 ###############################################################################
 # Elaborate on the raw data gathered from the SerialProcess in parallel timing
 ###############################################################################
@@ -561,8 +563,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tBtn_Load.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
 
         # Apply style sheet to preserve arrow, but remove its hover effect
-        self.tBtn_Load.setStyleSheet(
-            """
+        self.tBtn_Load.setStyleSheet("""
             /* Keep the arrow visible but remove any hover effect */
             QToolButton::menu-indicator {
                 background: transparent;
@@ -574,8 +575,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 background: transparent;
                 border: none;
             }
-            """
-        )
+            """)
 
         self.tool_Load.addWidget(self.tBtn_Load)
 
@@ -964,11 +964,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         results_figure = pg.PlotWidget()
         results_figure.setBackground("w")
         plot_text = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        plot_text.setHtml(
-            "<span style='font-size: 10pt'><b>No Results To View</b><br/> \
+        plot_text.setHtml("<span style='font-size: 10pt'><b>No Results To View</b><br/> \
                             Load a run, follow the prompts to select points,<br/> \
-                            and press \"Analyze\" action to view results.</span>"
-        )
+                            and press \"Analyze\" action to view results.</span>")
         it = plot_text.textItem
         option = it.document().defaultTextOption()
         option.setAlignment(QtCore.Qt.AlignCenter)
@@ -1218,13 +1216,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _show_analyze_plot_overlay(self) -> None:
         """Creates and displays a progress overlay on the analysis plot.
 
-        This method initializes a placeholder ``pg.PlotWidget``, embeds a 
-        semi-transparent status overlay (containing a label and a progress bar), 
-        and inserts it into the results splitter. The overlay is wrapped in a 
+        This method initializes a placeholder ``pg.PlotWidget``, embeds a
+        semi-transparent status overlay (containing a label and a progress bar),
+        and inserts it into the results splitter. The overlay is wrapped in a
         ``QGraphicsProxyWidget`` to float above the ``PlotItem``.
 
-        The overlay is automatically centered within the ViewBox using a 
-        single-shot timer to ensure layout calculations are complete before 
+        The overlay is automatically centered within the ViewBox using a
+        single-shot timer to ensure layout calculations are complete before
         positioning.
         """
         self._hide_analyze_plot_overlay()
@@ -1235,7 +1233,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         plot_text.setHtml("<span style='font-size: 10pt'>Analyze in-progress...</span>")
         plot_text.setPos(0.5, 0.5)
 
-        plot_text.setFlag(plot_text.GraphicsItemFlag.ItemHasNoContents, False) 
+        plot_text.setFlag(plot_text.GraphicsItemFlag.ItemHasNoContents, False)
         results_figure.addItem(plot_text)
         self.results_split.replaceWidget(1, results_figure)
         self.results_split.setEnabled(False)
@@ -1315,21 +1313,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _update_analyze_plot_overlay(self, value: int, status: str) -> None:
         """Updates the progress percentage and status message on the plot overlay.
 
-        This method updates the visual state of the ``QProgressBar`` and 
-        ``QLabel`` stored in the overlay tuple. It caps the progress bar value 
-        at 99 to prevent it from showing a "Complete" state before the 
-        finalization logic triggers. It also forces a UI event loop process 
+        This method updates the visual state of the ``QProgressBar`` and
+        ``QLabel`` stored in the overlay tuple. It caps the progress bar value
+        at 99 to prevent it from showing a "Complete" state before the
+        finalization logic triggers. It also forces a UI event loop process
         to ensure the display refreshes during long-running operations.
 
         Args:
             value: The current progress percentage, typically between 0 and 100.
                 The visual bar is capped at 99 internally.
-            status: A string description of the current analysis step (e.g., 
+            status: A string description of the current analysis step (e.g.,
                 "Calculating FFT...", "Filtering data...").
 
         Note:
-            This method calls ``QCoreApplication.processEvents()``, which 
-            temporarily allows the UI to stay responsive but should be used 
+            This method calls ``QCoreApplication.processEvents()``, which
+            temporarily allows the UI to stay responsive but should be used
             cautiously to avoid re-entrancy issues.
         """
         overlay = getattr(self, "_analyze_overlay", None)
@@ -1346,15 +1344,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """Removes the analysis progress overlay and handles task termination state.
 
         This method cleans up the graphics overlay by detaching the proxy widget
-        from the scene. If the underlying analysis task finished successfully, 
-        the progress bar is briefly set to 100%. If the task failed (based on 
+        from the scene. If the underlying analysis task finished successfully,
+        the progress bar is briefly set to 100%. If the task failed (based on
         the worker's exit code), a warning dialog is displayed to the user.
 
-        The method is designed to be idempotent and is safe to call even if the 
+        The method is designed to be idempotent and is safe to call even if the
         overlay has already been removed or was never initialized.
 
         Raises:
-            RuntimeError: Silently handles cases where the underlying Qt objects 
+            RuntimeError: Silently handles cases where the underlying Qt objects
                 have already been deleted by the C++ runtime.
         """
         overlay = getattr(self, "_analyze_overlay", None)
@@ -1384,18 +1382,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _show_qmodel_plot_overlay(self) -> None:
         """Embeds a dimming layer and progress overlay into the main graph widget.
 
-        This method initializes a visual overlay for QModel inference. Unlike the 
-        analysis plot, this does not replace the widget; instead, it layers a 
-        semi-transparent ``QGraphicsRectItem`` over the existing plot to "dim" it, 
-        then places a progress bar and label on top. 
+        This method initializes a visual overlay for QModel inference. Unlike the
+        analysis plot, this does not replace the widget; instead, it layers a
+        semi-transparent ``QGraphicsRectItem`` over the existing plot to "dim" it,
+        then places a progress bar and label on top.
 
-        The dimming rectangle and the progress widget are both parented to the 
-        ``PlotItem``'s graphics item and managed via a tracking tuple for 
+        The dimming rectangle and the progress widget are both parented to the
+        ``PlotItem``'s graphics item and managed via a tracking tuple for
         dynamic resizing and eventual removal.
 
         Note:
-            Uses a single-shot timer to execute centering logic (``_center``) 
-            to ensure that the ``ViewBox`` geometry is fully calculated before 
+            Uses a single-shot timer to execute centering logic (``_center``)
+            to ensure that the ``ViewBox`` geometry is fully calculated before
             the dimming rectangle is drawn.
         """
         self._hide_qmodel_plot_overlay()
@@ -1453,6 +1451,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         proxy.setWidget(container)
         proxy.setParentItem(plot_item.graphicsItem())
         proxy.setZValue(1000)
+
         def _center() -> None:
             try:
                 vb_rect = vb.mapRectToItem(plot_item.graphicsItem(), vb.boundingRect())
@@ -1473,25 +1472,25 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _update_qmodel_plot_overlay(self, pct: int, status: str) -> None:
         """Updates the QModel overlay with smoothed progress and status text.
 
-        This method implements a animation pattern to decouple 
-        the UI refresh rate from the worker signal frequency. It uses a 
-        high-precision range (0-10,000) and a 60 FPS timer to animate the 
-        progress bar toward the target value using a liquid ease-out effect 
+        This method implements a animation pattern to decouple
+        the UI refresh rate from the worker signal frequency. It uses a
+        high-precision range (0-10,000) and a 60 FPS timer to animate the
+        progress bar toward the target value using a liquid ease-out effect
         (interpolating 10% of the remaining distance per frame).
 
-        The animation protects the UI from 'jitter' caused by rapid, successive 
+        The animation protects the UI from 'jitter' caused by rapid, successive
         progress updates from the inference worker.
 
         Args:
-            pct: The current progress percentage (0-100). The visual target 
+            pct: The current progress percentage (0-100). The visual target
                 is capped at 99 internally until the hide method is called.
-            status: A human-readable string describing the current inference 
+            status: A human-readable string describing the current inference
                 step.
         """
         overlay = getattr(self, "_qmodel_overlay", None)
         if overlay is None:
             return
-            
+
         _proxy, _dim_rect, progress_bar, status_label = overlay
         if pct > 0 and progress_bar.maximum() == 0:
             progress_bar.setRange(0, 10000)
@@ -1502,11 +1501,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             progress_bar._current_float = float(progress_bar.value())
             progress_bar._chase_timer = QtCore.QTimer()
             progress_bar._chase_timer.setInterval(16)
-            
+
             def chase_target():
                 # Calculate distance to target
                 diff = progress_bar._target_value - progress_bar._current_float
-                
+
                 if abs(diff) < 5.0:
                     progress_bar._current_float = float(progress_bar._target_value)
                     progress_bar.setValue(int(progress_bar._current_float))
@@ -1514,7 +1513,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 else:
                     progress_bar._current_float += diff * 0.10
                     progress_bar.setValue(int(progress_bar._current_float))
-                    
+
             progress_bar._chase_timer.timeout.connect(chase_target)
 
         progress_bar._target_value = target_value
@@ -1523,19 +1522,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         if status and len(status):
             status_label.setText(status)
-            
+
         QtCore.QCoreApplication.processEvents()
 
     def _hide_qmodel_plot_overlay(self, failed: bool = False) -> None:
         """Removes the QModel dimming layer and progress overlay.
 
-        This method performs a comprehensive cleanup of the QModel UI state. It 
-        stops the internal animation timer (Target Chaser), optionally snaps 
-        the progress bar to 100% on success, and removes both the 
+        This method performs a comprehensive cleanup of the QModel UI state. It
+        stops the internal animation timer (Target Chaser), optionally snaps
+        the progress bar to 100% on success, and removes both the
         ``QGraphicsProxyWidget`` and the ``QGraphicsRectItem`` from the scene.
 
         Args:
-            failed: If True, skips the 100% progress snap and displays a 
+            failed: If True, skips the 100% progress snap and displays a
                 warning popup. Defaults to False.
         """
         overlay = getattr(self, "_qmodel_overlay", None)
@@ -1676,12 +1675,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def action_sort_by_name(self, obj: Any) -> None:
         """Sets the run sorting order to alphabetical by name and updates the UI.
 
-        Updates the internal sort order state to 0 (name), triggers a refresh 
-        of the run selection combobox, and applies bold CSS styling to the 
+        Updates the internal sort order state to 0 (name), triggers a refresh
+        of the run selection combobox, and applies bold CSS styling to the
         'sort by name' label while resetting the 'sort by date' label.
 
         Args:
-            obj (Any): The event object passed by the Qt signal (e.g., a 
+            obj (Any): The event object passed by the Qt signal (e.g., a
                 QMouseEvent), or None if called programmatically.
         """
         self.sort_order = 0
@@ -1696,12 +1695,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def action_sort_by_date(self, obj: Any) -> None:
         """Sets the run sorting order to chronological by date and updates the UI.
 
-        Updates the internal sort order state to 1 (date), triggers a refresh 
-        of the run selection combobox, and applies bold CSS styling to the 
+        Updates the internal sort order state to 1 (date), triggers a refresh
+        of the run selection combobox, and applies bold CSS styling to the
         'sort by date' label while resetting the 'sort by name' label.
 
         Args:
-            obj (Any): The event object passed by the Qt signal (e.g., a 
+            obj (Any): The event object passed by the Qt signal (e.g., a
                 QMouseEvent), or None if called programmatically.
         """
         self.sort_order = 1
@@ -1736,11 +1735,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         results_figure = pg.PlotWidget()
         results_figure.setBackground("w")
         plot_text = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        plot_text.setHtml(
-            "<span style='font-size: 10pt'><b>No Results To View</b><br/> \
+        plot_text.setHtml("<span style='font-size: 10pt'><b>No Results To View</b><br/> \
                             Load a run, follow the prompts to select points,<br/> \
-                            and press \"Analyze\" action to view results.</span>"
-        )
+                            and press \"Analyze\" action to view results.</span>")
         it = plot_text.textItem
         option = it.document().defaultTextOption()
         option.setAlignment(QtCore.Qt.AlignCenter)
@@ -2252,7 +2249,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.clear()
 
-
     def clear(self):
         self.text_Created.clear()
         self.graphWidget.clear()
@@ -2629,7 +2625,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         Adjust the finder-plot zoom level by a multiplicative offset and refresh the current POI context.
 
-        This updates self.zoomLevel within safe bounds, applies special initial-clipping adjustments based on the current step, and emits a position-change-finished signal for the active POI marker so the UI refreshes. Note: the method uses the current step (self.stateStep) to select the marker but intentionally skips the hidden POI3 (index 2) when mapping step → marker.
+        This updates self.zoomLevel within safe bounds, applies special initial-clipping adjustments based
+        on the current step, and emits a position-change-finished signal for the active POI marker so the
+        UI refreshes. Note: the method uses the current step (self.stateStep) to select the marker but
+        intentionally skips the hidden POI3 (index 2) when mapping step -> marker.
 
         Parameters:
             offset (float): Multiplicative zoom factor (e.g., >1 to zoom out, <1 to zoom in).
@@ -2706,18 +2705,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _scan_run(data_device: str, data_folder: str, parse_xml: bool = True) -> Dict[str, Any]:
         """Scans a single run to fetch its file list and extract metadata.
 
-        Worker (thread-safe): for one run, fetches its file list and, if 
-        parse_xml is True, extracts the 'start' metric and 'run_name' 
-        parameter from its XML metadata. 
+        Worker (thread-safe): for one run, fetches its file list and, if
+        parse_xml is True, extracts the 'start' metric and 'run_name'
+        parameter from its XML metadata.
 
-        This method uses ElementTree (much faster than minidom on small 
-        documents) and reports warnings or errors via the returned dictionary 
+        This method uses ElementTree (much faster than minidom on small
+        documents) and reports warnings or errors via the returned dictionary
         instead of modifying shared state directly.
 
         Args:
             data_device (str): The name of the device associated with the run.
             data_folder (str): The specific folder name containing the run data.
-            parse_xml (bool, optional): Whether to parse the XML file for 
+            parse_xml (bool, optional): Whether to parse the XML file for
                 metadata. Defaults to True.
 
         Returns:
@@ -2741,21 +2740,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             "warnings": [],
             "error": None,
         }
- 
+
         try:
-            data_files = FileStorage.DEV_get_logged_data_files(
-                data_device, data_folder
-            )
+            data_files = FileStorage.DEV_get_logged_data_files(data_device, data_folder)
             result["files"] = data_files or []
- 
+
             if not parse_xml:
                 return result
- 
+
             root = None
- 
-            zn = os.path.join(
-                Constants.log_prefer_path, data_device, data_folder, "audit.zip"
-            )
+
+            zn = os.path.join(Constants.log_prefer_path, data_device, data_folder, "audit.zip")
             if FileManager.file_exists(zn):
                 with pyzipper.AESZipFile(
                     zn,
@@ -2767,21 +2762,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         zf.testzip()
                     except Exception:
-                        zf.setpassword(
-                            hashlib.sha256(zf.comment).hexdigest().encode()
-                        )
+                        zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
                     files = zf.namelist()
-                    xml_filename = next(
-                        (x for x in files if x.endswith(".xml")), None
-                    )
+                    xml_filename = next((x for x in files if x.endswith(".xml")), None)
                     if xml_filename is not None:
                         with zf.open(xml_filename, "r") as fh:
                             xml_bytes = fh.read()
                         root = ET.fromstring(xml_bytes)
             else:
-                xml_filename = next(
-                    (x for x in result["files"] if x.endswith(".xml")), None
-                )
+                xml_filename = next((x for x in result["files"] if x.endswith(".xml")), None)
                 if xml_filename is None:
                     result["warnings"].append(
                         f'WARNING: XML file not found in data files for run "{data_folder}"'
@@ -2798,7 +2787,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     )
                     if os.path.exists(xml_path):
                         root = ET.parse(xml_path).getroot()
- 
+
             if root is not None:
                 for m in root.iter("metric"):
                     if m.get("name") == "start":
@@ -2808,31 +2797,28 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     if p.get("name") == "run_name":
                         result["run_name"] = p.get("value")
                         break
- 
+
         except Exception as e:
             result["error"] = str(e)
- 
+
         return result
-    
+
     def _apply_scan_results(
-        self, 
-        scan_results: List[Dict[str, Any]], 
-        data_device: str, 
-        unchecked_runs: List[str]
+        self, scan_results: List[Dict[str, Any]], data_device: str, unchecked_runs: List[str]
     ) -> None:
         """Merges the background scan results into the shared state dictionaries.
 
-        Iterates through the parsed results from the background thread, logs any 
-        warnings or errors, and updates the internal state trackers (`run_names`, 
-        `run_timestamps`, and `run_devices`). Also handles cleaning up runs that 
+        Iterates through the parsed results from the background thread, logs any
+        warnings or errors, and updates the internal state trackers (`run_names`,
+        `run_timestamps`, and `run_devices`). Also handles cleaning up runs that
         are empty or no longer exist on the filesystem.
 
         Args:
-            scan_results (List[Dict[str, Any]]): A list of dictionaries containing 
+            scan_results (List[Dict[str, Any]]): A list of dictionaries containing
                 the parsed metadata for each run (typically the output from `_scan_run`).
             data_device (str): The name of the device associated with these runs.
-            unchecked_runs (List[str]): A list of dict keys (formatted as 
-                "{folder}:{device}") representing runs that were previously known 
+            unchecked_runs (List[str]): A list of dict keys (formatted as
+                "{folder}:{device}") representing runs that were previously known
                 but need verification of their continued existence.
         """
         for r in scan_results:
@@ -2840,7 +2826,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             dict_key = r["dict_key"]
             data_files = r["files"]
 
-            for msg in r["warnings"]: Log.w(msg)
+            for msg in r["warnings"]:
+                Log.w(msg)
             if r["error"] is not None:
                 Log.e(f'Error getting timestamp from XML for run "{data_folder}"!')
                 Log.d(f"Error message: {r['error']}")
@@ -2871,10 +2858,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _refresh_cbox_runs(self) -> None:
         """Sorts the cached run data and repopulates the UI run selection combobox.
 
-        This method takes the current state of `run_timestamps`, sorts them based on 
-        the user's selected preference (alphabetical by name or chronological by date), 
-        and filters them according to the selected device or active batch subsets. 
-        It then updates the `cBox_Runs` widget and adjusts the UI layout width 
+        This method takes the current state of `run_timestamps`, sorts them based on
+        the user's selected preference (alphabetical by name or chronological by date),
+        and filters them according to the selected device or active batch subsets.
+        It then updates the `cBox_Runs` widget and adjusts the UI layout width
         to fit the new content.
 
         The sorting logic follows:
@@ -2883,18 +2870,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         # Define sorting configuration for readability: {order_index: (sort_key_index, reverse_bool)}
         # item[0] is the dict_key (name-based), item[1] is the timestamp
-        sort_config = {
-            0: (0, False),  # Name: Ascending
-            1: (1, True)    # Date: Descending
-        }
-        
+        sort_config = {0: (0, False), 1: (1, True)}  # Name: Ascending  # Date: Descending
+
         key_idx, is_reverse = sort_config.get(self.sort_order, (1, True))
 
         # Sort the items based on the current UI selection
         self.sorted_runs: List[Tuple[str, str]] = sorted(
-            self.run_timestamps.items(),
-            key=lambda item: item[key_idx].lower(),
-            reverse=is_reverse
+            self.run_timestamps.items(), key=lambda item: item[key_idx].lower(), reverse=is_reverse
         )
 
         display_runs: List[str] = []
@@ -2915,9 +2897,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             formatted_display_name = f"{run_name} ({captured_date})"
 
             # Filter: Check if we are restricted to a specific batch subset
-            if hasattr(self, "_batched_runs") and self._batched_runs and formatted_display_name not in self._batched_runs:
+            if (
+                hasattr(self, "_batched_runs")
+                and self._batched_runs
+                and formatted_display_name not in self._batched_runs
+            ):
                 continue
-                    
+
             # Filter: Check device ownership
             if show_all or selected_device == device_name:
                 display_runs.append(formatted_display_name)
@@ -2929,7 +2915,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Reset internal lookup caches if they exist
         if hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache = {}
-        
+
         # Dynamically resize the combobox and associated widgets
         new_width = max(self.cBox_Runs.sizeHint().width(), 200)
         self.cBox_Runs.setFixedWidth(new_width)
@@ -2938,18 +2924,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def find_most_recent_run(self) -> None:
         """Initiates an asynchronous background scan to find the most recent run across all devices.
 
-        This method prepares the UI by disabling buttons and initializing the progress 
-        bar. It then identifies all available devices from the `cBox_Devices` combobox 
-        and launches a `RunScanWorker` thread to scan each device's file system 
-        without freezing the main UI thread. 
+        This method prepares the UI by disabling buttons and initializing the progress
+        bar. It then identifies all available devices from the `cBox_Devices` combobox
+        and launches a `RunScanWorker` thread to scan each device's file system
+        without freezing the main UI thread.
 
-        The results are processed incrementally via the `_on_find_most_recent_scanned` 
+        The results are processed incrementally via the `_on_find_most_recent_scanned`
         slot as each device scan completes.
         """
         # Prevent user interaction during initial scan
         self.enable_buttons(False, False)
         self._update_progress_value(1, "Loading runs...")
-        self.progressBar.setValue(0) 
+        self.progressBar.setValue(0)
 
         # Collect device names and existing cache keys for the worker
         devices: List[str] = [
@@ -2959,40 +2945,40 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._async_best_date: str = "0 / No Date"
         self._async_best_dev_idx: int = 0
         self.multi_scan_worker = RunScanWorker(devices, known_keys, parent=self)
-        
+
         # Connect the signal to the handler that merges results and updates the UI
         self.multi_scan_worker.scan_finished.connect(self._on_find_most_recent_scanned)
-        
+
         self.multi_scan_worker.start()
 
     @QtCore.pyqtSlot(list, str, list, bool)
     def _on_find_most_recent_scanned(
-        self, 
-        scan_results: List[Dict[str, Any]], 
-        data_device: str, 
-        unchecked_runs: List[str], 
-        is_last: bool
+        self,
+        scan_results: List[Dict[str, Any]],
+        data_device: str,
+        unchecked_runs: List[str],
+        is_last: bool,
     ) -> None:
         """Handles the incremental results from the background most-recent-run scan.
 
-        This slot is triggered whenever the `RunScanWorker` finishes scanning a 
-        specific device. It updates the internal state with the new results and 
-        tracks the globally "most recent" run across all processed devices. Once 
+        This slot is triggered whenever the `RunScanWorker` finishes scanning a
+        specific device. It updates the internal state with the new results and
+        tracks the globally "most recent" run across all processed devices. Once
         the final device is scanned, it finalizes the UI state.
 
         Args:
-            scan_results (List[Dict[str, Any]]): The metadata results for the 
+            scan_results (List[Dict[str, Any]]): The metadata results for the
                 runs found on the scanned device.
             data_device (str): The name of the device that was just scanned.
-            unchecked_runs (List[str]): List of run keys to be verified/removed 
+            unchecked_runs (List[str]): List of run keys to be verified/removed
                 if they no longer exist on disk.
-            is_last (bool): Flag indicating if this was the last device in the 
+            is_last (bool): Flag indicating if this was the last device in the
                 scanning queue.
         """
         # Merge results from this device into the main state dictionaries
         self._apply_scan_results(scan_results, data_device, unchecked_runs)
         dev_idx: int = self.cBox_Devices.findText(data_device)
-        
+
         if dev_idx != -1:
             for r in scan_results:
                 timestamp: str = r.get("timestamp") or "0 / No Date"
@@ -3006,7 +2992,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 f"{self.cBox_Devices.itemText(self._async_best_dev_idx)} "
                 f"from {self._async_best_date}."
             )
-            
+
             self.cBox_Devices.setCurrentIndex(self._async_best_dev_idx)
             self.action_sort_by_date(None)
             self.enable_buttons()
@@ -3014,21 +3000,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def update_run(self, idx: int) -> None:
         """Initiates an asynchronous background scan for runs associated with a specific device.
 
-        This method serves as the entry point for refreshing the run list when a user 
-        selects a new device or a manual refresh is triggered. It disables UI 
-        interaction, identifies the target device based on the provided index, and 
+        This method serves as the entry point for refreshing the run list when a user
+        selects a new device or a manual refresh is triggered. It disables UI
+        interaction, identifies the target device based on the provided index, and
         offloads the file system scanning and XML parsing to a `RunScanWorker` thread.
 
-        The results are processed by the `_on_single_device_scanned` slot once the 
+        The results are processed by the `_on_single_device_scanned` slot once the
         background task completes.
 
         Args:
-            idx (int): The index of the device in the `cBox_Devices` combobox 
+            idx (int): The index of the device in the `cBox_Devices` combobox
                 to be scanned.
         """
         self.enable_buttons(False, False)
         data_device: str = self.cBox_Devices.itemText(idx)
-        
+
         # Provide the worker with current cache keys to avoid redundant XML parsing
         known_keys: List[str] = list(self.run_timestamps.keys())
         self.single_scan_worker = RunScanWorker([data_device], known_keys, parent=self)
@@ -3037,26 +3023,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     @QtCore.pyqtSlot(list, str, list, bool)
     def _on_single_device_scanned(
-        self, 
-        scan_results: List[Dict[str, Any]], 
-        data_device: str, 
-        unchecked_runs: List[str], 
-        is_last: bool
+        self,
+        scan_results: List[Dict[str, Any]],
+        data_device: str,
+        unchecked_runs: List[str],
+        is_last: bool,
     ) -> None:
         """Handles the results of a background scan for a single device selection.
 
-        This slot is triggered when the `RunScanWorker` completes the scanning 
-        process for the currently selected device. It updates the internal state 
-        dictionaries with the new results, refreshes the run selection combobox 
+        This slot is triggered when the `RunScanWorker` completes the scanning
+        process for the currently selected device. It updates the internal state
+        dictionaries with the new results, refreshes the run selection combobox
         to reflect changes, and re-enables the UI buttons for user interaction.
 
         Args:
-            scan_results (List[Dict[str, Any]]): A list of dictionaries containing 
+            scan_results (List[Dict[str, Any]]): A list of dictionaries containing
                 parsed run metadata (timestamp, name, files, etc.) for the device.
             data_device (str): The name of the device that was scanned.
-            unchecked_runs (List[str]): Keys of runs that were previously cached 
+            unchecked_runs (List[str]): Keys of runs that were previously cached
                 but were not found during this scan and should be purged.
-            is_last (bool): Flag indicating if this was the final device in the 
+            is_last (bool): Flag indicating if this was the final device in the
                 worker's queue (always True for single-device updates).
         """
         self._apply_scan_results(scan_results, data_device, unchecked_runs)
@@ -3067,12 +3053,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         Asynchronously schedules the loading of QModel predictive models.
 
-        This method submits the heavy model-loading routines to a background thread pool 
-        executor (`_LOAD_EXECUTOR`). It is fully idempotent and safe to call repeatedly 
+        This method submits the heavy model-loading routines to a background thread pool
+        executor (`_LOAD_EXECUTOR`). It is fully idempotent and safe to call repeatedly
         (e.g., in a polling loop or UI refresh cycle).
 
         Configuration constraints:
-            - Models are only loaded if their respective prediction flags 
+            - Models are only loaded if their respective prediction flags
             (`QModel4_predict` / `QModel6_predict`) are active in `Constants`.
             - Models are skipped if they are already successfully loaded.
             - Models are skipped if a loading task is already in-flight (tracked via futures).
@@ -3087,10 +3073,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             requires_v4 = getattr(Constants, "QModel4_predict", False)
             is_v4_pending = self._qmodel_v4_future is not None
-            
+
             if requires_v4 and not self.QModel_v4_modules_loaded and not is_v4_pending:
                 self._qmodel_v4_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v4)
-                
+
         except Exception as e:
             Log.e("ERROR", f"Failed to schedule 'QModel v4 (Fusion)' preload. Details: {e}")
 
@@ -3098,20 +3084,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             requires_v6 = getattr(Constants, "QModel6_predict", False)
             is_v6_pending = self._qmodel_v6_future is not None
-            
+
             if requires_v6 and not self.QModel_v6_modules_loaded and not is_v6_pending:
                 self._qmodel_v6_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v6)
-                
+
         except Exception as e:
             Log.e("ERROR", f"Failed to schedule 'QModel v6 (YOLO26)' preload. Details: {e}")
 
     @staticmethod
-    def _load_qmodel_v4() -> 'QModelV4Fusion':
+    def _load_qmodel_v4() -> "QModelV4Fusion":
         """
         Instantiates and loads the V4 Fusion prediction model into memory.
 
-        This worker method performs heavy disk I/O to load PyTorch model weights 
-        (.pth files) for both regressors and classifiers. It is designed to be 
+        This worker method performs heavy disk I/O to load PyTorch model weights
+        (.pth files) for both regressors and classifiers. It is designed to be
         executed safely off the main UI thread via a concurrent futures executor.
 
         Returns:
@@ -3124,7 +3110,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             "SavedModels",
             "qmodel_v4_fusion",
         )
-        
+
         return QModelV4Fusion(
             reg_path_1=os.path.join(base_path, "poi_model_mini_window_0_1600.pth"),
             reg_path_2=os.path.join(base_path, "poi_model_mini_window_1_1600.pth"),
@@ -3134,12 +3120,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
 
     @staticmethod
-    def _load_qmodel_v6() -> 'QModelV6YOLO':
+    def _load_qmodel_v6() -> "QModelV6YOLO":
         """
         Instantiates and loads the V6 YOLO26 prediction model into memory.
 
-        This worker method constructs the asset map and performs heavy disk I/O 
-        to load the YOLO-based PyTorch weights (.pt files) for various detectors 
+        This worker method constructs the asset map and performs heavy disk I/O
+        to load the YOLO-based PyTorch weights (.pt files) for various detectors
         and classifiers. It is designed to be executed off the main UI thread.
 
         Returns:
@@ -3152,7 +3138,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             "SavedModels",
             "qmodel_v6_yolo",
         )
-        
+
         # Map out the required weights files for the YOLO26 model suite
         model_assets = {
             "fill_classifier": os.path.join(
@@ -3166,30 +3152,30 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 "poi5_fine": os.path.join(base_path, "detectors", "eof_detector", "eof.pt"),
             },
         }
-        
+
         return QModelV6YOLO(model_assets=model_assets)
- 
+
     def _await_qmodels(self, timeout: float = 120.0) -> None:
         """
         Blocks the calling thread until in-flight prediction models finish loading.
 
-        This method resolves the asynchronous futures generated by `_load_qmodels()`. 
-        Once a future completes, it installs the resulting model instance onto the 
+        This method resolves the asynchronous futures generated by `_load_qmodels()`.
+        Once a future completes, it installs the resulting model instance onto the
         class and updates the corresponding load-state flags.
 
         Args:
-            timeout: Maximum seconds to wait for a model load to complete before 
+            timeout: Maximum seconds to wait for a model load to complete before
                     a TimeoutError is raised. Defaults to 120.0 seconds.
 
         Notes:
-            - Errors encountered during model instantiation are caught and logged 
+            - Errors encountered during model instantiation are caught and logged
             (not raised), mimicking the original synchronous `try/except` behavior.
-            - Future attributes are explicitly nulled out after resolution to 
+            - Future attributes are explicitly nulled out after resolution to
             prevent memory leaks and allow for clean reloading later.
         """
         # Resolve QModel V4 (Fusion)
         v4_fut = getattr(self, "_qmodel_v4_future", None)
-        
+
         if v4_fut is not None and not getattr(self, "QModel_v4_modules_loaded", False):
             try:
                 # Block and wait for the thread pool to return the loaded V4 model
@@ -3203,7 +3189,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Resolve QModel V6 (YOLO26)
         v6_fut = getattr(self, "_qmodel_v6_future", None)
-        
+
         if v6_fut is not None and not getattr(self, "QModel_v6_modules_loaded", False):
             try:
                 # Block and wait for the thread pool to return the loaded V6 model
@@ -3214,43 +3200,43 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.e(TAG, f"Failed to load 'QModel v6 (YOLO26)' modules. Details: {e}")
             finally:
                 self._qmodel_v6_future = None
-  
+
     def _check_dev_mode_cached(self, force_refresh: bool = False) -> bool:
         """
         Retrieves the developer mode status, utilizing a time-to-live (TTL) cache.
 
-        This acts as a high-performance wrapper around `UserProfiles.checkDevMode()`. 
-        Because checking dev mode requires file system I/O, the result is cached for 
-        `_DEV_MODE_TTL_SECONDS` to prevent UI bottlenecks during rapid reloads or 
+        This acts as a high-performance wrapper around `UserProfiles.checkDevMode()`.
+        Because checking dev mode requires file system I/O, the result is cached for
+        `_DEV_MODE_TTL_SECONDS` to prevent UI bottlenecks during rapid reloads or
         frequent polling.
 
         Args:
-            force_refresh: If True, bypasses the cache, forces a fresh file system 
+            force_refresh: If True, bypasses the cache, forces a fresh file system
                         read, and resets the TTL timer. Defaults to False.
 
         Returns:
             bool: True if developer mode is active, False otherwise.
         """
         now = monotonic()
-        
+
         # Evaluate cache validity
         is_missing = not hasattr(self, "_dev_mode_cache_value")
         is_expired = (now - getattr(self, "_dev_mode_cache_time", 0.0)) > _DEV_MODE_TTL_SECONDS
-        
+
         if force_refresh or is_missing or is_expired:
             # Cache miss or invalidation: fetch fresh data and reset the timer
             self._dev_mode_cache_value = UserProfiles.checkDevMode()
             self._dev_mode_cache_time = now
-            
+
         return self._dev_mode_cache_value
-  
+
     def _compute_folder_from_run(self, run_string: str) -> str:
         """
         Extracts the parent folder identifier from a formatted run string.
 
-        This acts as a cache-miss fallback for resolving a folder name. It parses 
-        the base folder name by stripping the run suffix (e.g., "(Run 1)"), then 
-        performs an O(N) reverse lookup in `self.run_names` to find the corresponding 
+        This acts as a cache-miss fallback for resolving a folder name. It parses
+        the base folder name by stripping the run suffix (e.g., "(Run 1)"), then
+        performs an O(N) reverse lookup in `self.run_names` to find the corresponding
         key prefix.
 
         Args:
@@ -3269,17 +3255,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 key for key, value in self.run_names.items() if value == folder_name
             )
             return matching_key.split(":", 1)[0]
-            
+
         except StopIteration:
             return folder_name
- 
+
     def get_folder_from_run(self, run_string: str) -> str:
         """
         Retrieves the folder identifier for a given run string using a memoized cache.
 
-        This acts as a high-performance wrapper around `_compute_folder_from_run`. 
-        It prevents redundant O(N) reverse dictionary lookups by caching previously 
-        resolved run strings in memory, which is especially useful during rapid UI 
+        This acts as a high-performance wrapper around `_compute_folder_from_run`.
+        It prevents redundant O(N) reverse dictionary lookups by caching previously
+        resolved run strings in memory, which is especially useful during rapid UI
         refreshes or batch processing.
 
         Args:
@@ -3291,32 +3277,32 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Lazy-initialize the cache dictionary if it doesn't exist
         if not hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache = {}
-            
+
         # Return the cached result immediately if it's already been computed
         if run_string in self._run_to_folder_cache:
             return self._run_to_folder_cache[run_string]
-            
+
         # Cache miss
         folder = self._compute_folder_from_run(run_string)
         self._run_to_folder_cache[run_string] = folder
-        
+
         return folder
-    
+
     def load_all_from_folder(self, from_folder: Optional[str] = None) -> None:
         """
         Initiates a batch-loading process for all unanalyzed runs within a selected directory.
 
-        This method scans a target directory (either the root data folder or a specific 
-        device folder) for runs. It uses a ThreadPoolExecutor to rapidly scan the file 
-        system for runs that lack an 'analyze-1.zip' file. Unanalyzed runs are queued 
+        This method scans a target directory (either the root data folder or a specific
+        device folder) for runs. It uses a ThreadPoolExecutor to rapidly scan the file
+        system for runs that lack an 'analyze-1.zip' file. Unanalyzed runs are queued
         up in the UI, and the first run is automatically loaded.
 
         Args:
-            from_folder: An optional absolute path to bypass the file dialog. 
+            from_folder: An optional absolute path to bypass the file dialog.
                         Must be a subdirectory of `Constants.log_prefer_path`.
         """
         # Guard: Check for unsaved changes
-        self.action_cancel()  
+        self.action_cancel()
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
@@ -3341,8 +3327,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Parse the directory depth to determine intent (Root vs Device vs Single Run)
         rel_path = os.path.relpath(selected_directory, Constants.log_prefer_path)
-        path_parts = [p for p in rel_path.replace('\\', '/').split('/') if p and p != '.']
-        
+        path_parts = [p for p in rel_path.replace("\\", "/").split("/") if p and p != "."]
+
         all_runs = []
 
         if len(path_parts) == 0:
@@ -3350,13 +3336,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             for dev_name in getattr(self.parent, "data_devices", []):
                 for run in FileStorage.DEV_get_logged_data_folders(dev_name):
                     all_runs.append((dev_name, run))
-                    
+
         elif len(path_parts) == 1:
             # Device folder selected: gather all runs for this specific device
             dev_name = path_parts[0]
             for run in FileStorage.DEV_get_logged_data_folders(dev_name):
                 all_runs.append((dev_name, run))
-                
+
         else:
             # Single run folder selected (depth >= 2)
             Log.w("User selected a single run folder for batch loading")
@@ -3369,8 +3355,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Filter out unnamed runs before dispatching to threads
         scan_items = [
-            (dev, run) for dev, run in all_runs 
-            if "_unnamed" not in dev and "_unnamed" not in run
+            (dev, run) for dev, run in all_runs if "_unnamed" not in dev and "_unnamed" not in run
         ]
 
         # Parallel I/O Scan: Check for missing 'analyze-1.zip' files
@@ -3385,7 +3370,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         new_runs = []
         if scan_items:
-            with ThreadPoolExecutor(max_workers=min(8, len(scan_items)), thread_name_prefix="batch-scan") as ex:
+            with ThreadPoolExecutor(
+                max_workers=min(8, len(scan_items)), thread_name_prefix="batch-scan"
+            ) as ex:
                 for dev, run, files in ex.map(_scan, scan_items):
                     if files and "analyze-1.zip" not in files:
                         new_runs.append(run)
@@ -3400,9 +3387,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Synchronize found runs with the UI Combo Box
         # Build a fast O(1) lookup dictionary: {"RunBaseName": "RunBaseName (idx)"}
         combo_texts = [self.cBox_Runs.itemText(i) for i in range(self.cBox_Runs.count())]
-        run_name_to_combo_text = {
-            text.rsplit(" ", 1)[0]: text for text in combo_texts
-        }
+        run_name_to_combo_text = {text.rsplit(" ", 1)[0]: text for text in combo_texts}
 
         sorted_new_runs = []
         for new_run in new_runs:
@@ -3414,7 +3399,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Apply batch state and trigger the first load
         self._batched_runs = sorted_new_runs
         self.showRunsFromAllDevices_clicked()
-        
+
         # Clear the folder cache since the cBox_Runs items have been entirely replaced
         if hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache.clear()
@@ -3430,20 +3415,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
             f"<b>SUCCESS: {len(sorted_new_runs)} runs found for batch processing.</b><br/><br/>"
             "When finished analyzing a run (or to skip a run), <br/>"
             'click "Load" again to move to the next queued run.<br/>'
-            "You'll get another popup when the batch is finished."
+            "You'll get another popup when the batch is finished.",
         )
-    
+
     def load_run(self) -> None:
         """
         Prepares the UI and application state for loading a new analysis run.
 
-        This method acts as a pre-flight coordinator. It ensures unsaved changes 
-        are handled, verifies Developer Mode compliance (for encrypted results), 
-        evaluates auto-signing session keys, resets the plotting UI into a "Loading" 
+        This method acts as a pre-flight coordinator. It ensures unsaved changes
+        are handled, verifies Developer Mode compliance (for encrypted results),
+        evaluates auto-signing session keys, resets the plotting UI into a "Loading"
         state, and finally queues the actual heavy data-load operation on the event loop.
         """
         # Guard: Check for unsaved changes before proceeding
-        self.action_cancel()  
+        self.action_cancel()
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
@@ -3453,13 +3438,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Developer Mode & Encryption Compliance
         enabled, error, expires = self._check_dev_mode_cached()
-        
+
         if not enabled and (error or expires):
             PopUp.warning(
                 self,
                 "Developer Mode Expired",
                 "Developer Mode has expired and these analysis results will be encrypted.\n"
-                "An admin must renew or disable 'Developer Mode' to suppress this warning."
+                "An admin must renew or disable 'Developer Mode' to suppress this warning.",
             )
 
         # Handle Auto-Sign Session Keys
@@ -3472,7 +3457,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if os.path.exists(Constants.auto_sign_key_path):
                 with open(Constants.auto_sign_key_path, "r") as f:
                     auto_sign_key = f.readline().strip()
-                    
+
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
                     session_key = f.readline().strip()
@@ -3503,11 +3488,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._text1 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
         self._text1.setHtml("<span style='font-size: 14pt'>Loading data for analysis... </span>")
         self._text1.setPos(0.5, 0.50)
-        
+
         self._text2 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
         self._text2.setHtml("<span style='font-size: 10pt'>(may take a few seconds) </span>")
         self._text2.setPos(0.5, 0.40)
-        
+
         self._text3 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
         # self._text3.setHtml("<span style='font-size: 10pt'>Please be more patient with longer runs. </span>")
         self._text3.setHtml("")
@@ -3516,14 +3501,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Clear plotting canvases and apply Loading text
         primary_ax = self.graphWidget
         plot_elements = [primary_ax, self.graphWidget1, self.graphWidget2, self.graphWidget3]
-        
+
         for plot_item in plot_elements:
             if plot_item is not None:
                 plot_item.clear()
                 plot_item.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
                 plot_item.setXRange(min=0, max=1)
                 plot_item.setYRange(min=0, max=1)
-                
+
                 # Inject text onto the main plotting axis
                 if plot_item is primary_ax:
                     plot_item.addItem(self._text1, ignoreBounds=True)
@@ -3542,17 +3527,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._update_analyze_progress(75, "Reading Run Data...")
         QtWidgets.QApplication.processEvents()
         QtCore.QTimer.singleShot(0, self.action_load_run)
- 
+
     def action_load_run(self) -> None:
         """
         Executes the final stages of loading a run and triggers data analysis.
 
         This method acts as the execution phase following `loadRun()`. It handles:
-        1. Batch Processing Navigation: If in batch mode and the current run is 
-        already loaded, it auto-increments the UI to the next run in the queue, 
+        1. Batch Processing Navigation: If in batch mode and the current run is
+        already loaded, it auto-increments the UI to the next run in the queue,
         or exits batch mode if the queue is finished.
         2. Model Synchronization: Blocks until background ML models finish loading.
-        3. Data Analysis: Dispatches the selected run to the parent coordinator 
+        3. Data Analysis: Dispatches the selected run to the parent coordinator
         for processing and resets UI interaction states.
         """
         try:
@@ -3579,13 +3564,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # Reset state and trigger analysis
             self.moved_markers = [False, False, False, False, False, False]
-            
+
             # Use the memoized folder lookup to prevent redundant file system reads
             folder_name = self.get_folder_from_run(self.cBox_Runs.currentText())
             device_name = self.cBox_Devices.currentText()
-            
+
             self.parent.analyze_data(device_name, folder_name, None)
-            
+
             # Re-enable the UI controls post-analysis
             self.enable_buttons()
 
@@ -3700,7 +3685,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if getattr(self, "_qmodel_overlay", None) is None:
             self._show_qmodel_plot_overlay()
         self._update_qmodel_plot_overlay(pct, status or "")
-        
+
     def _restore_qmodel_predictions(self):
         try:
             if self.model_engine == "None":
@@ -3882,7 +3867,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 self.model_candidates.append([point])
                                 poi_vals.append(point)
                     elif self.model_result == -1:
-                        Log.w("Model failed to auto-calculate points of interest for this run!")
+                        Log.w("Model failed to auto-calculate POI for this run!")
                         pass
                     else:
                         Log.e(
@@ -4194,7 +4179,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                     self.model_candidates.append([point])
                                     poi_vals.append(point)
                         elif self.model_result == -1:
-                            Log.w("Model failed to auto-calculate points of interest for this run!")
+                            Log.w("Model failed to auto-calculate POI for this run!")
                             pass
                         else:
                             Log.e(
@@ -4341,7 +4326,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                     False,
                                 ]
                         elif self.model_result == -1:
-                            Log.w("Model failed to auto-calculate points of interest for this run!")
+                            Log.w("Model failed to auto-calculate POI for this run!")
                             pass
                         else:
                             Log.e(
@@ -4554,7 +4539,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 100,
                 f'Summary: Press "Analyze" to compute results for these selected points',
             )
-            # ax.setTitle(f"Summary: All Selected Points of Interest")
+            # ax.setTitle(f"Summary: All Selected POI")
             self.fit1.setAlpha(1, False)
             self.fit2.setAlpha(1, False)
             self.fit3.setAlpha(1, False)
@@ -4635,7 +4620,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.analyze_work.finished.connect(self.enable_buttons)
 
                 # New progress dialog popup instead of run progress bar...
-                self._show_analyze_plot_overlay()                                    # creates figure + overlay on main thread
+                self._show_analyze_plot_overlay()  # creates figure + overlay on main thread
                 self.analyze_work.progress.connect(self._update_analyze_plot_overlay)
                 self.analyze_work.finished.connect(self._hide_analyze_plot_overlay)
                 # self._create_analyze_progress_dialog()
@@ -5193,690 +5178,1005 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.update_run(i)
             self.cBox_Runs.setCurrentIndex(loaded_idx)
 
-    def Analyze_Data(self, data_path):
+    def analyze_data(self, data_path: str) -> None:
+        """Load and prepare run data for analysis.
+
+        Reads the CSV at ``data_path``, sanitizes backward-time jumps, computes
+        smoothed resonance / dissipation / difference curves, restores or predicts
+        POIs from a companion XML file or predictive models, applies optional drop-effect
+        corrections and difference-factor optimization, then populates all plotting
+        widgets and internal state for the analysis workflow.
+
+        Args:
+            data_path: Absolute or relative path to the run CSV file.  A companion
+                XML file with the same base name may be read to restore prior POIs
+                and run parameters.  The CSV must span at least 3 seconds; shorter
+                runs are rejected with a logged error and return early.
+
+        Side Effects:
+            Mutates many instance attributes including ``xs``, ``ys``, ``ys_freq``,
+            ``ys_diff``, ``ys_fit``, ``poi_markers``, ``smooth_factor``,
+            ``loaded_datapath``, ``stateStep``, ``model_result``, and
+            ``model_candidates``.  Performs several UI updates (clears/repopulates
+            plot widgets, updates progress text, enables/disables navigation
+            buttons).
+
+        Note:
+            When a QModel finds all six valid POIs, the routine
+            auto-advances to the summary step (``stateStep = 6``) and marks the
+            dataset as changed.  On any non-fatal failure the method falls back to
+            manual POI selection rather than re-raising.
         """
-        Load and prepare run data for interactive analysis and initialize UI state.
-
-        This method reads the CSV run at data_path, sanitizes time jumps, computes smoothed resonance/dissipation/difference curves, tries to restore or predict points-of-interest (POIs) from XML or predictive models, applies optional drop-effect corrections and difference-factor optimization, and populates plotting widgets and internal state for the stepwise analysis workflow.
-
-        Parameters:
-            data_path (str): Path to the run CSV file to analyze. The function expects a standard QATCH CSV with time, temperature, resonance frequency and dissipation columns; a corresponding XML (same base name) may be read to restore prior POIs and run parameters.
-
-        Side effects:
-            - Updates many AnalyzeProcess instance attributes (e.g. xs, ys, ys_freq, ys_diff, ys_fit, poi_markers, smooth_factor, loaded_datapath, stateStep, model_result, model_candidates, etc.).
-            - Mutates the GUI: enables/disables navigation buttons, clears and repopulates plotting widgets, adds POI markers, updates progress text and advanced-settings fields.
-            - May invoke predictive models (QModel v2/v3, ModelData, PF predictor) and will set flags indicating model use.
-            - Reads from and (when present) interprets the run XML for prior POIs and params; does not modify the XML here.
-            - Handles and logs errors internally; it does not raise on typical I/O or prediction failures (errors are logged and analysis falls back to manual POI selection).
-
-        Notes:
-            - If predictive models find valid POIs, the routine may auto-advance to the summary step and mark the dataset as changed (audit required).
-            - The method is resilient to partially malformed data (attempts to recover missing derived arrays) but requires at least ~3 seconds of runtime to perform full analysis.
-        """
-        # lazy load scipy modules
-        from scipy.signal import argrelextrema, savgol_filter
-
-        self.stateStep = -1
-        self.loaded_datapath = data_path
-
-        self.btn_Back.setEnabled(False)
-        self.btn_Next.setEnabled(True)
+        self._init_analysis_state(data_path)
+        relative_time = resonance_frequency = dissipation = None
+        poi_vals, start_stop, curves = [], [0, -1], {}
 
         try:
-            Log.i("Analysis file = {}".format(data_path))
-            data_title = os.path.splitext(os.path.basename(data_path))[0]
+            Log.i(f"Analysis file = {data_path}")
+            relative_time, _, resonance_frequency, dissipation = self._load_run_data(data_path)
 
-            if True:
-                with secure_open(data_path, "r", "capture") as f:
-                    csv_headers = next(f)
+            if relative_time[-1] < 3:
+                Log.e("ERROR: Data run must be at least 3 seconds in total runtime to analyze.")
+                return  # Finally still executes; the plotting section below is skipped
 
-                    if isinstance(csv_headers, bytes):
-                        csv_headers = csv_headers.decode()
+            poi_vals, fill_type = self._load_xml_pois(data_path)
+            self._apply_poi_state(poi_vals, fill_type)
 
-                    if "Ambient" in csv_headers:
-                        csv_cols = (2, 4, 6, 7)
-                    else:
-                        csv_cols = (2, 3, 5, 6)
-
-                    data = loadtxt(f.readlines(), delimiter=",", skiprows=0, usecols=csv_cols)
-
-            relative_time = data[:, 0]
-            temperature = data[:, 1]
-            resonance_frequency = data[:, 2]
-            dissipation = data[:, 3]
-
-            # check for and remove time jumps that would break analysis
-            t_last = 0
-            rows_to_toss = []
-            for x, t in enumerate(relative_time):
-                if t < t_last:
-                    rows_to_toss.append(x - 1)
-                t_last = t
-            if len(rows_to_toss) > 0:
-                Log.w(f"Warning: time jump(s) observed at the following indices: {rows_to_toss}")
-                relative_time = np.delete(relative_time, rows_to_toss)
-                temperature = np.delete(temperature, rows_to_toss)
-                resonance_frequency = np.delete(resonance_frequency, rows_to_toss)
-                dissipation = np.delete(dissipation, rows_to_toss)
-                Log.w(
-                    "Time jumps removed from dataset for analysis purposes (original file unchanged)"
-                )
-
-            poi_vals = []
-            fill_type = -1  # if exists, will be in range 0 - 3 (inclusive)
-            if self.askForPOIs:
-                xml_path = data_path[0:-4] + ".xml" if self.xml_path == None else self.xml_path
-                if os.path.exists(xml_path):
-                    doc = minidom.parse(xml_path)
-                    points = doc.getElementsByTagName("points")
-                    if len(points) > 0:
-                        points = points[-1]  # most recent element
-                        for p in points.childNodes:
-                            if p.nodeType == p.TEXT_NODE:
-                                continue  # only process elements
-                            value = p.getAttribute("value")
-                            try:
-                                poi_vals.append(int(value))
-                            except:
-                                Log.e(f'Point value "{value}" in XML is not an integer.')
-                        poi_vals.sort()
-                    else:
-                        Log.d("No points found in XML file for this run.")
-                    params = doc.getElementsByTagName("params")
-                    if len(params) > 0:
-                        params = params[-1]  # most recent element
-                        for p in params.childNodes:
-                            if p.nodeType == p.TEXT_NODE:
-                                continue  # only process elements
-                            name = p.getAttribute("name")
-                            value = p.getAttribute("value")
-                            try:
-                                if name == "fill_type":
-                                    fill_type = int(value)
-                            except:
-                                Log.e(f'Param "{name}" in XML is not an integer.')
-                    else:
-                        Log.d("No params found in XML file for this run.")
-                else:
-                    Log.w(TAG, f'Missing XML file: Expected at "{xml_path}" for this run.')
-            self.show_analysis_immediately = False
-            self.model_run_this_load = False
-            self.prior_points_in_xml = False
-            if self.askForPOIs and len(poi_vals) == 6:
-                self.askForPOIs = False
-                self.prior_points_in_xml = True
-                Log.d(f"Found prior POIs from XML file: {poi_vals}")
-
-                if False and QtWidgets.QMessageBox.No == QtWidgets.QMessageBox.question(
-                    None,
-                    "Run Already Analyzed",
-                    'Would you like to re-analyze this run?\n\nSelect "No" to view the saved results.',
-                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                    QtWidgets.QMessageBox.No,
-                ):
-                    Log.i("Showing prior saved analysis results...")
-                    self.stateStep = 6  # show summary and then analyze
-                    self.show_analysis_immediately = True
-                else:
-                    self.stateStep = 6  # show summary
-            if self.askForPOIs and len(self.poi_markers) != 0:
-                self.askForPOIs = False  # re-analyze Step 1, don't auto advance to Summary
-
-            Log.d(f"Number of channels (fill_type): {fill_type}")
-            self.parent.num_channels = fill_type  # pulled from XML
-            # --------------------------------------------------------------- #
-
-            if self.model_result == -1:  # self.stateStep != 6:
-                self.model_result = -1
-                self.model_candidates = None
-                self.model_engine = "None"
-                if Constants.QModel6_predict and self.prior_points_in_xml:
-                    self.model_result = poi_vals
-                    self.model_engine = "QModel v6 (YOLO26) skipped (using prior points)"
-
-                if self.model_result == -1 and Constants.QModel6_predict:
-                    Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
-                    self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v6 (YOLO26)... </span>"
-                    )
-                    self.graphWidget.addItem(self._text2, ignoreBounds=True)
-                    QtCore.QCoreApplication.processEvents()
-
-                    try:
-                        with secure_open(self.loaded_datapath, "r", "capture") as f:
-                            fh = BytesIO(f.read())
-                            predictor = self.QModel_v6_predictor
-                            self._QModel_create_new_progress_dialog()
-                            self.progressBarDiag.setRange(0, 100)
-                            predict_result, detected_channels = predictor.predict(
-                                file_buffer=fh, progress_signal=self.v6_predict_progress
-                            )
-                            QtCore.QTimer.singleShot(
-                                1000, self.progressBarDiag.hide
-                            )  # hide after use
-                            # Analysis only updates num_channels if not present.
-                            if not self.parent.num_channels:
-                                self.parent.num_channels = detected_channels
-
-                            predictions = []
-                            candidates = []
-                            for i in range(6):
-                                poi_key = f"POI{i+1}"
-                                data = predict_result.get(poi_key, {})
-                                poi_indices = data.get("indices", [-1])
-                                poi_confidences = data.get("confidences", [-1])
-                                if not poi_indices:
-                                    poi_indices = [-1]
-                                if not poi_confidences:
-                                    poi_confidences = [-1]
-                                best_pair = (poi_indices[0], poi_confidences[0])
-                                predictions.append(best_pair[0])
-                                candidates.append(
-                                    candidates_tuple := (poi_indices, poi_confidences)
-                                )
-                            self.model_run_this_load = True
-                            self.model_result = predictions
-                            self.model_candidates = candidates
-                            self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
-                            if isinstance(self.model_result, list) and len(self.model_result) == 6:
-                                poi_vals = self.model_result.copy()
-                                if poi_vals[2] == -1 and poi_vals[1] != -1:
-                                    # Correct POST point to End-of-fill + 2
-                                    poi_vals[2] = poi_vals[1] + 2
-                            else:
-                                self.model_result = -1
-
-                    except Exception as e:
-                        limit = None
-                        t, v, tb = sys.exc_info()
-                        from traceback import format_tb
-
-                        a_list = ["Traceback (most recent call last):"]
-                        a_list = a_list + format_tb(tb, limit)
-                        a_list.append(f"{t.__name__}: {str(v)}")
-                        for line in a_list:
-                            Log.d(line)
-                        Log.e(e)
-                        Log.e(
-                            TAG,
-                            "Error using 'QModel v6 (YOLO26)'... Using a fallback model for auto-fitting.",
-                        )
-                        # raise e  # debug only
-                        self.model_result = -1  # try fallback model
-                # if Constants.QModel4_predict and self.prior_points_in_xml:
-                #     # skip running QModel v4 if prior points are available (it's too slow)
-                #     self.model_result = poi_vals
-                #     self.model_engine = "QModel v4 (Fusion) skipped (using prior points)"
-                if self.model_result == -1 and Constants.QModel4_predict:
-                    Log.w("Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
-                    self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v4 (Fusion)... </span>"
-                    )
-                    self.graphWidget.addItem(self._text2, ignoreBounds=True)
-                    QtCore.QCoreApplication.processEvents()
-                    try:
-                        with secure_open(self.loaded_datapath, "r", "capture") as f:
-                            fh = BytesIO(f.read())
-                            predictor = self.QModel_v4_predictor
-                            predict_result = predictor.predict(
-                                file_buffer=fh,
-                                visualize=False,
-                                progress_signal=self.v4_predict_progress,
-                                use_partial_fills=self.partial_fills_checkbox.isChecked(),
-                            )
-
-                            predictions = []
-                            candidates = []
-                            for i in range(6):
-                                poi_key = f"POI{i+1}"
-                                poi_indices = predict_result.get(poi_key, {}).get("indices", [])
-                                poi_confidences = predict_result.get(poi_key, {}).get(
-                                    "confidences", []
-                                )
-                                best_pair = (poi_indices[0], poi_confidences[0])
-                                predictions.append(best_pair[0])
-                                candidates.append(best_pair)
-                            self.model_run_this_load = True
-                            self.model_result = predictions
-                            self.model_candidates = candidates
-                            self.model_engine = "QModel v4 (Fusion)"
-                            if isinstance(self.model_result, list) and len(self.model_result) == 6:
-                                poi_vals = self.model_result.copy()
-                                if poi_vals[2] == -1 and poi_vals[1] != -1:
-                                    # Correct POST point to End-of-fill + 2
-                                    poi_vals[2] = poi_vals[1] + 2
-                            else:
-                                self.model_result = -1  # try fallback model
-                    except Exception as e:
-                        limit = None
-                        t, v, tb = sys.exc_info()
-                        from traceback import format_tb
-
-                        a_list = ["Traceback (most recent call last):"]
-                        a_list = a_list + format_tb(tb, limit)
-                        a_list.append(f"{t.__name__}: {str(v)}")
-                        for line in a_list:
-                            Log.d(line)
-                        Log.e(e)
-                        Log.e(
-                            "Error using 'QModel v4 (Fusion)'... Using a fallback model for auto-fitting."
-                        )
-                        raise e  # debug only
-                        self.model_result = -1  # try fallback model
-                if self.model_result == -1 and Constants.ModelData_predict:
-                    try:
-                        self.model_run_this_load = True
-                        self.model_result = self.dataModel.IdentifyPoints(
-                            data_path, relative_time, resonance_frequency, dissipation
-                        )
-                        self.model_engine = "ModelData"
-                        if isinstance(self.model_result, list):
-                            poi_vals.clear()
-                            # show point with highest confidence for each:
-                            self.model_select = []
-                            self.model_candidates = []
-                            for point in self.model_result:
-                                self.model_select.append(0)
-                                if isinstance(point, list):
-                                    self.model_candidates.append(point)
-                                    select_point = point[self.model_select[-1]]
-                                    select_index = select_point[0]
-                                    select_confidence = select_point[1]
-                                    poi_vals.append(select_index)
-                                else:
-                                    self.model_candidates.append([point])
-                                    poi_vals.append(point)
-                        elif self.model_result == -1:
-                            Log.w("Model failed to auto-calculate points of interest for this run!")
-                            pass
-                        else:
-                            Log.e(
-                                "Model encountered an unexpected response. Please manually select points."
-                            )
-                            pass
-                    except:
-                        limit = None
-                        t, v, tb = sys.exc_info()
-                        from traceback import format_tb
-
-                        a_list = ["Traceback (most recent call last):"]
-                        a_list = a_list + format_tb(tb, limit)
-                        a_list.append(f"{t.__name__}: {str(v)}")
-                        for line in a_list:
-                            Log.e(line)
-
-                if len(self.poi_markers) != 0:
-                    poi_vals = [
-                        poi_vals[0],
-                        poi_vals[-1],
-                    ]  # take first and last only, allow user input
+            poi_vals = self._run_model_prediction(
+                poi_vals, relative_time, resonance_frequency, dissipation
+            )
 
             self.graphWidget.removeItem(self._text2)
             self._text1.setHtml(
                 "<span style='font-size: 14pt'>Showing data for analysis... </span>"
             )
 
-            # Computes initial difference cancelations for difference, resonance frequency
-            # and dissipation and applies them to the UI curves.
-            canceled_diss, canceled_rf = None, None
-            if self.drop_effect_cancelation_checkbox.isChecked():
-                canceled_diss, canceled_rf = self._correct_drop_effect(
-                    self.loaded_datapath, poi_vals, "process"
-                )
-                if canceled_diss is not None:
-                    dissipation = canceled_diss
-                if canceled_rf is not None:
-                    resonance_frequency = canceled_rf
-
-            # raw data
-            xs = relative_time
-            ys = dissipation
-
-            # use rough smoothing based on total runtime to figure start/stop
-            total_runtime = xs[-1]
-            smooth_factor = total_runtime * Constants.smooth_factor_ratio
-            smooth_factor = int(smooth_factor) + (int(smooth_factor + 1) % 2)
-            if smooth_factor < 3:
-                smooth_factor = 3
-            if smooth_factor > 69:
-                smooth_factor = 69
-            Log.i(TAG, f"Total run time: {total_runtime} secs")
-            # the nearest odd number of seconds (runtime)
-            Log.d(TAG, f"Smoothing: {smooth_factor}")
-            Log.d(TAG, f"Applying smooth factor for first 90s ONLY.")
-
-            t_first_90_split = (
-                len(xs) if total_runtime <= 90 else next(x for x, t in enumerate(xs) if t > 90)
+            dissipation, resonance_frequency = self._apply_signal_corrections(
+                dissipation, resonance_frequency, poi_vals
             )
-            extend_data = True if total_runtime > 90 else False
-            # downsample factor for extended data > 90s
-            extend_smf = int(smooth_factor / 20)
-            extend_smf += int(extend_smf + 1) % 2  # force to odd number
 
-            if extend_data and len(xs) < t_first_90_split + 2 * extend_smf:
-                Log.w(
-                    "Not enough points after 90s to downsample effectively when plotting. Not downsampling this dataset!"
-                )
-                t_first_90_split = len(xs)
-                extend_data = False
-
-            ys_fit = savgol_filter(ys[:t_first_90_split], smooth_factor, 1)
-            if extend_data:
-                ys_fit_ext = savgol_filter(
-                    ys[t_first_90_split:],
-                    min(len(ys[t_first_90_split:]), extend_smf),
-                    1,
-                )
-                ys_fit = np.concatenate((ys_fit, ys_fit_ext))
-
-            ys_diss_diff = savgol_filter(ys_fit[:t_first_90_split], smooth_factor, 1, 1)
-            if extend_data:
-                ys_diss_diff_ext = savgol_filter(
-                    ys_fit[t_first_90_split:],
-                    min(len(ys_fit[t_first_90_split:]), extend_smf),
-                    1,
-                    1,
-                )
-                ys_diss_diff = np.concatenate((ys_diss_diff, ys_diss_diff_ext))
-
-            ys_diss_2ndd = savgol_filter(ys_diss_diff[:t_first_90_split], smooth_factor, 1, 1)
-            if extend_data:
-                ys_diss_2ndd_ext = savgol_filter(
-                    ys_diss_diff[t_first_90_split:],
-                    min(len(ys_diss_diff[t_first_90_split:]), extend_smf),
-                    1,
-                    1,
-                )
-                ys_diss_2ndd = np.concatenate((ys_diss_2ndd, ys_diss_2ndd_ext))
-
-            ys_diss_diff_avg = np.average(
-                ys_diss_diff
-            )  # AJR TODO 4/14: pick up here, this line is too high for the 109cp run
-            ys_diss_diff_offset = ys_diss_diff - ys_diss_diff_avg
-            zeros3 = np.where(np.diff(np.sign(ys_diss_diff_offset)))[0]
-            while len(zeros3) < 2:
-                zeros3 = np.append(zeros3, 100)
-            ys_diss_diff_avg = np.average(ys_diss_diff[zeros3[1] :])
-
-            minima_idx = argrelextrema(ys_diss_2ndd, np.less)[0]
-            minima_val = ys_diss_2ndd[minima_idx]
-            minima_dict = {minima_idx[i]: minima_val[i] for i in range(len(minima_idx))}
-            minima_sort = sorted(minima_dict.items(), key=lambda kv: (kv[0]))
-
-            maxima_idx = argrelextrema(ys_diss_2ndd, np.greater)[0]
-            maxima_val = ys_diss_2ndd[maxima_idx]
-            maxima_dict = {maxima_idx[i]: maxima_val[i] for i in range(len(maxima_idx))}
-            maxima_sort = sorted(maxima_dict.items(), key=lambda kv: (kv[1], kv[0]))
-
-            start_stop = sorted(maxima_sort[-2:])
-            start_stop = [
-                start_stop[0][0],
-                start_stop[1][0],
-            ]  # , start_stop[2][0], start_stop[3][0]]
-            t_start = np.amin(start_stop)
-            t_stop = np.amax(start_stop) + (3 * smooth_factor)
-            if t_stop < len(xs) / 2 or t_stop >= len(xs):
-                if self.model_run_this_load == False and len(poi_vals) == 0:
-                    Log.w(f"Warning: t_stop was {t_stop} out of {len(xs)} but that seems unlikely!")
-                    Log.w('Please confirm "End Point" during Step 1 point selection.')
-                t_stop = len(xs) - 1
-            if t_stop - t_start < len(xs) / 3 or t_start > len(xs) / 2:
-                if self.model_run_this_load == False and len(poi_vals) == 0:
-                    Log.w(
-                        f"Warning: t_start was {t_start} out of {len(xs)} but that seems unlikely!"
-                    )
-                    Log.w('Please confirm "Begin Point" during Step 1 point selection.')
-                t_start = 100
-
-            if total_runtime < 3:
-                Log.e("ERROR: Data run must be at least 3 seconds in total runtime to analyze.")
-                return
-
-            # get indices for 0.5 seconds to start of run
-            t_0p5 = 0 if xs[t_start] < 0.5 else next((x for x, t in enumerate(xs) if t > 0.5), 0)
-            t_1p0 = (
-                t_start if xs[t_start] < 2.0 else next((x for x, t in enumerate(xs) if t > 2.0), 1)
+            curves, start_stop = self._compute_signal_curves(
+                relative_time,
+                resonance_frequency,
+                dissipation,
+                poi_vals,
+                savgol_filter,
+                argrelextrema,
             )
-            if t_0p5 == t_1p0:
-                t_1p0 = next((x for x, t in enumerate(xs) if t > xs[t_1p0] + 1.5), t_1p0 + 1)
 
-            # new maths for resonance and dissipation (scaled)
-            avg = np.average(resonance_frequency[t_0p5:t_1p0])
-            ys = ys * avg / 2
+            self._update_analyze_progress(100, "Reading Run Data...")
 
-            ys_fit = ys_fit * avg / 2
-            ys = ys - np.amin(ys_fit)
-            ys_fit = ys_fit - np.amin(ys_fit)
-            ys_freq = avg - resonance_frequency
-
-            ys_freq_fit = savgol_filter(ys_freq[:t_first_90_split], smooth_factor, 1)
-            if extend_data:
-                ys_freq_fit_ext = savgol_filter(
-                    ys_freq[t_first_90_split:],
-                    min(len(ys_freq[t_first_90_split:]), extend_smf),
-                    1,
-                )
-                ys_freq_fit = np.concatenate((ys_freq_fit, ys_freq_fit_ext))
-
-            # # APPLY DROP EFFECT VECTORS
-            # drop_offsets = np.zeros(ys.shape)
-            # try:
-            #     if self.correct_drop_effect.isChecked():
-            #         baseline = np.average(ys[t_0p5:t_1p0])
-            #         base_std = np.std(ys[t_0p5:t_1p0])
-            #         drop_start = next(
-            #             x - 1 for x, y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-            #         drop_start = next(x for x, t in enumerate(
-            #             xs) if t > xs[drop_start] + 0.1)
-            #         # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
-            #         drop_diss = ys[drop_start]
-            #         if drop_diss > Constants.drop_effect_cutoff_freq:
-            #             self.diff_factor = Constants.drop_effect_multiplier_high
-            #         else:
-            #             self.diff_factor = Constants.drop_effect_multiplier_low
-            #         with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
-            #             data = np.loadtxt(
-            #                 f.readlines(), delimiter=",", skiprows=1)
-            #             col = (
-            #                 1
-            #                 if self.diff_factor == Constants.drop_effect_multiplier_low
-            #                 else 2
-            #             )
-            #             RR_offset = data[:, col]
-            #             if drop_start + len(RR_offset) > len(drop_offsets):
-            #                 # RR vector is longer than the actual run data, truncate it
-            #                 drop_offsets[drop_start:] = RR_offset[
-            #                     : len(drop_offsets) - drop_start
-            #                 ]
-            #             else:
-            #                 # RR vector is shorter and needs to be padded with the final value
-            #                 drop_offsets[drop_start: drop_start + len(RR_offset)] = (
-            #                     RR_offset
-            #                 )
-            #                 drop_offsets[drop_start +
-            #                              len(RR_offset):] = RR_offset[-1]
-            #         Log.d(
-            #             f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
-            #         )
-            #         Log.d(
-            #             f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz"
-            #         )
-            #         Log.d(
-            #             f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector"
-            #         )
-            # except Exception as e:
-            #     Log.e("ERROR:", e)
-
-            baseline = np.average(dissipation[t_0p5:t_1p0])
-            diff_factor = Constants.default_diff_factor  # 1.0 if baseline < 50e-6 else 1.5
-
-            # Automatically compute optimal difference factor
-            if self.difference_factor_optimizer_checkbox.isChecked():
-                self.diff_factor = self._optimize_curve(self.loaded_datapath)
-
-            if hasattr(self, "diff_factor"):
-                diff_factor = self.diff_factor
-            ys_diff = ys_freq - (diff_factor * ys)
-
-            # Invert difference curve if drop applied to outlet
-            if np.average(np.abs(ys_freq_fit)) < np.average(np.abs(diff_factor * ys_fit)) and abs(
-                ys_diff[t_1p0:].min()
-            ) > 5 * abs(ys_diff[t_1p0:].max()):
-                Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
-                ys_diff *= -1
-
-            ys_diff_fit = savgol_filter(ys_diff[:t_first_90_split], smooth_factor, 1)
-            if extend_data:
-                ys_diff_fit_ext = savgol_filter(
-                    ys_diff[t_first_90_split:],
-                    min(len(ys_diff[t_first_90_split:]), extend_smf),
-                    1,
-                )
-                ys_diff_fit = np.concatenate((ys_diff_fit, ys_diff_fit_ext))
-            Log.d(f"Difference factor: {diff_factor:1.3f}x")
-
-            Log.d(f"Setting diff_factor on Advanced Settings menu")
-            self.tbox_diff_factor.setText(f"{diff_factor:1.3f}")
-
-            smf = max(3, int(smooth_factor / 10))
-            if smf % 2 == 0:
-                smf += 1  # force odd number
-            ys_diff_fine = savgol_filter(ys_diff, smf, 1)
-            ys_diff_diff = savgol_filter(
-                ys_diff, smf, 1, 1
-            )  # difference derivatives, not dissipation
-            ys_diff_2ndd = savgol_filter(ys_diff_diff, smf, 1, 1)
-
-            start_stop.clear()
-            em1 = 0  # np.amax(ys_diff_fit[t_0p5:t_1p0])
-            eh1 = abs(np.amax(ys_diff[t_0p5:t_1p0]) - em1)
-            em2 = np.amax(ys_diff_fit)
-            am2 = np.argmax(ys_diff_fit)
-            eh2 = eh1 * 2  # np.amax(ys_diff[am2-100:]) - em2
-
-            t0 = t_start
-            try:
-                t0 = next(x for x, y in enumerate(ys_diff_fit) if y > 5 * eh2 and x > t_1p0)
-            except:
-                if self.model_run_this_load and len(poi_vals) == 0:
-                    Log.w("Failed to locate rough start point using noise floor approximation.")
-                    Log.w('Please confirm "Begin Point" during Step 1 point selection.')
-            dir = ys[t0] < 5
-            # work back in time to find actual minimum difference (true start)
-            while True:
-                if t0 < 0 or t0 > len(ys) - 1:
-                    if self.model_run_this_load and len(poi_vals) == 0:
-                        Log.w("Hit a limit (start)")
-                    t0 = 0
-                    break
-                if ys[t0] < 5:
-                    t0 += 1
-                    if not dir:
-                        break
-                else:
-                    t0 -= 1
-                    if dir:
-                        break
-            start_stop.append(t0)
-            t1 = am2
-            try:
-                t1 += next(x for x, y in enumerate(ys_diff_fit[am2:]) if y < em2 - eh2)
-            except:
-                if self.model_run_this_load and len(poi_vals) == 0:
-                    Log.w("Failed to locate rough end point using noise floor approximation.")
-                    Log.w('Please confirm "End Point" during Step 1 point selection.')
-            # work back in time to find actual minimum difference (true start)
-            while True:
-                if t1 - 50 < 0:
-                    if self.model_run_this_load and len(poi_vals) == 0:
-                        Log.w("Hit a limit (end)")
-                    t1 = len(ys) - 1
-                    break
-                if ys_diff_fit[t1 - 50] > ys_diff_fit[t1]:
-                    t1 -= 1
-                else:
-                    break
-            start_stop.append(t1)
-
-            self._update_analyze_progress(100, "Reading Run Data...")  # 100% forces 'go fast'
-
-        except Exception as e:
-            self.progress_value_steps.clear()  # abort progressbar updates
-
-            limit = None
-            t, v, tb = sys.exc_info()
-            from traceback import format_tb
-
-            a_list = ["Traceback (most recent call last):"]
-            a_list = a_list + format_tb(tb, limit)
-            a_list.append(f"{t.__name__}: {str(v)}")
-            for line in a_list:
-                Log.e(line)
-
+        except Exception:
+            self.progress_value_steps.clear()
+            self._log_traceback()
             Log.w("An error occurred loading this run! Please manually select points for Analysis.")
 
         finally:
-            # Create any missing required vars using available resources
-            correction_needed = False
-            if not "ys_freq" in locals():
-                correction_needed = True
-            if not "ys_diff" in locals():
-                correction_needed = True
-            if not "ys" in locals():
-                correction_needed = True
-            if not "ys_freq_fit" in locals():
-                correction_needed = True
-            if not "ys_diff_fit" in locals():
-                correction_needed = True
-            if not "ys_fit" in locals():
-                correction_needed = True
-            if not "ys_diss_2ndd" in locals():
-                correction_needed = True
-            if correction_needed:
-                Log.w("Correcting missing parameters for manual point selection (no smoothing)...")
-                avg = resonance_frequency[0]
-                restore_ys = False
-                if not "ys" in locals():
-                    restore_ys = True
-                if not "ys_fit" in locals():
-                    restore_ys = True
-                if restore_ys:
-                    ys = dissipation
-                    ys_fit = ys
-                    ys = ys * avg / 2
-                    ys_fit = ys_fit * avg / 2
-                    ys = ys - np.amin(ys_fit)
-                    ys_fit = ys_fit - np.amin(ys_fit)
-                if not "ys_freq" in locals():
-                    ys_freq = avg - resonance_frequency
-                if not "ys_freq_fit" in locals():
-                    ys_freq_fit = ys_freq
-                if not "ys_diff" in locals():
-                    diff_factor = Constants.default_diff_factor
-                    ys_diff = ys_freq - diff_factor * ys
-                if not "ys_diff_fit" in locals():
-                    ys_diff_fit = ys_diff
-                if not "ys_diss_2ndd" in locals():
-                    try:
-                        ys_diss_diff = savgol_filter(ys_fit, 2, 1, 1)
-                        ys_diss_2ndd = savgol_filter(ys_diss_diff, 2, 1, 1)
-                    except:
-                        Log.e("Unable to calculate 2nd derivative of 'ys' data!")
-                        ys_diss_2ndd = ys_fit
+            curves = self._recover_missing_curves(
+                curves, relative_time, resonance_frequency, dissipation, savgol_filter
+            )
+            self._wait_for_progress_bar()
 
-            # fill self.progress_status_step dictionary to go full speed
-            i = 0
-            Log.d("Waiting on progress bar to finish")
-            while self.progress_value_scanning and i < 300:
-                i += 1
-                QtCore.QCoreApplication.processEvents()
-            self.progressBar.valueChanged.connect(self._update_progress_value)
-            Log.d("Finished progress bar... proceed!")
+        self._render_analysis_plots(curves, poi_vals, start_stop)
+        self._save_analysis_state(curves, relative_time, resonance_frequency, dissipation)
+        self._advance_analysis_step(poi_vals)
 
-        ax = self.graphWidget  # .plot(hour, temperature)
-        ax1 = self.graphWidget1
-        ax2 = self.graphWidget2
-        ax3 = self.graphWidget3
+    def _init_analysis_state(self, data_path):
+        """Reset per-run analysis state and configure navigation buttons."""
+        self.stateStep = -1
+        self.loaded_datapath = data_path
+        self.btn_Back.setEnabled(False)
+        self.btn_Next.setEnabled(True)
+
+    def _load_run_data(
+        self, data_path: str
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Read a run CSV and sanitize backward-time rows.
+
+        Detects the presence of an "Ambient" temperature column in the header to
+        select the correct column indices, then removes any rows where the relative
+        timestamp goes backward using a single vectorized pass.
+
+        Args:
+            data_path: Path to the run CSV file.  The file must be openable via
+                ``secure_open`` and must contain at least the standard QATCH columns
+                for time, temperature, resonance frequency, and dissipation.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: A four-element
+            tuple of ``(relative_time, temperature, resonance_frequency,
+            dissipation)`` as 1-D float arrays, sanitized of time-jump artefacts.
+            The original file is never modified.
+        """
+        with secure_open(data_path, "r", "capture") as f:
+            header = next(f)
+            if isinstance(header, bytes):
+                header = header.decode()
+            csv_cols = (2, 4, 6, 7) if "Ambient" in header else (2, 3, 5, 6)
+            data = loadtxt(f.readlines(), delimiter=",", usecols=csv_cols)
+
+        relative_time = data[:, 0]
+        temperature = data[:, 1]
+        resonance_frequency = data[:, 2]
+        dissipation = data[:, 3]
+
+        # Vectorized time-jump detection(s).
+        backward = np.where(np.diff(relative_time) < 0)[0]
+        if backward.size:
+            Log.w(f"Warning: time jump(s) observed at the following indices: {backward.tolist()}")
+
+            keep = np.ones(len(relative_time), dtype=bool)
+            keep[backward] = False
+            relative_time = relative_time[keep]
+            temperature = temperature[keep]
+            resonance_frequency = resonance_frequency[keep]
+            dissipation = dissipation[keep]
+
+            Log.w("Time jumps removed from dataset for analysis purposes (original file unchanged)")
+
+        return relative_time, temperature, resonance_frequency, dissipation
+
+    def _load_xml_pois(self, data_path: str):
+        """Parse the companion XML file to restore prior POI indices and run params.
+
+        Uses ``xml.etree.ElementTree`` to extract the most-recent
+        ``<points>`` and ``<params>`` blocks.  Child elements are iterated directly.
+
+        Args:
+            data_path: Path to the run CSV.  The XML file is expected at the same
+                location with a ``.xml`` extension (or at ``self.xml_path`` when
+                that override is set).  If the file does not exist or
+                ``self.askForPOIs`` is ``False``, defaults are returned immediately.
+
+        Returns:
+            tuple[list[int], int]: A two-element tuple of
+            ``(poi_vals, fill_type)`` where ``poi_vals`` is a sorted list of
+            integer POI indices (empty when none are found) and ``fill_type`` is
+            an integer channel count (``-1`` when not present in the XML).
+        """
+        poi_vals = []
+        fill_type = -1
+        if not self.askForPOIs:
+            return poi_vals, fill_type
+
+        xml_path = (data_path[:-4] + ".xml") if self.xml_path is None else self.xml_path
+        if not os.path.exists(xml_path):
+            Log.w(TAG, f'Missing XML file: Expected at "{xml_path}" for this run.')
+            return poi_vals, fill_type
+
+        root = ET.parse(xml_path).getroot()
+
+        # Get POI point values
+        all_points = root.findall(".//points")
+        if all_points:
+            for child in all_points[-1]:  # most-recent <points> block
+                raw = child.get("value", "")
+                try:
+                    poi_vals.append(int(raw))
+                except ValueError:
+                    Log.e(f'Point value "{raw}" in XML is not an integer.')
+            poi_vals.sort()
+        else:
+            Log.d("No points found in XML file for this run.")
+
+        # Run parameters
+        all_params = root.findall(".//params")
+        if all_params:
+            for child in all_params[-1]:  # most-recent <params> block
+                name = child.get("name", "")
+                raw = child.get("value", "")
+                try:
+                    if name == "fill_type":
+                        fill_type = int(raw)
+                except ValueError:
+                    Log.e(f'Param "{name}" in XML is not an integer.')
+        else:
+            Log.d("No params found in XML file for this run.")
+
+        return poi_vals, fill_type
+
+    def _apply_poi_state(self, poi_vals: List[Any], fill_type: int) -> None:
+        """Updates instance state flags based on restored POIs and data fill type.
+
+        This method synchronizes the UI state with data recovered from an XML file.
+        If a full set of 6 POIs is found, the workflow skips directly to the summary
+        view (Step 6). If partial markers exist, it disables the initial POI prompt
+        to allow for manual re-analysis.
+
+        Args:
+            poi_vals: A list of POI values retrieved from the XML.
+            fill_type: The number of channels detected in the current data set.
+        """
+        # Reset transient state flags
+        self.show_analysis_immediately = False
+        self.model_run_this_load = False
+        self.prior_points_in_xml = False
+
+        if self.askForPOIs:
+            if len(poi_vals) == 6:
+                self.askForPOIs = False
+                self.prior_points_in_xml = True
+                self.stateStep = 6  # Skip straight to summary
+                Log.d(f"Found prior POIs from XML file: {poi_vals}")
+
+            elif len(self.poi_markers) > 0:
+                # Re-analyse Step 1; prevent auto-advancing to Summary
+                self.askForPOIs = False
+
+        # Update channel configuration
+        Log.d(f"Number of channels (fill_type): {fill_type}")
+        self.parent.num_channels = fill_type
+
+    def _run_model_prediction(
+        self,
+        poi_vals: List[Any],
+        relative_time: np.ndarray,
+        resonance_frequency: np.ndarray,
+        dissipation: np.ndarray,
+    ) -> List[Any]:
+        """Orchestrates the POI auto-fitting fallback chain.
+
+        Attempts to predict POIs the current fallback strategy:
+            1. QModel v6 (YOLO26)
+            2. QModel v4 (Fusion)
+            3. ModelData.
+
+        If pre-existing markers are detected on the plot, the method returns only
+        the boundary points (first and last) to force manual user intervention
+        for intermediate points.
+
+        Args:
+            poi_vals: Current list of POI values.
+            relative_time: Array of time offsets for the dataset.
+            resonance_frequency: Array of frequency shifts.
+            dissipation: Array of dissipation values.
+
+        Returns:
+            The best available list of POIs. If pre-existing markers exist,
+            returns a truncated list containing only [start, end].
+        """
+        # Exit early if a result already exists from a prior load
+        if self.model_result != -1:
+            return poi_vals
+
+        # Initialize/Reset model state
+        self.model_result = -1
+        self.model_candidates = None
+        self.model_engine = "None"
+
+        poi_vals = self._try_qmodel_v6(poi_vals)
+
+        if self.model_result == -1:
+            poi_vals = self._try_qmodel_v4(poi_vals)
+
+        if self.model_result == -1:
+            poi_vals = self._try_model_data(
+                poi_vals, relative_time, resonance_frequency, dissipation
+            )
+
+        # If partial markers exist, force manual entry for the middle points
+        if self.poi_markers:
+            return [poi_vals[0], poi_vals[-1]]
+
+        return poi_vals
+
+    def _try_qmodel_v6(self, poi_vals: List[int]) -> List[int]:
+        """Attempts POI prediction using the QModel v6 (YOLO26) engine.
+
+        NOTE: The POST point is not predicted with this model and is simply filled!
+
+        Args:
+            poi_vals: The current list of POI indices.
+
+        Returns:
+            The updated list of POI indices if successful; otherwise, returns
+            the original `poi_vals` and sets `self.model_result` to -1 for fallback.
+        """
+        if not Constants.QModel6_predict:
+            return poi_vals
+
+        # Skip inference if XML already provided a full set of valid points
+        if self.prior_points_in_xml:
+            self.model_result = poi_vals
+            self.model_engine = "QModel v6 (YOLO26) skipped (using prior points)"
+            return poi_vals
+
+        msg = "Auto-fitting points with QModel v6 (YOLO26)..."
+        Log.w(f"{msg} (may take a few seconds)")
+        self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
+        self.graphWidget.addItem(self._text2, ignoreBounds=True)
+        QtCore.QCoreApplication.processEvents()
+
+        try:
+            # File access and inference
+            with secure_open(self.loaded_datapath, "r", "capture") as f:
+                fh = BytesIO(f.read())
+
+            self._QModel_create_new_progress_dialog()
+            self.progressBarDiag.setRange(0, 100)
+
+            predict_result, detected_channels = self.QModel_v6_predictor.predict(
+                file_buffer=fh, progress_signal=self.v6_predict_progress
+            )
+            QtCore.QTimer.singleShot(1000, self.progressBarDiag.hide)
+
+            if not self.parent.num_channels:
+                self.parent.num_channels = detected_channels
+
+            # Extract predictions
+            predictions = []
+            candidates = []
+
+            for i in range(6):
+                data = predict_result.get(f"POI{i + 1}", {})
+                indices = data.get("indices", [-1]) or [-1]
+                confidences = data.get("confidences", [-1]) or [-1]
+
+                predictions.append(indices[0])
+                candidates.append((indices, confidences))
+
+            # Update model state
+            self.model_run_this_load = True
+            self.model_result = predictions
+            self.model_candidates = candidates
+            self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+
+            # Validate
+            # NOTE: Legacy POI3 (POST point) is ignored here!
+            if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                poi_vals = list(self.model_result)
+                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                    poi_vals[2] = poi_vals[1] + 2
+            else:
+                self.model_result = -1
+
+        except Exception as e:
+            self._log_traceback(debug=True)
+            Log.e(f"Error using 'QModel v6 (YOLO26)': {e}")
+            Log.e(TAG, "Falling back to next available model.")
+            self.model_result = -1
+
+        return poi_vals
+
+    def _try_qmodel_v4(self, poi_vals: List[int]) -> List[int]:
+        """Attempts POI prediction using the QModel v4 (Fusion) engine.
+
+        NOTE: The POST point is not predicted with this model and is simply filled!
+
+        Args:
+            poi_vals: The current list of POI indices.
+
+        Returns:
+            The updated list of POI indices if successful; otherwise, returns
+            the original `poi_vals` and sets `self.model_result` to -1.
+        """
+        if not Constants.QModel4_predict:
+            return poi_vals
+
+        msg = "Auto-fitting points with QModel v4 (Fusion)..."
+        Log.w(f"{msg} (may take a few seconds)")
+        self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
+        self.graphWidget.addItem(self._text2, ignoreBounds=True)
+        QtCore.QCoreApplication.processEvents()
+
+        try:
+            with secure_open(self.loaded_datapath, "r", "capture") as f:
+                fh = BytesIO(f.read())
+
+            predict_result = self.QModel_v4_predictor.predict(
+                file_buffer=fh,
+                visualize=False,
+                progress_signal=self.v4_predict_progress,
+                use_partial_fills=self.partial_fills_checkbox.isChecked(),
+            )
+
+            predictions = []
+            candidates = []
+
+            for i in range(6):
+                data = predict_result.get(f"POI{i + 1}", {})
+                indices = data.get("indices", [-1]) or [-1]
+                confidences = data.get("confidences", [-1]) or [-1]
+                predictions.append(indices[0])
+                candidates.append((indices, confidences))
+
+            # Update model state
+            self.model_run_this_load = True
+            self.model_result = predictions
+            self.model_candidates = candidates
+            self.model_engine = "QModel v4 (Fusion)"
+
+            # Validate
+            # NOTE: Legacy POI3 (POST point) is ignored here!
+            if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                poi_vals = list(self.model_result)
+                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                    poi_vals[2] = poi_vals[1] + 2
+            else:
+                self.model_result = -1
+
+        except Exception as e:
+            self._log_traceback(debug=True)
+            Log.e(f"Error using 'QModel v4 (Fusion)': {e}")
+            self.model_result = -1
+
+        return poi_vals
+
+    def _try_model_data(
+        self,
+        poi_vals: List[int],
+        relative_time: np.ndarray,
+        resonance_frequency: np.ndarray,
+        dissipation: np.ndarray,
+    ) -> List[int]:
+        """Attempts POI prediction using the legacy ModelData predictor.
+
+        This serves as the final algorithmic fallback tier if everything went wrong :)
+
+        NOTE: Unlike the YOLO models, this method directly clears and repopulates
+        the provided `poi_vals`!
+
+        Args:
+            poi_vals: The current list of POI indices to be updated.
+            relative_time: Array of time offsets.
+            resonance_frequency: Array of frequency shift data.
+            dissipation: Array of dissipation data.
+
+        Returns:
+            The updated list of POI indices. Returns the original list if the
+            feature is disabled or a critical error occurs.
+        """
+        if not Constants.ModelData_predict:
+            return poi_vals
+
+        try:
+            self.model_run_this_load = True
+            # IdentifyPoints returns a list of indices or -1 on failure
+            result = self.dataModel.IdentifyPoints(
+                self.loaded_datapath, relative_time, resonance_frequency, dissipation
+            )
+            self.model_result = result
+            self.model_engine = "ModelData"
+
+            if isinstance(result, list):
+                poi_vals.clear()
+                self.model_select = []
+                self.model_candidates = []
+
+                for point in result:
+                    self.model_select.append(0)
+                    if isinstance(point, list):
+                        self.model_candidates.append(point)
+                        # Extract the index (first element of the first candidate)
+                        poi_vals.append(point[0][0])
+                    else:
+                        # Data format: simple index integer
+                        self.model_candidates.append([point])
+                        poi_vals.append(point)
+
+            elif result == -1:
+                Log.w("ModelData failed to auto-calculate points for this run.")
+            else:
+                Log.e("ModelData returned an unexpected response format.")
+
+        except Exception as e:
+            self._log_traceback(debug=False)
+            Log.e(f"Legacy ModelData execution failed: {e}")
+
+        return poi_vals
+
+    def _apply_signal_corrections(
+        self, dissipation: np.ndarray, resonance_frequency: np.ndarray, poi_vals: List[int]
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Applies drop-effect correction vectors to signal data.
+
+        If the drop-effect correction UI option is enabled, this method invokes
+        a correction algorithm to adjust the dissipation and resonance frequency
+        arrays based on the provided POIs.
+
+        Args:
+            dissipation: Array of raw dissipation values.
+            resonance_frequency: Array of raw resonance frequency values.
+            poi_vals: List of indices identifying key POIs.
+
+        Returns:
+            A tuple of (dissipation, resonance_frequency). Arrays will be the
+            corrected versions if the feature is active and valid; otherwise,
+            the original input arrays are returned.
+        """
+        if not self.drop_effect_cancelation_checkbox.isChecked():
+            return dissipation, resonance_frequency
+
+        corrected_diss, corrected_rf = self._correct_drop_effect(
+            self.loaded_datapath, poi_vals, "process"
+        )
+
+        if corrected_diss is not None:
+            dissipation = corrected_diss
+
+        if corrected_rf is not None:
+            resonance_frequency = corrected_rf
+
+        return dissipation, resonance_frequency
+
+    def _compute_smooth_params(self, xs: np.ndarray) -> Tuple[int, int, bool, int]:
+        """Derives Savitzky-Golay window sizes and the 90-second split index.
+
+        Calculates smoothing factors based on total runtime. It defines a 'split index'
+        at the 90-second mark to allow for different smoothing intensities between
+        the initial phase and extended data.
+
+        Args:
+            xs: Array of time samples (assumed to be sorted).
+
+        Returns:
+            A tuple containing:
+                - smooth_factor (int): Primary window size (forced odd, 3-69).
+                - t_split (int): Index of the first sample past 90s.
+                - extend_data (bool): True if there is sufficient data beyond 90s.
+                - extend_smf (int): Coarser window size for extended data (forced odd).
+        """
+        total_runtime = xs[-1]
+
+        # Compute primary smooth factor
+        smooth_factor = int(total_runtime * Constants.smooth_factor_ratio)
+        if smooth_factor % 2 == 0:
+            smooth_factor += 1
+        smooth_factor = max(3, min(69, smooth_factor))
+
+        Log.i(TAG, f"Total run time: {total_runtime} secs")
+        Log.d(TAG, f"Smoothing: {smooth_factor} | Applying for first 90s.")
+
+        # np.searchsorted uses binary search O(log n) vs the O(n) generator next()
+        t_split = int(np.searchsorted(xs, 90, side="right"))
+        extend_data = total_runtime > 90
+
+        # Compute extended smoothing factor (forced to odd)
+        extend_smf = int(smooth_factor / 20)
+        if extend_smf % 2 == 0:
+            extend_smf += 1
+
+        # Check if there is enough "padding" to apply extended smoothing
+        if extend_data and len(xs) < (t_split + 2 * extend_smf):
+            Log.w(
+                "Insufficient points after 90s for effective downsampling. "
+                "Disabling extended smoothing."
+            )
+            t_split = len(xs)
+            extend_data = False
+
+        return smooth_factor, t_split, extend_data, extend_smf
+
+    def _apply_savgol(
+        self,
+        signal: np.ndarray,
+        smooth_factor: int,
+        t_split: int,
+        extend_data: bool,
+        extend_smf: int,
+        savgol_filter: Callable[..., np.ndarray],
+        deriv: int = 0,
+    ) -> np.ndarray:
+        """Applies a Savitzky-Golay filter with an optional dual-window strategy.
+
+        Smoothes the input signal using a primary window size up to the split point.
+        If extended data processing is enabled, it applies a secondary (usually
+        coarser) window to the remainder of the signal and concatenates the results.
+
+        Args:
+            signal: The input numerical array to be smoothed.
+            smooth_factor: Window length for the primary segment (must be odd).
+            t_split: The index at which to split the signal for dual-window processing.
+            extend_data: Whether to apply a different smoothing factor beyond t_split.
+            extend_smf: Target window length for the extended segment.
+            savgol_filter: The filter function (e.g., scipy.signal.savgol_filter).
+            deriv: The order of the derivative to compute. Defaults to 0 (smoothing).
+
+        Returns:
+            A smoothed NumPy array of the same length as the input signal.
+        """
+        # Process the primary segment (up to t_split)
+        primary_window = max(smooth_factor, 3)
+        result = savgol_filter(signal[:t_split], primary_window, 1, deriv)
+
+        if not extend_data:
+            return result
+
+        # Process the extended segment
+        remainder = signal[t_split:]
+        rem_len = len(remainder)
+
+        if rem_len > 0:
+            # Window size must be odd and: 1 < window_size <= segment_length
+            ext_window = min(rem_len, extend_smf)
+            if ext_window % 2 == 0:
+                ext_window = max(3, ext_window - 1)
+            ext_window = max(3, ext_window)
+
+            ext = savgol_filter(remainder, ext_window, 1, deriv)
+            return np.concatenate((result, ext))
+
+        return result
+
+    def _compute_signal_curves(
+        self,
+        relative_time: np.ndarray,
+        resonance_frequency: np.ndarray,
+        dissipation: np.ndarray,
+        poi_vals: list,
+        savgol_filter: Callable,
+        argrelextrema: Callable,
+    ) -> Tuple[dict, list[int, int]]:
+        """Compute all smoothed signal curves and derive initial run-boundary candidates.
+
+        Applies Savitzky-Golay smoothing to the raw dissipation, resonance-
+        frequency shift, and computed difference signals.  Uses the two highest
+        2nd-derivative maxima of the smoothed dissipation to locate the rough
+        analysis window, then refines the start/stop indices using a noise-floor
+        threshold on the difference curve.
+
+        Args:
+            relative_time: 1-D monotonically increasing array of sample timestamps
+                in seconds.
+            resonance_frequency: 1-D array of raw resonance-frequency measurements
+                aligned with ``relative_time``.
+            dissipation: 1-D array of raw dissipation measurements aligned with
+                ``relative_time``.
+            poi_vals: Current candidate POI indices.  Used only to suppress
+                spurious boundary-detection warnings when a model or XML has
+                already provided valid points.
+            savgol_filter: ``scipy.signal.savgol_filter``.
+            argrelextrema: ``scipy.signal.argrelextrema``.
+
+        Returns:
+            tuple[dict, list[int, int]]: A two-element tuple ``(curves,
+            start_stop)`` where ``curves`` is a dict with keys ``xs``, ``ys``,
+            ``ys_freq``, ``ys_diff``, ``ys_fit``, ``ys_freq_fit``,
+            ``ys_diff_fit``, ``ys_diss_2ndd``, and ``smooth_factor``; and
+            ``start_stop`` is ``[begin_idx, end_idx]`` representing the estimated
+            analysis window in sample-index space.
+
+        NOTE: Several arrays that existed in the original implementation
+            (``ys_diss_diff_avg``/ ``zeros3``, ``minima_*``, ``ys_diff_fine``,
+            ``ys_diff_diff``, ``ys_diff_2ndd``) were computed but never used. These have been
+            removed!
+        """
+        xs = relative_time
+        n = len(xs)
+        smooth_factor, t_split, extend_data, extend_smf = self._compute_smooth_params(xs)
+
+        def sg(sig: np.ndarray, deriv: int = 0) -> np.ndarray:
+            """Convenience closure over the smoothing parameters"""
+            return self._apply_savgol(
+                sig, smooth_factor, t_split, extend_data, extend_smf, savgol_filter, deriv
+            )
+
+        # Dissipation smoothing and 2nd derivative
+        ys_fit_raw = sg(dissipation)
+        ys_diss_diff = sg(ys_fit_raw, deriv=1)
+        ys_diss_2ndd = sg(ys_diss_diff, deriv=1)
+
+        # Rough boundary detection via the two highest 2nd-derivative maxima
+        maxima_idx = argrelextrema(ys_diss_2ndd, np.greater)[0]
+        maxima_val = ys_diss_2ndd[maxima_idx]
+
+        if len(maxima_idx) < 2:
+            # Degenerate signal: fall back to a full-width window
+            t_start, t_stop = 0, n - 1
+        else:
+            top2_pos = np.argpartition(maxima_val, -2)[-2:]
+            top2_idx = np.sort(maxima_idx[top2_pos])  # ascending by sample position
+            t_start = int(top2_idx[0])
+            t_stop = int(top2_idx[1]) + 3 * smooth_factor
+
+        no_model_no_poi = not self.model_run_this_load and len(poi_vals) == 0
+        if t_stop < n / 2 or t_stop >= n:
+            if no_model_no_poi:
+                Log.w(f"Stop time index was {t_stop} out of {n} but that seems unlikely!")
+                Log.w('Please confirm "End Point" during Step 1 point selection.')
+            t_stop = n - 1
+        if t_stop - t_start < n / 3 or t_start > n / 2:
+            if no_model_no_poi:
+                Log.w(f"Start time index was {t_start} out of {n} but that seems unlikely!")
+                Log.w('Please confirm "Begin Point" during Step 1 point selection.')
+            t_start = 100
+
+        # Baseline window (first ~0.5-2 s of the run)
+        if xs[t_start] < 0.5:
+            t_0p5 = 0
+        else:
+            t_0p5 = min(int(np.searchsorted(xs, 0.5, side="right")), n - 1)
+
+        if xs[t_start] < 2.0:
+            t_1p0 = t_start
+        else:
+            t_1p0 = min(int(np.searchsorted(xs, 2.0, side="right")), n - 1)
+
+        if t_0p5 == t_1p0:
+            t_1p0 = min(int(np.searchsorted(xs, xs[t_1p0] + 1.5, side="right")), n - 1)
+            if t_1p0 == t_0p5:
+                # still equal at the array boundary
+                t_1p0 = min(t_0p5 + 1, n - 1)
+
+        # Scale dissipation relative to the baseline resonance frequency
+        avg = np.mean(resonance_frequency[t_0p5:t_1p0])
+        scale = avg / 2
+        ys = dissipation * scale
+        ys_fit = ys_fit_raw * scale
+        offset = np.amin(ys_fit)
+        ys -= offset
+        ys_fit -= offset
+
+        # Resonance frequency shift and smoothed fit
+        ys_freq = avg - resonance_frequency
+        ys_freq_fit = sg(ys_freq)
+
+        # Difference factor and difference curve
+        diff_factor = Constants.default_diff_factor
+        if self.difference_factor_optimizer_checkbox.isChecked():
+            self.diff_factor = self._optimize_curve(self.loaded_datapath)
+        if hasattr(self, "diff_factor"):
+            diff_factor = self.diff_factor
+
+        ys_diff = ys_freq - diff_factor * ys
+
+        # Invert when the drop was applied at the outlet (negative initial deltas)
+        if np.mean(np.abs(ys_freq_fit)) < np.mean(np.abs(diff_factor * ys_fit)) and abs(
+            ys_diff[t_1p0:].min()
+        ) > 5 * abs(ys_diff[t_1p0:].max()):
+            Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
+            ys_diff *= -1
+
+        ys_diff_fit = sg(ys_diff)
+
+        Log.d(f"Difference factor: {diff_factor:.3f}x")
+        Log.d("Setting diff_factor on Advanced Settings menu")
+        self.tbox_diff_factor.setText(f"{diff_factor:.3f}")
+
+        # Noise-floor parameters for start/stop thresholding
+        eh1 = float(abs(np.amax(ys_diff[t_0p5:t_1p0])))
+        em2 = float(np.amax(ys_diff_fit))
+        am2 = int(np.argmax(ys_diff_fit))
+        eh2 = eh1 * 2  # start threshold: 2× baseline noise
+
+        # Start candidate
+        t0 = t_start
+        above = np.where(ys_diff_fit[t_1p0 + 1 :] > 5 * eh2)[0]
+        if above.size:
+            t0 = t_1p0 + 1 + int(above[0])
+        elif no_model_no_poi:
+            Log.w("Failed to locate rough start point using noise floor approximation.")
+            Log.w('Please confirm "Begin Point" during Step 1 point selection.')
+
+        # Walk backward to the true fill start
+        going_up = ys[t0] < 5
+        while True:
+            if not (0 <= t0 < n):
+                if no_model_no_poi:
+                    Log.w("Hit a limit (start)")
+                t0 = 0
+                break
+            if ys[t0] < 5:
+                t0 += 1
+                if not going_up:
+                    break
+            else:
+                t0 -= 1
+                if going_up:
+                    break
+
+        # End candidate.
+        t1 = am2
+        below = np.where(ys_diff_fit[am2:] < em2 - eh2)[0]
+        if below.size:
+            t1 = am2 + int(below[0])
+        elif no_model_no_poi:
+            Log.w("Failed to locate rough end point using noise floor approximation.")
+            Log.w('Please confirm "End Point" during Step 1 point selection.')
+
+        # Walk backward to the true end
+        while True:
+            if t1 - 50 < 0:
+                if no_model_no_poi:
+                    Log.w("Hit a limit (end)")
+                t1 = n - 1
+                break
+            if ys_diff_fit[t1 - 50] > ys_diff_fit[t1]:
+                t1 -= 1
+            else:
+                break
+
+        curves = {
+            "xs": xs,
+            "ys": ys,
+            "ys_freq": ys_freq,
+            "ys_diff": ys_diff,
+            "ys_fit": ys_fit,
+            "ys_freq_fit": ys_freq_fit,
+            "ys_diff_fit": ys_diff_fit,
+            "ys_diss_2ndd": ys_diss_2ndd,
+            "smooth_factor": smooth_factor,
+        }
+        return curves, [t0, t1]
+
+    def _recover_missing_curves(
+        self,
+        curves: dict,
+        relative_time: np.ndarray | None,
+        resonance_frequency: np.ndarray | None,
+        dissipation: np.ndarray | None,
+        savgol_filter,
+    ) -> dict:
+        """Reconstruct any signal arrays missing from curves after a partial failure.
+
+        Called unconditionally from the ``finally`` block of ``analyze_data`` so
+        that the UI can always fall back to manual POI selection even when signal
+        processing threw partway through.  Each key is only written when absent,
+        so pre-existing values are always preserved.
+
+        NOTE: Reconstruction order matters: later entries depend on keys built earlier
+        in this function (e.g. ``ys_diff`` needs ``ys_freq`` and ``ys``).
+
+        Args:
+            curves: Partially or fully populated signal dict.  Modified in-place
+                and returned.  Keys that are already present are never overwritten.
+            relative_time: Raw timestamp array, or ``None`` when data loading
+                failed before it could be read.
+            resonance_frequency: Raw resonance-frequency array, or ``None``.
+                Together with ``dissipation``, required for any reconstruction;
+                if either is ``None`` the dict is returned unchanged.
+            dissipation: Raw dissipation array, or ``None``.
+            savgol_filter: ``scipy.signal.savgol_filter``
+
+        Returns:
+            dict: The same curves dict, with any previously absent required keys
+            now populated with zero-smoothing fallback values.
+        """
+
+        required_keys: frozenset = frozenset(
+            {
+                "xs",
+                "ys",
+                "ys_fit",
+                "ys_freq",
+                "ys_freq_fit",
+                "ys_diff",
+                "ys_diff_fit",
+                "ys_diss_2ndd",
+                "smooth_factor",
+            }
+        )
+
+        if not (required_keys - curves.keys()):
+            return curves
+
+        # Without raw sensor data no reconstruction is possible.
+        if resonance_frequency is None or dissipation is None:
+            return curves
+
+        Log.w("Correcting missing parameters for manual point selection (no smoothing)...")
+
+        # Use the first sample as the baseline resonance value.
+        avg = float(resonance_frequency[0])
+
+        if "xs" not in curves and relative_time is not None:
+            curves["xs"] = relative_time
+
+        # ys / ys_fit
+        if "ys" not in curves or "ys_fit" not in curves:
+            scaled = dissipation * (avg / 2)
+            offset = float(np.amin(scaled))
+            curves["ys"] = scaled - offset
+            curves["ys_fit"] = scaled - offset  # independent array; same values
+
+        if "ys_freq" not in curves:
+            curves["ys_freq"] = avg - resonance_frequency
+
+        if "ys_freq_fit" not in curves:
+            curves["ys_freq_fit"] = curves["ys_freq"]
+
+        if "ys_diff" not in curves:
+            curves["ys_diff"] = curves["ys_freq"] - Constants.default_diff_factor * curves["ys"]
+        if "ys_diff_fit" not in curves:
+            curves["ys_diff_fit"] = curves["ys_diff"]
+        if "ys_diss_2ndd" not in curves:
+            try:
+                ys_diss_diff = savgol_filter(curves["ys_fit"], 2, 1, 1)
+                curves["ys_diss_2ndd"] = savgol_filter(ys_diss_diff, 2, 1, 1)
+            except Exception:
+                Log.e("Unable to calculate 2nd derivative of 'ys' data!")
+                curves["ys_diss_2ndd"] = curves["ys_fit"]
+
+        if "smooth_factor" not in curves:
+            curves["smooth_factor"] = 3
+
+        return curves
+
+    def _log_traceback(self, debug: bool = False) -> None:
+        """Logs the full traceback of the currently handled exception.
+
+        Args:
+            debug: If True, logs each line at the DEBUG level (Log.d). 
+                If False, logs at the ERROR level (Log.e).
+        """
+        log_func: Callable[[str], None] = Log.d if debug else Log.e
+        exc_traceback: str = traceback.format_exc()
+        for line in exc_traceback.strip().split("\n"):
+            log_func(line)
+
+    def _wait_for_progress_bar(self) -> None:
+        """Spins the Qt event loop until the background scan completes or times out.
+
+        This method prevents the UI from freezing during a background scan by 
+        manually processing pending events. It includes a safety timeout to 
+        prevent infinite loops. Once finished, it connects the progress bar's 
+        value change signal to the internal updater.
+        """
+        timeout_limit = 300
+        iterations = 0
+        
+        Log.d("Waiting on progress bar to finish background scan...")
+
+        while self.progress_value_scanning and iterations < timeout_limit:
+            iterations += 1
+            QtCore.QCoreApplication.processEvents()
+            time.sleep(0.01)
+        try:
+            self.progressBar.valueChanged.disconnect(self._update_progress_value)
+        except (TypeError, RuntimeError):
+            pass
+        self.progressBar.valueChanged.connect(self._update_progress_value)
+        Log.d(f"Progress bar wait completed after {iterations} iterations. Proceeding...")
+
+    def _render_analysis_plots(
+        self, 
+        curves: Dict[str, Any], 
+        poi_vals: List[int], 
+        start_stop: Tuple[int, int]
+    ) -> None:
+        """Coordinates the rendering of signal data and analysis markers.
+
+        This top-level coordinator manages the visual pipeline by setting up
+        graph axes, drawing the primary signal curves, and overlaying channel/POI markers. 
+        It delegates specific rendering tasks to specialized sub-helper methods.
+
+        Args:
+            curves: A dictionary containing signal data. Expected keys include:
+                - 'xs': The shared x-axis (time) array.
+                - Individual signal keys (e.g., 'df', 'dg') containing y-axis arrays.
+            poi_vals: A list of indices representing the detected POI.
+            start_stop: A tuple of (start_index, stop_index) defining the active 
+                analysis window.
+        """
+        self._setup_graph_axes(curves)
+        self._plot_signal_curves(curves)
+        self._add_poi_markers(curves["xs"], poi_vals, start_stop)
+
+    def _setup_graph_axes(self, curves: Dict[str, Any]) -> None:
+        """Configures titles, labels, ranges, grids, and legends for all four axes.
+
+        This method clears existing plots, initializes the progress UI, sets specific 
+        titles and colors for four distinct graph widgets, and establishes the 
+        coordinate ranges based on the provided curve data.
+
+        Args:
+            curves: A dictionary containing the data to be plotted. 
+                Expected keys include:
+                - 'xs': The x-axis data (typically time).
+                - 'ys': Primary y-axis data.
+                - 'ys_freq': Frequency-related y-axis data.
+                - 'ys_diff': Difference-related y-axis data.
+        """
+        ax, ax1, ax2, ax3 = (
+            self.graphWidget,
+            self.graphWidget1,
+            self.graphWidget2,
+            self.graphWidget3,
+        )
+        xs = curves["xs"]
+        ys = curves["ys"]
+        ys_freq = curves["ys_freq"]
+        ys_diff = curves["ys_diff"]
 
         ax.clear()
         ax1.clear()
@@ -5885,9 +6185,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self._update_progress_value(1, "Step 1 of 6: Select Begin and End Points")
         self.setDotStepMarkers(1)
+
         ax.setTitle(None)
         ax.addLegend()
-
         ax1.setTitle("Resonance", color="green")
         ax2.setTitle("Difference", color="blue")
         ax3.setTitle("Dissipation", color="red")
@@ -5903,152 +6203,227 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax2.hideButtons()
         ax3.hideButtons()
 
-        # Add grid
         ax.showGrid(x=True, y=True)
-        # Set Range
-        ax.setXRange(0, xs[-1], padding=0.05)
-        ax.setYRange(0, max(np.amax(ys_freq), np.amax(ys), np.amax(ys_diff)), padding=0.05)
-
-        self.lowerGraphs.setVisible(False)
-        # ax1.setVisible(False)
-        # ax2.setVisible(False)
-        # ax3.setVisible(False)
-
         ax1.showGrid(x=True, y=True)
         ax2.showGrid(x=True, y=True)
         ax3.showGrid(x=True, y=True)
 
+        ax.setXRange(0, xs[-1], padding=0.05)
+        ax.setYRange(0, max(np.amax(ys_freq), np.amax(ys), np.amax(ys_diff)), padding=0.05)
+
+        self.lowerGraphs.setVisible(False)
+
+    def _plot_signal_curves(self, curves: Dict[str, np.ndarray]) -> None:
+        """Adds fit lines, scatter dots, and star highlights to all graph widgets.
+
+        This method populates the main graph and the three specialized sub-graphs 
+        (Resonance, Difference, Dissipation) with raw data points, fitted curves, 
+        and interactive star markers representing POI.
+
+        Args:
+            curves: A dictionary containing NumPy arrays for plotting.
+                Required keys:
+                - 'xs': Shared x-axis time values.
+                - 'ys', 'ys_freq', 'ys_diff': Raw signal data.
+                - 'ys_fit', 'ys_freq_fit', 'ys_diff_fit': Calculated fit line data.
+        """
+        ax, ax1, ax2, ax3 = (
+            self.graphWidget,
+            self.graphWidget1,
+            self.graphWidget2,
+            self.graphWidget3,
+        )
+        xs = curves["xs"]
+        ys = curves["ys"]
+        ys_freq = curves["ys_freq"]
+        ys_diff = curves["ys_diff"]
+        ys_fit = curves["ys_fit"]
+        ys_freq_fit = curves["ys_freq_fit"]
+        ys_diff_fit = curves["ys_diff_fit"]
+
         mask = np.arange(0, len(xs), 1)
+        noPen = pg.mkPen(color=(255, 255, 255), width=0, style=QtCore.Qt.DotLine)
+
+        # Main graph - fit lines
         self.fit1 = ax.plot(xs[mask], ys_freq_fit[mask], pen="green", name="Resonance")
         self.fit2 = ax.plot(xs[mask], ys_diff_fit[mask], pen="blue", name="Difference")
         self.fit3 = ax.plot(xs[mask], ys_fit[mask], pen="red", name="Dissipation")
 
-        noPen = pg.mkPen(color=(255, 255, 255), width=0, style=QtCore.Qt.DotLine)
+        # Main graph - scatter dots (nearly transparent)
         self.scat1 = ax.plot(
-            xs[mask],
-            ys_freq[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=("green"),
+            xs[mask], ys_freq[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="green"
         )
         self.scat2 = ax.plot(
-            xs[mask],
-            ys_diff[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=("blue"),
+            xs[mask], ys_diff[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="blue"
         )
         self.scat3 = ax.plot(
-            xs[mask], ys[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush=("red")
+            xs[mask], ys[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="red"
         )
-        # setting alpha value of scatter plots
         self.scat1.setAlpha(0.01, False)
         self.scat2.setAlpha(0.01, False)
         self.scat3.setAlpha(0.01, False)
 
+        # Sub-graphs - fit lines
         self.fit_1 = ax1.plot(xs[mask], ys_freq_fit[mask], pen="green", name="Resonance")
         self.fit_2 = ax2.plot(xs[mask], ys_diff_fit[mask], pen="blue", name="Difference")
         self.fit_3 = ax3.plot(xs[mask], ys_fit[mask], pen="red", name="Dissipation")
 
+        # Sub-graphs - scatter dots
         self.scat_1 = ax1.plot(
-            xs[mask],
-            ys_freq[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=("green"),
+            xs[mask], ys_freq[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="green"
         )
         self.scat_2 = ax2.plot(
-            xs[mask],
-            ys_diff[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=("blue"),
+            xs[mask], ys_diff[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="blue"
         )
         self.scat_3 = ax3.plot(
-            xs[mask], ys[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush=("red")
+            xs[mask], ys[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="red"
         )
 
+        # Star markers (current-POI highlights)
         pos1 = np.column_stack((xs[0], ys_freq[0]))
         pos2 = np.column_stack((xs[0], ys_diff[0]))
         pos3 = np.column_stack((xs[0], ys[0]))
-        self.star1 = pg.ScatterPlotItem(pos=pos1, symbol="star", size=25, brush=("black"))
-        self.star2 = pg.ScatterPlotItem(pos=pos2, symbol="star", size=25, brush=("black"))
-        self.star3 = pg.ScatterPlotItem(pos=pos3, symbol="star", size=25, brush=("black"))
+
+        self.star1 = pg.ScatterPlotItem(pos=pos1, symbol="star", size=25, brush="black")
+        self.star2 = pg.ScatterPlotItem(pos=pos2, symbol="star", size=25, brush="black")
+        self.star3 = pg.ScatterPlotItem(pos=pos3, symbol="star", size=25, brush="black")
         ax1.addItem(self.star1)
         ax2.addItem(self.star2)
         ax3.addItem(self.star3)
-        self.gstars1 = pg.ScatterPlotItem(pos=pos1, symbol="star", size=10, brush=("gray"))
-        self.gstars2 = pg.ScatterPlotItem(pos=pos2, symbol="star", size=10, brush=("gray"))
-        self.gstars3 = pg.ScatterPlotItem(pos=pos3, symbol="star", size=10, brush=("gray"))
+
+        self.gstars1 = pg.ScatterPlotItem(pos=pos1, symbol="star", size=10, brush="gray")
+        self.gstars2 = pg.ScatterPlotItem(pos=pos2, symbol="star", size=10, brush="gray")
+        self.gstars3 = pg.ScatterPlotItem(pos=pos3, symbol="star", size=10, brush="gray")
         ax1.addItem(self.gstars1)
         ax2.addItem(self.gstars2)
         ax3.addItem(self.gstars3)
 
-        if len(poi_vals) > 0:
+    def _add_poi_markers(
+        self, 
+        xs: np.ndarray, 
+        poi_vals: List[int], 
+        start_stop: List[int]
+    ) -> None:
+        """Places movable InfiniteLine POI markers on the main graph.
+
+        This method initializes vertical markers (POI) on the 
+        graphWidget. If `poi_vals` is provided, it undergoes validation to ensure 
+        indices are within the bounds of the `xs` array. Validated `poi_vals` 
+        will take precedence over the `start_stop` values.
+
+        Args:
+            xs: The x-axis data array used to determine marker coordinate bounds.
+            poi_vals: A list of integer indices representing predefined POIs. 
+                Indices that are out of bounds (except -1) are reset to -1 and logged.
+            start_stop: A fallback list of integer indices used if `poi_vals` 
+                is not provided or to define the initial marker set.
+        """
+        ax = self.graphWidget
+
+        if poi_vals:
             for i, pt in enumerate(poi_vals):
                 if pt != -1 and not 0 <= pt < len(xs):
-                    Log.w(f"Model point {pt} cannot be used. Skipping point {i+1}.")
+                    Log.w(f"Model point {pt} cannot be used. Skipping point {i + 1}.")
                     poi_vals[i] = -1
             start_stop = poi_vals
 
         self.poi_markers = []
         for idx, pt in enumerate(start_stop):
-            poi_marker = pg.InfiniteLine(
-                pos=xs[pt], angle=90, pen="b", bounds=[xs[0], xs[-1]], movable=True
+            marker = pg.InfiniteLine(
+                pos=xs[pt],
+                angle=90,
+                pen="b",
+                bounds=[xs[0], xs[-1]],
+                movable=True,
             )
-            poi_marker.setPen(color="blue")
-            poi_marker.addMarker("<|>")
+            marker.setPen(color="blue")
+            marker.addMarker("<|>")
             if idx == 2:
-                poi_marker.setVisible(False)
-            ax.addItem(poi_marker)
-            poi_marker.sigPositionChangeFinished.connect(self.markerMoveFinished)
-            self.poi_markers.append(poi_marker)
+                marker.setVisible(False)
+            ax.addItem(marker)
+            marker.sigPositionChangeFinished.connect(self.markerMoveFinished)
+            self.poi_markers.append(marker)
 
-        self.xs = xs
-        self.ys = ys
-        self.ys_freq = ys_freq
-        self.ys_diff = ys_diff
-        self.ys_fit = ys_fit
-        self.ys_freq_fit = ys_freq_fit
-        self.ys_diff_fit = ys_diff_fit
-        self.ys_diss_2ndd = ys_diss_2ndd
-        self.smooth_factor = smooth_factor
+    def _save_analysis_state(
+        self, 
+        curves: Optional[Dict[str, Any]], 
+        relative_time: Union[np.ndarray, List[float]], 
+        resonance_frequency: Union[np.ndarray, List[float]], 
+        dissipation: Union[np.ndarray, List[float]]
+    ) -> None:
+        """Persists computed signal arrays and raw sensor data to instance attributes.
+
+        This method acts as the primary data synchronization point, moving processed 
+        results from local function scope into the class instance attributes. This 
+        allows downstream analysis steps, exports, or UI updates to access the 
+        most recent calculation results.
+
+        Args:
+            curves: A dictionary containing processed signal arrays and metadata. 
+                If None or empty, the save operation is aborted.
+                Expected keys include:
+                - 'xs', 'ys', 'ys_freq', 'ys_diff': Raw/Processed signal data.
+                - 'ys_fit', 'ys_freq_fit', 'ys_diff_fit': Fit results.
+                - 'ys_diss_2ndd': Second derivative or dissipation data.
+                - 'smooth_factor': The value used for signal smoothing.
+            relative_time: Array of time values relative to the experiment start.
+            resonance_frequency: Array of calculated resonance frequency values.
+            dissipation: Array of calculated dissipation values.
+        """
+        if not curves:
+            return  # Nothing to save i.e., a very early failure occurred
+
+        self.xs = curves["xs"]
+        self.ys = curves["ys"]
+        self.ys_freq = curves["ys_freq"]
+        self.ys_diff = curves["ys_diff"]
+        self.ys_fit = curves["ys_fit"]
+        self.ys_freq_fit = curves["ys_freq_fit"]
+        self.ys_diff_fit = curves["ys_diff_fit"]
+        self.ys_diss_2ndd = curves["ys_diss_2ndd"]
+        self.smooth_factor = curves["smooth_factor"]
         self.data_time = relative_time
         self.data_freq = resonance_frequency
         self.data_diss = dissipation
 
-        # self.AI_Guess_Idxs = [0, 0, 0, 0, 0, 0]
-        # self.AI_has_starting_values = False
-        if (
-            self.model_run_this_load and self.stateStep != 6
-        ):  # model has guess(es) and there is no prior run
+    def _advance_analysis_step(self, poi_vals: List[int]) -> None:
+        """Determines the next UI state based on model results and POI completeness.
+
+        This method acts as a workflow controller. It evaluates whether the
+        automated model successfully identified all six POIs. 
+        If successful, it advances the application to the summary step
+        (Step 6); otherwise, it prompts the user for manual intervention.
+
+        Args:
+            poi_vals: A list of indices representing the POI
+                identified by the model or loaded from a previous session.
+                A complete set must contain exactly six points to trigger
+                automated advancement.
+        """
+        if self.model_run_this_load and self.stateStep != 6:
+            # Model produced a guess and there is no prior analysis to show
             if len(poi_vals) == 6:
-                Log.i("Model successfully calculated points of interest for this dataset.")
+                Log.i("Model successfully calculated POI for this dataset.")
                 Log.d(f"Model Result = {self.model_engine}: {self.model_result}")
-                self.stateStep = 6  # show summary
+                self.stateStep = 6
                 self._log_model_confidences()
                 self.detect_change()
             else:
-                Log.e("Please manually select points of interest to Analyze this dataset.")
+                Log.e("Please manually select POI to Analyze this dataset.")
         else:
-            # model not run this load
+            # Model was not run this load
             if self.stateStep == 6:
-                # self.AI_has_starting_values = True
-                Log.i("Loaded points of interest from a prior run of Analyze tool.")
+                Log.i("Loaded POI from a prior run of Analyze tool.")
             else:
-                Log.e("Please manually select points of interest to Analyze this dataset.")
-        # if len(poi_vals) > 0:
-        #     self.getPoints() # show summary page if they want to view previous results or rough step 2 if they said re-analyze
+                Log.e("Please manually select POI to Analyze this dataset.")
+
         if self.stateStep == 6:
             Log.d("Skipping to summary step")
-            self.getPoints()  # show summary page if points already exist in XML
+            self.getPoints()  # show summary when all six points are already known
+
         if self.show_analysis_immediately:
             Log.d("Showing analysis immediately")
-            self.getPoints()  # confirm and analyze only if they want to view previous results
+            self.getPoints()  # confirm and run full analysis for prior-result view
 
     # def _position_floating_widget(self):
     #     pos_X = 20 + self.parent.MainWin.pos().x() + self.parent.MainWin.ui0.modemenu.width() + \
@@ -7026,13 +7401,9 @@ class AnalyzerWorker(QtCore.QObject):
             t_filling = line1_x[-1]
             Log.i(f"t_filling = {t_filling} secs")
             if enable_bandaid_code and t_filling > 1.5:  # t_filling > 1 sec
-                Log.w(
-                    "Applying polynomial correction to initial fill region (for long runs)"
-                )
+                Log.w("Applying polynomial correction to initial fill region (for long runs)")
                 line1_y = np.sqrt(np.polyval([0.1, 0.9, 0], normal_y)) * distances[0]
-                line1_y_fit = (
-                    np.sqrt(np.polyval([0.1, 0.9, 0], best_fit_pts)) * distances[0]
-                )
+                line1_y_fit = np.sqrt(np.polyval([0.1, 0.9, 0], best_fit_pts)) * distances[0]
             else:
                 line1_y = np.sqrt(normal_y) * distances[0]
                 line1_y_fit = np.sqrt(best_fit_pts) * distances[0]
@@ -7357,9 +7728,7 @@ class AnalyzerWorker(QtCore.QObject):
                         try:
                             time = next(x for x, t in enumerate(xs) if t > time)
                         except StopIteration:
-                            Log.d(
-                                "Re-interpreting user input as an index, not a timestamp"
-                            )
+                            Log.d("Re-interpreting user input as an index, not a timestamp")
                             time = int(time)
                     if not done:
                         return
@@ -7375,8 +7744,8 @@ class AnalyzerWorker(QtCore.QObject):
 
             # display and export selected points
             points_of_interest = np.concatenate((start_stop, [tp], times))
-            Log.d(f"Points of interest (index only): {points_of_interest}")
-            Log.i(f"Points of interest: {points_of_interest} {xs[points_of_interest]}")
+            Log.d(f"POI (index only): {points_of_interest}")
+            Log.i(f"POI: {points_of_interest} {xs[points_of_interest]}")
             np.savetxt(poi_path, points_of_interest, fmt="%i")
 
             self.update(status_label)
@@ -7565,9 +7934,7 @@ class AnalyzerWorker(QtCore.QObject):
             idx_of_normal_pts_to_retain = []
             for p in normal_pts:
                 try:
-                    midpoint_p_i = (
-                        next(x for x, y in enumerate(ys_normal) if y >= p) + tp
-                    )
+                    midpoint_p_i = next(x for x, y in enumerate(ys_normal) if y >= p) + tp
                 except StopIteration:
                     Log.w(f"Failed to find 1st channel dissipation @ {p:0.1f}")
                     continue
@@ -8071,9 +8438,7 @@ class AnalyzerWorker(QtCore.QObject):
                         freq_factor_15MHz = float(
                             Constants.get_batch_param(batch, "freq_factor_15MHz")
                         )
-                        high_shear_15y = (
-                            (frequency_shift * freq_factor_15MHz) ** 2
-                        ) / DENSITY
+                        high_shear_15y = ((frequency_shift * freq_factor_15MHz) ** 2) / DENSITY
                         Log.i(
                             f"15MHz High shear = ((f2-f0) * {freq_factor_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
                         )
@@ -8087,22 +8452,15 @@ class AnalyzerWorker(QtCore.QObject):
                         bandaid_compensate_high_shear_viscosity = False
                         if bandaid_compensate_high_shear_viscosity:
                             E3 = (
-                                ys_freq[all_times[FILL_IDX]]
-                                - ys_freq[all_times[START_IDX]]
+                                ys_freq[all_times[FILL_IDX]] - ys_freq[all_times[START_IDX]]
                             )  # from CAL file (Freq_fill)
-                            D = dissipation_shift - (
-                                (0.023112 * (E3) / DENSITY - 4.6868) * 1e-6
-                            )
+                            D = dissipation_shift - ((0.023112 * (E3) / DENSITY - 4.6868) * 1e-6)
                             high_shear_15y = (
                                 (D * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
                             ) / DENSITY
                         else:
                             high_shear_15y = (
-                                (
-                                    dissipation_shift * diss_factor1_15MHz
-                                    - diss_factor2_15MHz
-                                )
-                                ** 2
+                                (dissipation_shift * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
                             ) / DENSITY
                         Log.i(f"d0 = {d0:1.4E}")
                         Log.i(f"d2 = {d2:1.4E}")
@@ -8117,9 +8475,7 @@ class AnalyzerWorker(QtCore.QObject):
                             Log.i(
                                 f"15MHz High shear = ((d2-d0) * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
                             )
-                    high_shear_15x = self.correctHighShear(
-                        high_shear_15x, high_shear_15y
-                    )
+                    high_shear_15x = self.correctHighShear(high_shear_15x, high_shear_15y)
                     ax7.plot(high_shear_15x, high_shear_15y, "bd")
                     ax7.errorbar(
                         high_shear_15x,
@@ -8134,9 +8490,7 @@ class AnalyzerWorker(QtCore.QObject):
 
                     if True:
                         data_path_fun = data_path.replace("_3rd.csv", "_lower.csv")
-                        fun_file_exists = secure_open.file_exists(
-                            data_path_fun, "capture"
-                        )
+                        fun_file_exists = secure_open.file_exists(data_path_fun, "capture")
 
                     if (
                         frequency_shift < 900 and fun_file_exists
@@ -8187,9 +8541,7 @@ class AnalyzerWorker(QtCore.QObject):
                                     f"Failed to locate POI_{i} @ timestamp {xs[all_times[i]] - xs[0]} from fundamental dataset. Attempting to proceed with index 0..."
                                 )
                             Log.d(f"time[{i}] must be >= {xs[all_times[i]] - xs[0]}")
-                            Log.d(
-                                f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}"
-                            )
+                            Log.d(f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}")
                             times_fun.append(t_fun)
                         ys_freq_fun = (
                             np.average(resonance_frequency_fun[0 : times_fun[FILL_IDX]])
@@ -8226,15 +8578,11 @@ class AnalyzerWorker(QtCore.QObject):
                         Log.i(f"f0 = {f0:2.2f} Hz")
                         Log.i(f"f2 = {f2:2.2f} Hz")
                         Log.i(f"f2-f0 = {f2-f0} Hz")
-                        if f2 - f0 > float(
-                            Constants.get_batch_param(batch, "freq_delta_5MHz")
-                        ):
+                        if f2 - f0 > float(Constants.get_batch_param(batch, "freq_delta_5MHz")):
                             freq_factor_5MHz = float(
                                 Constants.get_batch_param(batch, "freq_factor_5MHz")
                             )
-                            high_shear_5y = (
-                                ((f2 - f0) * freq_factor_5MHz) ** 2
-                            ) / DENSITY
+                            high_shear_5y = (((f2 - f0) * freq_factor_5MHz) ** 2) / DENSITY
                             Log.i(
                                 f"5MHz High shear = ((f2-f0) * {freq_factor_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
                             )
@@ -8254,9 +8602,7 @@ class AnalyzerWorker(QtCore.QObject):
                             Log.i(
                                 f"5MHz High shear = ((d2-d0) * {diss_factor1_5MHz}-{diss_factor2_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
                             )
-                        high_shear_5x = self.correctHighShear(
-                            high_shear_5x, high_shear_5y
-                        )
+                        high_shear_5x = self.correctHighShear(high_shear_5x, high_shear_5y)
                         ax7.plot(high_shear_5x, high_shear_5y, "bd")
                         ax7.errorbar(
                             high_shear_5x,
@@ -8267,9 +8613,7 @@ class AnalyzerWorker(QtCore.QObject):
                             capsize=3,
                         )
                     else:
-                        Log.w(
-                            "5 MHz high-shear calculation not available from dataset."
-                        )
+                        Log.w("5 MHz high-shear calculation not available from dataset.")
                         if not fun_file_exists:
                             Log.w(
                                 "The 5 MHz mode does not exist in the dataset for this captured run."
@@ -8290,9 +8634,7 @@ class AnalyzerWorker(QtCore.QObject):
 
                     if not ratio < ratio_limit:
                         Log.w("Reason: Ratio threshold limit exceeded.")
-                        Log.d(
-                            f"Detail: Must be less than {ratio_limit}. Actual: {ratio:2.2f}."
-                        )
+                        Log.d(f"Detail: Must be less than {ratio_limit}. Actual: {ratio:2.2f}.")
             else:
                 Log.w("5 MHz high-shear calculation not available from dataset.")
                 Log.w("15 MHz high-shear calculation not available from dataset.")
@@ -8334,7 +8676,7 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.w(
                     "WARN: Initial fill region contains nothing but outlier. Attempting to continue with outliers."
                 )
-                Log.w("Please check the first 2 points of interest for accuracy.")
+                Log.w("Please check the first 2 POI for accuracy.")
 
             # remove NANs from datasets
             to_remove = np.isnan(in_shear_rate)
@@ -8354,7 +8696,7 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.w(
                     "WARN: Initial fill region contains nothing but inf/nan. Attempting to continue with outliers."
                 )
-                Log.w("Please check the first 2 points of interest for accuracy.")
+                Log.w("Please check the first 2 POI for accuracy.")
 
             viscosity_at_1p15 = viscosity[-len(distances)]
 
@@ -8795,16 +9137,12 @@ class AnalyzerWorker(QtCore.QObject):
                                 in_shear_san_60_80.remove(shear)
                             if visco in in_visco_san_60_80:
                                 in_visco_san_60_80.remove(visco)
-                    interp_func = interpolate.interp1d(
+                    interp_func = interp1d(
                         in_shear_san_60_80, in_visco_san_60_80, fill_value="extrapolate"
                     )
                     visc_interp = float(interp_func(shear_interp))
                     i_l, i_r = next(
-                        (
-                            (i - 1, i)
-                            for i, s in enumerate(in_shear_san_60_80)
-                            if s > shear_interp
-                        ),
+                        ((i - 1, i) for i, s in enumerate(in_shear_san_60_80) if s > shear_interp),
                         (-1, len(in_shear_san_60_80)),
                     )
                     if i_l == -1 or i_r == len(in_shear_san_60_80):
@@ -9377,36 +9715,38 @@ class AnalyzerWorker(QtCore.QObject):
         except Exception as e:
             Log.e("ERROR:", e)
         return np.round(output, 2)
-    
+
+
 class RunScanWorker(QtCore.QThread):
     """Background thread to handle run scanning without freezing the UI.
-    
-    This worker offloads heavy filesystem I/O and XML parsing from the main 
-    event loop. It iterates through a list of devices, identifies data folders, 
-    and uses a ThreadPoolExecutor to parse individual run metadata in parallel 
+
+    This worker offloads heavy filesystem I/O and XML parsing from the main
+    event loop. It iterates through a list of devices, identifies data folders,
+    and uses a ThreadPoolExecutor to parse individual run metadata in parallel
     within this background thread.
-    
+
     Attributes:
-        scan_finished (QtCore.pyqtSignal): Signal emitted after each device is 
+        scan_finished (QtCore.pyqtSignal): Signal emitted after each device is
             processed. Emits:
             - List[Dict[str, Any]]: The parsed scan results.
             - str: The name of the device just scanned.
             - List[str]: Keys of runs that were not found on disk.
             - bool: True if this was the last device in the queue.
     """
+
     scan_finished = QtCore.pyqtSignal(list, str, list, bool)
 
     def __init__(
-        self, 
-        devices_to_scan: List[str], 
-        known_timestamps: List[str], 
-        parent: Optional[QtCore.QObject] = None
+        self,
+        devices_to_scan: List[str],
+        known_timestamps: List[str],
+        parent: Optional[QtCore.QObject] = None,
     ) -> None:
         """Initializes the worker with device and cache context.
 
         Args:
             devices_to_scan (List[str]): List of device names to be audited.
-            known_timestamps (List[str]): Current keys in the timestamp cache 
+            known_timestamps (List[str]): Current keys in the timestamp cache
                 to determine if a run needs a fresh XML parse.
             parent (Optional[QtCore.QObject]): The Qt parent object.
         """
@@ -9416,20 +9756,18 @@ class RunScanWorker(QtCore.QThread):
 
     def run(self) -> None:
         """Executes the background scanning logic.
-        
-        For each device, it identifies existing folders and calculates which 
-        cached runs are missing. It then uses a thread pool to perform parallel 
+
+        For each device, it identifies existing folders and calculates which
+        cached runs are missing. It then uses a thread pool to perform parallel
         scans of individual run folders.
         """
         num_devices = len(self.devices_to_scan)
-        
+
         for i, data_device in enumerate(self.devices_to_scan):
             # Fetch directories, excluding internal naming conventions
             runs = FileStorage.DEV_get_logged_data_folders(data_device)
             runs = [x for x in runs if x != "_unnamed"]
-            unchecked_runs = [
-                x for x in self.known_timestamps if x.endswith(data_device)
-            ]
+            unchecked_runs = [x for x in self.known_timestamps if x.endswith(data_device)]
 
             scan_args = []
             for run in runs:
@@ -9441,15 +9779,13 @@ class RunScanWorker(QtCore.QThread):
             scan_results: List[Dict[str, Any]] = []
             if scan_args:
                 with ThreadPoolExecutor(
-                    max_workers=min(8, len(scan_args)), 
-                    thread_name_prefix=f"scan-{data_device}"
+                    max_workers=min(8, len(scan_args)), thread_name_prefix=f"scan-{data_device}"
                 ) as ex:
-                    scan_results = list(
-                        ex.map(lambda a: AnalyzeProcess._scan_run(*a), scan_args)
-                    )
+                    scan_results = list(ex.map(lambda a: AnalyzeProcess._scan_run(*a), scan_args))
 
-            is_last = (i == num_devices - 1)
+            is_last = i == num_devices - 1
             self.scan_finished.emit(scan_results, data_device, unchecked_runs, is_last)
+
 
 class TableView(QtWidgets.QTableWidget):
 
