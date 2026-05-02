@@ -1,136 +1,256 @@
-/* ui_login_theme.qss */
+/* ─────────────────────────────────────────────────────────────────────────────
+   ui_login_theme.qss  —  QATCH nanovisQ Login Window Stylesheet
+───────────────────────────────────────────────────────────────────────────── */
 
-/* ─── CENTRAL WIDGET ──────────────────────────────────────────────────────── */
-/* Background is painted by _LoginCentralWidget.paintEvent.                   */
-#centralwidget {
+/* ─── CENTRAL WIDGET & GLASS CARD ─────────────────────────────────────────── */
+#centralwidget, #loginCard {
     background: transparent;
+    border: none;
 }
 
-/* ─── GLASS CARD ──────────────────────────────────────────────────────────── */
-/* Higher opacity + stronger border so the card reads as a distinct pane.     */
-#loginCard {
-    background-color: transparent
+/* ─── GLOBAL TYPOGRAPHY ───────────────────────────────────────────────────── */
+/* Quotes added around font names to prevent Qt parser crash */
+#user_welcome, #cardTitle, #user_label, #user_info, #forgotPassword, 
+#recoverTitle, #recoverInfo, #recoverStatus, #tileName, #switchTitle, #switchSubtitle {
+    font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
-/* ─── WELCOME LABEL ───────────────────────────────────────────────────────── */
 #user_welcome {
-    background: transparent;
-    color: #0f1c2e;
-    font-size: 16pt;
+    color: rgba(60, 60, 60, 230);
+    font-size: 15pt;
     font-weight: 700;
-    letter-spacing: -0.2px; /* Tightens large headers for a cleaner look */
 }
-
-/* ─── SIGN-IN REQUIRED LABEL ──────────────────────────────────────────────── */
+#cardTitle, #recoverTitle {
+    color: rgba(60, 60, 60, 220);
+    font-size: 11pt;
+    font-weight: 700;
+}
 #user_label {
+    color: rgba(60, 60, 60, 200);
+    font-size: 8.5pt;
+    font-weight: 600;
+}
+#user_label[placeholder="true"] {
+    color: rgba(60, 60, 60, 140);
+    font-weight: 500;
+}
+#forgotPassword {
+    color: rgba(100, 110, 120, 180);
+    font-size: 9pt;
+    font-weight: 500;
+    text-decoration: none;
+}
+#forgotPassword:hover {
+    color: rgba(60, 60, 60, 220);
+    text-decoration: underline;
+}
+
+/* ─── USER AVATAR BUTTON ──────────────────────────────────────────────────── */
+QPushButton#userAvatarBtn {
+    background: rgba(229, 229, 229, 100);
+    border-radius: 35px; /* 70px Avatar */
+    border: 2px solid transparent;
+    padding: 0px;
+}
+QPushButton#userAvatarBtn:hover {
+    background: rgba(210, 215, 220, 150);
+    border: 2px solid rgba(255, 255, 255, 150);
+}
+QPushButton#userAvatarBtn:pressed {
+    background: rgba(190, 200, 210, 180);
+}
+QPushButton#userAvatarBtn[hasIcon="true"] {
     background: transparent;
-    color: #34495e;
-    font-size: 9.5pt;
-    font-weight: 600;
-    text-transform: uppercase; /* Makes the requirement feel like a clean UI element */
-    letter-spacing: 1px;
+    border: 2px solid rgba(255, 255, 255, 180);
+}
+QPushButton#userAvatarBtn[hasIcon="true"]:hover {
+    border-color: rgba(255, 255, 255, 240);
+    background: rgba(255, 255, 255, 40);
 }
 
-/* ─── INPUT FIELDS ────────────────────────────────────────────────────────── */
-QLineEdit#user_initials,
-QLineEdit#user_password {
-    background-color: rgba(255, 255, 255, 80);
-    border: 1px solid rgba(255, 255, 255, 120);
-    /* A slightly larger radius for a modern "pill" or "squircle" feel */
-    border-radius: 12px; 
-    /* Increased height and padding for better vertical balance */
-    padding: 10px 15px; 
-    color: #112233;
-    font-size: 10.5pt;
-    letter-spacing: 0.5px; /* Adds a premium feel to the text */
+/* ─── SWITCH-USER BADGE ──────────────────────────────────────────────────── */
+QPushButton#switchBadge {
+    background-color: rgba(240, 245, 250, 220);
+    border-radius: 11px;
+    color: rgba(10, 163, 230, 220);
+    font-size: 9pt;
+    font-weight: 700;
+    border: 1.5px solid rgba(255, 255, 255, 200);
+    padding: 0px;
 }
-#solidBackgroundPane {
-    background-color: #f9f9f9; /* Solid light gray */
-    border-radius: 15px;
-}
-QLineEdit#user_initials:hover,
-QLineEdit#user_password:hover {
-    /* Slight glow effect on hover */
-    background-color: rgba(255, 255, 255, 90);
-    border: 1px solid rgba(255, 255, 255, 180);
+QPushButton#switchBadge:hover {
+    background-color: rgba(255, 255, 255, 255);
 }
 
-QLineEdit#user_initials:focus,
-QLineEdit#user_password:focus {
-    /* Use the QATCH blue but with transparency for the focus ring */
-    background-color: rgba(255, 255, 255, 120);
-    border: 1.5px solid #0AA3E6;
+/* ─── THE PILL SHAPED INPUTS ──────────────────────────────────────────────── */
+QWidget#credentialsRow {
+    background: transparent;
 }
 
-/* ─── SIGN-IN BUTTON ──────────────────────────────────────────────────────── */
+QLineEdit#user_password,
+QLineEdit#recoverEmail {
+    background-color: rgba(255, 255, 255, 140);
+    border: 1px solid rgba(255, 255, 255, 220);
+    border-style: solid; /* CRITICAL: Forces OS to respect radius */
+    border-radius: 17px; /* 34px Input */
+    background-clip: padding-box;
+    padding: 0px 15px; 
+    color: rgba(60, 60, 60, 220);
+    font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 10pt;
+    selection-background-color: rgba(10, 163, 230, 80);
+}
+QLineEdit#user_password:hover,
+QLineEdit#recoverEmail:hover {
+    background-color: rgba(255, 255, 255, 180);
+    border-color: rgba(255, 255, 255, 255);
+}
+QLineEdit#user_password:focus,
+QLineEdit#recoverEmail:focus {
+    background-color: rgba(255, 255, 255, 220);
+    border: 1.5px solid rgba(10, 163, 230, 150);
+    outline: none;
+}
+
+/* ─── PASSWORD EYE ICON FIX ───────────────────────────────────────────────── */
+/* Neutralizes the hidden button Qt injects so it doesn't paint square corners */
+QLineEdit#user_password QToolButton {
+    background: transparent;
+    border: none;
+    margin: 0px;
+    padding: 0px;
+}
+QLineEdit#user_password QToolButton:hover {
+    background: rgba(10, 163, 230, 20);
+    border-radius: 12px;
+}
+
+/* ─── ACTION BUTTONS (Sign In Arrow & Send Reset) ─────────────────────────── */
 QPushButton#sign_in {
-    /* Keep your gradient but drop the overall opacity slightly */
-    background-color: qlineargradient(
-        x1: 0, y1: 0, x2: 0, y2: 1,
-        stop: 0 rgba(34, 192, 248, 230), stop: 1 rgba(10, 163, 230, 230)
-    );
-    color: #ffffff;
-    border: none; /* Remove harsh borders */
-    border-radius: 10px; /* Match input radius */
+    background-color: rgba(229, 229, 229, 150);
+    border: 1.5px solid rgba(255, 255, 255, 200);
+    border-radius: 17px; /* 34px Input */
+    padding: 0px;
+}
+QPushButton#sign_in:hover {
+    background-color: rgba(210, 215, 220, 180);
+}
+QPushButton#sign_in:pressed {
+    background-color: rgba(190, 200, 210, 200);
+    padding-left: 1px;
+    padding-top: 1px;
+}
+
+QPushButton#sendResetBtn {
+    background-color: rgba(229, 229, 229, 150);
+    border: 1.5px solid rgba(255, 255, 255, 200);
+    border-radius: 19px; /* 38px Button */
+    color: rgba(60, 60, 60, 220);
+    font-size: 10pt;
     font-weight: 600;
 }
-
-QPushButton#sign_in:hover {
-    background-color: qlineargradient(
-        x1: 0, y1: 0, x2: 0, y2: 1,
-        stop: 0 #38ccff, stop: 1 #14b2f2
-    );
+QPushButton#sendResetBtn:hover {
+    background-color: rgba(210, 215, 220, 180);
 }
-
-QPushButton#sign_in:pressed {
-    background-color: qlineargradient(
-        x1: 0, y1: 0, x2: 0, y2: 1,
-        stop: 0 #0890d0, stop: 1 #077ab8
-    );
-    padding-top: 7px;
-    padding-bottom: 5px;
-}
-
-QPushButton#sign_in:disabled {
-    background-color: rgba(180, 205, 220, 150);
-    color: rgba(255, 255, 255, 150);
-    border-color: rgba(160, 190, 210, 130);
+QPushButton#sendResetBtn:pressed {
+    background-color: rgba(190, 200, 210, 200);
 }
 
 /* ─── INFO / ERROR LABELS ─────────────────────────────────────────────────── */
 #user_info {
-    background: transparent;
-    color: #2e5070;
-    font-size: 9pt;
-    font-weight: bold;
+    color: rgba(100, 120, 140, 220);
+    font-size: 8pt;
+    font-weight: 600;
+}
+#user_error {
+    color: #c0392b;
+    font-size: 8pt;
+    font-weight: 500;
 }
 
-#user_error {
+/* ─── RECOVER PAGE TEXT ───────────────────────────────────────────────────── */
+QPushButton#backBtn {
     background: transparent;
-    color: #c0392b;
-    font-size: 9pt;
+    color: rgba(100, 110, 120, 200);
+    border: none;
+    font-size: 8.5pt;
+    font-weight: 600;
+    padding: 2px 0px;
+    text-align: left;
+}
+QPushButton#backBtn:hover {
+    color: rgba(60, 60, 60, 220);
+    text-decoration: underline;
+}
+
+#recoverInfo {
+    color: rgba(100, 110, 120, 220);
+    font-size: 8.5pt;
+}
+#recoverStatus {
+    color: rgba(46, 139, 87, 220);
+    font-size: 8.5pt;
+    font-weight: 500;
+}
+
+/* ─── USER-SWITCH DIALOG OVERRIDES ────────────────────────────────────────── */
+QLabel#switchTitle {
+    color: rgba(60, 60, 60, 220);
+    font-size: 11pt;
+    font-weight: 600;
+    padding-bottom: 2px;
+}
+QFrame#switchSep {
+    color: rgba(200, 210, 220, 150);
+    max-height: 1px;
+    border: none;
+    border-top: 1px solid rgba(200, 210, 220, 150);
+}
+QPushButton#userTileBtn {
+    background: transparent;
+    border-radius: 26px; 
+    border: 2px solid transparent;
+    padding: 0px;
+}
+QPushButton#userTileBtn:hover {
+    background-color: rgba(229, 229, 229, 120);
+}
+QPushButton#userTileBtn[current="true"] {
+    border-color: rgba(10, 163, 230, 120);
+    background: rgba(10, 163, 230, 25);
+}
+QPushButton#addTileBtn {
+    background-color: rgba(229, 229, 229, 150);
+    border-radius: 26px;
+    border: 1.5px dashed rgba(180, 190, 200, 180);
+}
+QPushButton#addTileBtn:hover {
+    background-color: rgba(210, 215, 220, 180);
+}
+QLabel#tileName {
+    color: rgba(60, 60, 60, 200);
+    font-size: 8.5pt;
+    font-weight: 500;
 }
 
 /* ─── SCROLLBARS ──────────────────────────────────────────────────────────── */
 QScrollBar:horizontal {
     border: none; background: transparent;
-    height: 10px; margin: 0px 10px;
+    height: 8px; margin: 0px;
 }
 QScrollBar:vertical {
     border: none; background: transparent;
-    width: 10px; margin: 10px 0px;
+    width: 8px; margin: 0px;
 }
 QScrollBar::handle:horizontal,
 QScrollBar::handle:vertical {
-    background: rgba(130, 130, 130, 100);
-    border-radius: 5px;
+    background: rgba(160, 175, 190, 150);
+    border-radius: 4px;
 }
 QScrollBar::handle:horizontal:hover,
 QScrollBar::handle:vertical:hover {
-    background: rgba(130, 130, 130, 180);
+    background: rgba(130, 150, 170, 200);
 }
-QScrollBar::handle:horizontal { min-width: 20px; }
-QScrollBar::handle:vertical   { min-height: 20px; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
 QScrollBar::add-line:vertical,   QScrollBar::sub-line:vertical {
     width: 0px; height: 0px; background: none;
