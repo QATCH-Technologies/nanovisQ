@@ -227,7 +227,9 @@ class UILogin:
         si.addWidget(credentialsRow, alignment=QtCore.Qt.AlignCenter)
 
         # ── CAPS LOCK INDICATOR ────────────────────────────────────────────────
-        self.floating_badge = FloatingMessageBadge(MainWindow5)
+        self.floating_badge = FloatingMessageBadge(
+            MainWindow5, os.path.join(Architecture.get_path(), "QATCH", "icons", "clear.svg")
+        )
 
         # ── REMEMBER ME CHECKBOX ───────────────────────────────────────────────
         self.remember_me = QtWidgets.QCheckBox("Remember me")
