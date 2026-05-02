@@ -37,7 +37,7 @@ from QATCH.processors.CurveOptimizer import (
 from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
 from QATCH.QModel.src.models.v6_yolo.v6_yolo import QModelV6YOLO
 from QATCH.ui.popUp import PopUp
-from QATCH.ui.runInfo import QueryRunInfo
+from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 
 TAG = "[Analyze]"
 
@@ -5079,7 +5079,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # Initialize the thread and worker for the Run Info GUI.
             self.bThread = QtCore.QThread()
-            self.bWorker = QueryRunInfo(
+            self.bWorker = QueryRunInfoWidget(
                 run_name=run_name,
                 run_path=run_path,
                 run_ruling=is_good,

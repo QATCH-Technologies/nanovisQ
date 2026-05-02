@@ -28,14 +28,11 @@ import subprocess
 import sys
 import threading
 from collections import deque
-from time import localtime, mktime, strftime, strptime, time, monotonic
+from time import localtime, strftime, time, monotonic
 from typing import List, Optional, Any, Callable
 from xml.dom import minidom
 import numpy as np
-import pandas as pd
 import pyqtgraph as pg
-import os
-import shutil
 import pyzipper
 import requests
 from dateutil import parser
@@ -44,10 +41,8 @@ from pyqtgraph import AxisItem
 from serial import serialutil
 from pathlib import Path
 
-from sympy import true
-
-from QATCH.ui.ui_main import UIMain
-from QATCH.ui.ui_login import UILogin
+from QATCH.ui.objects.ui_main import UIMain
+from QATCH.ui.objects.ui_login import UILogin
 from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.deviceFingerprint import DeviceFingerprint
@@ -72,18 +67,14 @@ from QATCH.processors.InterpTemps import (
     InterpTempsProcess,
     QueueCommandFormat,
 )
-from QATCH.ui.configure_data import UIConfigureData
-from QATCH.ui.export import Ui_Export
-from QATCH.ui.mainWindow_ui import (
-    Ui_Controls,
-    Ui_Info,
-    Ui_Logger,
-    Ui_Plots,
-)
+from QATCH.ui.widgets.export_widget import Ui_Export
+from QATCH.ui.objects.ui_controls import UIControls
+from QATCH.ui.objects.ui_plots import UIPlots
+from QATCH.ui.objects.ui_logger import UILogger
+from QATCH.ui.objects.ui_info import UIInfo
 from QATCH.ui.popUp import PopUp, QueryComboBox
-from QATCH.ui.preferences_ui import PreferencesUI
-from QATCH.ui.runInfo import QueryRunInfo, RunInfoWindow
-from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+from QATCH.ui.widgets.user_preferences_widget import UserPreferencesWidget
+from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
@@ -270,7 +261,7 @@ class LoginWindow(QtWidgets.QMainWindow):
 class LoggerWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.ui4 = Ui_Logger()
+        self.ui4 = UILogger()
         self.ui4.setupUi(self)
 
     def closeEvent(self, event):
@@ -292,7 +283,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
 class PlotsWindow(QtWidgets.QMainWindow):
     def __init__(self, samples=Constants.argument_default_samples):
         super().__init__()
-        self.ui2 = Ui_Plots()
+        self.ui2 = UIPlots()
         self.ui2.setupUi(self)
 
     """
@@ -343,7 +334,7 @@ class WorkerSnapshot:
 class InfoWindow(QtWidgets.QMainWindow):
     def __init__(self, samples=Constants.argument_default_samples):
         super().__init__()
-        self.ui3 = Ui_Info()
+        self.ui3 = UIInfo()
         self.ui3.setupUi(self)
 
     def closeEvent(self, event):
@@ -368,11 +359,11 @@ class ControlsWindow(QtWidgets.QMainWindow):
     def __init__(self, parent, samples=Constants.argument_default_samples):
         self.parent = parent
         super().__init__()
-        self.ui1 = Ui_Controls()
+        self.ui1 = UIControls()
         self.ui1.setupUi(self)
         self.ui_export = Ui_Export()
         # self.ui_configure_data = UIConfigureData()
-        self.ui_preferences = PreferencesUI(self)
+        self.ui_preferences = UserPreferencesWidget(self)
         # self.userrole
         self.current_timer = QtCore.QTimer()
         # self.current_timer.timeout.connect(self.double_toggle_plots)
@@ -1224,7 +1215,7 @@ class Rename_Output_Files(QtCore.QObject):
                     )
                     # TODO: more secure to pass user_hash (filename)
                     self.bWorker.append(
-                        QueryRunInfo(
+                        QueryRunInfoWidget(
                             run_directory,
                             new_run_path,
                             is_good,
