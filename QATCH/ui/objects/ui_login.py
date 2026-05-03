@@ -1,373 +1,492 @@
 import os
-from typing import List, Optional, Tuple
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants
-from QATCH.ui.popUp import PopUp
 from QATCH.ui.components.floating_message_badge import FloatingMessageBadge
 from QATCH.ui.components.glass_card import GlassCard
 from QATCH.ui.components.sliding_panel import SlidingPanel
 from QATCH.ui.widgets.login_centeral_widget import LoginCentralWidget
-from QATCH.ui.dialogs.switch_user_dialog import SwitchUserDialog
 
-_CARD_W: int = 290
-_AVATAR_D: int = 70
-_INPUT_H: int = 26
-_BTN_H: int = 28
-_PAGE_H: int = 354
+_CARD_W: int = 320
+_INPUT_H: int = 34
+_BTN_H: int = 38
+_PAGE_H: int = 400
+
+# Page indices — Create is LEFT of Sign In so it slides in from the left
+_P_CREATE = 0
+_P_SIGNIN = 1
+_P_RECOVER = 2
+
+
+class GlassLineEdit(QtWidgets.QLineEdit):
+    """QLineEdit with a fully custom glass background and an animated shimmer border on focus.
+
+    All background/border painting is owned by this widget so Qt's stylesheet
+    cannot interfere.  Only typography (text, placeholder, cursor, trailing
+    actions) is delegated back to the base class.
+    """
+
+    _R: float = _INPUT_H / 2.0  # pill radius — stays in sync with _INPUT_H
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._shimmer_t: float = 0.0
+        self._focused: bool = False
+        self._in_error: bool = False
+
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(12)  # ~83 fps — smooth sweep
+        self._timer.timeout.connect(self._tick)
+
+        self.setFrame(False)
+        self.setAutoFillBackground(False)
+        # Only define typography; background and border are painted manually.
+        self.setStyleSheet("""
+            QLineEdit {
+                background: transparent;
+                border: none;
+                padding: 0px 15px;
+                color: rgba(38, 48, 58, 230);
+                font-size: 10pt;
+                selection-background-color: transparent;
+                selection-color: rgba(38, 48, 58, 230);
+            }
+            QLineEdit QToolButton { background: transparent; border: none; }
+            QLineEdit QToolButton:hover {
+                background: rgba(255, 255, 255, 55);
+                border-radius: 12px;
+            }
+        """)
+
+    # ── public ────────────────────────────────────────────────────────────────
+    def set_error(self, on: bool) -> None:
+        if on != self._in_error:
+            self._in_error = on
+            self.update()
+
+    # ── animation ─────────────────────────────────────────────────────────────
+    def _tick(self) -> None:
+        self._shimmer_t = min(1.0, self._shimmer_t + 0.022)
+        self.update()
+        if self._shimmer_t >= 1.0:
+            self._timer.stop()
+
+    # ── Qt events ─────────────────────────────────────────────────────────────
+    def focusInEvent(self, event: QtGui.QFocusEvent) -> None:
+        super().focusInEvent(event)
+        self._focused = True
+        self._in_error = False
+        self._shimmer_t = 0.0
+        self._timer.start()
+        self.update()
+
+    def focusOutEvent(self, event: QtGui.QFocusEvent) -> None:
+        super().focusOutEvent(event)
+        self._focused = False
+        self._timer.stop()
+        self.update()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # type: ignore[override]
+        r = self._R - 1.0
+        rect = QtCore.QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        # ── 1. Glass background ───────────────────────────────────────────────
+        if self._in_error:
+            fill = QtGui.QColor(255, 220, 220, 68)
+        elif self._focused:
+            fill = QtGui.QColor(255, 255, 255, 100)
+        else:
+            fill = QtGui.QColor(255, 255, 255, 58)
+
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(QtGui.QBrush(fill))
+        p.drawRoundedRect(rect, r, r)
+
+        # ── 2. Border ─────────────────────────────────────────────────────────
+        p.setBrush(QtCore.Qt.NoBrush)
+
+        if self._in_error:
+            p.setPen(QtGui.QPen(QtGui.QColor(210, 55, 55, 150), 1.0))
+
+        elif self._focused:
+            t = self._shimmer_t
+            W = float(self.width())
+            grad = QtGui.QLinearGradient(0.0, 0.0, W, 0.0)
+
+            if t < 1.0:
+                # Bright peak sweeps left → right; trailing edge fades to accent
+                spread = 0.30
+                lo = QtGui.QColor(185, 218, 248, 115)  # settled accent
+                hi = QtGui.QColor(255, 255, 255, 240)  # shimmer peak
+
+                grad.setColorAt(0.0, lo)
+                pre = max(0.0, t - spread)
+                if pre > 0.0:
+                    grad.setColorAt(pre, lo)
+                grad.setColorAt(max(0.0, t - spread * 0.12), hi)
+                grad.setColorAt(min(1.0, t + spread * 0.12), hi)
+                post = min(1.0, t + spread)
+                if post < 1.0:
+                    grad.setColorAt(post, lo)
+                grad.setColorAt(1.0, lo)
+            else:
+                # Settled: uniform soft accent
+                c = QtGui.QColor(185, 218, 248, 130)
+                grad.setColorAt(0.0, c)
+                grad.setColorAt(1.0, c)
+
+            p.setPen(QtGui.QPen(QtGui.QBrush(grad), 1.5))
+
+        else:
+            p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 105), 1.0))
+
+        p.drawRoundedRect(rect, r, r)
+        p.end()
+
+        # Delegate text / placeholder / cursor / trailing-action rendering to Qt
+        super().paintEvent(event)
+
+
+class _SignInTransition(QtWidgets.QWidget):
+    """Full-screen overlay that plays the sign-in success animation.
+
+    Timeline (total ~700 ms, InOutCubic easing):
+      t = 0.00 → 0.35  — dark veil rises while the login snapshot zooms in + fades
+      t = 0.35 → 0.65  — veil holds dark; main UI starts loading underneath
+      t = 0.65 → 1.00  — veil dissolves, revealing the newly loaded main UI
+
+    The caller fires ``start_download`` independently via a short timer so the
+    main window is ready by the time the overlay is fully transparent.
+    """
+
+    def __init__(
+        self,
+        login_window: QtWidgets.QMainWindow,
+        duration_ms: int = 700,
+    ) -> None:
+        super().__init__(
+            None,
+            QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.Tool,
+        )
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        self.setAttribute(QtCore.Qt.WA_ShowWithoutActivating)
+
+        # Grab the login window before anything changes
+        self._snapshot: QtGui.QPixmap = login_window.grab()
+
+        screen = QtWidgets.QApplication.screenAt(login_window.pos())
+        if screen is None:
+            screen = QtWidgets.QApplication.primaryScreen()
+        self.setGeometry(screen.geometry())
+        self.show()
+        self.raise_()
+
+        self._t: float = 0.0
+        anim = QtCore.QPropertyAnimation(self, b"animProgress", self)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setDuration(duration_ms)
+        anim.setEasingCurve(QtCore.QEasingCurve.InOutCubic)
+        anim.finished.connect(self.close)
+        anim.start(QtCore.QAbstractAnimation.DeleteWhenStopped)
+
+    # ── Animated property ─────────────────────────────────────────────────────
+    @QtCore.pyqtProperty(float)
+    def animProgress(self) -> float:  # type: ignore[override]
+        return self._t
+
+    @animProgress.setter  # type: ignore[override]
+    def animProgress(self, val: float) -> None:
+        self._t = val
+        self.update()
+
+    # ── Painting ──────────────────────────────────────────────────────────────
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # type: ignore[override]
+        t = self._t
+        p = QtGui.QPainter(self)
+        p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
+
+        # Dark veil: ramps up to t=0.38, holds, then fades out by t=1.0
+        if t < 0.38:
+            veil_alpha = t / 0.38
+        else:
+            veil_alpha = max(0.0, 1.0 - (t - 0.38) / 0.62)
+        p.fillRect(self.rect(), QtGui.QColor(10, 18, 34, int(veil_alpha * 215)))
+
+        # Login snapshot: zooms gently in (1.0 → 1.08) and fades out over first 60%
+        snap_alpha = max(0.0, 1.0 - t / 0.60)
+        if snap_alpha > 0.0:
+            scale = 1.0 + t * 0.10
+            pm = self._snapshot
+            nw = int(pm.width() * scale)
+            nh = int(pm.height() * scale)
+            cx = self.width() // 2
+            cy = self.height() // 2
+            dest = QtCore.QRect(cx - nw // 2, cy - nh // 2, nw, nh)
+            p.setOpacity(snap_alpha)
+            p.drawPixmap(dest, pm)
+
+        p.end()
+
+
+class _UserInfoProxy:
+    """Compatibility shim: routes legacy user_info label calls to the floating badge."""
+
+    def __init__(self, badge: FloatingMessageBadge, card) -> None:
+        self._badge = badge
+        self._card = card
+
+    def clear(self) -> None:
+        self._badge.clear()
+
+    def setText(self, text: str) -> None:
+        if text and text.strip():
+            self._badge.show_message(text.strip(), is_error=False, parent_widget=self._card)
+        else:
+            self._badge.clear()
+
+    def text(self) -> str:
+        return ""
+
+    # Absorb any other QLabel-like calls silently so legacy code never crashes.
+    def __getattr__(self, name):
+        return lambda *a, **kw: None
+
+
+class _CapsWatcher(QtCore.QObject):
+    """Event filter attached to the password field.
+
+    Checks the real OS caps-lock state both on FocusIn (so the indicator
+    appears as soon as the user clicks into the field) and on every KeyRelease
+    (so toggling caps lock while typing is caught immediately).
+    """
+
+    def __init__(self, login_ui: "UILogin", parent: QtCore.QObject = None) -> None:
+        super().__init__(parent)
+        self._ui = login_ui
+
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if event.type() in (QtCore.QEvent.FocusIn, QtCore.QEvent.KeyRelease):
+            self._ui.update_caps_lock_state(self._ui._check_caps_lock())
+        return False  # never consume the event
 
 
 class UILogin:
-    # ── setup ─────────────────────────────────────────────────────────────────
+    # ── Setup ─────────────────────────────────────────────────────────────────
     def setup_ui(
         self,
         MainWindow5: QtWidgets.QMainWindow,
         parent: QtWidgets.QMainWindow,
     ) -> None:
-        """Initialise and arrange all UI elements for the login window."""
+        """Initialise all UI elements for the simplified login window."""
         self.parent = parent
         self.caps_lock_on = False
+        self._login_window: QtWidgets.QMainWindow = MainWindow5  # used by transition
 
-        global _AVATAR_D, _CARD_W, _INPUT_H, _PAGE_H, _BTN_H
-        _AVATAR_D = 70
+        global _CARD_W, _INPUT_H, _PAGE_H, _BTN_H
         _CARD_W = 320
         _INPUT_H = 34
-        _PAGE_H = 300
         _BTN_H = 38
+        _PAGE_H = 400
 
-        # ── Window basics ──────────────────────────────────────────────────────
+        # ── Window ────────────────────────────────────────────────────────────
         MainWindow5.setObjectName("MainWindow5")
-        MainWindow5.setMinimumSize(QtCore.QSize(1000, 500))
-        MainWindow5.resize(500, 500)
+        MainWindow5.setMinimumSize(QtCore.QSize(800, 500))
+        MainWindow5.resize(800, 500)
         MainWindow5.setTabShape(QtWidgets.QTabWidget.Rounded)
 
-        # ── Custom central widget ──────────────────────────────────────────────
+        # ── Central widget ────────────────────────────────────────────────────
         self.centralwidget = LoginCentralWidget(MainWindow5)
         self.centralwidget.setObjectName("centralwidget")
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
-        self.centralwidget.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         MainWindow5.setCentralWidget(self.centralwidget)
 
-        # ── INJECT MASTER STYLESHEET ───────────────────────────────────────────
-        MASTER_QSS = f"""
-            QWidget {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }}
-            
-            #centralwidget {{ background: transparent; border: none; }}
-            #slidingPanel {{ background: transparent; }}
-
-            /* GlassCard renders its own background, border, and rounding in paintEvent. */
-            #loginCard {{ background: transparent; border: none; }}
-
-            #user_welcome {{ color: rgba(60, 60, 60, 230); font-size: 15pt; font-weight: 700; }}
-        """
-        MainWindow5.setStyleSheet(MASTER_QSS)
+        MainWindow5.setStyleSheet("""
+            QWidget {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            }
+            #centralwidget { background: transparent; border: none; }
+            #slidingPanel  { background: transparent; border: none; }
+            #loginCard     { background: transparent; border: none; }
+        """)
 
         # ══════════════════════════════════════════════════════════════════════
-        # PAGE 0 — Sign-In
+        # PAGE 0 — Sign In
         # ══════════════════════════════════════════════════════════════════════
         signInPage = QtWidgets.QWidget()
         signInPage.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
         si = QtWidgets.QVBoxLayout(signInPage)
-        si.setContentsMargins(28, 22, 28, 18)
-        si.setSpacing(9)
-        si.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignHCenter)
+        si.setContentsMargins(28, 26, 28, 22)
+        si.setSpacing(10)
+        si.setAlignment(QtCore.Qt.AlignTop)
 
-        cardTitle = QtWidgets.QLabel("Sign In")
-        cardTitle.setObjectName("cardTitle")
-        cardTitle.setAlignment(QtCore.Qt.AlignCenter)
-        cardTitle.setStyleSheet("color: rgba(60, 60, 60, 220); font-size: 11pt; font-weight: 700;")
-        si.addWidget(cardTitle)
+        # ── Logo ──────────────────────────────────────────────────────────────
+        logo_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-icon.png")
+        logo_pm = QtGui.QPixmap(logo_path)
+        if not logo_pm.isNull():
+            logo_pm = logo_pm.scaled(
+                54,
+                54,
+                QtCore.Qt.KeepAspectRatio,
+                QtCore.Qt.SmoothTransformation,
+            )
+        logoLabel = QtWidgets.QLabel()
+        logoLabel.setAlignment(QtCore.Qt.AlignCenter)
+        logoLabel.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        if not logo_pm.isNull():
+            logoLabel.setPixmap(logo_pm)
+            logoLabel.setFixedSize(54, 54)
+        si.addWidget(logoLabel, alignment=QtCore.Qt.AlignCenter)
+        si.addSpacing(2)
 
-        # ── Avatar ─────────────────────────────────────────────────────────────
-        avatarOuter = QtWidgets.QWidget()
-        avatarOuter.setFixedSize(_AVATAR_D, _AVATAR_D)
-        avatarOuter.setContentsMargins(0, 0, 0, 0)
-
-        self.userAvatarBtn = QtWidgets.QPushButton("", avatarOuter)
-        self.userAvatarBtn.setObjectName("userAvatarBtn")
-        self.userAvatarBtn.setFixedSize(_AVATAR_D, _AVATAR_D)
-        self.userAvatarBtn.move(0, 0)
-        self.userAvatarBtn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.userAvatarBtn.setToolTip("Click to switch user account")
-
-        self.userAvatarBtn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: rgba(229, 229, 229, 100);
-                border-radius: {_AVATAR_D // 2}px; 
-                border: 2px solid transparent;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(210, 215, 220, 150);
-                border: 2px solid rgba(255, 255, 255, 150);
-            }}
-            QPushButton[hasIcon="true"] {{
-                background-color: transparent;
-                border: 2px solid rgba(255, 255, 255, 180);
-            }}
-            QPushButton[hasIcon="true"]:hover {{
-                border-color: rgba(255, 255, 255, 240);
-                background-color: rgba(255, 255, 255, 40);
-            }}
-        """)
-        self.userAvatarBtn.clicked.connect(self._show_user_switch_dialog)
-        si.addWidget(avatarOuter, alignment=QtCore.Qt.AlignCenter)
-
-        # ── Selected user label ────────────────────────────────────────────────
-        self.user_label = QtWidgets.QLabel("Select a User")
-        self.user_label.setObjectName("user_label")
-        self.user_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.user_label.setFixedHeight(18)
-        self.user_label.setProperty("placeholder", True)
-        self.user_label.setStyleSheet(
-            "color: rgba(60, 60, 60, 200); font-size: 8.5pt; font-weight: 600;"
-        )
-        si.addWidget(self.user_label, alignment=QtCore.Qt.AlignCenter)
-
+        # Title
+        siTitle = QtWidgets.QLabel("Sign In")
+        siTitle.setObjectName("cardTitle")
+        siTitle.setAlignment(QtCore.Qt.AlignCenter)
+        siTitle.setStyleSheet("color: rgba(50, 55, 65, 220); font-size: 12pt; font-weight: 700;")
+        si.addWidget(siTitle)
         si.addSpacing(4)
 
-        self.user_initials = QtWidgets.QLineEdit()
-        self.user_initials.setObjectName("user_initials")
-        self.user_initials.setMaxLength(4)
-        self.user_initials.setVisible(False)
+        # Username field
+        self.user_username = GlassLineEdit()
+        self.user_username.setObjectName("user_username")
+        self.user_username.setFixedHeight(_INPUT_H)
+        self.user_username.setPlaceholderText("Username")
+        self.user_username.textChanged.connect(lambda: self.user_username.set_error(False))
+        self.user_username.returnPressed.connect(lambda: self.user_password.setFocus())
+        si.addWidget(self.user_username)
 
-        # ── Password + compact sign-in row ──────────────────────────────────────
-        credentialsRow = QtWidgets.QWidget()
-        credentialsRow.setObjectName("credentialsRow")
-        credentialsRow.setFixedWidth(_CARD_W - 56)
-        credentialsRow.setFixedHeight(_INPUT_H)
+        # Alias: legacy code references user_initials — username serves the same role
+        self.user_initials = self.user_username
 
-        credentials = QtWidgets.QHBoxLayout(credentialsRow)
-        credentials.setContentsMargins(0, 0, 0, 0)
-        credentials.setSpacing(8)
-
-        # 1. DIRECTLY STYLED PASSWORD FIELD
-        self.user_password = QtWidgets.QLineEdit()
+        # Password field
+        self.user_password = GlassLineEdit()
         self.user_password.setObjectName("user_password")
         self.user_password.setFixedHeight(_INPUT_H)
         self.user_password.setPlaceholderText("Password")
         self.user_password.setEchoMode(QtWidgets.QLineEdit.Password)
-
-        # ── NEW: Persistent Glass Border & Neutral Selection ──
-        # ── STORE STYLES FOR STATE SWAPPING ──
-
-        self._pw_style_normal = f"""
-            QLineEdit {{
-                background-color: rgba(250, 252, 255, 160);
-                border: 1.5px solid rgba(180, 195, 210, 180);
-                border-style: solid;
-                border-radius: {_INPUT_H // 2}px; 
-                padding: 0px 15px;
-                color: rgba(40, 50, 60, 240);
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-                font-size: 10pt;
-                selection-background-color: rgba(10, 163, 230, 100);
-            }}
-            QLineEdit:hover {{ background-color: rgba(255, 255, 255, 200); border-color: rgba(10, 163, 230, 150); }}
-            QLineEdit:focus {{ background-color: rgba(255, 255, 255, 255); border: 2px solid #0AA3E6; outline: none; }}
-            QLineEdit QToolButton {{ background: transparent; border: none; margin: 0px; padding: 0px; }}
-            QLineEdit QToolButton:hover {{ background: rgba(10, 163, 230, 20); border-radius: 12px; }}
-        """
-
-        self._pw_style_error = f"""
-            QLineEdit {{
-                background-color: rgba(255, 230, 230, 160); /* Light red frosted tint */
-                border: 1.5px solid rgba(230, 50, 50, 200); /* Glassy red border */
-                border-style: solid;
-                border-radius: {_INPUT_H // 2}px; 
-                padding: 0px 15px;
-                color: rgba(200, 30, 30, 255);
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-                font-size: 10pt;
-                selection-background-color: rgba(230, 50, 50, 80);
-            }}
-            QLineEdit:focus {{ background-color: rgba(255, 245, 245, 255); border: 2px solid rgba(255, 50, 50, 255); outline: none; }}
-            QLineEdit QToolButton {{ background: transparent; border: none; margin: 0px; padding: 0px; }}
-            QLineEdit QToolButton:hover {{ background: rgba(230, 50, 50, 20); border-radius: 12px; }}
-        """
-
-        # Apply normal style to start
-        self.user_password.setStyleSheet(self._pw_style_normal)
-
-        # Revert back to normal automatically when the user starts typing a correction
-        self.user_password.textChanged.connect(
-            lambda: self.user_password.setStyleSheet(self._pw_style_normal)
-        )
-
-        self.user_password.installEventFilter(MainWindow5)
+        self.user_password.textChanged.connect(lambda: self.user_password.set_error(False))
         self.user_password.returnPressed.connect(self.action_sign_in)
-        credentials.addWidget(self.user_password, stretch=1)
+        self.user_password.installEventFilter(MainWindow5)
 
-        # 2. DIRECTLY STYLED SIGN-IN BUTTON
-        self.sign_in = QtWidgets.QPushButton()
-        self.sign_in.setObjectName("sign_in")
-        self.sign_in.setStyleSheet(f"""
-            QPushButton {{
-                background-color: rgba(229, 229, 229, 150);
-                border: 1.5px solid rgba(255, 255, 255, 200);
-                border-style: solid;
-                border-radius: {_INPUT_H // 2}px; 
-            }}
-            QPushButton:hover {{ background-color: rgba(210, 215, 220, 180); }}
-            QPushButton:pressed {{ background-color: rgba(190, 200, 210, 200); }}
-        """)
-
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "right-arrow.svg")
-        self.sign_in.setIcon(QtGui.QIcon(icon_path))
-        self.sign_in.setIconSize(QtCore.QSize(24, 24))
-        self.sign_in.setFixedSize(_INPUT_H, _INPUT_H)
-        self.sign_in.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.sign_in.setToolTip("Sign in")
-        self.sign_in.setAccessibleName("Sign In")
-        self.sign_in.clicked.connect(self.action_sign_in)
-        self.sign_in.installEventFilter(MainWindow5)
-
-        credentials.addWidget(self.sign_in, alignment=QtCore.Qt.AlignVCenter)
-        si.addWidget(credentialsRow, alignment=QtCore.Qt.AlignCenter)
-
-        # ── CAPS LOCK INDICATOR ────────────────────────────────────────────────
-        self.floating_badge = FloatingMessageBadge(
-            MainWindow5, os.path.join(Architecture.get_path(), "QATCH", "icons", "clear.svg")
+        # Eye (show/hide password) action
+        self.visibleIcon = QtGui.QIcon(
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "eye-on.svg")
         )
+        self.hiddenIcon = QtGui.QIcon(
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "eye-off.svg")
+        )
+        self.password_shown = False
+        self.togglepasswordAction = self.user_password.addAction(
+            self.visibleIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.togglepasswordAction.triggered.connect(self.on_toggle_password_Action)
+        si.addWidget(self.user_password)
 
-        # ── REMEMBER ME CHECKBOX ───────────────────────────────────────────────
-        self.remember_me = QtWidgets.QCheckBox("Remember me")
-        self.remember_me.setObjectName("rememberMe")
-        self.remember_me.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        # Caps Lock indicator — always occupies its row; text is blank when off
+        self.caps_indicator = QtWidgets.QLabel("")
+        self.caps_indicator.setObjectName("capsIndicator")
+        self.caps_indicator.setAlignment(QtCore.Qt.AlignCenter)
+        self.caps_indicator.setFixedHeight(16)
+        self.caps_indicator.setStyleSheet(
+            "color: rgba(200, 130, 30, 235); font-size: 7.5pt; font-weight: 600;"
+        )
+        si.addWidget(self.caps_indicator, alignment=QtCore.Qt.AlignCenter)
 
-        # Inline glassy style for the checkbox
-        self.remember_me.setStyleSheet("""
-            QCheckBox {
-                color: rgba(100, 110, 120, 200);
-                font-size: 8.5pt;
-                font-weight: 500;
-                spacing: 8px; /* Space between box and text */
+        # Sign In button (primary / accent)
+        self.sign_in_btn = QtWidgets.QPushButton("Sign In")
+        self.sign_in_btn.setObjectName("signInBtn")
+        self.sign_in_btn.setFixedHeight(_BTN_H)
+        self.sign_in_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.sign_in_btn.setStyleSheet(self._make_primary_btn_style())
+        self.sign_in_btn.clicked.connect(self.action_sign_in)
+        si.addWidget(self.sign_in_btn)
+
+        si.addStretch()
+
+        # Create Account link
+        createAccountLbl = QtWidgets.QLabel("Create Account")
+        createAccountLbl.setObjectName("createAccountLink")
+        createAccountLbl.setAlignment(QtCore.Qt.AlignCenter)
+        createAccountLbl.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        createAccountLbl.setStyleSheet("""
+            QLabel {
+                color: rgba(10, 163, 230, 210);
+                font-size: 9pt; font-weight: 500;
             }
-            QCheckBox:hover { color: rgba(60, 60, 60, 220); }
-            QCheckBox::indicator {
-                width: 14px;
-                height: 14px;
-                border-radius: 4px;
-                border: 1px solid rgba(180, 195, 210, 180);
-                background-color: rgba(255, 255, 255, 140);
-            }
-            QCheckBox::indicator:hover {
-                border-color: #0AA3E6;
-                background-color: rgba(255, 255, 255, 220);
-            }
-            QCheckBox::indicator:checked {
-                background-color: #0AA3E6;
-                border: 1px solid #0AA3E6;
-            }
+            QLabel:hover { color: rgba(10, 130, 200, 255); text-decoration: underline; }
         """)
-        si.addWidget(self.remember_me, alignment=QtCore.Qt.AlignCenter)
+        createAccountLbl.mousePressEvent = lambda _e: self._slide_to(_P_CREATE)
+        si.addWidget(createAccountLbl)
 
-        # ── ERROR LABEL ────────────────────────────────────────────────────────
-        self.user_error = QtWidgets.QLabel("")
-        self.user_error = QtWidgets.QLabel("")
-        self.user_error.setObjectName("user_error")
-        self.user_error.setFixedHeight(16)
-        si.addWidget(self.user_error, alignment=QtCore.Qt.AlignCenter)
-
-        si.addSpacing(10)
-        self.forgotPassword = QtWidgets.QLabel("Forgot Password?")
-        self.forgotPassword.setObjectName("forgotPassword")
-        self.forgotPassword.setAlignment(QtCore.Qt.AlignCenter)
-        self.forgotPassword.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.forgotPassword.setFixedHeight(20)
-        self.forgotPassword.setStyleSheet("""
-            QLabel { color: rgba(100, 110, 120, 180); font-size: 9pt; font-weight: 500; }
+        # Forgot Password link
+        forgotPasswordLbl = QtWidgets.QLabel("Forgot Password?")
+        forgotPasswordLbl.setObjectName("forgotPassword")
+        forgotPasswordLbl.setAlignment(QtCore.Qt.AlignCenter)
+        forgotPasswordLbl.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        forgotPasswordLbl.setStyleSheet("""
+            QLabel {
+                color: rgba(100, 110, 120, 180);
+                font-size: 9pt; font-weight: 500;
+            }
             QLabel:hover { color: rgba(60, 60, 60, 220); text-decoration: underline; }
         """)
-        self.forgotPassword.mousePressEvent = lambda _e: self._slide_to_recover()
-        si.addWidget(self.forgotPassword)
+        forgotPasswordLbl.mousePressEvent = lambda _e: self._slide_to(_P_RECOVER)
+        si.addWidget(forgotPasswordLbl)
 
         # ══════════════════════════════════════════════════════════════════════
-        # PAGE 1 — Recover Password
+        # PAGE 1 — Forgot Password
         # ══════════════════════════════════════════════════════════════════════
         recoverPage = QtWidgets.QWidget()
         recoverPage.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
         rec = QtWidgets.QVBoxLayout(recoverPage)
         rec.setContentsMargins(28, 18, 28, 18)
-        rec.setSpacing(9)
+        rec.setSpacing(10)
         rec.setAlignment(QtCore.Qt.AlignTop)
 
-        backBtn = QtWidgets.QPushButton("← Back to Sign In")
-        backBtn.setObjectName("backBtn")
-        backBtn.setFixedHeight(24)
-        backBtn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        backBtn.setStyleSheet("""
-            QPushButton { background: transparent; color: rgba(100, 110, 120, 200); border: none; font-size: 8.5pt; font-weight: 600; text-align: left; }
-            QPushButton:hover { color: rgba(60, 60, 60, 220); text-decoration: underline; }
-        """)
-        backBtn.clicked.connect(self._slide_to_signin)
-        rec.addWidget(backBtn, alignment=QtCore.Qt.AlignLeft)
-
-        recoverTitle = QtWidgets.QLabel("Reset Password")
-        recoverTitle.setObjectName("recoverTitle")
-        recoverTitle.setAlignment(QtCore.Qt.AlignCenter)
-        recoverTitle.setStyleSheet(
-            "color: rgba(60, 60, 60, 220); font-size: 11pt; font-weight: 700;"
+        rec.addWidget(
+            self._make_back_btn("← Back to Sign In", lambda: self._slide_to(_P_SIGNIN)),
+            alignment=QtCore.Qt.AlignLeft,
         )
-        rec.addWidget(recoverTitle)
 
-        recoverInfo = QtWidgets.QLabel(
-            "Enter the email address linked to your account\n"
-            "and we'll send you a password reset link."
+        recTitle = QtWidgets.QLabel("Reset Password")
+        recTitle.setObjectName("recoverTitle")
+        recTitle.setAlignment(QtCore.Qt.AlignCenter)
+        recTitle.setStyleSheet("color: rgba(50, 55, 65, 220); font-size: 12pt; font-weight: 700;")
+        rec.addWidget(recTitle)
+
+        recInfo = QtWidgets.QLabel(
+            "Enter your email address and we'll\nsend you a password reset link."
         )
-        recoverInfo.setObjectName("recoverInfo")
-        recoverInfo.setAlignment(QtCore.Qt.AlignCenter)
-        recoverInfo.setWordWrap(True)
-        recoverInfo.setStyleSheet("color: rgba(100, 110, 120, 220); font-size: 8.5pt;")
-        rec.addWidget(recoverInfo)
+        recInfo.setAlignment(QtCore.Qt.AlignCenter)
+        recInfo.setWordWrap(True)
+        recInfo.setStyleSheet("color: rgba(100, 110, 120, 220); font-size: 8.5pt;")
+        rec.addWidget(recInfo)
 
-        self.recoverEmail = QtWidgets.QLineEdit()
+        self.recoverEmail = GlassLineEdit()
         self.recoverEmail.setObjectName("recoverEmail")
         self.recoverEmail.setPlaceholderText("Email Address")
         self.recoverEmail.setFixedHeight(_INPUT_H)
-
-        self.recoverEmail.setStyleSheet(f"""
-            QLineEdit {{
-                background-color: rgba(255, 255, 255, 140);
-                border: 1.5px solid rgba(255, 255, 255, 160);
-                border-style: solid;
-                border-radius: {_INPUT_H // 2}px; 
-                padding: 0px 15px;
-                color: rgba(60, 60, 60, 220);
-                font-size: 10pt;
-                selection-background-color: rgba(200, 210, 220, 150);
-                selection-color: rgba(40, 40, 40, 255);
-            }}
-            QLineEdit:hover {{ background-color: rgba(255, 255, 255, 180); border-color: rgba(255, 255, 255, 220); }}
-            QLineEdit:focus {{ background-color: rgba(255, 255, 255, 240); border: 1.5px solid rgba(255, 255, 255, 255); outline: none; }}
-        """)
         rec.addWidget(self.recoverEmail)
 
         self.sendResetBtn = QtWidgets.QPushButton("Send Reset Link")
         self.sendResetBtn.setObjectName("sendResetBtn")
         self.sendResetBtn.setFixedHeight(_BTN_H)
         self.sendResetBtn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.sendResetBtn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: rgba(229, 229, 229, 150);
-                border: 1.5px solid rgba(255, 255, 255, 200);
-                border-style: solid;
-                border-radius: {_BTN_H // 2}px; 
-                color: rgba(60, 60, 60, 220);
-                font-size: 10pt; font-weight: 600;
-            }}
-            QPushButton:hover {{ background-color: rgba(210, 215, 220, 180); }}
-            QPushButton:pressed {{ background-color: rgba(190, 200, 210, 200); }}
-        """)
+        self.sendResetBtn.setStyleSheet(self._make_primary_btn_style())
         self.sendResetBtn.clicked.connect(self._on_send_reset)
         rec.addWidget(self.sendResetBtn)
 
         self.recoverStatus = QtWidgets.QLabel("")
-        self.recoverStatus.setObjectName("recoverStatus")
         self.recoverStatus.setAlignment(QtCore.Qt.AlignCenter)
         self.recoverStatus.setWordWrap(True)
-        self.recoverStatus.setFixedHeight(36)
+        self.recoverStatus.setFixedHeight(34)
         self.recoverStatus.setStyleSheet(
             "color: rgba(46, 139, 87, 220); font-size: 8.5pt; font-weight: 500;"
         )
@@ -375,31 +494,86 @@ class UILogin:
         rec.addStretch()
 
         # ══════════════════════════════════════════════════════════════════════
+        # PAGE 2 — Create Account
         # ══════════════════════════════════════════════════════════════════════
-        # Sliding panel and Glass Card
+        createPage = QtWidgets.QWidget()
+        createPage.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        cr = QtWidgets.QVBoxLayout(createPage)
+        cr.setContentsMargins(28, 18, 28, 18)
+        cr.setSpacing(8)
+        cr.setAlignment(QtCore.Qt.AlignTop)
+
+        cr.addWidget(
+            self._make_back_btn("← Back to Sign In", lambda: self._slide_to(_P_SIGNIN)),
+            alignment=QtCore.Qt.AlignLeft,
+        )
+
+        crTitle = QtWidgets.QLabel("Create Account")
+        crTitle.setAlignment(QtCore.Qt.AlignCenter)
+        crTitle.setStyleSheet("color: rgba(50, 55, 65, 220); font-size: 12pt; font-weight: 700;")
+        cr.addWidget(crTitle)
+
+        self.newUsername = GlassLineEdit()
+        self.newUsername.setPlaceholderText("Username")
+        self.newUsername.setFixedHeight(_INPUT_H)
+        cr.addWidget(self.newUsername)
+
+        self.newPassword = GlassLineEdit()
+        self.newPassword.setPlaceholderText("Password")
+        self.newPassword.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.newPassword.setFixedHeight(_INPUT_H)
+        cr.addWidget(self.newPassword)
+
+        self.confirmPassword = GlassLineEdit()
+        self.confirmPassword.setPlaceholderText("Confirm Password")
+        self.confirmPassword.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.confirmPassword.setFixedHeight(_INPUT_H)
+        self.confirmPassword.returnPressed.connect(self._on_create_account)
+        cr.addWidget(self.confirmPassword)
+
+        createBtn = QtWidgets.QPushButton("Create Account")
+        createBtn.setObjectName("createBtn")
+        createBtn.setFixedHeight(_BTN_H)
+        createBtn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        createBtn.setStyleSheet(self._make_primary_btn_style())
+        createBtn.clicked.connect(self._on_create_account)
+        cr.addWidget(createBtn)
+
+        self.createStatus = QtWidgets.QLabel("")
+        self.createStatus.setAlignment(QtCore.Qt.AlignCenter)
+        self.createStatus.setWordWrap(True)
+        self.createStatus.setFixedHeight(30)
+        self.createStatus.setStyleSheet("font-size: 8.5pt;")
+        cr.addWidget(self.createStatus)
+        cr.addStretch()
+
+        # ══════════════════════════════════════════════════════════════════════
+        # Sliding panel + Glass Card
         # ══════════════════════════════════════════════════════════════════════
         self._slider = SlidingPanel(_CARD_W)
         self._slider.setObjectName("slidingPanel")
-
-        # Keep slider completely transparent so the card shows through
         self._slider.setStyleSheet(
             "QWidget#slidingPanel { background: transparent; border: none; }"
         )
-
+        # Page layout: [0=Create, 1=SignIn(default), 2=Recover]
+        # Create slides in from the LEFT; Recover slides in from the RIGHT.
+        self._slider.add_page(createPage)
         self._slider.add_page(signInPage)
         self._slider.add_page(recoverPage)
         self._slider.setFixedHeight(_PAGE_H)
-        QtCore.QTimer.singleShot(0, lambda: self._slider.finalize(_PAGE_H))
 
-        # --- REVERTED GLASSCARD SETUP ---
+        def _init_slider():
+            self._slider.finalize(_PAGE_H)
+            # Position instantly at Sign In (page 1) with no animation
+            self._slider._inner.move(-_CARD_W, 0)
+
+        QtCore.QTimer.singleShot(0, _init_slider)
+
         self.loginCard = GlassCard(self.centralwidget)
         self.loginCard.setObjectName("loginCard")
         self.loginCard.setAttribute(QtCore.Qt.WA_StyledBackground, False)
         self.loginCard.setContentsMargins(0, 0, 0, 0)
-        # REMOVED: setAttribute(WA_StyledBackground)
-        # REMOVED: loginCard.setStyleSheet(...)
 
-        # Keep your existing drop shadow
         shadow = QtWidgets.QGraphicsDropShadowEffect()
         shadow.setBlurRadius(44)
         shadow.setOffset(0, 10)
@@ -418,194 +592,150 @@ class UILogin:
         v_layout.addWidget(self.loginCard, alignment=QtCore.Qt.AlignCenter)
         v_layout.addStretch(3)
 
-        self._errorTimer = QtCore.QTimer()
-        self._errorTimer.setSingleShot(True)
-        self._errorTimer.timeout.connect(self.user_error.clear)
+        # Floating badge for error / info messages
+        self.floating_badge = FloatingMessageBadge(
+            MainWindow5,
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "clear.svg"),
+        )
+
+        # user_info proxy — legacy code calls .user_info.clear() / .setText(); route to badge
+        self.user_info = _UserInfoProxy(self.floating_badge, self.loginCard)
+
+        # Caps-lock watcher — checks real OS state on focus and every key release
+        self._caps_watcher = _CapsWatcher(self, MainWindow5)
+        self.user_password.installEventFilter(self._caps_watcher)
 
         self._sessionTimer = QtCore.QTimer()
         self._sessionTimer.setSingleShot(True)
         self._sessionTimer.timeout.connect(self.check_user_session)
         self._sessionTimer.setInterval(1000 * 60 * 60)
 
-        self.visibleIcon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(), "QATCH", "icons", "eye-on.svg")
-        )
-        self.hiddenIcon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(), "QATCH", "icons", "eye-off.svg")
-        )
-        self.password_shown = False
-        self.togglepasswordAction = self.user_password.addAction(
-            self.visibleIcon, QtWidgets.QLineEdit.TrailingPosition
-        )
-        self.togglepasswordAction.triggered.connect(self.on_toggle_password_Action)
-
         QtCore.QTimer.singleShot(0, lambda: self.centralwidget.set_background_pixmap())
 
-    # ── Avatar / user-switch ──────────────────────────────────────────────────
+    # ── Style helpers ─────────────────────────────────────────────────────────
+    def _make_input_style(self, error: bool = False) -> str:
+        r = _INPUT_H // 2
+        if error:
+            return f"""
+                QLineEdit {{
+                    background-color: rgba(255, 230, 230, 160);
+                    border: 1.5px solid rgba(230, 50, 50, 200);
+                    border-style: solid;
+                    border-radius: {r}px;
+                    padding: 0px 15px;
+                    color: rgba(200, 30, 30, 255);
+                    font-size: 10pt;
+                    selection-background-color: rgba(230, 50, 50, 80);
+                }}
+                QLineEdit:focus {{
+                    background-color: rgba(255, 245, 245, 255);
+                    border: 2px solid rgba(255, 50, 50, 255);
+                }}
+                QLineEdit QToolButton {{ background: transparent; border: none; }}
+                QLineEdit QToolButton:hover {{ background: rgba(230, 50, 50, 20); border-radius: 12px; }}
+            """
+        return f"""
+            QLineEdit {{
+                background-color: rgba(255, 255, 255, 72);
+                border: 1px solid rgba(255, 255, 255, 130);
+                border-style: solid;
+                border-radius: {r}px;
+                padding: 0px 15px;
+                color: rgba(40, 50, 60, 230);
+                font-size: 10pt;
+                selection-background-color: rgba(10, 163, 230, 80);
+            }}
+            QLineEdit:hover {{
+                background-color: rgba(255, 255, 255, 110);
+                border-color: rgba(255, 255, 255, 200);
+            }}
+            QLineEdit:focus {{
+                background-color: rgba(255, 255, 255, 145);
+                border: 1.5px solid rgba(10, 163, 230, 140);
+            }}
+            QLineEdit QToolButton {{ background: transparent; border: none; }}
+            QLineEdit QToolButton:hover {{ background: rgba(255, 255, 255, 60); border-radius: 12px; }}
+        """
+
+    def _make_primary_btn_style(self) -> str:
+        r = _BTN_H // 2
+        return f"""
+            QPushButton {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0   rgba(60, 185, 250, 145),
+                    stop:0.5 rgba(10, 155, 225, 115),
+                    stop:1   rgba(8,  130, 200, 100)
+                );
+                border-top:    1.5px solid rgba(255, 255, 255, 190);
+                border-left:   1px   solid rgba(255, 255, 255, 130);
+                border-right:  1px   solid rgba(255, 255, 255, 100);
+                border-bottom: 1px   solid rgba(180, 215, 240, 90);
+                border-radius: {r}px;
+                color: rgba(255, 255, 255, 235);
+                font-size: 10pt;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0   rgba(80, 200, 255, 175),
+                    stop:0.5 rgba(20, 168, 238, 145),
+                    stop:1   rgba(10, 142, 215, 128)
+                );
+                border-top: 1.5px solid rgba(255, 255, 255, 220);
+            }}
+            QPushButton:pressed {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0   rgba(8,  130, 200, 140),
+                    stop:1   rgba(5,  105, 170, 120)
+                );
+                border-top: 1px solid rgba(255, 255, 255, 130);
+            }}
+            QPushButton:disabled {{
+                background: rgba(180, 200, 215, 80);
+                color: rgba(255, 255, 255, 120);
+                border: 1px solid rgba(255, 255, 255, 80);
+            }}
+        """
 
     @staticmethod
-    def _make_circular_pixmap(initials: str, size: int) -> QtGui.QPixmap:
-        """2. Shared method to generate muted pastel/slate avatars"""
-        pm = QtGui.QPixmap(size, size)
-        pm.fill(QtCore.Qt.transparent)
+    def _make_back_btn(text: str, callback) -> QtWidgets.QPushButton:
+        btn = QtWidgets.QPushButton(text)
+        btn.setObjectName("backBtn")
+        btn.setFixedHeight(24)
+        btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(100, 110, 120, 200);
+                border: none;
+                font-size: 8.5pt;
+                font-weight: 600;
+                text-align: left;
+            }
+            QPushButton:hover { color: rgba(60, 60, 60, 220); text-decoration: underline; }
+        """)
+        btn.clicked.connect(callback)
+        return btn
 
-        p = QtGui.QPainter(pm)
-        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    # ── Navigation ────────────────────────────────────────────────────────────
+    def _slide_to(self, page_idx: int) -> None:
+        """Animate to the given page index and reset any stale state."""
+        self._slider.slide_to(page_idx)
+        if page_idx == _P_SIGNIN:
+            # Reset recover page
+            self.recoverEmail.clear()
+            self.recoverStatus.clear()
+            self.sendResetBtn.setEnabled(True)
+            # Reset create page
+            self.newUsername.clear()
+            self.newPassword.clear()
+            self.confirmPassword.clear()
+            self.createStatus.clear()
 
-        hash_val = sum(ord(c) for c in initials)
-        hues = [210, 200, 220, 190, 215]
-        hue = hues[hash_val % len(hues)]
-        base_color = QtGui.QColor.fromHsl(hue, 90, 190)
-
-        rect = QtCore.QRectF(2.0, 2.0, size - 4.0, size - 4.0)
-        p.setBrush(QtGui.QBrush(base_color))
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 200), 1.5))
-        p.drawEllipse(rect)
-
-        p.setPen(QtGui.QColor(60, 60, 60, 200))
-        font = p.font()
-        font.setPixelSize(int(size * 0.42))
-        font.setBold(True)
-        p.setFont(font)
-        p.drawText(rect, QtCore.Qt.AlignCenter, initials)
-
-        p.end()
-        return pm
-
-    def _show_user_switch_dialog(self) -> None:
-        try:
-            _, raw = UserProfiles.get_all_user_info()
-            users: List[Tuple[str, str]] = [
-                (info[0], info[1]) for info in raw if info[0] is not None and info[1] is not None
-            ]
-        except Exception as exc:
-            Log.w(f"Could not load user profiles for switcher: {exc}")
-            users = []
-
-        current_name = self._current_user_display_name_for_switcher()
-
-        dlg = SwitchUserDialog(
-            users,
-            parent=self.centralwidget,
-            current_name=current_name,
-        )
-        dlg.user_selected.connect(self._on_user_selected)
-        dlg.add_user_requested.connect(self._on_add_user_requested)
-
-        dlg.adjustSize()
-        self._position_user_switch_dialog(dlg)
-
-        dlg.exec_()
-
-    def _current_user_display_name_for_switcher(self) -> Optional[str]:
-        for attr_name in (
-            "current_user_display_name",
-            "_current_user_display_name",
-            "current_user_name",
-            "_current_user_name",
-        ):
-            value = getattr(self, attr_name, None)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-
-        prop_value = self.userAvatarBtn.property("display_name")
-        if isinstance(prop_value, str) and prop_value.strip():
-            return prop_value.strip()
-
-        return None
-
-    def _position_user_switch_dialog(self, dlg: QtWidgets.QDialog) -> None:
-        avatar = self.userAvatarBtn
-        gap = 10
-        screen_padding = 12
-
-        avatar_top_left = avatar.mapToGlobal(QtCore.QPoint(0, 0))
-        avatar_center_x = avatar_top_left.x() + avatar.width() // 2
-
-        # 5. Dialog Centering Fix: Use sizeHint() because the geometry is rarely final here
-        preferred_x = avatar_center_x - dlg.sizeHint().width() // 2
-        preferred_y = avatar_top_left.y() + avatar.height() + gap
-
-        screen = QtWidgets.QApplication.screenAt(QtCore.QPoint(avatar_center_x, preferred_y))
-        if screen is None:
-            window_handle = self.window().windowHandle()
-            screen = window_handle.screen() if window_handle is not None else None
-        if screen is None:
-            screen = QtWidgets.QApplication.primaryScreen()
-
-        available = screen.availableGeometry()
-
-        if preferred_y + dlg.height() > available.bottom() - screen_padding:
-            preferred_y = avatar_top_left.y() - dlg.sizeHint().height() - gap
-
-        x = max(
-            available.left() + screen_padding,
-            min(
-                preferred_x,
-                available.right() - dlg.sizeHint().width() - screen_padding,
-            ),
-        )
-
-        y = max(
-            available.top() + screen_padding,
-            min(
-                preferred_y,
-                available.bottom() - dlg.sizeHint().height() - screen_padding,
-            ),
-        )
-
-        dlg.move(x, y)
-
-    def _on_user_selected(self, display_name: str, initials: str) -> None:
-        self.user_initials.setText(initials)
-
-        self.user_label.setText(display_name)
-        self.user_label.setProperty("placeholder", False)
-        self.user_label.style().unpolish(self.user_label)
-        self.user_label.style().polish(self.user_label)
-
-        self.userAvatarBtn.setProperty("display_name", display_name)
-        self.userAvatarBtn.setProperty("hasIcon", True)
-
-        # 2. Re-generates utilizing the shared slate/pastel aesthetic
-        avatar_px = self._make_circular_pixmap(initials, _AVATAR_D)
-        self.userAvatarBtn.setText("")
-        self.userAvatarBtn.setIcon(QtGui.QIcon(avatar_px))
-        self.userAvatarBtn.setIconSize(QtCore.QSize(_AVATAR_D, _AVATAR_D))
-
-        self.userAvatarBtn.style().unpolish(self.userAvatarBtn)
-        self.userAvatarBtn.style().polish(self.userAvatarBtn)
-
-        self.user_password.setFocus()
-
-    def _on_add_user_requested(self) -> None:
-        Log.i("Add user requested from the login screen.")
-        UserProfiles.create_new_user(UserRoles.OPERATE)
-        QtCore.QTimer.singleShot(150, self._show_user_switch_dialog)
-
-    # ── Slide transitions ──────────────────────────────────────────────────────
-    def _slide_to_recover(self) -> None:
-        self._slider.slide_to(1)
-
-    def _slide_to_signin(self) -> None:
-        self._slider.slide_to(0)
-        self.recoverEmail.clear()
-        self.recoverStatus.clear()
-        self.sendResetBtn.setEnabled(True)
-
-    # ── Reset-link handler ────────────────────────────────────────────────────
-    def _on_send_reset(self) -> None:
-        email = self.recoverEmail.text().strip()
-        if not email:
-            self.recoverStatus.setText("Please enter your email address.")
-            return
-        Log.i(f"Password reset requested for: {email}")
-        self.recoverStatus.setText(
-            f"If an account exists for that address,\na reset link has been sent."
-        )
-        self.sendResetBtn.setEnabled(False)
-
-    # ── Password toggle ────────────────────────────────────────────────────────
+    # ── Password show/hide ────────────────────────────────────────────────────
     def on_toggle_password_Action(self) -> None:
         if not self.password_shown:
             self.user_password.setEchoMode(QtWidgets.QLineEdit.Normal)
@@ -616,18 +746,196 @@ class UILogin:
             self.password_shown = False
             self.togglepasswordAction.setIcon(self.visibleIcon)
 
+    # ── Caps Lock ─────────────────────────────────────────────────────────────
+    @staticmethod
+    def _check_caps_lock() -> bool:
+        """Return the real OS caps-lock state, cross-platform best-effort."""
+        # Windows — fastest, most reliable
+        try:
+            import ctypes
+
+            return bool(ctypes.WinDLL("User32.dll").GetKeyState(0x14) & 1)
+        except Exception:
+            pass
+        # Linux (X11) — via xset
+        try:
+            import subprocess
+
+            out = subprocess.run(["xset", "q"], capture_output=True, text=True, timeout=0.3).stdout
+            return "Caps Lock:   on" in out
+        except Exception:
+            pass
+        # macOS — via ioreg
+        try:
+            import subprocess
+
+            out = subprocess.run(
+                ["ioreg", "-n", "IOHIDSystem", "-l"],
+                capture_output=True,
+                text=True,
+                timeout=0.3,
+            ).stdout
+            for line in out.splitlines():
+                if "HIDCapsLockState" in line:
+                    return "= 1" in line
+        except Exception:
+            pass
+        return False
+
+    def update_caps_lock_state(self, caps_lock_on: bool) -> None:
+        """Called externally (via eventFilter) whenever Caps Lock state changes."""
+        self.caps_lock_on = caps_lock_on
+        self.caps_indicator.setText("⇪  Caps Lock is On" if caps_lock_on else "")
+
+    # ── Forgot Password flow ──────────────────────────────────────────────────
+    def _on_send_reset(self) -> None:
+        email = self.recoverEmail.text().strip()
+        if not email:
+            self.recoverStatus.setStyleSheet(
+                "color: rgba(200, 30, 30, 230); font-size: 8.5pt; font-weight: 500;"
+            )
+            self.recoverStatus.setText("Please enter your email address.")
+            return
+        Log.i(f"Password reset requested for: {email}")
+        self.recoverStatus.setStyleSheet(
+            "color: rgba(46, 139, 87, 220); font-size: 8.5pt; font-weight: 500;"
+        )
+        self.recoverStatus.setText(
+            "If an account exists for that address,\na reset link has been sent."
+        )
+        self.sendResetBtn.setEnabled(False)
+
+    # ── Create Account flow ───────────────────────────────────────────────────
+    def _on_create_account(self) -> None:
+        username = self.newUsername.text().strip()
+        password = self.newPassword.text()
+        confirm = self.confirmPassword.text()
+
+        error_style = "color: rgba(200, 30, 30, 230); font-size: 8.5pt; font-weight: 500;"
+        ok_style = "color: rgba(46, 139, 87, 220); font-size: 8.5pt; font-weight: 500;"
+
+        if not username or not password:
+            self.createStatus.setStyleSheet(error_style)
+            self.createStatus.setText("All fields are required.")
+            return
+        if password != confirm:
+            self.createStatus.setStyleSheet(error_style)
+            self.createStatus.setText("Passwords do not match.")
+            return
+
+        # Delegate to backend (UserProfiles.create_new_user or similar)
+        Log.i(f"Create account requested for: {username}")
+        self.createStatus.setStyleSheet(ok_style)
+        self.createStatus.setText("Account created! Please sign in.")
+
+    # ── Sign In ───────────────────────────────────────────────────────────────
+    def action_sign_in(self) -> None:
+        username = self.user_username.text().strip()
+        if not username:
+            self._shake_widget(self.user_username)
+            self.user_username.set_error(True)
+            self.floating_badge.show_message(
+                "Please enter your username", is_error=True, parent_widget=self.loginCard
+            )
+            return
+
+        if not self.user_password.text():
+            self._shake_widget(self.user_password)
+            self.user_password.set_error(True)
+            self.floating_badge.show_message(
+                "Password required", is_error=True, parent_widget=self.loginCard
+            )
+            return
+
+        pwd = self.user_password.text()
+        authenticated, filename, params = UserProfiles.auth(username, pwd, UserRoles.ANY)
+
+        if authenticated:
+            Log.i(f"Welcome, {params[0]}! Role: {params[2].name}.")
+            name, init, role = params[0], params[1], params[2].value
+            self._sessionTimer.start()
+        else:
+            name, init, role = None, None, 0
+
+        self._clear_credentials()
+
+        if name is not None:
+            self.parent.ControlsWin.username.setText(f"User: {name}")
+            self.parent.ControlsWin.userrole = UserRoles(role)
+            self.parent.ControlsWin.signinout.setText("&Sign Out")
+            self.parent.ControlsWin.ui1.tool_User.setText(name)
+            self.parent.AnalyzeProc.tool_User.setText(name)
+            if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
+                self.parent.ControlsWin.manage.setText("&Change Password...")
+
+            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, UserRoles.CAPTURE)
+            if check_result:
+                self.parent.MainWin.ui0._set_run_mode(None)
+            else:
+                self.parent.MainWin.ui0._set_analyze_mode(None)
+
+            if hasattr(self.parent, "url_download"):
+                delattr(self.parent, "url_download")
+
+            # Play the zoom-fade transition; kick off start_download at ~40%
+            # through so the main UI is ready when the veil lifts (~280 ms in).
+            _SignInTransition(self._login_window, duration_ms=700)
+            QtCore.QTimer.singleShot(280, self.parent.start_download)
+        else:
+            self.error_invalid()
+
+    # ── Clear helpers ─────────────────────────────────────────────────────────
+    def _clear_credentials(self) -> None:
+        """Clear the username and password fields."""
+        self.user_password.clear()
+        if self.password_shown:
+            self.on_toggle_password_Action()
+
+    def clear_form(self) -> None:
+        """Full form reset (called on Escape or sign-out)."""
+        self.user_username.clear()
+        self.user_username.set_error(False)
+        self._clear_credentials()
+        self.user_password.set_error(False)
+        self.caps_indicator.setText("")
+        self._slide_to(_P_SIGNIN)
+
+    # ── Error display ─────────────────────────────────────────────────────────
+    def error_invalid(self, message: str = "Invalid Credentials") -> None:
+        self.user_password.set_error(True)
+        self._shake_widget(self.user_password)
+        self.user_password.clear()
+        self.user_password.setFocus()
+        self.floating_badge.show_message(message, is_error=True, parent_widget=self.loginCard)
+
+    def error_loggedout(self) -> None:
+        self.user_password.clear()
+        self.user_password.set_error(False)
+        self.floating_badge.show_message(
+            "You have been signed out", is_error=True, parent_widget=self.loginCard
+        )
+
+    def error_expired(self) -> None:
+        self.user_password.clear()
+        self.user_password.set_error(False)
+        self.floating_badge.show_message(
+            "Your session has expired", is_error=True, parent_widget=self.loginCard
+        )
+
+    def show_signout_message(self) -> None:
+        self.floating_badge.show_message(
+            "You have been signed out.", is_error=True, parent_widget=self.loginCard
+        )
+
     # ── Session ───────────────────────────────────────────────────────────────
     def check_user_session(self) -> None:
-        valid, infos = UserProfiles().session_info()
+        valid, _ = UserProfiles().session_info()
         if not valid:
-            if self.parent.ControlsWin.userrole == UserRoles.NONE:
-                Log.d("Hourly session check: user already signed out, skipping prompt.")
-            else:
+            if self.parent.ControlsWin.userrole != UserRoles.NONE:
                 Log.w("User session has expired.")
-                Log.i("Please sign in to continue.")
                 self.parent.ControlsWin.set_user_profile()
         else:
-            Log.d("User session is still valid at the hourly check.")
+            Log.d("User session valid at hourly check.")
             self._sessionTimer.start()
 
     # ── Retranslate ───────────────────────────────────────────────────────────
@@ -642,256 +950,17 @@ class UILogin:
             )
         )
 
-    # ── Error helpers ─────────────────────────────────────────────────────────
-    def error_loggedout(self) -> None:
-        """Handles the forced logout state by notifying the user via the floating badge."""
-        self.kickErrorTimer()
-
-        # 1. Clear any leftover password text
-        self.user_password.clear()
-
-        # 2. Trigger the message on the floating overlay
-        if hasattr(self, "floating_badge"):
-            self.floating_badge.show_message(
-                "You have been signed out", is_error=True, parent_widget=self.loginCard
-            )
-
-            # Auto-hide the badge after 5 seconds
-            QtCore.QTimer.singleShot(5000, self.floating_badge.clear)
-
-        # 3. Optional: Reset the password field style to normal in case it was red
-        if hasattr(self, "_pw_style_normal"):
-            self.user_password.setStyleSheet(self._pw_style_normal)
-
-    def error_invalid(self, message: str = "Invalid Credentials") -> None:
-        """
-        Triggers the visual error state.
-        The current user remains selected, but the password field alerts the user.
-        """
-        # 1. Apply the glassy red stylesheet to the password box
-        if hasattr(self, "_pw_style_error"):
-            self.user_password.setStyleSheet(self._pw_style_error)
-
-        # 2. Trigger the physical jiggle animation
-        if hasattr(self, "_shake_widget"):
-            self._shake_widget(self.user_password)
-
-        # 3. Clear only the password, keep the user selected
-        self.user_password.clear()
-        self.user_password.setFocus()
-
-        # 4. Fire the message to the floating secondary window
-        if hasattr(self, "floating_badge"):
-            self.floating_badge.show_message(message, is_error=True, parent_widget=self.loginCard)
-
-            # Auto-hide error after 4 seconds
-            QtCore.QTimer.singleShot(4000, self.floating_badge.clear)
-
-    def show_signout_message(self) -> None:
-        # Show red message above the login card
-        self.floating_badge.show_message(
-            "You have been signed out.", is_error=True, parent_widget=self.loginCard
-        )
-
-        # Optional: Auto-hide after a few seconds
-        QtCore.QTimer.singleShot(3000, self.floating_badge.clear)
-
-    def error_expired(self) -> None:
-        """Handles the session expiration state by notifying the user via the floating badge."""
-        # 1. Clear the password field for security
-        self.user_password.clear()
-
-        # 2. Fire the message to the floating secondary window
-        if hasattr(self, "floating_badge"):
-            self.floating_badge.show_message(
-                "Your session has expired", is_error=True, parent_widget=self.loginCard
-            )
-
-            # Auto-hide the message after 5 seconds
-            QtCore.QTimer.singleShot(5000, self.floating_badge.clear)
-
-        # 3. Optional: Reset the password box style if it was left in an error state
-        if hasattr(self, "_pw_style_normal"):
-            self.user_password.setStyleSheet(self._pw_style_normal)
-
-    def kickErrorTimer(self) -> None:
-        if self._errorTimer.isActive():
-            Log.d("Error Timer was restarted while running")
-            self._errorTimer.stop()
-        self._errorTimer.start(10000)
-
-    # ── Input helpers ─────────────────────────────────────────────────────────
-    def text_transform(self) -> None:
-        text = self.user_initials.text()
-        if text:
-            self.user_initials.setText(text.upper())
-
-    # ── Sign-In ───────────────────────────────────────────────────────────────
-    def action_sign_in(self) -> None:
-        # Check if a user is actually selected (initials are not empty)
-        if not self.user_initials.text():
-            self.floating_badge.show_message(
-                "Please select a user account first", is_error=True, parent_widget=self.loginCard
-            )
-            return
-
-        # Check if password was entered
-        if not self.user_password.text():
-            # Jiggle the empty box and show the floating error
-            self._shake_widget(self.user_password)
-            self.floating_badge.show_message(
-                "Password required", is_error=True, parent_widget=self.loginCard
-            )
-            return
-
-        initials = self.user_initials.text().upper()
-        pwd = self.user_password.text()
-        authenticated, filename, params = UserProfiles.auth(initials, pwd, UserRoles.ANY)
-
-        if authenticated:
-            Log.i(f"Welcome, {params[0]}! Your assigned role is {params[2].name}.")
-            name, init, role = params[0], params[1], params[2].value
-            self._sessionTimer.start()
-        else:
-            name, init, role = None, None, 0
-        self.clear_form()
-
-        if name is not None:
-            self.parent.ControlsWin.username.setText(f"User: {name}")
-            self.parent.ControlsWin.userrole = UserRoles(role)
-            self.parent.ControlsWin.signinout.setText("&Sign Out")
-            self.parent.ControlsWin.ui1.tool_User.setText(name)
-            self.parent.AnalyzeProc.tool_User.setText(name)
-            if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                self.parent.ControlsWin.manage.setText("&Change Password...")
-
-            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, UserRoles.CAPTURE)
-            if check_result:
-                self.parent.MainWin.ui0._set_run_mode(self.user_label)
-            else:
-                self.parent.MainWin.ui0._set_analyze_mode(self.user_label)
-
-            if UserProfiles().check(self.parent.ControlsWin.userrole, UserRoles.ADMIN):
-                enabled, error, expires = UserProfiles.checkDevMode()
-                if enabled is not True and error is not False:
-                    is_expired = expires != ""
-                    from QATCH.common.userProfiles import (
-                        UserConstants,
-                        UserProfilesManager,
-                    )
-
-                    if PopUp.question(
-                        self.parent,
-                        "Developer Mode " + ("Expired" if is_expired else "Error"),
-                        (
-                            "<b>Developer Mode "
-                            + ("has expired" if is_expired else "is invalid")
-                            + " and is no longer active!</b><br/>"
-                            + f"Renewal Period: Every {UserConstants.DEV_EXPIRE_LEN} days<br/><br/>"
-                            + "Would you like to renew Developer Mode now?<br/><br/>"
-                            + "<small>NOTE: This setting can be changed in the"
-                            + ' "Manage Users" window.</small>'
-                        ),
-                    ):
-                        temp_upm = UserProfilesManager(self.parent, name)
-                        temp_upm.developerModeChk.setChecked(True)
-                        Log.i("Developer Mode renewed!")
-                    else:
-                        Log.w("Developer Mode NOT renewed!")
-
-            if hasattr(self.parent, "url_download"):
-                delattr(self.parent, "url_download")
-            QtCore.QTimer.singleShot(1, self.parent.start_download)
-        else:
-            self.error_invalid()
-
-    # ── Clear / caps-lock ─────────────────────────────────────────────────────
-    def clear_form(self) -> None:
-        """Clears the form gracefully. Pressing once clears password, pressing again clears user."""
-        if len(self.user_password.text()) > 0:
-            # If there's a password typed, Escape just clears the password
-            self.user_password.clear()
-        else:
-            # If the password box is already empty, Escape clears the selected user
-            self.user_initials.clear()
-            self.user_label.setText("Select a User")
-            self.user_label.setProperty("placeholder", True)
-            self.userAvatarBtn.setIcon(QtGui.QIcon())
-            self.userAvatarBtn.setProperty("hasIcon", False)
-
-            # Re-apply styling to remove the avatar border
-            self.user_label.style().unpolish(self.user_label)
-            self.user_label.style().polish(self.user_label)
-            self.userAvatarBtn.style().unpolish(self.userAvatarBtn)
-            self.userAvatarBtn.style().polish(self.userAvatarBtn)
-
-        self.user_error.clear()
-
-        if self.password_shown:
-            self.on_toggle_password_Action()
-
-    def update_caps_lock_state(self, caps_lock_on: bool) -> None:
-        if caps_lock_on:
-            # Show amber warning above the login card
-            self.floating_badge.show_message(
-                "Caps Lock is ON", is_error=False, parent_widget=self.loginCard
-            )
-        else:
-            # Hide it
-            self.floating_badge.clear()
-
-    def load_saved_credentials(self) -> None:
-        """Loads the saved password and user state on launch."""
-        settings = QtCore.QSettings("QATCH", "nanovisQ")
-
-        # Retrieve the boolean (defaults to False)
-        remembered = settings.value("login/remember_me", False, type=bool)
-        self.remember_me.setChecked(remembered)
-
-        if remembered:
-            # Load the saved data
-            saved_password = settings.value("login/password", "")
-            saved_user_name = settings.value("login/user_name", "")
-
-            if saved_password:
-                self.user_password.setText(saved_password)
-
-            if saved_user_name:
-                # Assuming you have a method to programmatically select a user
-                # e.g., self.set_active_user(saved_user_name)
-                pass
-
-    def save_credentials_on_success(self, user_name: str, password: str) -> None:
-        """Called upon successful login to save or clear stored credentials."""
-        settings = QtCore.QSettings("QATCH", "nanovisQ")
-
-        if self.remember_me.isChecked():
-            settings.setValue("login/remember_me", True)
-            settings.setValue("login/user_name", user_name)
-            # IMPORTANT: In a production app, you should hash or encrypt this before saving.
-            # QSettings saves in plain text (registry on Windows, .plist on Mac)
-            settings.setValue("login/password", password)
-        else:
-            # Wipe out the saved data if they unchecked the box
-            settings.setValue("login/remember_me", False)
-            settings.remove("login/user_name")
-            settings.remove("login/password")
-
+    # ── Shake animation ───────────────────────────────────────────────────────
     def _shake_widget(self, widget: QtWidgets.QWidget) -> None:
-        """Applies a rapid left-right jiggle animation to indicate an error."""
-        # Store animation as class attribute so it doesn't get garbage collected
+        """Rapid left-right jiggle to signal an error."""
         self._shake_anim = QtCore.QPropertyAnimation(widget, b"pos")
-        self._shake_anim.setDuration(400)
-
-        base_pos = widget.pos()
-
-        # Keyframes for a smooth, decaying shake
-        self._shake_anim.setKeyValueAt(0.0, base_pos)
-        self._shake_anim.setKeyValueAt(0.1, base_pos + QtCore.QPoint(-6, 0))
-        self._shake_anim.setKeyValueAt(0.3, base_pos + QtCore.QPoint(6, 0))
-        self._shake_anim.setKeyValueAt(0.5, base_pos + QtCore.QPoint(-4, 0))
-        self._shake_anim.setKeyValueAt(0.7, base_pos + QtCore.QPoint(4, 0))
-        self._shake_anim.setKeyValueAt(0.9, base_pos + QtCore.QPoint(-2, 0))
-        self._shake_anim.setKeyValueAt(1.0, base_pos)
-
+        self._shake_anim.setDuration(380)
+        base = widget.pos()
+        self._shake_anim.setKeyValueAt(0.0, base)
+        self._shake_anim.setKeyValueAt(0.1, base + QtCore.QPoint(-6, 0))
+        self._shake_anim.setKeyValueAt(0.3, base + QtCore.QPoint(6, 0))
+        self._shake_anim.setKeyValueAt(0.5, base + QtCore.QPoint(-4, 0))
+        self._shake_anim.setKeyValueAt(0.7, base + QtCore.QPoint(4, 0))
+        self._shake_anim.setKeyValueAt(0.9, base + QtCore.QPoint(-2, 0))
+        self._shake_anim.setKeyValueAt(1.0, base)
         self._shake_anim.start(QtCore.QPropertyAnimation.DeleteWhenStopped)

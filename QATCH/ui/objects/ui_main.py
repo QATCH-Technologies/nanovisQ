@@ -9,6 +9,7 @@ from QATCH.ui.popUp import PopUp
 from QATCH.core.constants import Constants
 from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
 
+
 class UIMain:
     """The primary user interface controller for the nanovisQ application.
 
