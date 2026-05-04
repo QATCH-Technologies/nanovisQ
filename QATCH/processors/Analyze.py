@@ -7588,7 +7588,8 @@ class AnalyzerWorker(QtCore.QObject):
                 if debug:
                     ax_dbg.plot(midpoint_p_x, p, color="blue", marker="X")
                 times.append(midpoint_p_i)
-                if p == 0.2 or p == 0.4:
+                # Issue #392: Remove 80% too; only 60% used (if not too off)
+                if p == 0.2 or p == 0.4 or p == 0.8:
                     idx_of_normal_pts_to_remove.append(midpoint_p_i)
                 else:
                     idx_of_normal_pts_to_retain.append(midpoint_p_i)
