@@ -9355,8 +9355,8 @@ class AnalyzerWorker(QtCore.QObject):
 
             # force layout redraw now, and on any resize event
             sc.draw_idle()
-            filter = ResizeFilter(self)
-            sc.installEventFilter(filter)
+            self._results_resize_filter = ResizeFilter(self, sc)
+            sc.installEventFilter(self._results_resize_filter)
 
             # all_figs = [fig4] # [fig,fig2,fig3,fig4]
             # for f in all_figs:
@@ -9553,9 +9553,8 @@ class AnalyzerWorker(QtCore.QObject):
                 t.remove()
 
             # stop early if nothing better can be found
-            if not return_all_scores:
-                if score == 0 or score > best_score or priority > best_priority:
-                    break
+            if not return_all_scores and score == 0:
+                break
 
         # force render so final candidate is removed
         fig.canvas.draw()
@@ -9607,9 +9606,9 @@ class AnalyzerWorker(QtCore.QObject):
         return np.round(output, 2)
     
 class ResizeFilter(QtCore.QObject):
-    def __init__(self, parent):
-        super().__init__()
-        self.parent = parent
+    def __init__(self, worker, parent=None):
+        super().__init__(parent)
+        self.worker = worker
         self._draw_pending = False
         self._draw_delay = 250  # ms
 
@@ -9628,7 +9627,7 @@ class ResizeFilter(QtCore.QObject):
             QtCore.QTimer.singleShot(self._draw_delay, self._draw_idle)
         else:
             # resize event finished, hysteresis elapsed: redraw!
-            self.parent.place_text_avoiding_data()
+            self.worker.place_text_avoiding_data()
             self._draw_pending = False
         
 
