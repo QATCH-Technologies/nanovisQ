@@ -8043,6 +8043,8 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             fig4 = plt.figure(figsize=(12, 6))
+            fig4.set_layout_engine(None)  # full control, no auto-layout adjustments
+            fig4.subplots_adjust(left=0.10, right=0.99, top=0.92, bottom=0.22, wspace=0.0, hspace=0.0)
             ax7 = fig4.add_subplot(111)
 
             high_shear_5x = 0
@@ -8608,13 +8610,14 @@ class AnalyzerWorker(QtCore.QObject):
                             * (2 / 3 + 1 / 3 / n)
                             * 1e-3
                         )
-                        ax7.scatter(
-                            in_shear_rate[idx],
-                            sm_trendline[idx],
-                            marker="d",
-                            s=15,
-                            c="red",
-                        )
+                        # Use to show the old positions:
+                        # ax7.scatter(
+                        #     in_shear_rate[idx],
+                        #     sm_trendline[idx],
+                        #     marker="d",
+                        #     s=15,
+                        #     c="red",
+                        # )
                         sm_trendline[idx] = mid_visc
                         in_shear_rate[idx] = mid_shear
 
@@ -8917,16 +8920,10 @@ class AnalyzerWorker(QtCore.QObject):
                     res_temp.append(avg_temp)
                     res_n_coeff.append(n)
 
-                # Add centered label to plot data
-                fig4.text(
-                    0.53,
-                    0.82,
-                    plot_text,
-                    horizontalalignment="center",
-                    verticalalignment="center",
-                    color="blue",
-                    fontsize=10,
-                )
+                # Add optimally positioned label to plot data
+                self.plot_ax = ax7
+                self.plot_text = plot_text
+                self.place_text_avoiding_data()
 
                 # # Convert `in_shear_rate` to formatted strings
                 # for i in range(len(in_shear_rate)):
@@ -9348,8 +9345,6 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.e("Failed to show average viscosity summary.", str(e))
 
             # add figure to plot view of results
-            plt.tight_layout()
-            plt.subplots_adjust(bottom=0.15)
             sc = FigureCanvasQTAgg(fig4)
             mp_toolbar = NavigationToolbar(sc, self.parent)
             mp_layout = QtWidgets.QVBoxLayout()
@@ -9358,6 +9353,11 @@ class AnalyzerWorker(QtCore.QObject):
             plotWidget = QtWidgets.QWidget()
             plotWidget.setLayout(mp_layout)
             self.parent.results_split.replaceWidget(1, plotWidget)
+
+            # force layout redraw now, and on any resize event
+            sc.draw_idle()
+            self._results_resize_filter = ResizeFilter(self, sc)
+            sc.installEventFilter(self._results_resize_filter)
 
             # all_figs = [fig4] # [fig,fig2,fig3,fig4]
             # for f in all_figs:
@@ -9384,6 +9384,188 @@ class AnalyzerWorker(QtCore.QObject):
 
         finally:
             self.finished.emit()  # queue callback
+
+    def place_text_avoiding_data(
+        self,
+        ax=None,
+        text=None,
+        candidates=None,
+        pad=None,
+        color=None,
+        fontsize=None,
+        bbox=False,
+        return_all_scores=False,
+    ):
+        """
+        Place text in an Axes while avoiding overlap with plotted data.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+        text : str
+        candidates : list of dict
+            Each dict must contain:
+                {
+                    "pos": (x, y) in axes-fraction coords,
+                    "ha": horizontal alignment,
+                    "va": vertical alignment,
+                    "priority": lower = more preferred
+                }
+        pad : int or None
+            pixel padding around detected overlaps
+        color : int or None
+            color to use when drawing the overlay text
+        fontsize : int or None
+            fontsize to use when drawing the overlay text
+        bbox : bool
+            draw background box around overlay text
+        return_all_scores : bool
+            debug option
+
+        Returns
+        -------
+        matplotlib.text.Text
+        """
+
+        if ax is None:
+            ax = getattr(self, "plot_ax", None)
+
+        if text is None:
+            text = getattr(self, "plot_text", None)
+
+        if None in [ax, text]:
+            return None
+        
+        if candidates is None:
+            candidates = [
+                {"pos": (0.50, 0.95), "ha": "center", "va": "top",    "priority": 0},
+                {"pos": (0.50, 0.05), "ha": "center", "va": "bottom", "priority": 1},
+                {"pos": (0.95, 0.95), "ha": "right",  "va": "top",    "priority": 2},
+                {"pos": (0.05, 0.05), "ha": "left",   "va": "bottom", "priority": 3},
+                {"pos": (0.95, 0.05), "ha": "right",  "va": "bottom", "priority": 4},
+                {"pos": (0.05, 0.95), "ha": "left",   "va": "top",    "priority": 5},
+            ]
+
+        # Sort candidates by priority (ascending)
+        candidates = sorted(candidates, key=lambda x: x['priority'])
+
+        if pad is None:
+            pad = 10
+
+        if color is None:
+            color = "blue"
+
+        if fontsize is None:
+            fontsize = 10
+
+        fig = ax.figure
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+
+        # ---- collect data in display coords ----
+        data_pts = []
+
+        for line in ax.lines:
+            # scatter plots are NOT lines; lines are lines
+            try:
+                x, y = line.get_data()
+                if len(x) == 0:
+                    continue
+
+                pts = ax.transData.transform(np.column_stack([x, y]))
+                data_pts.append(pts)
+
+            except Exception:
+                # ignore things that aren't lines or otherwise fail
+                pass
+
+        for col in ax.collections:
+            # scatter plots are PathCollections
+            try:
+                offsets = col.get_offsets()
+                if len(offsets) == 0:
+                    continue
+
+                pts = ax.transData.transform(offsets)
+                data_pts.append(pts)
+
+            except Exception:
+                # ignore non-scatter collections (e.g., contours, bars, etc.)
+                pass
+
+        def score_bbox(bbox):
+            """Count how many data points fall inside bbox."""
+            if not data_pts:
+                return 0
+
+            pts = np.vstack(data_pts)
+            x0, y0, x1, y1 = bbox
+
+            inside = (
+                (pts[:, 0] >= x0 - pad) &
+                (pts[:, 0] <= x1 + pad) &
+                (pts[:, 1] >= y0 - pad) &
+                (pts[:, 1] <= y1 + pad)
+            )
+            return int(np.sum(inside))
+
+        # delete best artist from prior redraws
+        if getattr(self, "plot_text_obj", None):
+            self.plot_text_obj.remove()
+
+        # ---- selection tracking ----
+        best_artist = None
+        best_score = float("inf")
+        best_priority = float("inf")
+        debug_scores = []
+
+        for c in candidates:
+            x, y = c["pos"]
+            ha = c.get("ha", "center")
+            va = c.get("va", "center")
+            priority = c.get("priority", 0)
+
+            t = ax.text(
+                x, y, text,
+                transform=ax.transAxes,
+                ha=ha, va=va,
+                color=color,
+                fontsize=fontsize,
+                bbox=dict(facecolor="white", alpha=0.7, edgecolor="none") if bbox else None,
+                zorder=10
+            )
+
+            # force render so bbox is correct
+            fig.canvas.draw()
+            bb = t.get_window_extent(renderer)
+
+            score = score_bbox((bb.x0, bb.y0, bb.x1, bb.y1))
+
+            debug_scores.append((c, score))
+
+            # ---- lexicographic selection ----
+            if (score < best_score) or (score == best_score and priority < best_priority):
+                if best_artist is not None:
+                    best_artist.remove()
+                best_artist = t
+                best_score = score
+                best_priority = priority
+            else:
+                t.remove()
+
+            # stop early if nothing better can be found
+            if not return_all_scores and score == 0:
+                break
+
+        # force render so final candidate is removed
+        fig.canvas.draw()
+
+        # store best artist for later redraws
+        self.plot_text_obj = best_artist
+
+        if return_all_scores:
+            return best_artist, debug_scores
+        return best_artist
 
     def update(self, status):
         try:
@@ -9424,6 +9606,33 @@ class AnalyzerWorker(QtCore.QObject):
             Log.e("ERROR:", e)
         return np.round(output, 2)
     
+class ResizeFilter(QtCore.QObject):
+    def __init__(self, worker, parent=None):
+        super().__init__(parent)
+        self.worker = worker
+        self._draw_pending = False
+        self._draw_delay = 250  # ms
+
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QEvent.Resize:
+            self._resize_time = monotonic()
+            if not self._draw_pending:
+                self._draw_pending = True
+                QtCore.QTimer.singleShot(self._draw_delay, self._draw_idle)
+        return super().eventFilter(obj, event)
+
+    def _draw_idle(self):
+        # convert secs -> ms: compare ms to ms
+        if (monotonic() - self._resize_time) * 1000 < self._draw_delay:
+            # resize event still occurring, try again later
+            QtCore.QTimer.singleShot(self._draw_delay, self._draw_idle)
+        else:
+            # resize event finished, hysteresis elapsed: redraw!
+            self.worker.place_text_avoiding_data()
+            self._draw_pending = False
+        
+
+
 class RunScanWorker(QtCore.QThread):
     """Background thread to handle run scanning without freezing the UI.
     
