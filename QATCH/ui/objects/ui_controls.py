@@ -344,6 +344,27 @@ _GLASS_TEMP_CONTROLLER_QSS = """
         border: none;
         border-radius: 6px;
     }
+    QFrame#tempPidInfo {
+        background: rgba(255, 255, 255, 120);
+        border: 1px solid rgba(255, 255, 255, 200);
+        border-radius: 5px;
+    }
+    QLabel#tempPidHeader {
+        background: transparent;
+        border: none;
+        color: rgba(0, 118, 174, 220);
+        font-weight: bold;
+        font-size: 8pt;
+        letter-spacing: 0.4px;
+    }
+    QLabel#tempStatusBanner {
+        background: rgba(150, 155, 160, 120);
+        color: rgba(30, 40, 55, 160);
+        border: 1px solid rgba(255, 255, 255, 160);
+        border-radius: 3px;
+        padding: 0 6px;
+        font-weight: bold;
+    }
     QLabel {
         background: transparent;
         border: none;
@@ -371,6 +392,437 @@ _GLASS_TEMP_CONTROLLER_QSS = """
         border: 1px solid rgba(0, 0, 0, 30);
     }
 """
+
+
+# ---------------------------------------------------------------------------
+# Account dropdown — glass popup showing current user info
+# ---------------------------------------------------------------------------
+
+
+class _AvatarLabel(QtWidgets.QWidget):
+    """Circular avatar rendered with QATCH brand-blue gradient + user initials."""
+
+    def __init__(self, initials: str, parent=None) -> None:
+        super().__init__(parent)
+        self._initials = initials[:2].upper() if initials else "?"
+        self.setAutoFillBackground(False)
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        p = QtGui.QPainter(self)
+        p.setRenderHints(QtGui.QPainter.Antialiasing)
+        r = min(self.width(), self.height()) - 2
+        x = (self.width() - r) / 2
+        y = (self.height() - r) / 2
+        rect = QtCore.QRectF(x, y, r, r)
+
+        grad = QtGui.QRadialGradient(rect.center(), r / 2)
+        grad.setColorAt(0.0, QtGui.QColor(0, 158, 210))
+        grad.setColorAt(1.0, QtGui.QColor(0, 100, 160))
+        p.setBrush(QtGui.QBrush(grad))
+        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 90), 1.5))
+        p.drawEllipse(rect)
+
+        # Shimmer half-circle
+        shimmer = QtGui.QLinearGradient(0, float(rect.top()), 0, float(rect.center().y()))
+        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 55))
+        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
+        p.setBrush(QtGui.QBrush(shimmer))
+        p.setPen(QtCore.Qt.NoPen)
+        p.drawEllipse(rect)
+
+        font = QtGui.QFont()
+        font.setPointSize(13)
+        font.setBold(True)
+        p.setFont(font)
+        p.setPen(QtGui.QColor(255, 255, 255, 235))
+        p.drawText(rect.toRect(), QtCore.Qt.AlignCenter, self._initials)
+        p.end()
+
+
+class _GlassAccountInnerPanel(QtWidgets.QWidget):
+    """Inner glass-morphism panel for the account popup.
+
+    Paints the frosted-glass background with rounded corners.  The outer
+    :class:`GlassAccountPopup` applies a :class:`QGraphicsDropShadowEffect`
+    to this widget so the shadow follows the painted alpha mask, producing
+    a soft, rounded drop shadow.  This mirrors the pattern used by
+    ``RecoveryFilterWidget`` to avoid the rectangular OS popup outline.
+    """
+
+    _RADIUS: float = 10.0
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setAutoFillBackground(False)
+        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        p = QtGui.QPainter(self)
+        p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
+
+        rect_f = QtCore.QRectF(self.rect())
+        _R = self._RADIUS
+
+        clip = QtGui.QPainterPath()
+        clip.addRoundedRect(rect_f, _R, _R)
+        p.setClipPath(clip)
+
+        # Frosted white base — slightly higher alpha than before because the
+        # outer widget is fully transparent (no manual shadow underlay)
+        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 235))
+        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 28))
+
+        # Top shimmer
+        shimmer = QtGui.QLinearGradient(0, 0, 0, 44)
+        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 80))
+        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
+        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
+
+        # Dual borders (outer warm white, inner cool grey)
+        p.setClipping(False)
+        p.setBrush(QtCore.Qt.NoBrush)
+        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 220), 1.0))
+        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), _R, _R)
+        p.setPen(QtGui.QPen(QtGui.QColor(200, 210, 220, 90), 1.0))
+        p.drawRoundedRect(rect_f.adjusted(1.5, 1.5, -1.5, -1.5), _R - 1.5, _R - 1.5)
+
+        p.end()
+
+
+class GlassAccountPopup(QtWidgets.QWidget):
+    """Frosted-glass dropdown panel for the Account toolbar button.
+
+    Displays the active user's avatar, full name, and role badge.  Admin users
+    additionally see a "Manage Users…" shortcut.  The popup uses ``Qt.Popup``
+    so it closes automatically on any outside click.
+
+    Implementation notes
+    --------------------
+    The popup is built as a transparent outer ``QWidget`` (this class) wrapping
+    an inner :class:`_GlassAccountInnerPanel`.  The outer widget reserves margin
+    space around the inner panel so a :class:`QGraphicsDropShadowEffect` applied
+    to the inner panel renders a soft, rounded shadow that follows the panel's
+    border-radius — exactly the trick used by ``RecoveryFilterWidget`` to fix
+    the sharp shadow corners produced by manual painted shadows.
+
+    The popup also tracks its main window: when the main window is resized or
+    moved, the popup closes itself so it never floats outside the application.
+    """
+
+    # Margins reserved around the inner panel for the drop shadow.  Bottom is
+    # larger to accommodate the shadow's positive Y offset.
+    _SHADOW_MARGIN_L = 22
+    _SHADOW_MARGIN_T = 18
+    _SHADOW_MARGIN_R = 22
+    _SHADOW_MARGIN_B = 26
+
+    def __init__(
+        self,
+        open_manager_cb=None,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
+        super().__init__(
+            parent,
+            QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint | QtCore.Qt.NoDropShadowWindowHint,
+        )
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAutoFillBackground(False)
+
+        self._open_manager_cb = open_manager_cb
+        self._main_window: Optional[QtWidgets.QWidget] = None  # set by show_anchored_to
+
+        # -- outer container with shadow margins --
+        self._panel = _GlassAccountInnerPanel(self)
+        self._panel.setObjectName("AccountPopupInner")
+
+        outer_layout = QtWidgets.QVBoxLayout(self)
+        outer_layout.setContentsMargins(
+            self._SHADOW_MARGIN_L,
+            self._SHADOW_MARGIN_T,
+            self._SHADOW_MARGIN_R,
+            self._SHADOW_MARGIN_B,
+        )
+        outer_layout.setSpacing(0)
+        outer_layout.addWidget(self._panel)
+
+        # Soft drop shadow that follows the inner panel's painted alpha mask
+        shadow = QtWidgets.QGraphicsDropShadowEffect(self._panel)
+        shadow.setBlurRadius(28)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QtGui.QColor(0, 20, 40, 110))
+        self._panel.setGraphicsEffect(shadow)
+
+        # -- resolve current session info (lazy import avoids circular deps) --
+        # session_info() returns: [name, initials, role.name, created, modified, accessed]
+        accessed: Optional[str] = None
+        try:
+            from QATCH.common.userProfiles import UserProfiles, UserRoles  # noqa: PLC0415
+
+            is_valid, user_info = UserProfiles.session_info()
+            if is_valid and user_info:
+                name = user_info[0] or "Unknown"
+                initials = user_info[1] or "?"
+                role_name = user_info[2] or "NONE"
+                # Index 5 = "accessed" timestamp ("Today, HH:MM:SS" or "YYYY-MM-DD HH:MM:SS")
+                accessed = user_info[5] if len(user_info) > 5 else None
+            else:
+                name, initials, role_name = "Anonymous", "?", "NONE"
+            is_admin = role_name == UserRoles.ADMIN.name
+            is_signed_in = is_valid
+        except Exception:
+            name, initials, role_name = "Anonymous", "?", "NONE"
+            is_admin = False
+            is_signed_in = False
+
+        # -- inner panel layout (all visible content lives here) --
+        layout = QtWidgets.QVBoxLayout(self._panel)
+        layout.setContentsMargins(14, 14, 14, 12)
+        layout.setSpacing(8)
+
+        # Avatar + name/role column
+        header_row = QtWidgets.QHBoxLayout()
+        header_row.setSpacing(12)
+
+        avatar = _AvatarLabel(initials)
+        avatar.setFixedSize(44, 44)
+        header_row.addWidget(avatar, 0, QtCore.Qt.AlignTop)
+
+        info_col = QtWidgets.QVBoxLayout()
+        info_col.setSpacing(3)
+        info_col.setContentsMargins(0, 1, 0, 0)
+
+        name_lbl = QtWidgets.QLabel(name)
+        name_lbl.setStyleSheet(
+            "color: rgba(28,40,52,235); font-weight: bold; font-size: 13px; "
+            "background: transparent; border: none;"
+        )
+        info_col.addWidget(name_lbl)
+
+        # Subtle initials line under the name
+        initials_lbl = QtWidgets.QLabel(f"Initials: {initials}")
+        initials_lbl.setStyleSheet(
+            "color: rgba(70, 90, 110, 180); font-size: 10px; "
+            "background: transparent; border: none;"
+        )
+        info_col.addWidget(initials_lbl)
+
+        _role_palette = {
+            "ADMIN": ("rgba(0,118,174,215)", "white"),
+            "OPERATE": ("rgba(40,155,75,200)", "white"),
+            "ANALYZE": ("rgba(130,80,200,200)", "white"),
+            "CAPTURE": ("rgba(200,125,0,200)", "white"),
+        }
+        bg, fg = _role_palette.get(role_name, ("rgba(140,150,160,160)", "rgba(28,40,52,180)"))
+        role_badge = QtWidgets.QLabel(role_name)
+        role_badge.setFixedHeight(17)
+        role_badge.setStyleSheet(
+            f"background: {bg}; color: {fg}; border-radius: 3px; "
+            "padding: 1px 6px; font-size: 10px; font-weight: bold; border: none;"
+        )
+        # Wrap the badge so it doesn't stretch to full column width
+        role_row = QtWidgets.QHBoxLayout()
+        role_row.setContentsMargins(0, 2, 0, 0)
+        role_row.setSpacing(0)
+        role_row.addWidget(role_badge)
+        role_row.addStretch()
+        info_col.addLayout(role_row)
+
+        header_row.addLayout(info_col, 1)
+        layout.addLayout(header_row)
+
+        # Last sign-in / status line
+        if is_signed_in and accessed:
+            last_lbl = QtWidgets.QLabel(f"Last access: {accessed}")
+            last_lbl.setStyleSheet(
+                "color: rgba(70, 90, 110, 175); font-size: 10px; "
+                "background: transparent; border: none; padding-left: 1px;"
+            )
+            layout.addWidget(last_lbl)
+        elif not is_signed_in:
+            status_lbl = QtWidgets.QLabel("No active session")
+            status_lbl.setStyleSheet(
+                "color: rgba(140, 90, 30, 200); font-size: 10px; font-style: italic; "
+                "background: transparent; border: none; padding-left: 1px;"
+            )
+            layout.addWidget(status_lbl)
+
+        if is_admin:
+            # Hairline divider
+            divider = QtWidgets.QFrame()
+            divider.setFrameShape(QtWidgets.QFrame.HLine)
+            divider.setStyleSheet(
+                "QFrame { background: rgba(200,210,220,130); border: none; max-height: 1px; }"
+            )
+            layout.addWidget(divider)
+
+            icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/user.png")
+            manage_btn = QtWidgets.QPushButton("  Manage Users…")
+            manage_btn.setIcon(QtGui.QIcon(icon_path))
+            manage_btn.setIconSize(QtCore.QSize(14, 14))
+            manage_btn.setStyleSheet("""
+                QPushButton {
+                    background: rgba(0, 118, 174, 18);
+                    color: rgba(0, 118, 174, 230);
+                    border: 1px solid rgba(0, 118, 174, 55);
+                    border-radius: 5px;
+                    padding: 6px 10px;
+                    text-align: left;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover  {
+                    background: rgba(0, 142, 192, 35);
+                    border: 1px solid rgba(0, 118, 174, 110);
+                }
+                QPushButton:pressed {
+                    background: rgba(0, 118, 174, 70);
+                    border: 1px solid rgba(0, 118, 174, 160);
+                }
+            """)
+            manage_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+            manage_btn.clicked.connect(self._on_manage_users)
+            layout.addWidget(manage_btn)
+
+        self._panel.setMinimumWidth(230)
+
+    # -- public API -----------------------------------------------------------
+
+    def show_anchored_to(
+        self,
+        anchor: QtWidgets.QWidget,
+        main_window: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
+        """Show the popup pinned to ``anchor`` and constrained to ``main_window``.
+
+        The popup's *visible* right edge aligns with the anchor button's right
+        edge; the visible top edge sits 2 px below the anchor's bottom.  If the
+        popup would extend past the main window's frame, its position is clamped
+        so the visible panel stays inside the main window.  When the main window
+        is later resized or moved while the popup is open, the popup closes
+        itself to avoid floating outside the application.
+        """
+        self._main_window = main_window
+        self.adjustSize()
+
+        size = self.sizeHint()
+        popup_w, popup_h = size.width(), size.height()
+
+        # Anchor at the bottom-right corner of the button (in screen coords)
+        anchor_br = anchor.mapToGlobal(QtCore.QPoint(anchor.width(), anchor.height()))
+
+        # Position so the *visible* panel right edge aligns with the button's
+        # right edge, 2 px below the button.  Account for the transparent
+        # shadow margins on the outer widget.
+        x = anchor_br.x() + self._SHADOW_MARGIN_R - popup_w
+        y = anchor_br.y() + 2 - self._SHADOW_MARGIN_T
+
+        # Clamp so the visible panel stays inside the main window
+        x, y = self._clamp_to_main_window(x, y, popup_w, popup_h, anchor)
+        self.move(x, y)
+
+        # Track resize/move events on the main window so the popup never
+        # ends up floating outside the application after a resize.
+        if self._main_window is not None:
+            self._main_window.installEventFilter(self)
+
+        self.show()
+
+    # -- positioning helpers --------------------------------------------------
+
+    def _visible_rect_for(self, x: int, y: int, w: int, h: int) -> QtCore.QRect:
+        """Return the *visible* panel rect for an outer-widget position.
+
+        The outer widget reserves transparent shadow margins, so the visible
+        rect is the outer rect minus those margins.
+        """
+        return QtCore.QRect(
+            x + self._SHADOW_MARGIN_L,
+            y + self._SHADOW_MARGIN_T,
+            w - self._SHADOW_MARGIN_L - self._SHADOW_MARGIN_R,
+            h - self._SHADOW_MARGIN_T - self._SHADOW_MARGIN_B,
+        )
+
+    def _clamp_to_main_window(
+        self,
+        x: int,
+        y: int,
+        popup_w: int,
+        popup_h: int,
+        anchor: QtWidgets.QWidget,
+    ) -> tuple:
+        """Adjust ``(x, y)`` so the visible panel stays inside the main window.
+
+        Falls back to the anchor's screen geometry if no main window is set.
+        """
+        if self._main_window is not None:
+            bounds = self._main_window.frameGeometry()
+        else:
+            screen = QtWidgets.QApplication.screenAt(anchor.mapToGlobal(QtCore.QPoint(0, 0)))
+            bounds = screen.availableGeometry() if screen is not None else QtCore.QRect()
+
+        if bounds.isNull():
+            return x, y
+
+        visible = self._visible_rect_for(x, y, popup_w, popup_h)
+
+        # Horizontal clamp
+        if visible.right() > bounds.right():
+            x -= visible.right() - bounds.right()
+            visible = self._visible_rect_for(x, y, popup_w, popup_h)
+        if visible.left() < bounds.left():
+            x += bounds.left() - visible.left()
+            visible = self._visible_rect_for(x, y, popup_w, popup_h)
+
+        # Vertical clamp — if the popup spills off the bottom, flip it above
+        # the anchor button.
+        if visible.bottom() > bounds.bottom():
+            anchor_top = anchor.mapToGlobal(QtCore.QPoint(0, 0)).y()
+            y_above = anchor_top - 2 - popup_h + self._SHADOW_MARGIN_B
+            visible_above = self._visible_rect_for(x, y_above, popup_w, popup_h)
+            if visible_above.top() >= bounds.top():
+                y = y_above
+            else:
+                # Neither orientation fits — just clamp to the bottom edge
+                y -= visible.bottom() - bounds.bottom()
+
+        return x, y
+
+    # -- event handling -------------------------------------------------------
+
+    def eventFilter(  # noqa: N802 — Qt naming
+        self, watched: QtCore.QObject, event: QtCore.QEvent
+    ) -> bool:
+        """Close the popup if the main window is resized or moved.
+
+        The popup is positioned in screen coordinates against the anchor at the
+        time of show.  Re-anchoring on every resize would race the layout
+        engine, so the safer behaviour is to dismiss the popup and let the user
+        re-open it once the new window geometry has settled.
+        """
+        if watched is self._main_window and event.type() in (
+            QtCore.QEvent.Resize,
+            QtCore.QEvent.Move,
+            QtCore.QEvent.WindowStateChange,
+        ):
+            self.close()
+        return super().eventFilter(watched, event)
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 — Qt naming
+        if self._main_window is not None:
+            try:
+                self._main_window.removeEventFilter(self)
+            except Exception:
+                pass
+            self._main_window = None
+        super().closeEvent(event)
+
+    # -- slots ----------------------------------------------------------------
+
+    def _on_manage_users(self) -> None:
+        self.close()
+        if self._open_manager_cb:
+            self._open_manager_cb()
 
 
 # ---------------------------------------------------------------------------
@@ -866,20 +1318,25 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tempController.setMaximumWidth(0)  # collapsed until activated
         self.tempController.setStyleSheet(_GLASS_TEMP_CONTROLLER_QSS)
 
-        # Status label — coloured background + explanatory text ----------------
+        # Status banner — coloured background + descriptive text. Sits ABOVE the
+        # slider on the left side of the panel, matching the wireframe.
         self.tempStatusBar = QtWidgets.QLabel("Offline")
-        self.tempStatusBar.setFixedHeight(16)
+        self.tempStatusBar.setObjectName("tempStatusBanner")
+        self.tempStatusBar.setFixedHeight(18)
         self.tempStatusBar.setAlignment(QtCore.Qt.AlignCenter)
         _status_font = QtGui.QFont()
         _status_font.setPointSize(7)
         _status_font.setBold(True)
         self.tempStatusBar.setFont(_status_font)
-        self.tempStatusBar.setStyleSheet(
-            "QLabel { background: rgba(150, 155, 160, 120); color: rgba(30,40,55,160); "
-            "border-radius: 2px; padding: 0 4px; }"
-        )
 
-        # Split value labels — right-side stack
+        # Left column: status (top) above slider (bottom)
+        left_col = QtWidgets.QVBoxLayout()
+        left_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(4)
+        left_col.addWidget(self.tempStatusBar)
+        left_col.addWidget(self.slTemp)
+
+        # PID Info panel (right side) — header + PV / SP / OP value stack
         value_font = QtGui.QFont("Consolas", 7)
         self.lPV = QtWidgets.QLabel("PV  --.--°C")
         self.lSP = QtWidgets.QLabel("SP  --.--°C")
@@ -887,64 +1344,33 @@ class UIControls:  # QtWidgets.QMainWindow
         for lbl in (self.lPV, self.lSP, self.lOP):
             lbl.setFont(value_font)
             lbl.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-            lbl.setStyleSheet("background: transparent; border: none; color: rgba(30,40,55,200);")
-        value_stack = QtWidgets.QVBoxLayout()
-        value_stack.setContentsMargins(4, 0, 2, 0)
-        value_stack.setSpacing(1)
-        value_stack.addWidget(self.lPV)
-        value_stack.addWidget(self.lSP)
-        value_stack.addWidget(self.lOP)
+            lbl.setStyleSheet("background: transparent; border: none; color: rgba(30,40,55,210);")
 
-        # Slider + values side by side
-        content_row = QtWidgets.QHBoxLayout()
-        content_row.setContentsMargins(4, 0, 4, 2)
-        content_row.setSpacing(4)
-        content_row.addWidget(self.slTemp, 1)
-        content_row.addLayout(value_stack)
+        self.tempPidInfo = QtWidgets.QFrame()
+        self.tempPidInfo.setObjectName("tempPidInfo")
+        pid_layout = QtWidgets.QVBoxLayout(self.tempPidInfo)
+        pid_layout.setContentsMargins(8, 4, 8, 4)
+        pid_layout.setSpacing(1)
 
-        # Content area (left portion of panel)
-        _content_area = QtWidgets.QVBoxLayout()
-        _content_area.setContentsMargins(4, 4, 4, 4)
-        _content_area.setSpacing(3)
-        _content_area.addWidget(self.tempStatusBar)
-        _content_area.addLayout(content_row)
+        pid_header = QtWidgets.QLabel("PID INFO")
+        pid_header.setObjectName("tempPidHeader")
+        pid_header.setAlignment(QtCore.Qt.AlignCenter)
+        pid_layout.addWidget(pid_header)
+        pid_layout.addWidget(self.lPV)
+        pid_layout.addWidget(self.lSP)
+        pid_layout.addWidget(self.lOP)
 
-        # Arrow strip — fixed-width clickable button pinned to the right edge.
-        # Clicking it toggles the panel just like the toolbar button does.
-        # Drop arrow_left.svg / arrow_right.svg into QATCH/icons/ and they
-        # will be loaded automatically; Unicode arrows are the fallback.
-        self.tempArrowStrip = QtWidgets.QPushButton()
-        self.tempArrowStrip.setFixedWidth(18)
-        self.tempArrowStrip.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.tempArrowStrip.setStyleSheet("""
-            QPushButton {
-                background: rgba(0, 0, 0, 12);
-                border: none;
-                border-left: 1px solid rgba(0, 0, 0, 18);
-                color: rgba(30, 40, 55, 200);
-                font-size: 11px;
-                font-weight: bold;
-                padding: 0;
-            }
-            QPushButton:hover {
-                background: rgba(229, 229, 229, 150);
-                color: rgba(30, 40, 55, 255);
-            }
-            QPushButton:pressed {
-                background: rgba(200, 210, 218, 180);
-            }
-        """)
-        self.tempArrowStrip.clicked.connect(self._toggle_temp_controller)
-        self._set_temp_arrow(expand=False)  # start collapsed → right arrow
-
-        # Assemble controller panel — content left, arrow right
+        # Assemble panel — [Status / Slider stacked on left]  |  [PID Info on right]
         self.tempLayout = QtWidgets.QHBoxLayout()
-        self.tempLayout.setContentsMargins(0, 0, 0, 0)
-        self.tempLayout.setSpacing(0)
-        self.tempLayout.addLayout(_content_area, 1)
-        self.tempLayout.addWidget(self.tempArrowStrip)
+        self.tempLayout.setContentsMargins(8, 6, 8, 6)
+        self.tempLayout.setSpacing(8)
+        self.tempLayout.addLayout(left_col, 1)
+        self.tempLayout.addWidget(self.tempPidInfo, 0)
         self.tempController.setLayout(self.tempLayout)
         self.toolBar.addWidget(self.tempController)
+
+        # Set initial chevron on the toolbar button (collapsed → "›")
+        self._set_temp_arrow(expand=False)
 
         # Wire live temperature updates to the display panel
         self.lTemp.textUpdated.connect(self._update_temp_display)
@@ -975,8 +1401,10 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_User = QtWidgets.QToolButton()
         self.tool_User.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_User.setIcon(icon_user)
-        self.tool_User.setText("Anonymous")
-        self.tool_User.setEnabled(False)
+        self.tool_User.setText("Account")
+        self.tool_User.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.tool_User.setEnabled(True)
+        self.tool_User.clicked.connect(self._toggle_account_popup)
         self.tool_bar_2.addWidget(self.tool_User)
 
         self.toolBar.addWidget(self.tool_bar_2)
@@ -1182,7 +1610,7 @@ class UIControls:  # QtWidgets.QMainWindow
 
     def _animate_temp_controller(self, expand: bool) -> None:
         """Smoothly expand or collapse the temperature controller panel."""
-        _EXPANDED_W = 240
+        _EXPANDED_W = 280
         start = self.tempController.maximumWidth()
         if start > _EXPANDED_W:
             start = _EXPANDED_W
@@ -1201,26 +1629,23 @@ class UIControls:  # QtWidgets.QMainWindow
         self._temp_anim.start(QtCore.QAbstractAnimation.DeleteWhenStopped)
 
     def _toggle_temp_controller(self) -> None:
-        """Called by the in-panel arrow button to collapse or expand the panel."""
+        """Programmatically toggle the panel via the toolbar button.
+
+        Kept for backward compatibility — external callers (e.g. shortcuts) can
+        still use this to flip the temperature controller open/closed.
+        """
         self.tool_TempControl.setChecked(not self.tool_TempControl.isChecked())
         self.action_tempcontrol()
 
     def _set_temp_arrow(self, expand: bool) -> None:
-        """Point the in-panel arrow button left (collapse) or right (expand).
+        """Update the toolbar button's chevron to indicate panel state.
 
-        Loads ``QATCH/icons/arrow_left.svg`` / ``arrow_right.svg`` when present
-        and sizes the icon to fill the button.  Falls back to Unicode arrows.
+        Per the wireframe, the chevron lives on the toolbar button itself —
+        ``Temp Control ›`` when collapsed (clicking expands), ``Temp Control ‹``
+        when expanded (clicking collapses).  No in-panel arrow strip is used.
         """
-        direction = "left" if expand else "right"
-        svg_path = os.path.join(Architecture.get_path(), "QATCH", "icons", f"{direction}_arrow.svg")
-        icon = QtGui.QIcon(svg_path)
-        if not icon.isNull():
-            self.tempArrowStrip.setIcon(icon)
-            self.tempArrowStrip.setIconSize(QtCore.QSize(self.tempArrowStrip.width() or 14, 14))
-            self.tempArrowStrip.setText("")
-        else:
-            self.tempArrowStrip.setIcon(QtGui.QIcon())
-            self.tempArrowStrip.setText("‹" if expand else "›")
+        if hasattr(self, "tool_TempControl"):
+            self.tool_TempControl.setText("Temp Control ‹" if expand else "Temp Control ›")
 
     def _update_temp_display(self, text: str) -> None:
         """Parse the combined temp string and update the split display + status bar.
@@ -1266,7 +1691,8 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tempStatusBar.setText(status_text)
         self.tempStatusBar.setStyleSheet(
             f"QLabel {{ background: {bg_colour}; color: {text_colour}; "
-            "border-radius: 2px; padding: 0 4px; font-weight: bold; }}"
+            "border: 1px solid rgba(255, 255, 255, 160); "
+            "border-radius: 3px; padding: 0 6px; font-weight: bold; }}"
         )
 
     def action_tempcontrol(self):
@@ -1308,6 +1734,170 @@ class UIControls:  # QtWidgets.QMainWindow
         self.advancedwidget.move(0, 0)
         self.advancedwidget.show()
         self.pButton_PlateConfig.setFixedWidth(self.pButton_PlateConfig.height())
+
+    # -- Account dropdown -----------------------------------------------------
+
+    def _toggle_account_popup(self) -> None:
+        """Show the glass account-info popup anchored below the Account button.
+
+        The popup uses ``Qt.Popup`` so Qt closes it automatically on any outside
+        click, including a click on the Account button itself — which then
+        triggers this slot again to re-show a fresh popup with up-to-date info.
+        We keep a reference on ``self`` so the widget isn't garbage-collected
+        while it's animating in.  Position is clamped to the main window and
+        the popup auto-closes if the main window is resized.
+        """
+        # Tear down any prior popup to avoid stacking translucent windows
+        prev = getattr(self, "_account_popup", None)
+        if prev is not None:
+            try:
+                prev.close()
+                prev.deleteLater()
+            except Exception:
+                pass
+
+        self._account_popup = GlassAccountPopup(open_manager_cb=self._open_user_manager)
+        # Anchor below the Account button; clamp to main window; auto-close on resize
+        main_window = getattr(self, "parent", None)
+        self._account_popup.show_anchored_to(self.tool_User, main_window=main_window)
+
+    def _open_user_manager(self) -> None:
+        """Open the User Profiles Manager dialog (admin-only).
+
+        Instantiates :class:`UserProfilesManager` from
+        ``QATCH.common.userProfiles`` directly rather than going through the
+        legacy ``parent.manage`` ``QAction`` (which has no ``click`` method on
+        ``QAction`` — calling it raised ``AttributeError``).  We hold an
+        instance reference on ``self`` so the dialog stays alive after this
+        method returns.
+
+        ``UserProfilesManager.__init__`` calls
+        ``QtWidgets.QDesktopWidget().availableGeometry()`` with no argument,
+        which always returns the *primary* screen's geometry.  On multi-monitor
+        setups that means the dialog opens on the primary display regardless of
+        where the application actually is, so we override the size/position
+        after construction via :meth:`_anchor_user_manager_to_button`.
+        """
+        try:
+            from QATCH.common.userProfiles import (  # noqa: PLC0415
+                UserProfiles,
+                UserProfilesManager,
+                UserRoles,
+            )
+
+            is_valid, user_info = UserProfiles.session_info()
+            if not (is_valid and user_info and user_info[2] == UserRoles.ADMIN.name):
+                Log.w("User Profiles Manager: an admin session is required to manage users.")
+                return
+
+            admin_name = user_info[0] or ""
+            parent_win = getattr(self, "parent", None)
+
+            # If a manager dialog is already open, just bring it to the front
+            existing = getattr(self, "_user_profiles_manager", None)
+            if existing is not None:
+                if existing.isVisible():
+                    self._anchor_user_manager_to_button(existing)
+                    existing.raise_()
+                    existing.activateWindow()
+                    return
+                # Hidden / closed but still in memory — clean up before re-creating
+                try:
+                    existing.deleteLater()
+                except Exception:
+                    pass
+
+            self._user_profiles_manager = UserProfilesManager(
+                parent=parent_win, admin_name=admin_name
+            )
+            self._anchor_user_manager_to_button(self._user_profiles_manager)
+            self._user_profiles_manager.show()
+            self._user_profiles_manager.raise_()
+            self._user_profiles_manager.activateWindow()
+        except Exception as exc:
+            Log.e(f"UIControls._open_user_manager error: {exc}")
+
+    def _anchor_user_manager_to_button(self, manager: QtWidgets.QWidget) -> None:
+        """Reposition ``manager`` onto the screen the application is running on,
+        with its top-right corner anchored to the Account button's bottom-right.
+
+        ``UserProfilesManager.__init__`` resizes / centers the dialog using the
+        primary display's available geometry, which is wrong on multi-monitor
+        setups.  This override:
+
+        1. Resolves the screen the Account button (and therefore the app) is on
+           — falling back to the main window's screen, then the primary screen.
+        2. Resizes the dialog to ~50% of *that* screen's available area
+           (matching the dialog's original sizing intent).
+        3. Anchors the dialog's top-right corner to the Account button's
+           bottom-right corner so it appears to extend down-and-left from the
+           button that opened it.
+        4. Clamps the final rect inside the target screen's available area so
+           the dialog never spills onto another monitor or off-screen.
+        """
+        anchor_btn = getattr(self, "tool_User", None)
+        anchor_pos: Optional[QtCore.QPoint] = None
+        if anchor_btn is not None:
+            anchor_pos = anchor_btn.mapToGlobal(QtCore.QPoint(0, 0))
+
+        # 1. Find the target screen
+        screen = None
+        if anchor_pos is not None:
+            screen = QtWidgets.QApplication.screenAt(anchor_pos)
+        if screen is None:
+            parent_win = getattr(self, "parent", None)
+            if parent_win is not None:
+                # QWidget.screen() exists in PyQt5 5.14+; window().windowHandle()
+                # is a more compatible fallback.
+                if hasattr(parent_win, "screen"):
+                    try:
+                        screen = parent_win.screen()
+                    except Exception:
+                        screen = None
+                if screen is None:
+                    try:
+                        handle = parent_win.windowHandle()
+                        if handle is not None:
+                            screen = handle.screen()
+                    except Exception:
+                        screen = None
+        if screen is None:
+            screen = QtWidgets.QApplication.primaryScreen()
+        if screen is None:
+            return  # No screens available — leave the default placement
+
+        avail = screen.availableGeometry()
+
+        # 2. Resize to ~50% of the target screen
+        new_w = max(640, int(avail.width() * 0.5))
+        new_h = max(420, int(avail.height() * 0.5))
+        # Don't exceed the available area
+        new_w = min(new_w, avail.width())
+        new_h = min(new_h, avail.height())
+        manager.resize(new_w, new_h)
+
+        # 3. Anchor: top-right of dialog at the button's bottom-right (with a
+        #    small gap so it visually extends from the button).  Fall back to
+        #    centering on the target screen if there's no button reference.
+        if anchor_btn is not None:
+            btn_br = anchor_btn.mapToGlobal(QtCore.QPoint(anchor_btn.width(), anchor_btn.height()))
+            x = btn_br.x() - new_w
+            y = btn_br.y() + 4
+        else:
+            x = avail.x() + (avail.width() - new_w) // 2
+            y = avail.y() + (avail.height() - new_h) // 2
+
+        # 4. Clamp inside the target screen's available area
+        if x + new_w > avail.right():
+            x = avail.right() - new_w + 1
+        if x < avail.left():
+            x = avail.left()
+        if y + new_h > avail.bottom():
+            y = avail.bottom() - new_h + 1
+        if y < avail.top():
+            y = avail.top()
+
+        manager.move(x, y)
 
     def doPlateConfig(self):
         if hasattr(self, "wellPlateUI"):
