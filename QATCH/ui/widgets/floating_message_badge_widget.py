@@ -1,9 +1,36 @@
+"""
+floating_message_badge_widget.py
+
+Non-blocking overlay notification system for nanovisQ.
+
+This module provides the FloatingMessageBadge class, a frameless, translucent
+overlay designed to display status updates, errors, and system notifications
+without interrupting the user's workflow.
+
+Key features include:
+    - Anchored positioning: The badge automatically tracks and snaps to a
+      parent widget or window, maintaining its relative position during
+      resizing or multi-monitor movement.
+    - Event Filtering: Monitors parent events to handle automatic dismissal
+      and repositioning synchronously, eliminating visual lag.
+    - Aesthetic Consistency: Implements a frosted-glass visual style with
+      support for distinct 'info' and 'error' color palettes.
+    - Animated Lifecycle: Utilizes QPropertyAnimation for smooth fade-in and
+      fade-out transitions, paired with a display timer for auto-dismissal.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-05-05
+"""
+
 from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
-class FloatingMessageBadge(QtWidgets.QWidget):
+class FloatingMessageBadgeWidget(QtWidgets.QWidget):
     """A frameless, glass-style floating badge for alerts and info."""
 
     def __init__(
@@ -158,8 +185,8 @@ class FloatingMessageBadge(QtWidgets.QWidget):
                 QtCore.QEvent.Show,
                 QtCore.QEvent.WindowStateChange,
             ):
-                # Reposition after Qt finishes applying the geometry change.
-                QtCore.QTimer.singleShot(0, self._reposition_to_anchor)
+                # Reposition synchronously to eliminate drag lag
+                self._reposition_to_anchor()
 
         return super().eventFilter(watched, event)
 

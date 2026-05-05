@@ -171,30 +171,18 @@ class LoginWindow(QtWidgets.QMainWindow):
         self.ui5.setup_ui(self, parent)
 
     def eventFilter(self, obj, event: QtCore.QEvent) -> bool:
-        """Intercepts and processes key press events for the login window.
+        """Intercepts and processes key events for the login window.
 
-        This method handles `KeyPress` events to facilitate the following user interactions:
-          - **Enter/Return**: If the password field is empty, the focus is set to the field;
-            otherwise, the sign-in action is triggered.
+        This method handles `KeyPress` events to facilitate:
+          - **Enter/Return**: Focuses the password field if empty; otherwise, signs in.
           - **Escape**: Clears the login form.
-          - **Caps Lock**: Toggles the state of the Caps Lock indicator on the UI.
 
-        This method handles `FocusIn` events to facilitate the following user interactions:
-          - **user_password**: Show Caps Lock indicator if CapsLock key is already active.
+        This method handles `KeyRelease` events to facilitate:
+          - **Caps Lock**: Toggles the global Caps Lock indicator state.
 
-        This method handles `FocusOut` events to facilitate the following user interactions:
-          - **user_password**: Hide Caps Lock indicator if CapsLock key is still active.
-
-        Args:
-            obj: The UI object for which the event is being filtered.
-            event (QtCore.QEvent): The object containing details about type of event;
-                if `type()` is `KeyPress`: `key()` contains details about the key pressed.
-
-        Returns:
-            bool: The result of the event filtering. In all cases, whether handled here or not,
-            it is passed to the base class implementation for default event handling as well.
+        This method handles `FocusIn` events to facilitate:
+          - **Global Focus**: Syncs the Caps Lock indicator with the OS state when returning to the app.
         """
-        # Handles key press events for all registered objects.
         if event.type() == QtCore.QEvent.KeyPress:
             # Handles focus for user password field and sign-in action.
             if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
@@ -202,32 +190,26 @@ class LoginWindow(QtWidgets.QMainWindow):
                     self.ui5.user_password.setFocus()
                 else:
                     self.ui5.action_sign_in()
+                return True  # Stop the event from triggering returnPressed
 
             # Handles clearing the login form on EscapeKey press.
             if event.key() == QtCore.Qt.Key_Escape:
                 self.ui5.clear_form()
+                return True
 
-            # Handles toggling Caps Lock indicator while password field has focus.
-            if self.ui5.user_password.hasFocus() and event.key() == QtCore.Qt.Key_CapsLock:
-                self.ui5.caps_lock_on = not self.ui5.caps_lock_on
+        # Listen for KeyRelease instead of KeyPress for CapsLock. 
+        # This gives the OS a fraction of a second to update its internal state 
+        # before we read it using windll_is_caps_lock_on().
+        if event.type() == QtCore.QEvent.KeyRelease:
+            if event.key() == QtCore.Qt.Key_CapsLock:
+                self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
                 self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
 
-        # Handles focus in events for all registered objects.
+        # Handles focus in events for the window.
         if event.type() == QtCore.QEvent.FocusIn:
-            # Handles showing Caps Lock indicator when CapsLock key is active.
-            if obj is self.ui5.user_password:
-                self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
-                if self.ui5.caps_lock_on:
-                    self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
-                # else: already hidden (no need to clear `user_info`)
-
-        # Handles focus out events for all registered objects.
-        if event.type() == QtCore.QEvent.FocusOut:
-            # Handles hiding Caps Lock indicator when CapsLock key is active.
-            if obj is self.ui5.user_password:
-                if self.ui5.caps_lock_on:
-                    self.ui5.user_info.clear()
-                # else: already hidden (no need to clear `user_info`)
+            # Sync the UI indicator with the actual OS state whenever the app gets focus back
+            self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
+            self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
 
         # Always process default event handling, too.
         return super().eventFilter(obj, event)
