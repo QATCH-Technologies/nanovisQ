@@ -6842,6 +6842,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 branch = "v2.5x"
             elif "v2.6" in Constants.app_version:
                 branch = "v2.6x"
+            elif "v2.7" in Constants.app_version:
+                branch = "v2.7x"
             else:
                 # skip to 'except' case below
                 raise NameError("Unknown branch, not recognized")
@@ -6901,6 +6903,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 branch = "v2.5x"
             elif "v2.6" in Constants.app_version:
                 branch = "v2.6x"
+            elif "v2.7" in Constants.app_version:
+                branch = "v2.7x"
             else:
                 # skip to 'except' case below
                 raise NameError("Unknown branch, not recognized")
@@ -7076,6 +7080,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 branch = "v2.5x"
             elif "v2.6" in Constants.app_version:
                 branch = "v2.6x"
+            elif "v2.7" in Constants.app_version:
+                branch = "v2.7x"
             else:
                 # skip to 'except' case below
                 raise NameError("Unknown branch, not recognized")
