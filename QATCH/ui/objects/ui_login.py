@@ -30,6 +30,7 @@ from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants
+from QATCH.ui.popUp import PopUp
 from QATCH.ui.widgets.floating_message_badge_widget import FloatingMessageBadgeWidget
 
 _CARD_W: int = 320
@@ -40,10 +41,99 @@ _PAGE_H: int = 400
 _P_SIGNIN = 0
 _P_RECOVER = 1
 
-import os
-from typing import Optional
-from PyQt5 import QtCore, QtGui, QtWidgets
-from QATCH.common.architecture import Architecture
+
+class LoginWindow(QtWidgets.QMainWindow):
+    """Main window for handling user login events.
+
+    This class provides a login window that manages user interactions, and the window close event.
+    It initializes the login UI and processes events to either authenticate the user,
+    clear the login form, or update the UI state (e.g., toggling the Caps Lock indicator).
+
+    Attributes:
+        ui5 (Ui_Login): An instance of the login UI class used to set up and manage
+            the login interface view.
+    """
+
+    def __init__(self, parent: QtWidgets.QMainWindow) -> None:
+        """Initializes the LoginWindow with the given parent window.
+
+        This method sets up the user interface for the login window by creating an instance
+        of the UI class and initializing it with the current window and parent window.
+
+        Args:
+            parent (QtWidgets.QMainWindow): The parent widget for this login window.
+        """
+        super().__init__()
+        self.ui5 = UILogin()
+        self.ui5.setup_ui(self, parent)
+
+    def eventFilter(self, obj, event: QtCore.QEvent) -> bool:
+        """Intercepts and processes key events for the login window.
+
+        This method handles `KeyPress` events to facilitate:
+          - **Enter/Return**: Focuses the password field if empty; otherwise, signs in.
+          - **Escape**: Clears the login form.
+
+        This method handles `KeyRelease` events to facilitate:
+          - **Caps Lock**: Toggles the global Caps Lock indicator state.
+
+        This method handles `FocusIn` events to facilitate:
+          - **Global Focus**: Syncs the Caps Lock indicator with the OS state when returning to the app.
+        """
+        if event.type() == QtCore.QEvent.KeyPress:
+            # Handles focus for user password field and sign-in action.
+            if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
+                if len(self.ui5.user_password.text()) == 0:
+                    self.ui5.user_password.setFocus()
+                else:
+                    self.ui5.action_sign_in()
+                return True  # Stop the event from triggering returnPressed
+
+            # Handles clearing the login form on EscapeKey press.
+            if event.key() == QtCore.Qt.Key_Escape:
+                self.ui5.clear_form()
+                return True
+
+        # Listen for KeyRelease instead of KeyPress for CapsLock.
+        # This gives the OS a fraction of a second to update its internal state
+        # before we read it using windll_is_caps_lock_on().
+        if event.type() == QtCore.QEvent.KeyRelease:
+            if event.key() == QtCore.Qt.Key_CapsLock:
+                self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
+                self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
+
+        # Handles focus in events for the window.
+        if event.type() == QtCore.QEvent.FocusIn:
+            # Sync the UI indicator with the actual OS state whenever the app gets focus back
+            self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
+            self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
+
+        # Always process default event handling, too.
+        return super().eventFilter(obj, event)
+
+    def closeEvent(self, event: QtCore.QEvent) -> None:
+        """Handles the window close event by prompting the user for confirmation.
+
+        When a close event occurs, this method displays a confirmation dialog asking the user
+        whether they wish to quit the application. If the user confirms, the application quits;
+        otherwise, the event is ignored, and the window remains open.
+
+        Args:
+            event (QtCore.QEvent): The close event triggered when the user attempts to close the window.
+
+        Returns:
+            None
+        """
+        res = PopUp.question(
+            self,
+            Constants.app_title,
+            "Are you sure you want to quit QATCH Q-1 application now?",
+            True,
+        )
+        if res:
+            QtWidgets.QApplication.quit()
+        else:
+            event.ignore()
 
 
 class LoginCentralWidget(QtWidgets.QWidget):

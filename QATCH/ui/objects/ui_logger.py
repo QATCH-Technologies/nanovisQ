@@ -110,6 +110,27 @@ _LOGGER_GLASS_QSS = """
 # ---------------------------------------------------------------------------
 
 
+class LoggerWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.ui4 = UILogger()
+        self.ui4.setupUi(self)
+
+    def closeEvent(self, event):
+        # Log.d(" Exit Real-Time Plot GUI")
+        res = PopUp.question(
+            self,
+            Constants.app_title,
+            "Are you sure you want to quit QATCH Q-1 application now?",
+            True,
+        )
+        if res:
+            # self.close()
+            QtWidgets.QApplication.quit()
+        else:
+            event.ignore()
+
+
 class UILogger:
 
     def setupUi(self, MainWindow4):

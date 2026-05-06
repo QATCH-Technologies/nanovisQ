@@ -10,6 +10,62 @@ from QATCH.core.constants import Constants
 from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
 
 
+class _MainWindow(QtWidgets.QMainWindow):
+    def __init__(self, parent):
+        super().__init__()
+        parent.ControlsWin._createMenu(self)
+        self.ui0 = UIMain()
+        self.ui0.setup_ui(self, parent)
+
+        # Get the application instance safely and connect the signals
+        app_instance = QtWidgets.QApplication.instance()
+        if app_instance:
+            app_instance.focusWindowChanged.connect(self.focusWindowChanged)
+            # capture clicks anywhere on gui
+            app_instance.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        # Handle mouse click events (e.g. hide on click)
+        if event.type() == QtCore.QEvent.MouseButtonPress:
+            widget_clicked = QtWidgets.QApplication.widgetAt(event.globalPos())
+            allow_hide = True
+            if widget_clicked is self.ui0.mode_learn:
+                allow_hide = False
+            # if widget_clicked is self.ui0.mode_learn_text:
+            #     allow_hide = False
+            # if widget_clicked is self.ui0.mode_learn_arrow:
+            #     allow_hide = False
+            if self.ui0.floating_widget.isVisible() and allow_hide:
+                self.ui0.floating_widget.hide()
+        return super().eventFilter(obj, event)
+
+    def focusWindowChanged(self, focus_window):
+        # Hide the floating widget only when the focus leaves this window
+        # NOTE: This is a signal slot event firing, there is no `super()`
+        if focus_window is None or focus_window != self.windowHandle():
+            self.ui0.floating_widget.hide()
+
+    def moveEvent(self, event):
+        # Hide the floating widget whenever the main window moves
+        # NOTE: Its position will be recalculated on next `show()`
+        self.ui0.floating_widget.hide()
+        super().moveEvent(event)
+
+    def closeEvent(self, event):
+        # Log.d(" Exit Real-Time Plot GUI")
+        res = PopUp.question(
+            self,
+            Constants.app_title,
+            "Are you sure you want to quit QATCH Q-1 application now?",
+            True,
+        )
+        if res:
+            # self.close()
+            QtWidgets.QApplication.quit()
+        else:
+            event.ignore()
+
+
 class UIMain:
     """The primary user interface controller for the nanovisQ application.
 

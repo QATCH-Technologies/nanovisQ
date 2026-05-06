@@ -14,6 +14,7 @@ Date:
 """
 
 import os
+import sys
 from typing import Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import (
@@ -27,10 +28,443 @@ from QATCH.ui.widgets.well_plate_widget import WellPlate
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.components.number_icon_button import NumberIconButton
 from QATCH.ui.components.run_controls_button import RunControls
+from QATCH.ui.widgets.export_widget import Ui_Export
+from QATCH.ui.widgets.user_preferences_widget import UserPreferencesWidget
+from QATCH.common.userProfiles import UserProfiles, UserRoles
+from QATCH.common.deviceFingerprint import DeviceFingerprint
 
 # ---------------------------------------------------------------------------
 # Glass-morphism primitives
 # ---------------------------------------------------------------------------
+
+TAG = "[ControlsWindow]"
+
+
+class ControlsWindow(QtWidgets.QMainWindow):
+    def __init__(self, parent, samples=Constants.argument_default_samples):
+        self.parent = parent
+        super().__init__()
+        self.ui1 = UIControls()
+        self.ui1.setupUi(self)
+        self.ui_export = Ui_Export()
+        # self.ui_configure_data = UIConfigureData()
+        self.ui_preferences = UserPreferencesWidget(self)
+        # self.userrole
+        self.current_timer = QtCore.QTimer()
+        # self.current_timer.timeout.connect(self.double_toggle_plots)
+        UserProfiles().session_end()
+
+    def _createMenu(self, target):
+        self.menubar = []
+        self.menubar.append(target.menuBar().addMenu("&Options"))
+        self.menubar[0].addAction("&Analyze Data", self.analyze_data)
+        self.menubar[0].addAction("&Import Data", self.import_data)
+        self.menubar[0].addAction("&Export Data", self.export_data)
+        self.menubar[0].addAction("&Recover Data", self.recover_data)
+        # self.menubar[0].addAction('&Configure Data', self.configure_data)
+        self.menubar[0].addAction("&Preferences", self.preferences)
+        self.menubar[0].addAction("&Find Devices", self.scan_subnets)
+        self.menubar[0].addAction("E&xit", self.close)
+        self.menubar.append(target.menuBar().addMenu("&Users"))
+        self.username = self.menubar[1].addAction("User: [NONE]")
+        self.username.setEnabled(False)
+        self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
+        self.menubar[1].addAction("Select &directory...", self.set_working_directory)
+        self.manage = self.menubar[1].addAction("&Manage Users...", self.manage_user_profiles)
+        self.userrole = UserRoles.NONE
+        self.menubar.append(target.menuBar().addMenu("&View"))
+        self.modebar = self.menubar[2].addMenu("&Mode")
+        self.modebar.addAction("&1: Run", lambda: self.parent.MainWin.ui0._set_run_mode(None))
+        self.modebar.addAction(
+            "&2: Analyze", lambda: self.parent.MainWin.ui0._set_analyze_mode(None)
+        )
+        if Constants.show_visQ_in_R_builds:
+            self.modebar.addAction(
+                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0._set_learn_mode(None)
+            )
+        self.chk1 = self.menubar[2].addAction("&Console", self.toggle_console)
+        self.chk1.setCheckable(True)
+        self.chk1.setChecked(
+            self.parent.AppSettings.value("viewState_Console", "True").lower() == "true"
+        )
+        self.chk2 = self.menubar[2].addAction("&Amplitude", self.toggle_amplitude)
+        self.chk2.setCheckable(True)
+        self.chk2.setChecked(
+            self.parent.AppSettings.value("viewState_Amplitude", "True").lower() == "true"
+        )
+        self.chk3 = self.menubar[2].addAction("&Temperature", self.toggle_temperature)
+        self.chk3.setCheckable(True)
+        self.chk3.setChecked(
+            self.parent.AppSettings.value("viewState_Temperature", "True").lower() == "true"
+        )
+        self.chk4 = self.menubar[2].addAction("&Resonance/Dissipation", self.toggle_RandD)
+        self.chk4.setCheckable(True)
+        self.chk4.setChecked(
+            self.parent.AppSettings.value("viewState_Resonance_Dissipation", "True").lower()
+            == "true"
+        )
+        self.menubar.append(target.menuBar().addMenu("&Help"))
+        self.chk5 = self.menubar[3].addAction("View &Tutorials", self.view_tutorials)
+        self.chk5.setCheckable(False)
+        self.menubar.append(self.menubar[3].addMenu("View &Documentation"))
+        self.menubar[4].addAction("&Release Notes", self.release_notes)
+        self.menubar[4].addAction("&FW Change Log", self.fw_change_log)
+        self.menubar[4].addAction("&SW Change Log", self.sw_change_log)
+        self.menubar[3].addAction("View &License", self.view_license)
+        self.menubar[3].addAction("View &User Guide", self.view_user_guide)
+        self.menubar[3].addAction("&Check for Updates", self.check_for_updates)
+        self.menubar[3].addSeparator()
+        from QATCH.models.ModelData import __release__ as ModelData_release
+        from QATCH.models.ModelData import __version__ as ModelData_version
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+            __release__ as QModel4_release,
+        )
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+            __version__ as QModel4_version,
+        )
+        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+            __release__ as QModel6_release,
+        )
+        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+            __version__ as QModel6_version,
+        )
+
+        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (3 available)")
+        self.menubar.append(qmodel_versions_menu)
+        self.q_version_v1 = self.menubar[5].addAction(
+            "ModelData v{} ({})".format(ModelData_version, ModelData_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[0]
+            ),
+        )
+        self.q_version_v1.setCheckable(True)
+        self.q_version_v4 = self.menubar[5].addAction(
+            "QModel Fusion v{} ({})".format(QModel4_version, QModel4_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[1]
+            ),
+        )
+        self.q_version_v4.setCheckable(True)
+        self.q_version_v6 = self.menubar[5].addAction(
+            "QModel YOLO26 v{} ({})".format(QModel6_version, QModel6_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[2]
+            ),
+        )
+        self.q_version_v6.setCheckable(True)
+        if Constants.QModel6_predict:
+            self.q_version_v6.setChecked(True)
+        elif Constants.QModel4_predict:
+            self.q_version_v4.setChecked(True)
+        elif Constants.ModelData_predict:
+            self.q_version_v1.setChecked(True)
+        else:
+            Log.w(TAG, "No model selected on startup")
+        self.menubar[3].addSeparator()
+        sw_version = self.menubar[3].addAction(
+            "SW {}_{} ({})".format(
+                Constants.app_version,
+                "exe" if getattr(sys, "frozen", False) else "py",
+                Constants.app_date,
+            )
+        )
+        sw_version.setEnabled(False)
+        fingerprint_txt = DeviceFingerprint.get_key()
+        if fingerprint_txt is not None:
+            self.menubar[3].addSeparator()
+            fingerprint_action = self.menubar[3].addAction(fingerprint_txt)
+            fingerprint_action.setToolTip("Click to copy to clipboard")
+            fingerprint_action.triggered.connect(
+                lambda: QtWidgets.QApplication.clipboard().setText(fingerprint_txt)
+            )
+
+        # update application UI states to reflect viewStates from AppSettings
+        if not self.chk1.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_console)
+        if not self.chk2.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_amplitude)
+        if not self.chk3.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_temperature)
+        if not self.chk4.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_RandD)
+
+    def analyze_data(self):
+        self.parent.MainWin.ui0._set_analyze_mode(self)
+
+    def import_data(self):
+        self.ui_export.showNormal(0)
+
+    def export_data(self):
+        self.ui_export.showNormal(1)
+
+    def recover_data(self):
+        self.ui_export.showNormal(2)
+
+    # def configure_data(self):
+    #     self.ui_configure_data.show()
+
+    def preferences(self):
+        self.ui_preferences.showNormal(0)
+
+    def scan_subnets(self):
+        Discovery().scanSubnets()
+        self.parent._port_list_refresh()
+
+    def set_working_directory(self):
+        # loads global/user prefs
+        self.ui_preferences.toggle_global_preferences()
+        # force sync read/write
+        self.ui_preferences.sync_write_with_load.setChecked(True)
+        # ask user for working directory
+        result = self.ui_preferences.open_load_file_dialog()
+        # auto-save, assuming user gave us a new directory AND submit button is enabled
+        if result and self.ui_preferences.submit_button.isEnabled():
+            self.ui_preferences.submit_button.click()
+        else:
+            Log.w("Working directory not changed.")
+
+    def set_user_profile(self):
+        action = self.signinout.text().lower().replace("&", "")
+        if action == "sign in":
+            if UserProfiles().count() == 0:
+                self.manage_user_profiles()
+                return
+            name, init, role = UserProfiles.change()
+            if name != None:
+                self.username.setText(f"User: {name}")
+                self.userrole = UserRoles(role)
+                self.signinout.setText("&Sign Out")
+                self.ui1.tool_User.setText(name)
+                self.parent.AnalyzeProc.tool_User.setText(name)
+                if self.userrole != UserRoles.ADMIN:
+                    self.manage.setText("&Change Password...")
+        else:
+            if self.parent.MainWin.ui0._set_no_user_mode(None):
+                UserProfiles().session_end()
+                name = self.username.text()[6:]
+                Log.i(f"Goodbye, {name}! You have been signed out.")
+                self.username.setText("User: [NONE]")
+                self.userrole = UserRoles.NONE
+                self.signinout.setText("&Sign In")
+                self.manage.setText("&Manage Users...")
+                self.ui1.tool_User.setText("Anonymous")
+                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
+            else:
+                Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
+
+    def manage_user_profiles(self):
+        # dissallow user management if Analyze mode still has unsaved changes (after prompt to close)
+        # still logged in, but user cannot stay in Analyze mode
+        if not self.parent.MainWin.ui0._set_run_mode(None):
+            Log.d("User has unsaved changes in Analyze mode. Manage users aborted.")
+            return
+
+        # dissallow user management if current mode is busy
+        if not self.parent.ControlsWin.ui1.pButton_Start.isEnabled():
+            PopUp.warning(
+                self,
+                "Action Not Allowed",
+                "User info cannot be changed during an active capture.\n"
+                + "Please 'Stop' the measurement before attempting this action.",
+            )
+            return
+
+        if self.userrole != UserRoles.ADMIN and self.userrole != UserRoles.NONE:
+            # change password, and return
+            name = self.username.text()[6:]
+            found, filename = UserProfiles.find(name, None)
+            if filename != None:
+                UserProfiles.change_password(filename)
+                return
+            else:
+                Log.e("Attempted to change password, but user was not found!")
+
+        name = self.username.text()[6:]
+        allow, admin = UserProfiles().manage(name, self.userrole)
+
+        if admin is None and not UserProfiles.session_info()[0]:
+            if name != "[NONE]":
+                Log.i(f"Goodbye, {name}! You have been signed out.")
+            self.username.setText("User: [NONE]")
+            self.userrole = UserRoles.NONE
+            self.signinout.setText("&Sign In")
+            self.manage.setText("&Manage Users...")
+            self.ui1.tool_User.setText("Anonymous")
+            self.parent.AnalyzeProc.tool_User.setText("Anonymous")
+            self.parent.MainWin.ui0._set_no_user_mode(None)
+        if admin != name and admin != None:
+            Log.d("User name changed. Changing sign-in user info.")
+            self.username.setText(f"User: {admin}")
+            self.userrole = UserRoles.ADMIN
+            self.signinout.setText("&Sign Out")
+            self.manage.setText("&Manage Users...")
+            self.ui1.tool_User.setText(admin)
+            self.parent.AnalyzeProc.tool_User.setText(admin)
+
+        if allow:
+            self.manageUsersUI = UserProfilesManager(self, admin)
+            self.manageUsersUI.show()
+
+    def toggle_console(self):
+        if self.current_timer.isActive():
+            self.current_timer.stop()
+        if not self.chk1.isChecked():
+            Log.d("Hiding Console window")
+            self.parent.MainWin.ui0.logview.setVisible(False)
+            # self.parent.LogWin.ui4.centralwidget.setVisible(False)
+        else:
+            Log.d("Showing Console window")
+            self.parent.MainWin.ui0.logview.setVisible(True)
+            # self.parent.LogWin.ui4.centralwidget.setVisible(True)
+        self.parent.AppSettings.setValue("viewState_Console", self.chk1.isChecked())
+
+    def toggle_amplitude(self):
+        tc = self.show_top_plot()
+        if not self.chk2.isChecked():
+            Log.d("Hiding Amplitude plot(s)")
+            for i, p in enumerate(self.parent._plt0_arr):
+                if p is None:
+                    continue
+                p.setVisible(False)
+                self.parent._plt0_arr[i] = p
+        else:
+            Log.d("Showing Amplitude plot(s)")
+            for i, p in enumerate(self.parent._plt0_arr):
+                if p is None:
+                    continue
+                p.setVisible(True)
+                self.parent._plt0_arr[i] = p
+        self.hide_top_plot(tc)
+        self.parent.AppSettings.setValue("viewState_Amplitude", self.chk2.isChecked())
+
+    def toggle_temperature(self):
+        tc = self.show_top_plot()
+        if not self.chk3.isChecked():
+            Log.d("Hiding Temperature plot")
+            self.parent._plt4.setVisible(False)
+        else:
+            Log.d("Showing Temperature plot")
+            self.parent._plt4.setVisible(True)
+        self.hide_top_plot(tc)
+        self.parent.AppSettings.setValue("viewState_Temperature", self.chk3.isChecked())
+
+    def toggle_RandD(self):
+        if self.current_timer.isActive():
+            self.current_timer.stop()
+        if not self.chk4.isChecked():
+            Log.d("Hiding Resonance/Dissipation plot(s)")
+            self.parent.PlotsWin.ui2.pltB.setVisible(False)
+        else:
+            Log.d("Showing Resonance/Dissipation plot(s)")
+            self.parent.PlotsWin.ui2.pltB.setVisible(True)
+        self.parent.AppSettings.setValue("viewState_Resonance_Dissipation", self.chk4.isChecked())
+
+    def show_top_plot(self):
+        toggle_console = False
+        if self.chk2.isChecked() or self.chk3.isChecked():
+            Log.d("Showing top plots window")
+            toggle_console = self.parent.PlotsWin.ui2.plt.isVisible() == False
+            self.parent.PlotsWin.ui2.plt.setVisible(True)
+        return toggle_console
+
+    def hide_top_plot(self, toggle_console):
+        if self.chk2.isChecked() or self.chk3.isChecked():
+            # Remove the timer hack completely:
+            # if toggle_console:
+            #     if self.current_timer.isActive():
+            #         self.current_timer.stop()
+            #     self.current_timer.setSingleShot(True)
+            #     self.current_timer.start(100)
+
+            # Instead, optionally trigger a proper layout refresh if PyQt needs a nudge
+            if toggle_console:
+                self.parent.PlotsWin.layout().activate()  # Or update() / adjustSize()
+        else:
+            Log.d("Hiding top plots window")
+            self.parent.PlotsWin.ui2.plt.setVisible(False)
+
+    # def double_toggle_plots(self):
+    #     Log.d("Toggling console window (for sizing)")
+    #     self.chk4.setChecked(not self.chk4.isChecked())
+    #     self.toggle_RandD()
+    #     self.chk4.setChecked(not self.chk4.isChecked())
+    #     QtCore.QTimer.singleShot(0, self.toggle_RandD)
+
+    def view_tutorials(self):
+        self.parent.TutorialWin.setVisible(not self.parent.TutorialWin.isVisible())
+        self.chk5.setChecked(self.parent.TutorialWin.isVisible())
+
+    def open_file(self, filepath, relative_to_cwd=True):
+        try:
+            if relative_to_cwd:
+                fullpath = os.path.join(Architecture.get_path(), filepath)
+            os_type = Architecture.get_os()
+            if os_type == OSType.macosx:  # macOS
+                subprocess.call(("open", fullpath))
+            elif os_type == OSType.windows:  # Windows
+                os.startfile(fullpath)
+            elif os_type == OSType.linux:  # linux
+                subprocess.call(("xdg-open", fullpath))
+            else:  # other variants
+                Log.w("Unknown OS Type:", os_type)
+                Log.w("Assuming Linux variant...")
+                subprocess.call(("xdg-open", fullpath))
+        except:
+            Log.e(TAG, f'ERROR: Cannot open "{os.path.split(fullpath)[1]}"')
+
+    def release_notes(self):
+        self.open_file(f"docs/Release Notes {Constants.app_version}.pdf")
+
+    def fw_change_log(self):
+        self.open_file(f"QATCH_Q-1_FW_py_{Constants.best_fw_version}/FW Change Control Doc.pdf")
+
+    def sw_change_log(self):
+        self.open_file("QATCH/SW Change Control Doc.pdf")
+
+    def view_license(self):
+        self.open_file("docs/gpl.txt")
+        self.open_file("docs/LICENSE.txt")
+
+    def view_user_guide(self):
+        self.open_file("docs/userguide.pdf")
+
+    def check_for_updates(self):
+        if hasattr(self.parent, "url_download"):
+            delattr(self.parent, "url_download")
+        if hasattr(self.parent, "_license_manager"):
+            lm: LicenseManager = self.parent._license_manager
+            if hasattr(lm, "refresh_license") and callable(lm.refresh_license):
+                lm.refresh_license()
+        color, status = self.parent.start_download(True)
+        if color == "#ff0000":
+            if status == "ERROR":
+                PopUp.warning(self, "Check for Updates", "An error occurred checking for updates.")
+            if status == "OFFLINE":
+                PopUp.warning(self, "Check for Updates", "Unable to check online for updates.")
+        elif color != "#00ff00":
+            technicality = " available " if color == "#00c600" else " supported "
+            PopUp.information(
+                self,
+                "Check for Updates",
+                f"You are running the latest{technicality}version.",
+            )
+
+    def closeEvent(self, event):
+        # Log.d(" Exit Setup/Control GUI")
+        if hasattr(self, "close_no_confirm"):
+            res = True
+        else:
+            res = PopUp.question(
+                self,
+                Constants.app_title,
+                "Are you sure you want to quit QATCH Q-1 application now?",
+                True,
+            )
+        if res:
+            # self.close()
+            QtWidgets.QApplication.quit()
+        else:
+            event.ignore()
 
 
 class GlassControlsWidget(QtWidgets.QWidget):
@@ -755,8 +1189,15 @@ class GlassAccountPopup(QtWidgets.QWidget):
 
         Falls back to the anchor's screen geometry if no main window is set.
         """
-        if self._main_window is not None:
-            bounds = self._main_window.frameGeometry()
+        # Prefer the anchor widget's own top-level window (content geometry, screen
+        # coords) so the popup is always clamped against the window that actually
+        # contains the button — regardless of which QWidget was passed as
+        # main_window.  Fall back to main_window, then the screen.
+        top_level = anchor.window() if anchor is not None else None
+        if top_level is not None:
+            bounds = top_level.geometry()
+        elif self._main_window is not None:
+            bounds = self._main_window.geometry()
         else:
             screen = QtWidgets.QApplication.screenAt(anchor.mapToGlobal(QtCore.QPoint(0, 0)))
             bounds = screen.availableGeometry() if screen is not None else QtCore.QRect()
@@ -1403,7 +1844,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_User.setIcon(icon_user)
         self.tool_User.setText("Account")
         self.tool_User.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.tool_User.setEnabled(True)
+        self.tool_User.setEnabled(self._is_user_signed_in())
         self.tool_User.clicked.connect(self._toggle_account_popup)
         self.tool_bar_2.addWidget(self.tool_User)
 
@@ -1736,6 +2177,36 @@ class UIControls:  # QtWidgets.QMainWindow
         self.pButton_PlateConfig.setFixedWidth(self.pButton_PlateConfig.height())
 
     # -- Account dropdown -----------------------------------------------------
+
+    @staticmethod
+    def _is_user_signed_in() -> bool:
+        """Return True if a valid user session is currently active."""
+        try:
+            from QATCH.common.userProfiles import UserProfiles  # noqa: PLC0415
+
+            is_valid, _ = UserProfiles.session_info()
+            return bool(is_valid)
+        except Exception:
+            return False
+
+    def refresh_user_button_state(self) -> None:
+        """Enable or disable the Account toolbar button based on the current session.
+
+        Call this after a user signs in or signs out so the button reflects the
+        live authentication state.  The button is disabled (greyed-out) when no
+        session is active, and re-enabled once a valid session is established.
+        """
+        signed_in = self._is_user_signed_in()
+        if hasattr(self, "tool_User"):
+            self.tool_User.setEnabled(signed_in)
+            # If a popup is open and the user just signed out, close it
+            if not signed_in:
+                popup = getattr(self, "_account_popup", None)
+                if popup is not None:
+                    try:
+                        popup.close()
+                    except Exception:
+                        pass
 
     def _toggle_account_popup(self) -> None:
         """Show the glass account-info popup anchored below the Account button.

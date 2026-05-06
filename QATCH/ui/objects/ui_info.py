@@ -1,6 +1,29 @@
 import os
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
+from QATCH.core.constants import Constants
+from QATCH.ui.popUp import PopUp
+
+
+class InfoWindow(QtWidgets.QMainWindow):
+    def __init__(self, samples=Constants.argument_default_samples):
+        super().__init__()
+        self.ui3 = UIInfo()
+        self.ui3.setupUi(self)
+
+    def closeEvent(self, event):
+        # Log.d(" Exit Real-Time Plot GUI")
+        res = PopUp.question(
+            self,
+            Constants.app_title,
+            "Are you sure you want to quit QATCH Q-1 application now?",
+            True,
+        )
+        if res:
+            # self.close()
+            QtWidgets.QApplication.quit()
+        else:
+            event.ignore()
 
 
 class UIInfo:
