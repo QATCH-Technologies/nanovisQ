@@ -17,6 +17,7 @@ data_files = [
     ( "QATCH\\resources", "QATCH\\resources" ),
     ( "QATCH\\VisQAI\\assets\\app.db", "QATCH\\VisQAI\\assets" ),
     ( "QATCH\\VisQAI\\assets\\VisQAI-base.visq", "QATCH\\VisQAI\\assets" ),
+    ( "QATCH\\VisQAI\\src\\view\\styles\\theme.qss", "QATCH\\VisQAI\\src\\view\\styles" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.hex", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.pdf", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( "tools\\tool-teensy", "tools\\tool-teensy" ),
