@@ -12,6 +12,6 @@
 # Ignore all files in "assets" folder
 **/assets/**
 
-# But explicitly include "VisQAI-base.zip" and "app.db" assets
-!**/assets/VisQAI-base.zip
+# But explicitly include "VisQAI-base.visq" and "app.db" assets
+!**/assets/VisQAI-base.visq
 !**/assets/app.db
