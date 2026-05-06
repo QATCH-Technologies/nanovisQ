@@ -1,9 +1,9 @@
-244 INFO: PyInstaller: 6.18.0, contrib hooks: 2025.9
-244 INFO: Python: 3.11.7
-257 INFO: Platform: Windows-10-10.0.19045-SP0
-257 INFO: Python environment: C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv
-447 INFO: Embedded firmware version: 'v2.6r69'
-448 INFO: Module search paths (PYTHONPATH):
+215 INFO: PyInstaller: 6.18.0, contrib hooks: 2025.9
+215 INFO: Python: 3.11.7
+218 INFO: Platform: Windows-10-10.0.19045-SP0
+218 INFO: Python environment: C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv
+437 INFO: Embedded firmware version: 'v2.7r1'
+438 INFO: Module search paths (PYTHONPATH):
 ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x '
 'branch\\trunk\\.venv\\Scripts\\pyinstaller.exe',
 'C:\\Users\\Alexander J. '
@@ -24,229 +24,228 @@
 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x '
 'branch\\trunk\\.venv\\Lib\\site-packages\\Pythonwin',
 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk']
-1449 INFO: Appending 'binaries' from .spec
-1454 INFO: Appending 'datas' from .spec
-1489 INFO: checking Analysis
-1489 INFO: Building Analysis because Analysis-00.toc is non existent
-1489 INFO: Looking for Python shared library...
-1489 INFO: Using Python shared library: C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\python311.dll
-1489 INFO: Running Analysis Analysis-00.toc
-1489 INFO: Target bytecode optimization level: 0
-1489 INFO: Initializing module dependency graph...
-1491 INFO: Initializing module graph hook caches...
-1607 INFO: Analyzing modules for base_library.zip ...
-3393 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-3656 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-7791 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-23408 INFO: Caching module dependency graph...
-23521 INFO: Analyzing C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\app.py
-23596 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-23745 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-24253 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-25123 INFO: Processing standard module hook 'hook-PyQt5.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-26854 INFO: Processing standard module hook 'hook-PyQt5.QtCore.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-31584 INFO: Processing standard module hook 'hook-PyQt5.QtWidgets.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-35848 INFO: Processing standard module hook 'hook-PyQt5.QtGui.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-38618 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-38837 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-42848 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-50291 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-67052 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-67262 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-67262 INFO: SetuptoolsInfo: initializing cached setuptools info...
-73344 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-75505 INFO: Processing pre-find-module-path hook 'hook-pyi_splash.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-75508 INFO: Adding pyi_splash module to application dependencies.
-76017 INFO: Processing standard module hook 'hook-pandas.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-84493 INFO: Processing standard module hook 'hook-pytz.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-85512 INFO: Processing standard module hook 'hook-scipy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-86881 INFO: Processing standard module hook 'hook-pycparser.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-87751 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-87853 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-87854 INFO: Processing pre-find-module-path hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-88399 INFO: Processing standard module hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-88476 INFO: Processing standard module hook 'hook-distutils.util.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-88733 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-88852 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-89245 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-89246 INFO: Setuptools: 'jaraco' appears to be a partial setuptools-vendored copy - extending search paths to ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\jaraco', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\setuptools\\_vendor\\jaraco']!
-89248 INFO: Processing pre-safe-import-module hook 'hook-jaraco.text.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-89249 INFO: Setuptools: 'jaraco.text' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco.text'!
-89296 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-89300 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-89302 INFO: Processing pre-safe-import-module hook 'hook-jaraco.context.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-89310 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-89310 INFO: Setuptools: 'backports' appears to be a partial setuptools-vendored copy - extending search paths to ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\backports', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\setuptools\\_vendor\\backports']!
-89310 INFO: Processing pre-safe-import-module hook 'hook-backports.tarfile.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-89493 INFO: Processing standard module hook 'hook-backports.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-89511 INFO: Processing pre-safe-import-module hook 'hook-jaraco.functools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-89558 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-90160 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-90207 INFO: Processing standard module hook 'hook-importlib_metadata.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-90378 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-91385 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-91386 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
-93050 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-94512 INFO: Processing standard module hook 'hook-torch.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-11783 WARNING: Failed to collect submodules for 'torch.utils.tensorboard' because importing 'torch.utils.tensorboard' raised: AttributeError: module 'tensorflow' has no attribute 'io'
-W0224 10:35:53.555000 3628 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
+1237 INFO: Appending 'binaries' from .spec
+1242 INFO: Appending 'datas' from .spec
+1262 INFO: checking Analysis
+1262 INFO: Building Analysis because Analysis-00.toc is non existent
+1262 INFO: Looking for Python shared library...
+1262 INFO: Using Python shared library: C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\python311.dll
+1262 INFO: Running Analysis Analysis-00.toc
+1262 INFO: Target bytecode optimization level: 0
+1262 INFO: Initializing module dependency graph...
+1264 INFO: Initializing module graph hook caches...
+1358 INFO: Analyzing modules for base_library.zip ...
+3196 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+3417 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+6654 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+13067 INFO: Caching module dependency graph...
+13164 INFO: Analyzing C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\app.py
+13254 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+13438 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+14530 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+16876 INFO: Processing standard module hook 'hook-PyQt5.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+20067 INFO: Processing standard module hook 'hook-PyQt5.QtCore.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+23906 INFO: Processing standard module hook 'hook-PyQt5.QtWidgets.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+25350 INFO: Processing standard module hook 'hook-PyQt5.QtGui.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+26124 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+26293 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+27823 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+30371 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+35421 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+35742 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+35745 INFO: SetuptoolsInfo: initializing cached setuptools info...
+38893 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+39749 INFO: Processing pre-find-module-path hook 'hook-pyi_splash.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+39752 INFO: Adding pyi_splash module to application dependencies.
+40217 INFO: Processing standard module hook 'hook-pandas.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+42747 INFO: Processing standard module hook 'hook-pytz.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+43638 INFO: Processing standard module hook 'hook-scipy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+45196 INFO: Processing standard module hook 'hook-pycparser.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+46266 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+46304 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+46305 INFO: Processing pre-find-module-path hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+46919 INFO: Processing standard module hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+46991 INFO: Processing standard module hook 'hook-distutils.util.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+47201 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+47303 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+47864 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+47864 INFO: Setuptools: 'jaraco' appears to be a partial setuptools-vendored copy - extending search paths to ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\jaraco', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\setuptools\\_vendor\\jaraco']!
+47864 INFO: Processing pre-safe-import-module hook 'hook-jaraco.text.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+47864 INFO: Setuptools: 'jaraco.text' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco.text'!
+47911 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+47914 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+47914 INFO: Processing pre-safe-import-module hook 'hook-jaraco.context.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+47951 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+47952 INFO: Setuptools: 'backports' appears to be a partial setuptools-vendored copy - extending search paths to ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\backports', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\setuptools\\_vendor\\backports']!
+47964 INFO: Processing pre-safe-import-module hook 'hook-backports.tarfile.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+48104 INFO: Processing standard module hook 'hook-backports.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+48113 INFO: Processing pre-safe-import-module hook 'hook-jaraco.functools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+48163 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+48599 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+48663 INFO: Processing standard module hook 'hook-importlib_metadata.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+48763 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+49663 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+49665 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+50968 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+52341 INFO: Processing standard module hook 'hook-torch.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+12206 WARNING: Failed to collect submodules for 'torch.utils.tensorboard' because importing 'torch.utils.tensorboard' raised: AttributeError: module 'tensorflow' has no attribute 'io'
+W0506 14:21:06.695000 22452 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._sharding_spec` will be deprecated, use `torch.distributed._shard.sharding_spec` instead
 __import__(name)
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._sharded_tensor` will be deprecated, use `torch.distributed._shard.sharded_tensor` instead
 __import__(name)
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._shard.checkpoint` will be deprecated, use `torch.distributed.checkpoint` instead
 __import__(name)
-145318 INFO: hook-torch: this torch build does not depend on MKL...
-147830 INFO: Processing standard module hook 'hook-matplotlib.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-148854 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-149463 INFO: Processing standard module hook 'hook-matplotlib.backend_bases.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-149769 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-150058 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-150838 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-151134 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-152845 INFO: Processing standard module hook 'hook-jinja2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-153967 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-154115 INFO: Processing standard module hook 'hook-matplotlib.pyplot.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-156679 INFO: Processing standard module hook 'hook-dateutil.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-156913 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-160343 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-179403 INFO: Processing standard module hook 'hook-scipy.linalg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-180090 INFO: Processing standard module hook 'hook-scipy.special._ufuncs.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-180888 INFO: Processing standard module hook 'hook-scipy.special._ellip_harm_2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-187202 INFO: Processing standard module hook 'hook-scipy.spatial._ckdtree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-188639 INFO: Processing standard module hook 'hook-scipy.spatial.transform.rotation.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-191305 INFO: Processing standard module hook 'hook-scipy.stats._stats.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-192548 INFO: Processing standard module hook 'hook-scipy.sparse.csgraph.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-203180 INFO: Processing pre-safe-import-module hook 'hook-tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
-203188 INFO: Processing standard module hook 'hook-tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-203192 INFO: hook-tensorflow: tensorflow dist name: tensorflow-cpu
-203194 INFO: hook-tensorflow: tensorflow version: 2.18.0
-361 WARNING: Failed to collect submodules for 'keras' because importing 'keras' raised: ModuleNotFoundError: No module named 'tensorflow.python'
-204591 WARNING: collect_dynamic_libs - skipping library collection for module 'tensorflow-plugins' as it is not a package.
-207957 INFO: Processing standard module hook 'hook-fsspec.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-213850 INFO: Processing standard module hook 'hook-pandas.io.formats.style.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-218695 INFO: Processing standard module hook 'hook-pandas.plotting.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-223075 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-223641 INFO: Processing standard module hook 'hook-pandas.io.clipboard.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-233892 INFO: Processing pre-safe-import-module hook 'hook-win32com.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
-234032 INFO: Processing standard module hook 'hook-win32com.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-234047 INFO: Processing standard module hook 'hook-pythoncom.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-234198 INFO: Processing standard module hook 'hook-pywintypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-249167 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-272498 INFO: Processing standard module hook 'hook-torchvision.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-272711 INFO: Processing standard module hook 'hook-torchvision.io.image.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-277893 INFO: Processing standard module hook 'hook-torchaudio.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-287249 INFO: Processing standard module hook 'hook-scipy.io.matlab.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-288750 INFO: Processing standard module hook 'hook-h5py.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-299354 INFO: Processing standard module hook 'hook-pyqtgraph.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-699 WARNING: Failed to collect submodules for 'pyqtgraph.opengl' because importing 'pyqtgraph.opengl' raised: ModuleNotFoundError: No module named 'OpenGL'
-300945 INFO: hook-pyqtgraph: selected 'PyQt5' as Qt bindings because hook for 'PyQt5' has been run before.
-301046 INFO: Processing standard module hook 'hook-PyQt5.uic.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-301447 INFO: Processing pre-find-module-path hook 'hook-PyQt5.uic.port_v2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-301781 INFO: Processing standard module hook 'hook-PyQt5.QtSvg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-302011 INFO: Processing standard module hook 'hook-PyQt5.QtTest.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-304465 INFO: Processing standard module hook 'hook-matplotlib.backends.backend_qtagg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-304496 INFO: Processing standard module hook 'hook-matplotlib.backends.qt_compat.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-304497 INFO: hook-matplotlib.backends.qt_compat: selected 'PyQt5' as Qt bindings because hook for 'PyQt5' has been run before.
-306905 INFO: Processing standard module hook 'hook-Cryptodome.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-308732 INFO: Processing standard module hook 'hook-cryptography.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-310562 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
-322302 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-324435 INFO: Processing standard module hook 'hook-ultralytics.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-327207 INFO: Processing standard module hook 'hook-shapely.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-328354 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-328354 INFO: TclTkInfo: initializing cached Tcl/Tk info...
-329054 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-335852 INFO: Processing standard module hook 'hook-sklearn.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-336823 INFO: Processing standard module hook 'hook-sklearn.utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-338677 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.numpy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-338793 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.cupy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-338858 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.torch.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-338971 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.dask.array.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-339856 INFO: Processing standard module hook 'hook-sklearn.metrics.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-347662 INFO: Processing standard module hook 'hook-sklearn.metrics.cluster.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-348327 INFO: Processing standard module hook 'hook-sklearn.cluster.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-348504 INFO: Processing standard module hook 'hook-sklearn.metrics.pairwise.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-349556 INFO: Processing standard module hook 'hook-sklearn.neighbors.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-349911 INFO: Processing standard module hook 'hook-sklearn.linear_model.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-365375 INFO: Processing standard module hook 'hook-PyQt5.QtPrintSupport.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-366003 INFO: Analyzing hidden import 'charset_normalizer.md__mypyc'
-366003 INFO: Processing module hooks (post-graph stage)...
-368074 INFO: Processing standard module hook 'hook-sklearn.tree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-375869 INFO: Processing standard module hook 'hook-pygments.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-392595 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-392595 INFO: Matplotlib backend selection method: automatic discovery of used backends
-392740 INFO: Discovered Matplotlib backend(s) via `matplotlib.use()` call in module 'sympy.testing.runtests': ['Agg', 'Agg']
-392810 INFO: The following Matplotlib backends were discovered by scanning for `matplotlib.use()` calls: ['Agg']. If your backend of choice is not in this list, either add a `matplotlib.use()` call to your code, or configure the backend collection via hook options (see: https://pyinstaller.org/en/stable/hooks-config.html#matplotlib-hooks).
-392810 INFO: Selected matplotlib backends: ['Agg']
-393792 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-402414 WARNING: Hidden import "scipy.special._cdflib" not found!
-403595 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-403740 INFO: Performing binary vs. data reclassification (2720 entries)
-431828 INFO: Looking for ctypes DLLs
-432831 WARNING: Ignoring /usr/lib64/libgomp.so.1 imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\_inductor\codecache.py - only basenames are supported with ctypes imports!
-432930 WARNING: Library nvrtc64_120_0.dll required via ctypes not found
-433398 WARNING: Ignoring /System/Library/Frameworks/IOKit.framework/IOKit imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
-433398 WARNING: Ignoring /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
-433793 INFO: Analyzing run-time hooks ...
-433834 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-433852 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-433867 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-433883 INFO: Including run-time hook 'pyi_rth_mplconfig.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-433898 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-433914 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-433968 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-433983 INFO: Including run-time hook 'pyi_rth_tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-433999 INFO: Including run-time hook 'pyi_rth_pywintypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-434014 INFO: Including run-time hook 'pyi_rth_pythoncom.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-434014 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-434030 INFO: Including run-time hook 'pyi_rth_pyqtgraph_multiprocess.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-434052 INFO: Including run-time hook 'pyi_rth_pyqt5.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-434099 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-434517 INFO: Creating base_library.zip...
-434549 INFO: Looking for dynamic libraries
+97247 INFO: hook-torch: this torch build does not depend on MKL...
+99510 INFO: Processing standard module hook 'hook-matplotlib.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+100407 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+100953 INFO: Processing standard module hook 'hook-matplotlib.backend_bases.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+101245 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+101529 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+102331 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+102736 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+104814 INFO: Processing standard module hook 'hook-jinja2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+105761 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+106042 INFO: Processing standard module hook 'hook-matplotlib.pyplot.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+108426 INFO: Processing standard module hook 'hook-dateutil.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+108620 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+111877 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+130123 INFO: Processing standard module hook 'hook-scipy.linalg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+130485 INFO: Processing standard module hook 'hook-scipy.special._ufuncs.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+131211 INFO: Processing standard module hook 'hook-scipy.special._ellip_harm_2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+137324 INFO: Processing standard module hook 'hook-scipy.spatial._ckdtree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+138829 INFO: Processing standard module hook 'hook-scipy.spatial.transform.rotation.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+140772 INFO: Processing standard module hook 'hook-scipy.stats._stats.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+142278 INFO: Processing standard module hook 'hook-scipy.sparse.csgraph.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+153909 INFO: Processing pre-safe-import-module hook 'hook-tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
+153914 INFO: Processing standard module hook 'hook-tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+153916 INFO: hook-tensorflow: tensorflow dist name: tensorflow-cpu
+153916 INFO: hook-tensorflow: tensorflow version: 2.18.0
+396 WARNING: Failed to collect submodules for 'keras' because importing 'keras' raised: ModuleNotFoundError: No module named 'tensorflow.python'
+155465 WARNING: collect_dynamic_libs - skipping library collection for module 'tensorflow-plugins' as it is not a package.
+158364 INFO: Processing standard module hook 'hook-fsspec.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+163396 INFO: Processing standard module hook 'hook-pandas.io.formats.style.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+167500 INFO: Processing standard module hook 'hook-pandas.plotting.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+171116 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+171626 INFO: Processing standard module hook 'hook-pandas.io.clipboard.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+180252 INFO: Processing pre-safe-import-module hook 'hook-win32com.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
+180389 INFO: Processing standard module hook 'hook-win32com.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+180400 INFO: Processing standard module hook 'hook-pythoncom.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+180521 INFO: Processing standard module hook 'hook-pywintypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+193972 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+213063 INFO: Processing standard module hook 'hook-torchvision.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+213294 INFO: Processing standard module hook 'hook-torchvision.io.image.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+217714 INFO: Processing standard module hook 'hook-torchaudio.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+226653 INFO: Processing standard module hook 'hook-scipy.io.matlab.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+228217 INFO: Processing standard module hook 'hook-h5py.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+236786 INFO: Processing standard module hook 'hook-pyqtgraph.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+643 WARNING: Failed to collect submodules for 'pyqtgraph.opengl' because importing 'pyqtgraph.opengl' raised: ModuleNotFoundError: No module named 'OpenGL'
+238158 INFO: hook-pyqtgraph: selected 'PyQt5' as Qt bindings because hook for 'PyQt5' has been run before.
+238249 INFO: Processing standard module hook 'hook-PyQt5.uic.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+238611 INFO: Processing pre-find-module-path hook 'hook-PyQt5.uic.port_v2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+238862 INFO: Processing standard module hook 'hook-PyQt5.QtSvg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+239046 INFO: Processing standard module hook 'hook-PyQt5.QtTest.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+241111 INFO: Processing standard module hook 'hook-matplotlib.backends.backend_qtagg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+241111 INFO: Processing standard module hook 'hook-matplotlib.backends.qt_compat.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+241128 INFO: hook-matplotlib.backends.qt_compat: selected 'PyQt5' as Qt bindings because hook for 'PyQt5' has been run before.
+243158 INFO: Processing standard module hook 'hook-Cryptodome.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+244809 INFO: Processing standard module hook 'hook-cryptography.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+246342 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
+256946 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+258806 INFO: Processing standard module hook 'hook-ultralytics.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+261204 INFO: Processing standard module hook 'hook-shapely.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+262311 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+262314 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+262749 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+268515 INFO: Processing standard module hook 'hook-sklearn.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+269409 INFO: Processing standard module hook 'hook-sklearn.utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+271145 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.numpy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+271252 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.cupy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+271295 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.torch.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+271376 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.dask.array.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+271996 INFO: Processing standard module hook 'hook-sklearn.metrics.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+278211 INFO: Processing standard module hook 'hook-sklearn.metrics.cluster.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+278948 INFO: Processing standard module hook 'hook-sklearn.cluster.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+279104 INFO: Processing standard module hook 'hook-sklearn.metrics.pairwise.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+279803 INFO: Processing standard module hook 'hook-sklearn.neighbors.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+280091 INFO: Processing standard module hook 'hook-sklearn.linear_model.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+293072 INFO: Analyzing hidden import 'charset_normalizer.md__mypyc'
+293072 INFO: Processing module hooks (post-graph stage)...
+294896 INFO: Processing standard module hook 'hook-sklearn.tree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+301305 INFO: Processing standard module hook 'hook-pygments.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+315734 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+315735 INFO: Matplotlib backend selection method: automatic discovery of used backends
+315846 INFO: Discovered Matplotlib backend(s) via `matplotlib.use()` call in module 'sympy.testing.runtests': ['Agg', 'Agg']
+315913 INFO: The following Matplotlib backends were discovered by scanning for `matplotlib.use()` calls: ['Agg']. If your backend of choice is not in this list, either add a `matplotlib.use()` call to your code, or configure the backend collection via hook options (see: https://pyinstaller.org/en/stable/hooks-config.html#matplotlib-hooks).
+315913 INFO: Selected matplotlib backends: ['Agg']
+317253 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+325103 WARNING: Hidden import "scipy.special._cdflib" not found!
+326023 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+326158 INFO: Performing binary vs. data reclassification (2603 entries)
+350011 INFO: Looking for ctypes DLLs
+350914 WARNING: Ignoring /usr/lib64/libgomp.so.1 imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\_inductor\codecache.py - only basenames are supported with ctypes imports!
+350994 WARNING: Library nvrtc64_120_0.dll required via ctypes not found
+351457 WARNING: Ignoring /System/Library/Frameworks/IOKit.framework/IOKit imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
+351457 WARNING: Ignoring /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
+351829 INFO: Analyzing run-time hooks ...
+351872 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+351892 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+351909 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+351923 INFO: Including run-time hook 'pyi_rth_mplconfig.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+351937 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+351955 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+351994 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+352007 INFO: Including run-time hook 'pyi_rth_tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+352011 INFO: Including run-time hook 'pyi_rth_pywintypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+352038 INFO: Including run-time hook 'pyi_rth_pythoncom.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+352042 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+352057 INFO: Including run-time hook 'pyi_rth_pyqtgraph_multiprocess.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+352070 INFO: Including run-time hook 'pyi_rth_pyqt5.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+352111 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+352422 INFO: Creating base_library.zip...
+352459 INFO: Looking for dynamic libraries
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\building\build_main.py:227: FutureWarning: The 'optree.integration' module is deprecated and will be removed in version 0.18.0. Please use 'optree.integrations' instead.
 __import__(package)
-W0224 10:41:00.405000 12904 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
+W0506 14:25:39.086000 25492 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\building\build_main.py:227: DeprecationWarning: `torch.distributed._sharding_spec` will be deprecated, use `torch.distributed._shard.sharding_spec` instead
 __import__(package)
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\building\build_main.py:227: DeprecationWarning: `torch.distributed._sharded_tensor` will be deprecated, use `torch.distributed._shard.sharded_tensor` instead
 __import__(package)
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\building\build_main.py:227: DeprecationWarning: `torch.distributed._shard.checkpoint` will be deprecated, use `torch.distributed.checkpoint` instead
 __import__(package)
-455853 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyQt5\\Qt5\\bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\numpy.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\scipy.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torch\\lib', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\pandas.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\shapely.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin']
-455853 INFO: Extra DLL search directories (PATH): ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyQt5\\Qt5\\bin']
-467119 INFO: Warnings written to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\warn-QATCH nanovisQ.txt
-468788 INFO: Graph cross-reference written to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\xref-QATCH nanovisQ.html
-469485 INFO: checking PYZ
-469485 INFO: Building PYZ because PYZ-00.toc is non existent
-469485 INFO: Building PYZ (ZlibArchive) C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\PYZ-00.pyz
-477368 INFO: Building PYZ (ZlibArchive) C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\PYZ-00.pyz completed successfully.
-477703 INFO: Verifying Tcl/Tk compatibility with splash screen requirements
-477711 INFO: Collect Tcl/Tk data files for the splash screen
-477976 INFO: checking Splash
-477984 INFO: Building Splash because Splash-00.toc is non existent
-477984 INFO: Building Splash C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\Splash-00.res
-478065 INFO: Resized image C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\QATCH\icons\qatch-splash.png from dimensions (1024, 896) to (548, 480)
-478077 INFO: checking PKG
-478077 INFO: Building PKG because PKG-00.toc is non existent
-478077 INFO: Building PKG (CArchive) QATCH nanovisQ.pkg
-478195 INFO: Building PKG (CArchive) QATCH nanovisQ.pkg completed successfully.
-478195 INFO: Bootloader C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
-478195 INFO: checking EXE
-478195 INFO: Building EXE because EXE-00.toc is non existent
-478195 INFO: Building EXE from EXE-00.toc
-478195 INFO: Copying bootloader EXE to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\QATCH nanovisQ.exe
-478358 INFO: Copying icon to EXE
-478442 INFO: Copying version information to EXE
-478530 INFO: Copying 0 resources to EXE
-478530 INFO: Embedding manifest in EXE
-478612 INFO: Appending PKG archive to EXE
-478797 INFO: Fixing EXE headers
-485901 INFO: Building EXE from EXE-00.toc completed successfully.
-485986 INFO: checking COLLECT
-485986 INFO: Building COLLECT because COLLECT-00.toc is non existent
-485986 INFO: Building COLLECT COLLECT-00.toc
-502839 INFO: Building COLLECT COLLECT-00.toc completed successfully.
-503234 INFO: Build complete! The results are available in: C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\dist
-Total runtime: 503234 ms
+373942 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyQt5\\Qt5\\bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\numpy.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\scipy.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torch\\lib', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\pandas.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\shapely.libs']
+373942 INFO: Extra DLL search directories (PATH): ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyQt5\\Qt5\\bin']
+384857 INFO: Warnings written to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\warn-QATCH nanovisQ.txt
+386413 INFO: Graph cross-reference written to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\xref-QATCH nanovisQ.html
+387001 INFO: checking PYZ
+387002 INFO: Building PYZ because PYZ-00.toc is non existent
+387002 INFO: Building PYZ (ZlibArchive) C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\PYZ-00.pyz
+394656 INFO: Building PYZ (ZlibArchive) C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\PYZ-00.pyz completed successfully.
+394967 INFO: Verifying Tcl/Tk compatibility with splash screen requirements
+394977 INFO: Collect Tcl/Tk data files for the splash screen
+395208 INFO: checking Splash
+395208 INFO: Building Splash because Splash-00.toc is non existent
+395208 INFO: Building Splash C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\Splash-00.res
+395297 INFO: Resized image C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\QATCH\icons\qatch-splash.png from dimensions (1024, 896) to (548, 480)
+395307 INFO: checking PKG
+395307 INFO: Building PKG because PKG-00.toc is non existent
+395307 INFO: Building PKG (CArchive) QATCH nanovisQ.pkg
+395426 INFO: Building PKG (CArchive) QATCH nanovisQ.pkg completed successfully.
+395428 INFO: Bootloader C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+395428 INFO: checking EXE
+395428 INFO: Building EXE because EXE-00.toc is non existent
+395428 INFO: Building EXE from EXE-00.toc
+395429 INFO: Copying bootloader EXE to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\QATCH nanovisQ.exe
+395559 INFO: Copying icon to EXE
+395638 INFO: Copying version information to EXE
+395709 INFO: Copying 0 resources to EXE
+395709 INFO: Embedding manifest in EXE
+395799 INFO: Appending PKG archive to EXE
+395977 INFO: Fixing EXE headers
+402467 INFO: Building EXE from EXE-00.toc completed successfully.
+402521 INFO: checking COLLECT
+402522 INFO: Building COLLECT because COLLECT-00.toc is non existent
+402522 INFO: Building COLLECT COLLECT-00.toc
+417021 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+417322 INFO: Build complete! The results are available in: C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\dist
+Total runtime: 417322 ms
