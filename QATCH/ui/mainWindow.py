@@ -2974,7 +2974,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Progress container
             container = QtWidgets.QWidget()
-            container.setFixedSize(340, 72)
+            container.setFixedWidth(340)
+            
             container.setStyleSheet(
                 "QWidget {"
                 "  background: rgba(255, 255, 255, 0);"
@@ -3002,6 +3003,9 @@ class MainWindow(QtWidgets.QMainWindow):
             progress_bar.setFixedHeight(6)
 
             layout.addWidget(status_label)
+            
+            layout.addSpacing(10) 
+            
             layout.addWidget(progress_bar)
 
             proxy = QtWidgets.QGraphicsProxyWidget()
@@ -4954,14 +4958,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 qbar.setValue(progress_val)
 
             qbar.setChunkColor(overlay_bar_color)
-
             new_html = (
+                f"<p style='margin-bottom: 12px; line-height: 1.2;'>"
                 f"<b>{label_status}</b><br/>"
                 f"<span style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</span>"
+                f"</p>"
             )
+            
             if lbl.text() != new_html:
+                lbl.setWordWrap(True)
                 lbl.setTextFormat(QtCore.Qt.RichText)
                 lbl.setText(new_html)
+                lbl.adjustSize()
 
         # Teardown if stop condition met
         if stop_flag:
