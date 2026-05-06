@@ -1478,7 +1478,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self._qmodel_overlay = (proxy, dim_rect, progress_bar, status_label)
 
-    def _update_qmodel_plot_overlay(self, pct: int, status: str) -> None:
+    def _update_qmodel_plot_overlay(self, pct: int, status: str, is_error: bool = False) -> None:
         """Updates the QModel overlay with smoothed progress and status text.
 
         This method implements a animation pattern to decouple 
@@ -1495,16 +1495,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 is capped at 99 internally until the hide method is called.
             status: A human-readable string describing the current inference 
                 step.
+            is_error: If True, forces the overlay to treat the state as a failure,
         """
         overlay = getattr(self, "_qmodel_overlay", None)
         if overlay is None:
             return
             
-        _proxy, _dim_rect, progress_bar, status_label = overlay
+        proxy, dim_rect, progress_bar, status_label = overlay
+        error_detected = is_error or "error" in status.lower() or "failed" in status.lower()
+        is_finished = pct >= 100 or error_detected
+
         if pct > 0 and progress_bar.maximum() == 0:
             progress_bar.setRange(0, 10000)
-
-        target_value = int(min(pct, 99) * 100)
+        target_value = 10000 if is_finished else int(min(pct, 99) * 100)
+        
         if not hasattr(progress_bar, "_chase_timer"):
             progress_bar._target_value = 0
             progress_bar._current_float = float(progress_bar.value())
@@ -1512,7 +1516,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             progress_bar._chase_timer.setInterval(16)
             
             def chase_target():
-                # Calculate distance to target
                 diff = progress_bar._target_value - progress_bar._current_float
                 
                 if abs(diff) < 5.0:
@@ -1533,7 +1536,33 @@ class AnalyzeProcess(QtWidgets.QWidget):
             status_label.setText(status)
             
         QtCore.QCoreApplication.processEvents()
+        if is_finished:
+            if getattr(self, "_qmodel_is_fading", False):
+                return
+            self._qmodel_is_fading = True
 
+            if error_detected:
+                progress_bar.setStyleSheet(
+                    "QProgressBar { border: none; border-radius: 3px; background: #ffe6e6; }"
+                    "QProgressBar::chunk { background: #DA2E2E; border-radius: 3px; }"
+                )
+
+            anim = QtCore.QVariantAnimation()
+            anim.setDuration(400)
+            anim.setStartValue(1.0)
+            anim.setEndValue(0.0)
+
+            def update_opacity(val: float):
+                proxy.setOpacity(val)
+                dim_rect.setOpacity(val)
+
+            anim.valueChanged.connect(update_opacity)
+            anim.finished.connect(lambda: self._hide_qmodel_plot_overlay(failed=error_detected))
+            anim.finished.connect(lambda: setattr(self, "_qmodel_is_fading", False))
+            
+            self._qmodel_fade_anim = anim 
+            
+            QtCore.QTimer.singleShot(800, anim.start)
     def _hide_qmodel_plot_overlay(self, failed: bool = False) -> None:
         """Removes the QModel dimming layer and progress overlay.
 
@@ -3800,8 +3829,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
-                        self._QModel_create_new_progress_dialog()
-                        self.progressBarDiag.setRange(0, 100)  # percentage
+                        # self._QModel_create_new_progress_dialog()
+                        # self.progressBarDiag.setRange(0, 100)  # percentage
                         predict_result = predictor.predict(
                             file_buffer=fh,
                             visualize=False,
@@ -4066,8 +4095,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v6_predictor
-                            self._QModel_create_new_progress_dialog()
-                            self.progressBarDiag.setRange(0, 100)
+                            # self._QModel_create_new_progress_dialog()
+                            # self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
                                 file_buffer=fh, progress_signal=self.v6_predict_progress
                             )
@@ -5354,8 +5383,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v6_predictor
-                            self._QModel_create_new_progress_dialog()
-                            self.progressBarDiag.setRange(0, 100)
+                            # self._QModel_create_new_progress_dialog()
+                            # self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
                                 file_buffer=fh, progress_signal=self.v6_predict_progress
                             )
@@ -6090,7 +6119,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%",
                 )
         except:
-            Log.e("Error printing confidences from QModel response.")
+            Log.e("Error logging confidences from QModel response.")
 
     def resizeEvent(self, event):
         # # Position relative to main window

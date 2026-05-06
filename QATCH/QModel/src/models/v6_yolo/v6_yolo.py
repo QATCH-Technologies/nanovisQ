@@ -684,6 +684,7 @@ class QModelV6YOLO:
                 num_channels = int(fill_cls.predict(master_df)) if fill_cls else 3
 
             if num_channels == -1:
+                progress_signal.emit(100, "No channels detected!")
                 return self._get_default_predictions(), num_channels
 
             final_results = {}
