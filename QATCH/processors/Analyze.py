@@ -9,8 +9,9 @@ import traceback
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-from time import localtime, monotonic, strftime
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Optional, cast, List, Tuple, Any, Dict
+from time import monotonic, localtime, strftime  # sleep
+from scipy import interpolate
 from xml.dom import minidom
 
 import numpy as np
@@ -40,6 +41,7 @@ from QATCH.ui.popUp import PopUp
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 
 TAG = "[Analyze]"
+USE_NEW_FILL_METHOD = True
 
 _DEV_MODE_TTL_SECONDS = 30.0
 
@@ -75,9 +77,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
-        return ST1  # always
 
-        # NOTE: This function is not currently used; returning constant value above
+        if concentration <= 123:  # mg/mL
+            return ST1
+
+        # See issue #383: Concentration-Based Surface Tension Correction Formula
+        correction = np.polyval([0.0016, 0.8026], concentration)
+        return round(ST1 / correction, 1)
+
+        # NOTE: The rest of function is not currently used; returning corrected value above
         if concentration > 2:  # mg/mL
             ST1 = 57.5
         return ST1  # always
@@ -1461,7 +1469,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self._qmodel_overlay = (proxy, dim_rect, progress_bar, status_label)
 
-    def _update_qmodel_plot_overlay(self, pct: int, status: str) -> None:
+    def _update_qmodel_plot_overlay(self, pct: int, status: str, is_error: bool = False) -> None:
         """Updates the QModel overlay with smoothed progress and status text.
 
         This method implements a animation pattern to decouple
@@ -1478,16 +1486,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 is capped at 99 internally until the hide method is called.
             status: A human-readable string describing the current inference
                 step.
+            is_error: If True, forces the overlay to treat the state as a failure,
         """
         overlay = getattr(self, "_qmodel_overlay", None)
         if overlay is None:
             return
+            
+        proxy, dim_rect, progress_bar, status_label = overlay
+        error_detected = is_error or "error" in status.lower() or "failed" in status.lower()
+        is_finished = pct >= 100 or error_detected
 
-        _proxy, _dim_rect, progress_bar, status_label = overlay
         if pct > 0 and progress_bar.maximum() == 0:
             progress_bar.setRange(0, 10000)
-
-        target_value = int(min(pct, 99) * 100)
+        target_value = 10000 if is_finished else int(min(pct, 99) * 100)
+        
         if not hasattr(progress_bar, "_chase_timer"):
             progress_bar._target_value = 0
             progress_bar._current_float = float(progress_bar.value())
@@ -1495,7 +1507,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             progress_bar._chase_timer.setInterval(16)
 
             def chase_target():
-                # Calculate distance to target
                 diff = progress_bar._target_value - progress_bar._current_float
 
                 if abs(diff) < 5.0:
@@ -1516,7 +1527,33 @@ class AnalyzeProcess(QtWidgets.QWidget):
             status_label.setText(status)
 
         QtCore.QCoreApplication.processEvents()
+        if is_finished:
+            if getattr(self, "_qmodel_is_fading", False):
+                return
+            self._qmodel_is_fading = True
 
+            if error_detected:
+                progress_bar.setStyleSheet(
+                    "QProgressBar { border: none; border-radius: 3px; background: #ffe6e6; }"
+                    "QProgressBar::chunk { background: #DA2E2E; border-radius: 3px; }"
+                )
+
+            anim = QtCore.QVariantAnimation()
+            anim.setDuration(400)
+            anim.setStartValue(1.0)
+            anim.setEndValue(0.0)
+
+            def update_opacity(val: float):
+                proxy.setOpacity(val)
+                dim_rect.setOpacity(val)
+
+            anim.valueChanged.connect(update_opacity)
+            anim.finished.connect(lambda: self._hide_qmodel_plot_overlay(failed=error_detected))
+            anim.finished.connect(lambda: setattr(self, "_qmodel_is_fading", False))
+            
+            self._qmodel_fade_anim = anim 
+            
+            QtCore.QTimer.singleShot(800, anim.start)
     def _hide_qmodel_plot_overlay(self, failed: bool = False) -> None:
         """Removes the QModel dimming layer and progress overlay.
 
@@ -3769,8 +3806,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
-                        self._QModel_create_new_progress_dialog()
-                        self.progressBarDiag.setRange(0, 100)  # percentage
+                        # self._QModel_create_new_progress_dialog()
+                        # self.progressBarDiag.setRange(0, 100)  # percentage
                         predict_result = predictor.predict(
                             file_buffer=fh,
                             visualize=False,
@@ -4035,8 +4072,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v6_predictor
-                            self._QModel_create_new_progress_dialog()
-                            self.progressBarDiag.setRange(0, 100)
+                            # self._QModel_create_new_progress_dialog()
+                            # self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
                                 file_buffer=fh, progress_signal=self.v6_predict_progress
                             )
@@ -5413,9 +5450,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
             2. QModel v4 (Fusion)
             3. ModelData.
 
-        If pre-existing markers are detected on the plot, the method returns only
-        the boundary points (first and last) to force manual user intervention
-        for intermediate points.
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v6_predictor
+                            # self._QModel_create_new_progress_dialog()
+                            # self.progressBarDiag.setRange(0, 100)
+                            predict_result, detected_channels = predictor.predict(
+                                file_buffer=fh, progress_signal=self.v6_predict_progress
+                            )
+                            QtCore.QTimer.singleShot(
+                                1000, self.progressBarDiag.hide
+                            )  # hide after use
+                            # Analysis only updates num_channels if not present.
+                            if not self.parent.num_channels:
+                                self.parent.num_channels = detected_channels
 
         Args:
             poi_vals: Current list of POI values.
@@ -6449,7 +6498,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%",
                 )
         except:
-            Log.e("Error printing confidences from QModel response.")
+            Log.e("Error logging confidences from QModel response.")
 
     def resizeEvent(self, event):
         # # Position relative to main window
@@ -7334,7 +7383,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             # calculate normalized curve
             normal_x = xs[t0 : t1 + 1]
-            normal_y = ys_diff[t0 : t1 + 1]
+            normal_y = ys_freq[t0 : t1 + 1]
             n_max = np.amax(normal_y)
             n_min = np.amin(normal_y)
 
@@ -7939,7 +7988,8 @@ class AnalyzerWorker(QtCore.QObject):
                 if debug:
                     ax_dbg.plot(midpoint_p_x, p, color="blue", marker="X")
                 times.append(midpoint_p_i)
-                if p == 0.2 or p == 0.4:
+                # Issue #392: Remove 80% too; only 60% used (if not too off)
+                if p == 0.2 or p == 0.4 or p == 0.8:
                     idx_of_normal_pts_to_remove.append(midpoint_p_i)
                 else:
                     idx_of_normal_pts_to_retain.append(midpoint_p_i)
@@ -8393,6 +8443,8 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             fig4 = plt.figure(figsize=(12, 6))
+            fig4.set_layout_engine(None)  # full control, no auto-layout adjustments
+            fig4.subplots_adjust(left=0.10, right=0.99, top=0.92, bottom=0.22, wspace=0.0, hspace=0.0)
             ax7 = fig4.add_subplot(111)
 
             high_shear_5x = 0
@@ -8897,6 +8949,7 @@ class AnalyzerWorker(QtCore.QObject):
                 local_visc = []
                 local_linv = []
                 local_temp = []
+                last_idx = -1
                 # skip first point, reverse order
                 for pt in shear_points[1:][::-1]:
                     try:
@@ -8906,6 +8959,43 @@ class AnalyzerWorker(QtCore.QObject):
                             f"Failed to find index for shear point {pt:2.2f}. Cannot plot this index."
                         )
                         continue
+
+                    if USE_NEW_FILL_METHOD:
+                        # NEW METHOD:
+                        if last_idx == -1:
+                            mv = fill_pos[idx] / fill_time[idx]
+                            mp = fill_pos[idx] / 2
+                        else:
+                            mv = (fill_pos[idx] - fill_pos[last_idx]) / (
+                                fill_time[idx] - fill_time[last_idx]
+                            )
+                            mp = (fill_pos[idx] + fill_pos[last_idx]) / 2
+                        last_idx = idx
+                        mid_visc = (
+                            ST
+                            * np.cos(np.radians(CA))
+                            * Constants.channel_thickness
+                            * 1e6
+                            / ((mp * mv * 6) * (2 / 3 + 1 / 3 / n))
+                        )
+                        mid_shear = (
+                            6
+                            * mv
+                            / Constants.channel_thickness
+                            * (2 / 3 + 1 / 3 / n)
+                            * 1e-3
+                        )
+                        # Use to show the old positions:
+                        # ax7.scatter(
+                        #     in_shear_rate[idx],
+                        #     sm_trendline[idx],
+                        #     marker="d",
+                        #     s=15,
+                        #     c="red",
+                        # )
+                        sm_trendline[idx] = mid_visc
+                        in_shear_rate[idx] = mid_shear
+
                     local_shear.append(in_shear_rate[idx])
                     local_visc.append(sm_trendline[idx])
                     local_linv.append(lin_viscosity[idx])
@@ -9201,16 +9291,10 @@ class AnalyzerWorker(QtCore.QObject):
                     res_temp.append(avg_temp)
                     res_n_coeff.append(n)
 
-                # Add centered label to plot data
-                fig4.text(
-                    0.53,
-                    0.82,
-                    plot_text,
-                    horizontalalignment="center",
-                    verticalalignment="center",
-                    color="blue",
-                    fontsize=10,
-                )
+                # Add optimally positioned label to plot data
+                self.plot_ax = ax7
+                self.plot_text = plot_text
+                self.place_text_avoiding_data()
 
                 # # Convert `in_shear_rate` to formatted strings
                 # for i in range(len(in_shear_rate)):
@@ -9632,8 +9716,6 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.e("Failed to show average viscosity summary.", str(e))
 
             # add figure to plot view of results
-            plt.tight_layout()
-            plt.subplots_adjust(bottom=0.15)
             sc = FigureCanvasQTAgg(fig4)
             mp_toolbar = NavigationToolbar(sc, self.parent)
             mp_layout = QtWidgets.QVBoxLayout()
@@ -9642,6 +9724,11 @@ class AnalyzerWorker(QtCore.QObject):
             plotWidget = QtWidgets.QWidget()
             plotWidget.setLayout(mp_layout)
             self.parent.results_split.replaceWidget(1, plotWidget)
+
+            # force layout redraw now, and on any resize event
+            sc.draw_idle()
+            self._results_resize_filter = ResizeFilter(self, sc)
+            sc.installEventFilter(self._results_resize_filter)
 
             # all_figs = [fig4] # [fig,fig2,fig3,fig4]
             # for f in all_figs:
@@ -9668,6 +9755,188 @@ class AnalyzerWorker(QtCore.QObject):
 
         finally:
             self.finished.emit()  # queue callback
+
+    def place_text_avoiding_data(
+        self,
+        ax=None,
+        text=None,
+        candidates=None,
+        pad=None,
+        color=None,
+        fontsize=None,
+        bbox=False,
+        return_all_scores=False,
+    ):
+        """
+        Place text in an Axes while avoiding overlap with plotted data.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+        text : str
+        candidates : list of dict
+            Each dict must contain:
+                {
+                    "pos": (x, y) in axes-fraction coords,
+                    "ha": horizontal alignment,
+                    "va": vertical alignment,
+                    "priority": lower = more preferred
+                }
+        pad : int or None
+            pixel padding around detected overlaps
+        color : int or None
+            color to use when drawing the overlay text
+        fontsize : int or None
+            fontsize to use when drawing the overlay text
+        bbox : bool
+            draw background box around overlay text
+        return_all_scores : bool
+            debug option
+
+        Returns
+        -------
+        matplotlib.text.Text
+        """
+
+        if ax is None:
+            ax = getattr(self, "plot_ax", None)
+
+        if text is None:
+            text = getattr(self, "plot_text", None)
+
+        if None in [ax, text]:
+            return None
+        
+        if candidates is None:
+            candidates = [
+                {"pos": (0.50, 0.95), "ha": "center", "va": "top",    "priority": 0},
+                {"pos": (0.50, 0.05), "ha": "center", "va": "bottom", "priority": 1},
+                {"pos": (0.95, 0.95), "ha": "right",  "va": "top",    "priority": 2},
+                {"pos": (0.05, 0.05), "ha": "left",   "va": "bottom", "priority": 3},
+                {"pos": (0.95, 0.05), "ha": "right",  "va": "bottom", "priority": 4},
+                {"pos": (0.05, 0.95), "ha": "left",   "va": "top",    "priority": 5},
+            ]
+
+        # Sort candidates by priority (ascending)
+        candidates = sorted(candidates, key=lambda x: x['priority'])
+
+        if pad is None:
+            pad = 10
+
+        if color is None:
+            color = "blue"
+
+        if fontsize is None:
+            fontsize = 10
+
+        fig = ax.figure
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+
+        # ---- collect data in display coords ----
+        data_pts = []
+
+        for line in ax.lines:
+            # scatter plots are NOT lines; lines are lines
+            try:
+                x, y = line.get_data()
+                if len(x) == 0:
+                    continue
+
+                pts = ax.transData.transform(np.column_stack([x, y]))
+                data_pts.append(pts)
+
+            except Exception:
+                # ignore things that aren't lines or otherwise fail
+                pass
+
+        for col in ax.collections:
+            # scatter plots are PathCollections
+            try:
+                offsets = col.get_offsets()
+                if len(offsets) == 0:
+                    continue
+
+                pts = ax.transData.transform(offsets)
+                data_pts.append(pts)
+
+            except Exception:
+                # ignore non-scatter collections (e.g., contours, bars, etc.)
+                pass
+
+        def score_bbox(bbox):
+            """Count how many data points fall inside bbox."""
+            if not data_pts:
+                return 0
+
+            pts = np.vstack(data_pts)
+            x0, y0, x1, y1 = bbox
+
+            inside = (
+                (pts[:, 0] >= x0 - pad) &
+                (pts[:, 0] <= x1 + pad) &
+                (pts[:, 1] >= y0 - pad) &
+                (pts[:, 1] <= y1 + pad)
+            )
+            return int(np.sum(inside))
+
+        # delete best artist from prior redraws
+        if getattr(self, "plot_text_obj", None):
+            self.plot_text_obj.remove()
+
+        # ---- selection tracking ----
+        best_artist = None
+        best_score = float("inf")
+        best_priority = float("inf")
+        debug_scores = []
+
+        for c in candidates:
+            x, y = c["pos"]
+            ha = c.get("ha", "center")
+            va = c.get("va", "center")
+            priority = c.get("priority", 0)
+
+            t = ax.text(
+                x, y, text,
+                transform=ax.transAxes,
+                ha=ha, va=va,
+                color=color,
+                fontsize=fontsize,
+                bbox=dict(facecolor="white", alpha=0.7, edgecolor="none") if bbox else None,
+                zorder=10
+            )
+
+            # force render so bbox is correct
+            fig.canvas.draw()
+            bb = t.get_window_extent(renderer)
+
+            score = score_bbox((bb.x0, bb.y0, bb.x1, bb.y1))
+
+            debug_scores.append((c, score))
+
+            # ---- lexicographic selection ----
+            if (score < best_score) or (score == best_score and priority < best_priority):
+                if best_artist is not None:
+                    best_artist.remove()
+                best_artist = t
+                best_score = score
+                best_priority = priority
+            else:
+                t.remove()
+
+            # stop early if nothing better can be found
+            if not return_all_scores and score == 0:
+                break
+
+        # force render so final candidate is removed
+        fig.canvas.draw()
+
+        # store best artist for later redraws
+        self.plot_text_obj = best_artist
+
+        if return_all_scores:
+            return best_artist, debug_scores
+        return best_artist
 
     def update(self, status):
         try:
@@ -9707,6 +9976,32 @@ class AnalyzerWorker(QtCore.QObject):
         except Exception as e:
             Log.e("ERROR:", e)
         return np.round(output, 2)
+    
+class ResizeFilter(QtCore.QObject):
+    def __init__(self, worker, parent=None):
+        super().__init__(parent)
+        self.worker = worker
+        self._draw_pending = False
+        self._draw_delay = 250  # ms
+
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QEvent.Resize:
+            self._resize_time = monotonic()
+            if not self._draw_pending:
+                self._draw_pending = True
+                QtCore.QTimer.singleShot(self._draw_delay, self._draw_idle)
+        return super().eventFilter(obj, event)
+
+    def _draw_idle(self):
+        # convert secs -> ms: compare ms to ms
+        if (monotonic() - self._resize_time) * 1000 < self._draw_delay:
+            # resize event still occurring, try again later
+            QtCore.QTimer.singleShot(self._draw_delay, self._draw_idle)
+        else:
+            # resize event finished, hysteresis elapsed: redraw!
+            self.worker.place_text_avoiding_data()
+            self._draw_pending = False
+        
 
 
 class RunScanWorker(QtCore.QThread):
