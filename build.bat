@@ -69,7 +69,7 @@ set /p SOURCE_DATE_EPOCH= <"source_date.txt"
 echo SOURCE_DATE_EPOCH = %SOURCE_DATE_EPOCH%
 
 set "TF_CPP_MIN_LOG_LEVEL=3" & REM HIDE TENSORFLOW MSGS
-make_data_db.py & REM create data\app.db base database for VisQ.AI
+pause & REM make_data_db.py & REM create data\app.db base database for VisQ.AI
 make_version.py & REM modify version.rc to reflect current version
 make_clean.py & REM clean the working directory of build artifacts after making DB and version info
 build_pyinstaller.py & REM pyinstaller --log-level WARN "QATCH nanovisQ.spec"

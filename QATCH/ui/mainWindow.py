@@ -2941,10 +2941,30 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 Log.w("Nothing to do. No local bundled database file found.")
         except Exception as e:
-            Log.e(
-                "ERROR: Unable to configure database file in local application data folder."
-            )
-            raise e  # TODO remove
+            Log.e("Unable to configure database file in local application data folder.")
+
+            try:
+                Log.e("Attempting to restore a working database file...")
+                i = 0
+                while True:
+                    i += 1
+                    copy_to = machine_database_path.replace(".db", f"-{i}.db")
+                    if os.path.exists(copy_to):
+                        continue
+                    shutil.copy(machine_database_path, copy_to)
+                    break
+
+            except Exception as e:
+                Log.e("FAIL: Cannot create a backup copy of the DB for restoration.")
+                Log.e("Error Details:", e)
+
+            try:
+                shutil.copy(bundled_database_path, machine_database_path)
+                Log.e("Restoration successful! Application database replaced with bundled copy.")
+                
+            except Exception as e:
+                Log.e("FAIL: The application database is presumed to be corrupt and could not be restored.")
+                Log.e("Error Details:", e)
 
     ###########################################################################
     # Configures the tutorials interface for user interaction
