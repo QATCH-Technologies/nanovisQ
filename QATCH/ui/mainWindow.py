@@ -5653,7 +5653,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # find most recent *release* build, skipping any newer *beta* builds
                 # raise an Exception if no *release* builds are found on the server!
                 for build in builds:
-                    is_release_build = branch.replace("x", "r") in build["name"]
+                    is_release_build = 'r' in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
@@ -5662,7 +5662,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         break  # found, stop searching
             elif len(builds) > 0:
                 for build in builds:
-                    is_release_build = branch.replace("x", "r") in build["name"]
+                    is_release_build = 'r' in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
@@ -5695,8 +5695,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 # current version is a *beta* build and we are only allowed to run *release* builds
                 self.ask_for_update = True
                 self.url_download = most_recent
-                version_info_descr = branch[:-1]  # drop 'x' from 'v2.6x'
-                self.build_descr = f'{most_recent["name"][most_recent["name"].rfind(version_info_descr):-4]} ({ts1})'
+                version_info_descr = "_SW_"  # this key works for switching branches too!
+                self.build_descr = f'{most_recent["name"][most_recent["name"].rfind(version_info_descr)+4:-4]} ({ts1})'
                 self.build_descr = self.build_descr.replace("_exe", "").replace(
                     "_py", ""
                 )  # remove '_exe' and '_py' from build description
