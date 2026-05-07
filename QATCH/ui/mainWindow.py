@@ -3610,18 +3610,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.e("Attempting to restore a working database file...")
                 i = 0
                 while True:
-                    try:
-                        i += 1
-                        os.rename(machine_database_path, machine_database_path.replace(".db", f"-{i}.db"))
-                        break
-                    except FileExistsError:
-                        pass
-                    except PermissionError as pe:
-                        raise pe
+                    i += 1
+                    copy_to = machine_database_path.replace(".db", f"-{i}.db")
+                    if os.path.exists(copy_to):
+                        continue
+                    shutil.copy(machine_database_path, copy_to)
+                    break
+
+            except Exception as e:
+                Log.e("FAIL: Cannot create a backup copy of the DB for restoration.")
+                Log.e("Error Details:", e)
+
+            try:
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.e("Restoration successful! Application database replaced with bundled copy.")
-            except Exception:
+                
+            except Exception as e:
                 Log.e("FAIL: The application database is presumed to be corrupt and could not be restored.")
+                Log.e("Error Details:", e)
 
     ###########################################################################
     # Configures the tutorials interface for user interaction
