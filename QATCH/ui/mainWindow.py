@@ -2388,7 +2388,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 DatabaseSynchronizer.sync_on_launch(
                     local_db=machine_database, bundled_db_path=Path(bundled_database_path)
                 )
-
                 machine_database.close()
             else:
                 Log.w("Nothing to do. No local or bundled database file found.")
@@ -2698,8 +2697,8 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self, "_calib_ready_text"):
                 self._hide_calib_ready_text()
 
-            plt_widget      = self.PlotsWin.ui2.plt
-            pltB_widget     = self.PlotsWin.ui2.pltB
+            plt_widget = self.PlotsWin.ui2.plt
+            pltB_widget = self.PlotsWin.ui2.pltB
             plt_temp_widget = getattr(self.PlotsWin.ui2, "plt_temp", None)
             _all_tiles = [w for w in (plt_widget, pltB_widget, plt_temp_widget) if w]
 
@@ -5204,8 +5203,8 @@ class MainWindow(QtWidgets.QMainWindow):
             _show_welcome: If True, renders the welcome text annotations on the
                         primary plots. If False, ensures they are removed.
         """
-        plt_widget      = getattr(self.PlotsWin.ui2, "plt",      None)
-        pltB_widget     = getattr(self.PlotsWin.ui2, "pltB",     None)
+        plt_widget = getattr(self.PlotsWin.ui2, "plt", None)
+        pltB_widget = getattr(self.PlotsWin.ui2, "pltB", None)
         plt_temp_widget = getattr(self.PlotsWin.ui2, "plt_temp", None)
         _all_tiles = [w for w in (plt_widget, pltB_widget, plt_temp_widget) if w]
 

@@ -30,6 +30,7 @@ from QATCH.ui.components.number_icon_button import NumberIconButton
 from QATCH.ui.components.run_controls_button import RunControls
 from QATCH.ui.widgets.export_widget import Ui_Export
 from QATCH.ui.widgets.user_preferences_widget import UserPreferencesWidget
+from QATCH.ui.widgets.user_profiles_manager_widget import UserProfilesManagerWidget
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.common.deviceFingerprint import DeviceFingerprint
 
@@ -302,7 +303,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
             self.parent.AnalyzeProc.tool_User.setText(admin)
 
         if allow:
-            self.manageUsersUI = UserProfilesManager(self, admin)
+            self.manageUsersUI = UserProfilesManagerWidget(self, admin)
             self.manageUsersUI.show()
 
     def toggle_console(self):
@@ -2250,11 +2251,6 @@ class UIControls:  # QtWidgets.QMainWindow
         after construction via :meth:`_anchor_user_manager_to_button`.
         """
         try:
-            from QATCH.common.userProfiles import (  # noqa: PLC0415
-                UserProfiles,
-                UserProfilesManager,
-                UserRoles,
-            )
 
             is_valid, user_info = UserProfiles.session_info()
             if not (is_valid and user_info and user_info[2] == UserRoles.ADMIN.name):
@@ -2278,7 +2274,7 @@ class UIControls:  # QtWidgets.QMainWindow
                 except Exception:
                     pass
 
-            self._user_profiles_manager = UserProfilesManager(
+            self._user_profiles_manager = UserProfilesManagerWidget(
                 parent=parent_win, admin_name=admin_name
             )
             self._anchor_user_manager_to_button(self._user_profiles_manager)
