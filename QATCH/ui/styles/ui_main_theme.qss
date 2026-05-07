@@ -1,0 +1,96 @@
+/* ui_main_theme.qss */
+
+/* MAIN WINDOW BACKGROUND */
+#centralwidget {
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 1,
+        stop: 0 #E4EBF1, stop: 1 #F4F7F9
+    );
+}
+
+/* SCROLL AREAS */
+#modeMenuScrollArea, #userview, #runview, #analyze, #learn_ui, #logview {
+    background: rgba(255, 255, 255, 160); 
+    border: 1px solid rgba(255, 255, 255, 220); 
+    border-radius: 12px; 
+}
+
+#modeMenuScrollArea > QWidget > QWidget,
+#userview > QWidget > QWidget,
+#runview > QWidget > QWidget,
+#analyze > QWidget > QWidget,
+#learn_ui > QWidget > QWidget,
+#logview > QWidget > QWidget {
+    background: transparent;
+}
+
+/* MODE MENU ITEMS */
+#menuItem {
+    padding: 10px; 
+    padding-left: 15px; 
+    background: transparent;
+    border-radius: 4px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px; 
+}
+
+#menuItem[active="false"]:hover {
+    background: rgba(229, 229, 229, 150);
+}
+
+#footerLabel {
+    color: rgba(60, 60, 60, 180);
+    font-size: 11px;
+}
+
+/* ACTIVE HIGHLIGHT SLIDER */
+#activeHighlight {
+    background-color: rgba(10, 163, 230, 0.15); 
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+    border-left: 4px solid #0AA3E6; 
+}
+
+/* SPLITTER */
+QSplitter::handle {
+    background: transparent;
+}
+
+/* SCROLLBARS */
+QScrollBar:horizontal {
+    border: none;
+    background: transparent;
+    height: 10px; 
+    margin: 0px 10px 0px 10px; 
+}
+QScrollBar:vertical {
+    border: none;
+    background: transparent;
+    width: 10px; 
+    margin: 10px 0px 10px 0px; 
+}
+
+QScrollBar::handle:horizontal, 
+QScrollBar::handle:vertical {
+    background: rgba(130, 130, 130, 100); 
+    border-radius: 5px; 
+}
+
+QScrollBar::handle:horizontal:hover, 
+QScrollBar::handle:vertical:hover {
+    background: rgba(130, 130, 130, 180); 
+}
+
+QScrollBar::handle:horizontal { min-width: 20px; }
+QScrollBar::handle:vertical { min-height: 20px; }
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    width: 0px; height: 0px; background: none;
+}
+
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+

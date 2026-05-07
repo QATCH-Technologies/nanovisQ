@@ -1,21 +1,17 @@
 import os
 import sys
 import hashlib
-import send2trash
 import datetime as dt
-from time import sleep
 from xml.dom import minidom
 from enum import Enum
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QDateTime
 from QATCH.common.logger import Logger as Log
-from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
 from QATCH.common.fileStorage import FileStorage
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from typing import Union
-import re
 
 TAG = "[UserProfiles]"
 
