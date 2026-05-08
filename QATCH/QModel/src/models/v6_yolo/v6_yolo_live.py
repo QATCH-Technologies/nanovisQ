@@ -505,8 +505,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             Optional[str]: The pending display message, or ``None`` if no message
             is waiting to be displayed.
         """
-        msg = self._pending_display_message
-        self._pending_display_message = None
+        msg, self._pending_display_message = self._pending_display_message, None
         return msg
 
     def get_status_str(self) -> str:

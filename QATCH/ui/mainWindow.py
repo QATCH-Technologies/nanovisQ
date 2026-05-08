@@ -2,8 +2,8 @@
 mainWindow.py
 
 The primary container for the QATCH Q-1 application, responsible for initializing and managing the main user interface.
-This module defines the main window of the application, which includes the menu bar, user profile management, 
-and the central widget that contains the various UI components. It also handles user interactions such as toggling views, 
+This module defines the main window of the application, which includes the menu bar, user profile management,
+and the central widget that contains the various UI components. It also handles user interactions such as toggling views,
 managing user profiles, and responding to menu actions, etc.
 
 Author(s):
@@ -16,6 +16,7 @@ Date:
 Version:
     x.x.x?
 """
+
 from datetime import datetime, timezone, timedelta, date
 import hashlib
 import logging
@@ -2975,7 +2976,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Progress container
             container = QtWidgets.QWidget()
             container.setFixedWidth(340)
-            
+
             container.setStyleSheet(
                 "QWidget {"
                 "  background: rgba(255, 255, 255, 0);"
@@ -3003,9 +3004,9 @@ class MainWindow(QtWidgets.QMainWindow):
             progress_bar.setFixedHeight(6)
 
             layout.addWidget(status_label)
-            
-            layout.addSpacing(10) 
-            
+
+            layout.addSpacing(10)
+
             layout.addWidget(progress_bar)
 
             proxy = QtWidgets.QGraphicsProxyWidget()
@@ -3624,9 +3625,11 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.e("Restoration successful! Application database replaced with bundled copy.")
-                
+
             except Exception as e:
-                Log.e("FAIL: The application database is presumed to be corrupt and could not be restored.")
+                Log.e(
+                    "FAIL: The application database is presumed to be corrupt and could not be restored."
+                )
                 Log.e("Error Details:", e)
 
     ###########################################################################
@@ -4986,7 +4989,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"<span style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</span>"
                 f"</p>"
             )
-            
+
             if lbl.text() != new_html:
                 lbl.setWordWrap(True)
                 lbl.setTextFormat(QtCore.Qt.RichText)
@@ -5040,30 +5043,31 @@ class MainWindow(QtWidgets.QMainWindow):
         now = time()
 
         # Check rate-limit; update timestamp if ready
-        if now - getattr(self, "_last_forecaster_push_time", 0.0) > 0.2:
-            if self.worker._forecaster_in.empty():
-                t_buf = np.asarray(self.worker.get_t1_buffer(0), dtype=np.float64).copy()
-                f_buf = np.asarray(data_resonance_frequency, dtype=np.float64).copy()
-                d_buf = np.asarray(data_dissipation, dtype=np.float64).copy()
+        if now - getattr(self, "_last_forecaster_push_time", 0.0) > 0.1:
+            t_buf = np.asarray(self.worker.get_t1_buffer(0), dtype=np.float64).copy()
+            f_buf = np.asarray(data_resonance_frequency, dtype=np.float64).copy()
+            d_buf = np.asarray(data_dissipation, dtype=np.float64).copy()
 
-                # Align to the shortest buffer to defend against mismatched lengths
-                # between t1/d1/d2 caused by the worker appending mid-fetch.
-                n = min(len(t_buf), len(f_buf), len(d_buf))
-                if n == 0:
-                    return
-                t_buf, f_buf, d_buf = t_buf[:n], f_buf[:n], d_buf[:n]
-                last_t = getattr(self, "_last_pushed_relative_time", -float("inf"))
-                new_mask = t_buf > last_t
-                if not new_mask.any():
-                    return
-                MAX_PAYLOAD = 2000
-                t_send = t_buf[new_mask][-MAX_PAYLOAD:]
-                f_send = f_buf[new_mask][-MAX_PAYLOAD:]
-                d_send = d_buf[new_mask][-MAX_PAYLOAD:]
+            n = min(len(t_buf), len(f_buf), len(d_buf))
+            if n == 0:
+                return
+            t_buf, f_buf, d_buf = t_buf[:n], f_buf[:n], d_buf[:n]
 
-                self.worker._forecaster_in.put(WorkerSnapshot(t_send, f_send, d_send))
-                self._last_pushed_relative_time = float(t_send[-1])
-                self._last_forecaster_push_time = now
+            last_t = getattr(self, "_last_pushed_relative_time", -float("inf"))
+            new_mask = t_buf > last_t
+            if not new_mask.any():
+                return
+
+            max_payload = 2000
+            t_send = t_buf[new_mask][-max_payload:]
+            f_send = f_buf[new_mask][-max_payload:]
+            d_send = d_buf[new_mask][-max_payload:]
+
+            self.worker._forecaster_in.put(WorkerSnapshot(t_send, f_send, d_send))
+            self._last_pushed_relative_time = float(t_send[-1])
+            self._last_forecaster_push_time = now
+
+        # Drain output queue
         if self.worker._forecaster_out.empty():
             return
 
@@ -6145,7 +6149,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         elif ":" in dev_info["PORT"]:
                             port_names[i] = dev_info["NAME"]
                         else:
-                            port_names[i] = "{} ({})".format(dev_info["NAME"], "COM" + str((10 + i)))
+                            port_names[i] = "{} ({})".format(
+                                dev_info["NAME"], "COM" + str((10 + i))
+                            )
                         if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
                             ports[i] += f";{dev_info['IP']}"
                             if " (" in port_names[i]:
@@ -6166,7 +6172,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not port_name in device_ports:
                     # found connected port with no associated device info in config folder
                     # force parse and/or write device info (to update name and/or pid)
-                    Log.d(f"New device found: querying device info for {port_name.split(':')[0]}...")
+                    Log.d(
+                        f"New device found: querying device info for {port_name.split(':')[0]}..."
+                    )
                     self.fwUpdater.checkAgain()
                     self.worker._port = port_name  # used in run()
                     # do NOT ask to update if not ReadyToShow
@@ -7258,7 +7266,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # find most recent *release* build, skipping any newer *beta* builds
                 # raise an Exception if no *release* builds are found on the server!
                 for build in builds:
-                    is_release_build = 'r' in build["name"]
+                    is_release_build = "r" in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
@@ -7267,7 +7275,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         break  # found, stop searching
             elif len(builds) > 0:
                 for build in builds:
-                    is_release_build = 'r' in build["name"]
+                    is_release_build = "r" in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
