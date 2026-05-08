@@ -1011,8 +1011,10 @@ def _apply_snap(
 def _make_plot_widget(parent: QtWidgets.QWidget) -> GraphicsLayoutWidget:
     w = GraphicsLayoutWidget(parent)
     w.setAutoFillBackground(False)
-    w.setStyleSheet("border:0px;")
-    w.setFrameShape(QtWidgets.QFrame.StyledPanel)
+    w.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+    w.setBackground(None)  # transparent – GlassPlotPanel paints the backdrop
+    w.setStyleSheet("border:0px; background: transparent;")
+    w.setFrameShape(QtWidgets.QFrame.NoFrame)
     w.setFrameShadow(QtWidgets.QFrame.Plain)
     w.setLineWidth(0)
     w.setMinimumSize(80, 60)

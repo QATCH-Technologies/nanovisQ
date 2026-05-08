@@ -71,6 +71,7 @@ from QATCH.ui.workers.extract_worker import ExtractWorker
 from QATCH.ui.workers.tec_worker import TECWorker
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
+from QATCH.processors.drying_detector import DryingDetection
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
@@ -1781,7 +1782,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Progress container
             container = QtWidgets.QWidget()
             container.setFixedWidth(340)
-            
+
             container.setStyleSheet(
                 "QWidget {"
                 "  background: rgba(255, 255, 255, 0);"
@@ -1809,9 +1810,9 @@ class MainWindow(QtWidgets.QMainWindow):
             progress_bar.setFixedHeight(6)
 
             layout.addWidget(status_label)
-            
-            layout.addSpacing(10) 
-            
+
+            layout.addSpacing(10)
+
             layout.addWidget(progress_bar)
 
             proxy = QtWidgets.QGraphicsProxyWidget()
@@ -2417,7 +2418,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 while True:
                     try:
                         i += 1
-                        os.rename(machine_database_path, machine_database_path.replace(".db", f"-{i}.db"))
+                        os.rename(
+                            machine_database_path, machine_database_path.replace(".db", f"-{i}.db")
+                        )
                         break
                     except FileExistsError:
                         pass
@@ -2426,7 +2429,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.e("Restoration successful! Application database replaced with bundled copy.")
             except Exception:
-                Log.e("FAIL: The application database is presumed to be corrupt and could not be restored.")
+                Log.e(
+                    "FAIL: The application database is presumed to be corrupt and could not be restored."
+                )
 
     ###########################################################################
     # Configures the tutorials interface for user interaction
@@ -3134,6 +3139,48 @@ class MainWindow(QtWidgets.QMainWindow):
         finally:
             plt_widget.setUpdatesEnabled(True)
 
+    def _get_glass_curve_styles(self, base_color):
+        """Generates a glassy pen and a translucent brush from a base color."""
+        color = QtGui.QColor(base_color)
+
+        # Edge of the glass: Slightly thicker and just a tiny bit transparent
+        pen_color = QtGui.QColor(color)
+        pen_color.setAlpha(210)
+        pen = pg.mkPen(color=pen_color, width=2)
+
+        # Body of the glass: highly transparent area fill
+        brush_color = QtGui.QColor(color)
+        brush_color.setAlpha(35)  # ~14% opacity for that frosted fade
+        brush = pg.mkBrush(brush_color)
+
+        return pen, brush
+
+    def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.10) -> None:
+        """Apply glass-morphism axis pen, text, grid, and title styling to a PlotItem."""
+        _axis_pen = pg.mkPen(color=(30, 40, 55, 120), width=1)
+        _text_pen = pg.mkPen(color=(30, 40, 55, 195))
+
+        for name in ("bottom", "left", "right", "top"):
+            ax = plot_item.getAxis(name)
+            if ax is not None:
+                ax.setPen(_axis_pen)
+                ax.setTextPen(_text_pen)
+
+        # Remove the rectangular ViewBox border so the data area flows
+        # seamlessly into the GlassPlotPanel backdrop.
+        plot_item.getViewBox().setBorder(pg.mkPen(None))
+
+        # Tighter default padding lets data fill more of the tile.
+        plot_item.getViewBox().setDefaultPadding(0.02)
+
+        # Hide the small auto-range 'A' button — cleaner glass look.
+        plot_item.hideButtons()
+
+        plot_item.showGrid(x=True, y=True, alpha=alpha)
+
+        if title:
+            plot_item.setTitle(title, color=(30, 40, 55, 185), size="9pt")
+
     def _configure_plot(self, _show_welcome=True):
         """Initializes and configures the layout for all PyQtGraph plots.
 
@@ -3184,12 +3231,45 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     return ""
 
+        class GlassAxisItem(AxisItem):
+            """Anti-aliased AxisItem styled for the glass UI — inward ticks,
+            soft pen, and TextAntialiasing forced on the scene painter."""
+
+            _TICK_FONT = QtGui.QFont("Segoe UI")
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                f = self._TICK_FONT
+                f.setPixelSize(11)
+                self.setTickFont(f)
+                self.setStyle(tickLength=-4, tickTextOffset=6)
+
+            def paint(self, p, opt, widget):
+                p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
+                super().paint(p, opt, widget)
+
+        class GlassDateAxis(DateAxis):
+            """DateAxis variant with glass-style anti-aliased rendering."""
+
+            _TICK_FONT = QtGui.QFont("Segoe UI")
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                f = self._TICK_FONT
+                f.setPixelSize(11)
+                self.setTickFont(f)
+                self.setStyle(tickLength=-4, tickTextOffset=6)
+
+            def paint(self, p, opt, widget):
+                p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
+                super().paint(p, opt, widget)
+
         # Set plot background color to white for all three tile widgets.
-        self.PlotsWin.ui2.plt.setBackground(background="#FFFFFF")
-        self.PlotsWin.ui2.pltB.setBackground(background="#FFFFFF")
+        self.PlotsWin.ui2.plt.setBackground(None)
+        self.PlotsWin.ui2.pltB.setBackground(None)
         _plt_temp = getattr(self.PlotsWin.ui2, "plt_temp", None)
         if _plt_temp:
-            _plt_temp.setBackground(background="#FFFFFF")
+            _plt_temp.setBackground(None)
         title_amplitude = "Plot: Amplitude"
         title_resonance_dissipation = "Plot: Resonance Frequency / Dissipation"
         title_temperature = "Plot: Temperature"
@@ -3223,9 +3303,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 row=y,
                 colspan=span,
                 title=title_amplitude + get_suffix(i),
+                axisItems={
+                    "bottom": GlassAxisItem(orientation="bottom"),
+                    "left": GlassAxisItem(orientation="left"),
+                },
                 **{"font-size": "10pt"},
             )
-            plot_layout.showGrid(x=True, y=True)
             plot_layout.setVisible(visible)
             plot_layout.setLabel("bottom", "Frequency", units="Hz")
             plot_layout.setLabel(
@@ -3235,6 +3318,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 color=Constants.plot_colors[0],
                 **{"font-size": "10pt"},
             )
+            self._apply_glass_plot_style(plot_layout, title_amplitude + get_suffix(i))
 
             # Set size policy for show/hide for Resonance Frequency/Dissipation plots.
             not_resize = plot_layout.sizePolicy()
@@ -3252,9 +3336,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
 
             x, y = i % 2, i // 2
-            self._yaxis.append(AxisItem(orientation="left"))
-            self._xaxis.append(DateAxis(orientation="bottom"))
-
+            self._yaxis.append(GlassAxisItem(orientation="left"))
+            self._xaxis.append(GlassDateAxis(orientation="bottom"))
             plot_layout = self.PlotsWin.ui2.pltB.addPlot(
                 col=x,
                 row=y,
@@ -3262,7 +3345,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 **{"font-size": "12pt"},
                 axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
             )
-            plot_layout.showGrid(x=True, y=True)
             plot_layout.setLabel("bottom", "Time", units="s")
             plot_layout.setLabel(
                 "left",
@@ -3271,6 +3353,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 color=Constants.plot_colors[2],
                 **{"font-size": "10pt"},
             )
+            self._apply_glass_plot_style(plot_layout, title_resonance_dissipation + get_suffix(i))
 
             self._plt2_arr[i] = plot_layout
 
@@ -3317,9 +3400,11 @@ class MainWindow(QtWidgets.QMainWindow):
             col=0,
             colspan=1,
             title=title_temperature,
-            axisItems={"bottom": DateAxis(orientation="bottom")},
+            axisItems={
+                "bottom": GlassDateAxis(orientation="bottom"),
+                "left": GlassAxisItem(orientation="left"),
+            },
         )
-        self._plt4.showGrid(x=True, y=True)
         self._plt4.setLabel("bottom", "Time", units="s")
         self._plt4.setLabel(
             "left",
@@ -3328,6 +3413,7 @@ class MainWindow(QtWidgets.QMainWindow):
             color=Constants.plot_colors[4],
             **{"font-size": "10pt"},
         )
+        self._apply_glass_plot_style(self._plt4, title_temperature)
 
         # Set size policy for show/hide for temperature plot.
         not_resize = self._plt4.sizePolicy()
@@ -3793,7 +3879,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"<span style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</span>"
                 f"</p>"
             )
-            
+
             if lbl.text() != new_html:
                 lbl.setWordWrap(True)
                 lbl.setTextFormat(QtCore.Qt.RichText)
@@ -4952,7 +5038,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         elif ":" in dev_info["PORT"]:
                             port_names[i] = dev_info["NAME"]
                         else:
-                            port_names[i] = "{} ({})".format(dev_info["NAME"], "COM" + str((10 + i)))
+                            port_names[i] = "{} ({})".format(
+                                dev_info["NAME"], "COM" + str((10 + i))
+                            )
                         if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
                             ports[i] += f";{dev_info['IP']}"
                             if " (" in port_names[i]:
@@ -4973,7 +5061,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not port_name in device_ports:
                     # found connected port with no associated device info in config folder
                     # force parse and/or write device info (to update name and/or pid)
-                    Log.d(f"New device found: querying device info for {port_name.split(':')[0]}...")
+                    Log.d(
+                        f"New device found: querying device info for {port_name.split(':')[0]}..."
+                    )
                     self.fwUpdater.checkAgain()
                     self.worker._port = port_name  # used in run()
                     # do NOT ask to update if not ReadyToShow
@@ -6063,7 +6153,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # find most recent *release* build, skipping any newer *beta* builds
                 # raise an Exception if no *release* builds are found on the server!
                 for build in builds:
-                    is_release_build = 'r' in build["name"]
+                    is_release_build = "r" in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
@@ -6072,7 +6162,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         break  # found, stop searching
             elif len(builds) > 0:
                 for build in builds:
-                    is_release_build = 'r' in build["name"]
+                    is_release_build = "r" in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d

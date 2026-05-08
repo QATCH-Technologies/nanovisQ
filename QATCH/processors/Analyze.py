@@ -9,7 +9,7 @@ import traceback
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-from typing import Optional, cast, List, Tuple, Any, Dict
+from typing import Optional, cast, List, Tuple, Any, Dict, Callable, Union
 from time import monotonic, localtime, strftime  # sleep
 from scipy import interpolate
 from xml.dom import minidom

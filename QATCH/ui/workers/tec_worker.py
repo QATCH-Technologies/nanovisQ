@@ -9,6 +9,7 @@ from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.processors.Device import serial  # real device hardware
 
+TAG = "[TECWorker]"
 
 class TECWorker(QtCore.QThread):
     update_now = QtCore.pyqtSignal()
