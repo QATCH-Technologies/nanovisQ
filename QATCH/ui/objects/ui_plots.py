@@ -171,23 +171,35 @@ class GlassContainer(QtWidgets.QWidget):
         path.addRoundedRect(rf, self._R, self._R)
         p.setClipPath(path)
 
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 160))
-        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 18))
+        # ── Frosted base: near-opaque white with a breath of cool blue-white ──
+        p.fillRect(self.rect(), QtGui.QColor(250, 252, 255, 215))  # was (255,255,255,160)
+        p.fillRect(self.rect(), QtGui.QColor(208, 226, 248, 30))  # was (228,235,241,18)
 
-        sh = QtGui.QLinearGradient(0, 0, 0, 32)
-        sh.setColorAt(0, QtGui.QColor(255, 255, 255, 50))
+        # ── Top-edge highlight — stronger shimmer for the "glass rim" look ──
+        sh = QtGui.QLinearGradient(0, 0, 0, 40)
+        sh.setColorAt(0, QtGui.QColor(255, 255, 255, 100))  # was 50
+        sh.setColorAt(0.5, QtGui.QColor(255, 255, 255, 20))
         sh.setColorAt(1, QtGui.QColor(255, 255, 255, 0))
         p.fillRect(self.rect(), QtGui.QBrush(sh))
+
+        # ── Bottom-edge soft vignette — grounds the card visually ──
+        vg = QtGui.QLinearGradient(0, self.height() - 30, 0, self.height())
+        vg.setColorAt(0, QtGui.QColor(200, 218, 240, 0))
+        vg.setColorAt(1, QtGui.QColor(200, 218, 240, 18))
+        p.fillRect(self.rect(), QtGui.QBrush(vg))
+
         p.setClipping(False)
         p.setBrush(QtCore.Qt.NoBrush)
 
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 220), 1.0))
+        # ── Outer border: bright white rim ──
+        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 1.0))
         p.drawRoundedRect(rf.adjusted(0.5, 0.5, -0.5, -0.5), self._R, self._R)
-        p.setPen(QtGui.QPen(QtGui.QColor(200, 210, 220, 80), 1.0))
+        # ── Inner border: subtle cool-grey inset ──
+        p.setPen(QtGui.QPen(QtGui.QColor(190, 210, 235, 70), 1.0))
         p.drawRoundedRect(rf.adjusted(1.5, 1.5, -1.5, -1.5), self._R - 1.5, self._R - 1.5)
 
         if self.has_header:
-            p.setPen(QtGui.QPen(QtGui.QColor(200, 210, 220, 60), 1.0))
+            p.setPen(QtGui.QPen(QtGui.QColor(195, 215, 238, 70), 1.0))
             y_line = self._HEADER_H + self._M
             p.drawLine(0, y_line, self.width(), y_line)
 
@@ -380,7 +392,7 @@ class UIPlots:
         self.temp_glass = GlassContainer(
             plot_widget=self.plt_temp,
             title="Temperature",
-            accent_color=QtGui.QColor(240, 156, 53),
+            accent_color=QtGui.QColor(148, 99, 210),  # was QColor(240, 156, 53)
             parent=self.right_splitter,
         )
         self.right_splitter.addWidget(self.temp_glass)
