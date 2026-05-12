@@ -722,7 +722,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             bool: ``True`` if the process has not yet set its completion event,
             ``False`` once ``run()`` has exited (successfully or otherwise).
         """
-        return not self._done.is_set()
+        return self._done.is_set()
 
     def stop(self) -> None:
         """Signals the process to terminate gracefully.

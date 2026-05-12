@@ -333,10 +333,12 @@ class Worker:
 
         if self._forecaster_process is not None:
             self._forecaster_process.stop()
-            self._forecaster_process.terminate()
-            self._forecaster_process.join(timeout=5.0)
+            self._forecaster_process.join(timeout=2.0)
             if self._forecaster_process.is_alive():
-                Log.w(TAG, "Forecaster process did not exit cleanly after 5s.")
+                self._forecaster_process.terminate()
+                self._forecaster_process.join(timeout=5.0)
+                if self._forecaster_process.is_alive():
+                    Log.w(TAG, "Forecaster process did not exit cleanly after 5s.")
 
         Log.i(TAG, "Processes finished")
 
