@@ -392,7 +392,7 @@ class UIPlots:
         self.temp_glass = GlassContainer(
             plot_widget=self.plt_temp,
             title="Temperature",
-            accent_color=QtGui.QColor(148, 99, 210),  # was QColor(240, 156, 53)
+            accent_color=QtGui.QColor(240, 156, 53),  # was QColor(240, 156, 53)
             parent=self.right_splitter,
         )
         self.right_splitter.addWidget(self.temp_glass)

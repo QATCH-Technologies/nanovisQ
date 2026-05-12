@@ -14,7 +14,11 @@
     border: 1px solid rgba(255, 255, 255, 220); 
     border-radius: 12px; 
 }
-
+#runview {
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+}
 #modeMenuScrollArea > QWidget > QWidget,
 #userview > QWidget > QWidget,
 #runview > QWidget > QWidget,

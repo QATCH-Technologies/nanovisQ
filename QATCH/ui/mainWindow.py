@@ -77,6 +77,23 @@ TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
 
 
+class GlassFillCurveItem(pg.PlotCurveItem):
+    """PlotCurveItem that excludes fillLevel from autoRange bounds.
+
+    Standard PlotCurveItem includes the fillLevel baseline in dataBounds(),
+    causing the ViewBox autoRange to expand to include the fill baseline (y=0
+    or whatever fillLevel is set to). This subclass suppresses that behaviour
+    so autoRange stays tight around the actual curve data only.
+    """
+
+    def dataBounds(self, ax, frac=1.0, orthoRange=None):
+        fl = self.opts.get("fillLevel", None)
+        self.opts["fillLevel"] = None  # hide from base class bounds check
+        bounds = super().dataBounds(ax, frac, orthoRange)
+        self.opts["fillLevel"] = fl  # restore for rendering
+        return bounds
+
+
 class RoundedProgressBar(QtWidgets.QWidget):
     """A progress bar with guaranteed rounded corners at every fill level.
 
@@ -3158,39 +3175,27 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # ── Fill brush: frosted area under the curve ──
         brush_color = QtGui.QColor(color)
-        brush_color.setAlpha(28)  # ~11% — lighter than before for cleaner glass feel
+        brush_color.setAlpha(65)  # ~11% — lighter than before for cleaner glass feel
         brush = pg.mkBrush(brush_color)
 
         return pen, brush
 
-    def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.13) -> None:
+    def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.09) -> None:
         """Apply glass-morphism axis pen, text, grid, and title styling to a PlotItem."""
-        # Slightly softer than pure dark: cool charcoal at reduced opacity
-        _axis_pen = pg.mkPen(color=(40, 55, 75, 110), width=1)
-        _text_pen = pg.mkPen(color=(35, 48, 68, 190))
+        _axis_pen = pg.mkPen(color=(40, 55, 75, 90), width=1)
+        _text_pen = pg.mkPen(color=(35, 48, 68, 180))
 
         for name in ("bottom", "left", "right", "top"):
             ax = plot_item.getAxis(name)
             if ax is not None:
                 ax.setPen(_axis_pen)
                 ax.setTextPen(_text_pen)
-                # Make grid lines a cool blue-grey rather than the default black
                 ax.setGrid(int(alpha * 255))
 
-        # Remove the rectangular ViewBox border so the data area flows
-        # seamlessly into the GlassPlotPanel backdrop.
         plot_item.getViewBox().setBorder(pg.mkPen(None))
-
-        # Tighter default padding lets data fill more of the tile.
         plot_item.getViewBox().setDefaultPadding(0.02)
-
-        # Hide the small auto-range 'A' button — cleaner glass look.
         plot_item.hideButtons()
-
         plot_item.showGrid(x=True, y=True, alpha=alpha)
-
-        if title:
-            plot_item.setTitle(title, color=(35, 50, 72, 180), size="9pt")
 
     def _configure_plot(self, _show_welcome=True):
         """Initializes and configures the layout for all PyQtGraph plots.
@@ -3313,7 +3318,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 col=x,
                 row=y,
                 colspan=span,
-                title=title_amplitude + get_suffix(i),
                 axisItems={
                     "bottom": GlassAxisItem(orientation="bottom"),
                     "left": GlassAxisItem(orientation="left"),
@@ -3329,7 +3333,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 color="#2E9BDA",  # sky-blue — matches _AMP_COLOR
                 **{"font-size": "10pt"},
             )
-            self._apply_glass_plot_style(plot_layout, title_amplitude + get_suffix(i))
+            self._apply_glass_plot_style(plot_layout)
 
             # Set size policy for show/hide for Resonance Frequency/Dissipation plots.
             not_resize = plot_layout.sizePolicy()
@@ -3352,7 +3356,6 @@ class MainWindow(QtWidgets.QMainWindow):
             plot_layout = self.PlotsWin.ui2.pltB.addPlot(
                 col=x,
                 row=y,
-                title=title_resonance_dissipation + get_suffix(i),
                 **{"font-size": "12pt"},
                 axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
             )
@@ -3364,7 +3367,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 color="#2E9BDA",
                 **{"font-size": "10pt"},
             )
-            self._apply_glass_plot_style(plot_layout, title_resonance_dissipation + get_suffix(i))
+            self._apply_glass_plot_style(plot_layout)
 
             self._plt2_arr[i] = plot_layout
 
@@ -3409,7 +3412,6 @@ class MainWindow(QtWidgets.QMainWindow):
             row=0,
             col=0,
             colspan=1,
-            title=title_temperature,
             axisItems={
                 "bottom": GlassDateAxis(orientation="bottom"),
                 "left": GlassAxisItem(orientation="left"),
@@ -3423,7 +3425,7 @@ class MainWindow(QtWidgets.QMainWindow):
             color="#A069E1",  # amber — matches _TEMP_COLOR
             **{"font-size": "10pt"},
         )
-        self._apply_glass_plot_style(self._plt4, title_temperature)
+        self._apply_glass_plot_style(self._plt4)
 
         # Set size policy for show/hide for temperature plot.
         not_resize = self._plt4.sizePolicy()
@@ -3535,19 +3537,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
 
             # Amplitude Plot Handling
-            _AMP_COLOR  = QtGui.QColor(220,  68,  80)   # rose-red
-            _FREQ_COLOR = QtGui.QColor( 46, 155, 218)   # sky-blue
-            _DISS_COLOR = QtGui.QColor(240, 156,  53)   # golden amber
+            _AMP_COLOR = QtGui.QColor(220, 68, 80)  # rose-red
+            _FREQ_COLOR = QtGui.QColor(46, 155, 218)  # sky-blue
+            _DISS_COLOR = QtGui.QColor(240, 156, 53)  # golden amber
 
-            _amp_pen,  _amp_brush  = self._get_glass_curve_styles(_AMP_COLOR,  width=2.0)
+            _amp_pen, _amp_brush = self._get_glass_curve_styles(_AMP_COLOR, width=2.0)
             _freq_pen, _freq_brush = self._get_glass_curve_styles(_FREQ_COLOR, width=2.0)
             _diss_pen, _diss_brush = self._get_glass_curve_styles(_DISS_COLOR, width=2.0)
 
             # Amplitude Plot Handling
-            ci_amp = pg.PlotCurveItem(
+            ci_amp = GlassFillCurveItem(
                 pen=_amp_pen,
+                brush=_amp_brush,
+                fillLevel=-300,
                 antialias=True,
             )
+
             p0.addItem(ci_amp)
             try:
                 p0.enableAutoRange(axis="xy", enable=True)
@@ -3557,20 +3562,24 @@ class MainWindow(QtWidgets.QMainWindow):
             self._ci_amp[i] = ci_amp
 
             # Resonance Frequency Plot Handling
-            ci_freq = pg.PlotCurveItem(
+            ci_freq = GlassFillCurveItem(
                 pen=_freq_pen,
+                brush=_freq_brush,
+                fillLevel=0,
                 autoDownsample=True,
                 downsampleMethod="peak",
                 skipFiniteCheck=True,
                 antialias=True,
-                connect="finite",         
+                connect="finite",
             )
             p2.addItem(ci_freq)
             self._ci_freq[i] = ci_freq
 
             # Dissipation Plot Handling
-            ci_diss = pg.PlotCurveItem(
+            ci_diss = GlassFillCurveItem(
                 pen=_diss_pen,
+                brush=_diss_brush,
+                fillLevel=0,
                 autoDownsample=True,
                 downsampleMethod="peak",
                 skipFiniteCheck=True,
@@ -3587,9 +3596,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Temperature Plot Handling
         _TEMP_COLOR = QtGui.QColor(148, 99, 210)  # soft violet
-        _temp_pen, _ = self._get_glass_curve_styles(_TEMP_COLOR, width=1.75)
-        self._ci_temp = pg.PlotCurveItem(
+        _temp_pen, _temp_brush = self._get_glass_curve_styles(_TEMP_COLOR, width=1.75)
+        self._ci_temp = GlassFillCurveItem(
             pen=_temp_pen,
+            brush=_temp_brush,
+            fillLevel=0,
             clipToView=True,
             skipFiniteCheck=True,
             antialias=True,

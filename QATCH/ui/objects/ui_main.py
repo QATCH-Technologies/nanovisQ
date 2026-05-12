@@ -241,6 +241,7 @@ class UIMain:
         runwidget = QtWidgets.QWidget()
         runlayout = QtWidgets.QVBoxLayout()
         runlayout.setContentsMargins(0, 0, 0, 0)
+        runlayout.setSpacing(0)
         runlayout.addWidget(parent.ControlsWin.ui1.centralwidget, 1)
         runlayout.addWidget(parent.PlotsWin.ui2.centralwidget, 255)
         runwidget.setLayout(runlayout)
