@@ -2294,7 +2294,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "Phase",
             units="deg",
             color=Constants.plot_colors[1],
-            **{"font-size": "10pt"},
+            **{"font-size": "9pt"},
         )
 
     ###########################################################################
@@ -3180,15 +3180,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return pen, brush
 
-    def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.09) -> None:
-        """Apply glass-morphism axis pen, text, grid, and title styling to a PlotItem."""
-        _axis_pen = pg.mkPen(color=(40, 55, 75, 90), width=1)
-        _text_pen = pg.mkPen(color=(35, 48, 68, 180))
+    def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.08) -> None:
+        """Apply minimal glass axis styling — no spines, no ticks, floating labels."""
+        _text_pen = pg.mkPen(color=(35, 48, 68, 140))  # cool charcoal, quite light
 
         for name in ("bottom", "left", "right", "top"):
             ax = plot_item.getAxis(name)
             if ax is not None:
-                ax.setPen(_axis_pen)
+                ax.setPen(pg.mkPen(None))  # remove spine on every axis
                 ax.setTextPen(_text_pen)
                 ax.setGrid(int(alpha * 255))
 
@@ -3248,33 +3247,38 @@ class MainWindow(QtWidgets.QMainWindow):
                     return ""
 
         class GlassAxisItem(AxisItem):
-            """Anti-aliased AxisItem styled for the glass UI — inward ticks,
-            soft pen, and TextAntialiasing forced on the scene painter."""
-
-            _TICK_FONT = QtGui.QFont("Segoe UI")
+            """Minimal glass axis — no spine, no ticks, labels float on the card."""
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                f = self._TICK_FONT
-                f.setPixelSize(11)
+                f = QtGui.QFont("Segoe UI")
+                f.setPixelSize(10)
                 self.setTickFont(f)
-                self.setStyle(tickLength=-4, tickTextOffset=6)
+                self.setStyle(
+                    tickLength=0,  # grid lines carry the spatial reference
+                    tickTextOffset=3,
+                    autoExpandTextSpace=False,
+                )
+                self.setPen(pg.mkPen(None))  # no spine
 
             def paint(self, p, opt, widget):
                 p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
                 super().paint(p, opt, widget)
 
         class GlassDateAxis(DateAxis):
-            """DateAxis variant with glass-style anti-aliased rendering."""
-
-            _TICK_FONT = QtGui.QFont("Segoe UI")
+            """DateAxis variant — same minimal glass rendering as GlassAxisItem."""
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                f = self._TICK_FONT
-                f.setPixelSize(11)
+                f = QtGui.QFont("Segoe UI")
+                f.setPixelSize(10)
                 self.setTickFont(f)
-                self.setStyle(tickLength=-4, tickTextOffset=6)
+                self.setStyle(
+                    tickLength=0,
+                    tickTextOffset=3,
+                    autoExpandTextSpace=False,
+                )
+                self.setPen(pg.mkPen(None))
 
             def paint(self, p, opt, widget):
                 p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
@@ -3322,7 +3326,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     "bottom": GlassAxisItem(orientation="bottom"),
                     "left": GlassAxisItem(orientation="left"),
                 },
-                **{"font-size": "10pt"},
+                **{"font-size": "9pt"},
             )
             plot_layout.setVisible(visible)
             plot_layout.setLabel("bottom", "Frequency", units="Hz")
@@ -3331,7 +3335,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Amplitude",
                 units="dB",
                 color="#2E9BDA",  # sky-blue — matches _AMP_COLOR
-                **{"font-size": "10pt"},
+                **{"font-size": "9pt"},
             )
             self._apply_glass_plot_style(plot_layout)
 
@@ -3365,7 +3369,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Resonance Frequency",
                 units="Hz",
                 color="#2E9BDA",
-                **{"font-size": "10pt"},
+                **{"font-size": "9pt"},
             )
             self._apply_glass_plot_style(plot_layout)
 
@@ -3380,6 +3384,10 @@ class MainWindow(QtWidgets.QMainWindow):
             multi_plot = self._plt2_arr[i]
             plot_layout = pg.ViewBox()
             multi_plot.showAxis("right")
+            # Glass styling for the right (dissipation) axis
+            multi_plot.getAxis("right").setPen(pg.mkPen(None))
+            multi_plot.getAxis("right").setTextPen(pg.mkPen(color=(35, 48, 68, 140)))
+            multi_plot.getAxis("right").setStyle(tickLength=0, tickTextOffset=3)
             multi_plot.scene().addItem(plot_layout)
             multi_plot.getAxis("right").setGrid(False)
             multi_plot.getAxis("right").linkToView(plot_layout)
@@ -3392,7 +3400,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Dissipation",
                 units="",
                 color="#F09C35",
-                **{"font-size": "10pt"},
+                **{"font-size": "9pt"},
             )
             # Since multi_plot is a reference to self._plt2_arr[i], we don't strictly need to re-save it
             self._plt2_arr[i] = multi_plot
@@ -3423,7 +3431,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "Temperature",
             units="°C",
             color="#A069E1",  # amber — matches _TEMP_COLOR
-            **{"font-size": "10pt"},
+            **{"font-size": "9pt"},
         )
         self._apply_glass_plot_style(self._plt4)
 
@@ -3562,10 +3570,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._ci_amp[i] = ci_amp
 
             # Resonance Frequency Plot Handling
-            ci_freq = GlassFillCurveItem(
+            ci_freq = pg.PlotCurveItem(
                 pen=_freq_pen,
-                brush=_freq_brush,
-                fillLevel=0,
                 autoDownsample=True,
                 downsampleMethod="peak",
                 skipFiniteCheck=True,
@@ -3576,10 +3582,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._ci_freq[i] = ci_freq
 
             # Dissipation Plot Handling
-            ci_diss = GlassFillCurveItem(
+            ci_diss = pg.PlotCurveItem(
                 pen=_diss_pen,
-                brush=_diss_brush,
-                fillLevel=0,
                 autoDownsample=True,
                 downsampleMethod="peak",
                 skipFiniteCheck=True,
@@ -4324,14 +4328,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     "Resonance Frequency",
                     units="Hz",
                     color=Constants.plot_colors[6],
-                    **{"font-size": "10pt"},
+                    **{"font-size": "9pt"},
                 )
                 p.setLabel(
                     "right",
                     "Dissipation",
                     units="",
                     color=Constants.plot_colors[7],
-                    **{"font-size": "10pt"},
+                    **{"font-size": "9pt"},
                 )
 
         layout_ui = self.InfoWin.ui3
