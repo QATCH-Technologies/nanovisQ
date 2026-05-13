@@ -2094,6 +2094,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # Safely gather the plot title if one exists
         if hasattr(plot_item, "titleLabel") and plot_item.titleLabel is not None:
             frost_targets.append(plot_item.titleLabel)
+        for attr in ("_left_title_label", "_right_title_label"):
+            lbl = getattr(plot_item, attr, None)
+            if lbl is not None:
+                frost_targets.append(lbl)
 
         # 4. Create the unified animator
         anim = QtCore.QVariantAnimation(self)
@@ -3335,6 +3339,14 @@ class MainWindow(QtWidgets.QMainWindow):
             # X-Axis remains, Y-Axis label removed
             plot_layout.setLabel("bottom", "Frequency (MHz)")
 
+            # Convert the bottom axis from raw Hz to MHz and strip trailing zeros.
+            _amp_bottom = plot_layout.getAxis("bottom")
+            _amp_bottom.setScale(1e-6)
+            _amp_bottom.enableAutoSIPrefix(False)
+            _amp_bottom.tickStrings = lambda values, scale, spacing: [
+                f"{v / 1e6:.3f}".rstrip("0").rstrip(".") for v in values
+            ]
+
             self._apply_glass_plot_style(plot_layout)
 
             not_resize = plot_layout.sizePolicy()
@@ -4351,6 +4363,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if left_axis:
                     left_axis.setScale(scale_rf)
                     left_axis.enableAutoSIPrefix(False)
+                    left_axis.setWidth(48)
                     left_axis.tickStrings = lambda values, scale, spacing: [
                         (
                             f"{v * scale:.3f}".rstrip("0").rstrip(".")
@@ -4362,11 +4375,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 right_axis = p.getAxis("right")
                 if right_axis:
-                    # Explicitly forcing scale to 1.0 to ensure no 1e6 multiplier is applied to dissipation
+                    # Scale is kept at 1.0 for tick generation; display divides by 1e6
+                    # to convert from the internal ×1e6 representation to decimal dissipation.
                     right_axis.setScale(1.0)
                     right_axis.enableAutoSIPrefix(False)
                     right_axis.tickStrings = lambda values, scale, spacing: [
-                        f"{v * scale:.6f}" for v in values
+                        f"{v * scale / 1e6:.6f}".rstrip("0").rstrip(".") for v in values
                     ]
 
                 c_rf = Constants.plot_colors[6]
@@ -4381,7 +4395,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     pi._left_title_label = pg.LabelItem(justify="center")
                     pi.layout.addItem(pi._left_title_label, 0, 0)
                 pi._left_title_label.setText(
-                    f"Resonance\nFrequency\n({unit_rf})", color=color_rf, size="10pt"
+                    f"Resonance<br>Frequency<br>({unit_rf})", color=color_rf, size="10pt"
                 )
 
                 # Top-Right Label (Over Dissipation Axis)
@@ -4389,7 +4403,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     pi._right_title_label = pg.LabelItem(justify="center")
                     pi.layout.addItem(pi._right_title_label, 0, 2)
                 pi._right_title_label.setText(
-                    f"Dissipation\n({unit_diss})", color=color_diss, size="10pt"
+                    f"Dissipation<br>({unit_diss})", color=color_diss, size="10pt"
                 )
 
         layout_ui = self.InfoWin.ui3
@@ -4522,6 +4536,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if left_axis:
                     left_axis.setScale(scale_rf)
                     left_axis.enableAutoSIPrefix(False)
+                    left_axis.setWidth(48)
                     left_axis.tickStrings = lambda values, scale, spacing: [
                         f"{v * scale:.3f}".rstrip('0').rstrip('.') if '.' in f"{v * scale:.3f}" else f"{v * scale:.0f}" 
                         for v in values
@@ -4529,10 +4544,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 right_axis = p.getAxis("right")
                 if right_axis:
-                    # Explicitly forcing scale to 1.0 to ensure no 1e6 multiplier is applied to dissipation
+                    # Scale is kept at 1.0 for tick generation; display divides by 1e6
+                    # to convert from the internal ×1e6 representation to decimal dissipation.
                     right_axis.setScale(1.0)
                     right_axis.enableAutoSIPrefix(False)
-                    right_axis.tickStrings = lambda values, scale, spacing: [f"{v * scale:.6f}" for v in values]
+                    right_axis.tickStrings = lambda values, scale, spacing: [
+                        f"{v * scale / 1e6:.6f}".rstrip("0").rstrip(".") for v in values
+                    ]
 
                 c_rf = colors[2]
                 c_diss = colors[3]
@@ -4543,7 +4561,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not hasattr(pi, "_left_title_label"):
                     pi._left_title_label = pg.LabelItem(justify="center")
                     pi.layout.addItem(pi._left_title_label, 0, 0)
-                pi._left_title_label.setText(f"Resonance\nFrequency\n({unit_rf})", color=color_rf, size="10pt")
+                pi._left_title_label.setText(f"Resonance<br>Frequency<br>({unit_rf})", color=color_rf, size="10pt")
 
                 # Top-Right Label (Over Dissipation Axis)
                 if not hasattr(pi, "_right_title_label"):
