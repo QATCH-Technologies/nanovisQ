@@ -1,8 +1,11 @@
 """
 QATCH.ui.mainWindow_ui_plots
 
-Fixed but resizable Splitter layout with Glass Morphic styling, Kebab Menus
-(using custom icons), and Integrated Glass Tabs.
+Frosted-glass plot layout with:
+  - Smooth fullscreen expand/contract animation (viewport-freeze prevents chop)
+  - Glassmorphic dropdown menus with per-section color + visibility controls
+  - Circular hover effects on all header buttons
+  - Glassmorphic device-selection tabs
 
 Author(s)
     Alexander Ross  (alexander.ross@qatchtech.com)
@@ -17,10 +20,12 @@ from __future__ import annotations
 import os
 import math
 import time
+from typing import List, Tuple
+
 from PyQt5.QtGui import QCursor
 from PyQt5.QtCore import Qt
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import QDesktopWidget
+from PyQt5.QtWidgets import QDesktopWidget, QColorDialog
 from pyqtgraph import GraphicsLayoutWidget
 
 from QATCH.common.architecture import Architecture
@@ -52,15 +57,163 @@ class PlotsWindow(QtWidgets.QMainWindow):
 
 
 # ============================================================
-#  Glass Containers
+#  _SectionMenuRow  — one row inside the glass dropdown
+# ============================================================
+
+
+class _SectionMenuRow(QtWidgets.QWidget):
+    """
+    A compact interactive row: [color-swatch] [label ···] [show/hide toggle]
+    Used as a QWidgetAction payload inside each plot's option menu.
+    """
+
+    colorChanged = QtCore.pyqtSignal(str, QtGui.QColor)  # (key, new_color)
+    visibilityChanged = QtCore.pyqtSignal(str, bool)  # (key, is_visible)
+
+    def __init__(
+        self,
+        key: str,
+        label: str,
+        color: QtGui.QColor,
+        parent: QtWidgets.QWidget = None,
+    ) -> None:
+        super().__init__(parent)
+        self._key = key
+        self._color = QtGui.QColor(color)
+        self._visible = True
+
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.setMinimumWidth(190)
+        self.setFixedHeight(34)
+
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(10, 0, 10, 0)
+        lay.setSpacing(8)
+
+        # ── Color swatch ──────────────────────────────────────────
+        self._swatch = QtWidgets.QToolButton()
+        self._swatch.setFixedSize(16, 16)
+        self._swatch.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self._swatch.setToolTip("Change color")
+        self._swatch.clicked.connect(self._pick_color)
+        self._apply_swatch_style()
+
+        # ── Label ─────────────────────────────────────────────────
+        self._lbl = QtWidgets.QLabel(label)
+        self._lbl.setStyleSheet(
+            "color: rgba(30,40,55,210); font-size: 11px;"
+            " font-weight: 500; background: transparent;"
+        )
+
+        # ── Show / Hide toggle ────────────────────────────────────
+        self._eye = QtWidgets.QToolButton()
+        self._eye.setFixedSize(22, 22)
+        self._eye.setCheckable(True)
+        self._eye.setChecked(True)
+        self._eye.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self._eye.setToolTip("Show / Hide")
+        self._eye.clicked.connect(self._toggle_visibility)
+        self._apply_eye_style()
+
+        lay.addWidget(self._swatch)
+        lay.addWidget(self._lbl, 1)
+        lay.addWidget(self._eye)
+
+    # ── Row hover ─────────────────────────────────────────────────
+    def enterEvent(self, _event):
+        self.setStyleSheet("background: rgba(46,155,218,28); border-radius: 6px;")
+
+    def leaveEvent(self, _event):
+        self.setStyleSheet("background: transparent;")
+
+    # ── Style helpers ─────────────────────────────────────────────
+    def _apply_swatch_style(self) -> None:
+        c = self._color
+        self._swatch.setStyleSheet(f"""
+            QToolButton {{
+                background-color: rgb({c.red()},{c.green()},{c.blue()});
+                border: 1.5px solid rgba(255,255,255,210);
+                border-radius: 8px;
+            }}
+            QToolButton:hover {{
+                border: 2px solid rgba(255,255,255,255);
+            }}
+        """)
+
+    def _apply_eye_style(self) -> None:
+        symbol = "◉" if self._visible else "○"
+        alpha = 200 if self._visible else 80
+        self._eye.setText(symbol)
+        self._eye.setStyleSheet(f"""
+            QToolButton {{
+                background: transparent; border: none;
+                color: rgba(30,40,55,{alpha}); font-size: 13px;
+                border-radius: 4px;
+            }}
+            QToolButton:hover {{ background: rgba(255,255,255,130); }}
+        """)
+
+    # ── Actions ───────────────────────────────────────────────────
+    def _pick_color(self) -> None:
+        # Close the parent menu so the dialog appears front-and-centre
+        menu = self._find_parent_menu()
+        if menu:
+            menu.close()
+        color = QColorDialog.getColor(self._color, None, "Choose Color")
+        if color.isValid():
+            self._color = color
+            self._apply_swatch_style()
+            self.colorChanged.emit(self._key, self._color)
+
+    def _toggle_visibility(self, checked: bool) -> None:
+        self._visible = checked
+        self._apply_eye_style()
+        self.visibilityChanged.emit(self._key, checked)
+
+    def _find_parent_menu(self) -> QtWidgets.QMenu | None:
+        p = self.parentWidget()
+        while p:
+            if isinstance(p, QtWidgets.QMenu):
+                return p
+            p = p.parentWidget()
+        return None
+
+
+# ============================================================
+#  _SectionHeaderRow  — non-interactive section label
+# ============================================================
+
+
+class _SectionHeaderRow(QtWidgets.QWidget):
+    def __init__(self, text: str, parent: QtWidgets.QWidget = None) -> None:
+        super().__init__(parent)
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.setFixedHeight(26)
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(10, 4, 10, 0)
+        lbl = QtWidgets.QLabel(text.upper())
+        lbl.setStyleSheet(
+            "color: rgba(30,40,55,110); font-size: 8px; font-weight: 700;"
+            " letter-spacing: 1.2px; background: transparent;"
+        )
+        lay.addWidget(lbl)
+
+
+# ============================================================
+#  GlassContainer
 # ============================================================
 
 
 class GlassContainer(QtWidgets.QWidget):
     """Standard Frosted-glass card wrapping a single pyqtgraph GraphicsLayoutWidget."""
 
+    # Legacy signal (kept for compatibility)
     colorRequested = QtCore.pyqtSignal()
     fullscreenRequested = QtCore.pyqtSignal()
+
+    # Per-section signals
+    sectionColorChanged = QtCore.pyqtSignal(str, QtGui.QColor)  # (key, color)
+    sectionVisibilityChanged = QtCore.pyqtSignal(str, bool)  # (key, visible)
 
     _R = 10.0
     _M = 3
@@ -73,8 +226,12 @@ class GlassContainer(QtWidgets.QWidget):
         accent_color: QtGui.QColor = None,
         parent: QtWidgets.QWidget = None,
         show_menu: bool = True,
+        sections: List[Tuple[str, str, QtGui.QColor]] = None,
     ) -> None:
         super().__init__(parent)
+        # sections: list of (key, label, default_color)
+        self._sections = sections or []
+
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
 
@@ -84,13 +241,12 @@ class GlassContainer(QtWidgets.QWidget):
         layout.setContentsMargins(self._M, self._M, self._M, self._M)
         layout.setSpacing(0)
 
-        # Custom Title Bar
         if self.has_header:
             self.header = QtWidgets.QWidget()
             self.header.setFixedHeight(self._HEADER_H)
             h_layout = QtWidgets.QHBoxLayout(self.header)
             h_layout.setContentsMargins(8, 0, 4, 0)
-            h_layout.setSpacing(5)
+            h_layout.setSpacing(4)
 
             if title:
                 lbl = QtWidgets.QLabel(title)
@@ -100,81 +256,100 @@ class GlassContainer(QtWidgets.QWidget):
                 h_layout.addStretch(1)
 
             if show_menu:
-                self.btn_fs = QtWidgets.QToolButton()
-                fs_icon_path = os.path.join(
-                    Architecture.get_path(), "QATCH", "icons", "fullscreen.svg"
-                )
-                self.btn_fs.setIcon(QtGui.QIcon(fs_icon_path))
-                self.btn_fs.setIconSize(QtCore.QSize(14, 14))
-                self.btn_fs.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-                self.btn_fs.setToolTip("Toggle Fullscreen")
-                self.btn_fs.setStyleSheet("""
-                    QToolButton { 
-                        background: transparent; border: none; 
-                        padding: 4px; border-radius: 4px;
-                    }
-                    QToolButton:hover { 
-                        background: rgba(255, 255, 255, 120); 
-                    }
-                """)
+                # Fullscreen button (circular hover)
+                self.btn_fs = self._make_icon_button("fullscreen.svg", "Toggle Fullscreen")
                 self.btn_fs.clicked.connect(self.fullscreenRequested.emit)
-
                 h_layout.addWidget(self.btn_fs)
+
+                # Gear / options button
                 h_layout.addWidget(self._build_menu())
 
             layout.addWidget(self.header)
 
         layout.addWidget(plot_widget, 1)
 
+    # ── Round icon button factory (circular hover) ────────────────
+    def _make_icon_button(self, icon_name: str, tooltip: str) -> QtWidgets.QToolButton:
+        btn = QtWidgets.QToolButton()
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", icon_name)
+        btn.setIcon(QtGui.QIcon(icon_path))
+        btn.setIconSize(QtCore.QSize(13, 13))
+        btn.setFixedSize(24, 24)
+        btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        btn.setToolTip(tooltip)
+        btn.setStyleSheet("""
+            QToolButton {
+                background: transparent;
+                border: none;
+                border-radius: 12px;
+            }
+            QToolButton:hover {
+                background: rgba(255, 255, 255, 160);
+                border: 1px solid rgba(255, 255, 255, 200);
+            }
+            QToolButton:pressed {
+                background: rgba(180, 215, 255, 190);
+            }
+        """)
+        return btn
+
+    # ── Menu builder ──────────────────────────────────────────────
     def _build_menu(self) -> QtWidgets.QToolButton:
-        menu_btn = QtWidgets.QToolButton()
-
-        # --- CUSTOM ICON INTEGRATION ---
-        # Provide your custom hamburger menu icon at this path
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
-
-        menu_btn.setIcon(QtGui.QIcon(icon_path))
-        menu_btn.setIconSize(QtCore.QSize(14, 14))
-        menu_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        menu_btn.setToolTip("Plot Options")
-        menu_btn.setStyleSheet("""
-            QToolButton { 
-                background: transparent; border: none; 
-                padding: 4px; border-radius: 4px;
-            }
-            QToolButton:hover { 
-                background: rgba(255, 255, 255, 120); 
-            }
-            QToolButton::menu-indicator { image: none; } 
-        """)
+        menu_btn = self._make_icon_button("gear.svg", "Plot Options")
         menu_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        # Remove the default dropdown arrow
+        menu_btn.setStyleSheet(
+            menu_btn.styleSheet() + "\nQToolButton::menu-indicator { image: none; }"
+        )
 
-        self.plot_menu = QtWidgets.QMenu(menu_btn)
-        self.plot_menu.setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        self.plot_menu.setStyleSheet("""
-            QMenu { 
-                background-color: rgba(240, 246, 252, 240); 
-                border: 1px solid rgba(200, 210, 220, 180); 
-                border-radius: 6px; padding: 4px; 
-            }
-            QMenu::item { 
-                padding: 6px 24px; border-radius: 4px; 
-                color: rgba(30,40,55,200); font-size: 11px; font-weight: 500;
-            }
-            QMenu::item:selected { 
-                background-color: rgba(46, 155, 218, 180); color: white; 
-            }
-        """)
-
-        action_color = self.plot_menu.addAction("Change Line Colors...")
-        action_fullscreen = self.plot_menu.addAction("Toggle Fullscreen")
-
-        action_color = self.plot_menu.addAction("Change Line Colors...")
-        action_color.triggered.connect(self.colorRequested.emit)
-
+        self.plot_menu = self._build_glass_menu(menu_btn)
         menu_btn.setMenu(self.plot_menu)
         return menu_btn
 
+    def _build_glass_menu(self, parent_widget: QtWidgets.QWidget) -> QtWidgets.QMenu:
+        menu = QtWidgets.QMenu(parent_widget)
+        menu.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        menu.setWindowFlags(
+            menu.windowFlags() | QtCore.Qt.FramelessWindowHint | QtCore.Qt.NoDropShadowWindowHint
+        )
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: rgba(232, 242, 252, 248);
+                border: 1px solid rgba(255, 255, 255, 230);
+                border-radius: 10px;
+                padding: 5px 0px;
+            }
+            QMenu::item {
+                padding: 0px;
+                margin: 0px;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: rgba(175, 200, 228, 90);
+                margin: 4px 12px;
+            }
+        """)
+
+        if self._sections:
+            for i, (key, label, color) in enumerate(self._sections):
+                row = _SectionMenuRow(key, label, color)
+                row.colorChanged.connect(self.sectionColorChanged)
+                row.visibilityChanged.connect(self.sectionVisibilityChanged)
+
+                wa = QtWidgets.QWidgetAction(menu)
+                wa.setDefaultWidget(row)
+                menu.addAction(wa)
+
+                if i < len(self._sections) - 1:
+                    menu.addSeparator()
+        else:
+            # Fallback: legacy colour action
+            action_color = menu.addAction("Change Line Colors…")
+            action_color.triggered.connect(self.colorRequested.emit)
+
+        return menu
+
+    # ── Paint — frosted glass card ────────────────────────────────
     def paintEvent(self, ev: QtGui.QPaintEvent) -> None:
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
@@ -183,18 +358,18 @@ class GlassContainer(QtWidgets.QWidget):
         path.addRoundedRect(rf, self._R, self._R)
         p.setClipPath(path)
 
-        # ── Frosted base: near-opaque white with a breath of cool blue-white ──
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 160))  # was (255,255,255,160)
-        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 18))  # was (228,235,241,18)
+        # Frosted base
+        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 160))
+        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 18))
 
-        # ── Top-edge highlight — stronger shimmer for the "glass rim" look ──
+        # Top shimmer
         sh = QtGui.QLinearGradient(0, 0, 0, 40)
-        sh.setColorAt(0, QtGui.QColor(255, 255, 255, 100))  # was 50
+        sh.setColorAt(0, QtGui.QColor(255, 255, 255, 100))
         sh.setColorAt(0.5, QtGui.QColor(255, 255, 255, 20))
         sh.setColorAt(1, QtGui.QColor(255, 255, 255, 0))
         p.fillRect(self.rect(), QtGui.QBrush(sh))
 
-        # ── Bottom-edge soft vignette — grounds the card visually ──
+        # Bottom vignette
         vg = QtGui.QLinearGradient(0, self.height() - 30, 0, self.height())
         vg.setColorAt(0, QtGui.QColor(200, 218, 240, 0))
         vg.setColorAt(1, QtGui.QColor(200, 218, 240, 18))
@@ -203,10 +378,10 @@ class GlassContainer(QtWidgets.QWidget):
         p.setClipping(False)
         p.setBrush(QtCore.Qt.NoBrush)
 
-        # ── Outer border: bright white rim ──
+        # Outer bright rim
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 1.0))
         p.drawRoundedRect(rf.adjusted(0.5, 0.5, -0.5, -0.5), self._R, self._R)
-        # ── Inner border: subtle cool-grey inset ──
+        # Inner cool-grey inset
         p.setPen(QtGui.QPen(QtGui.QColor(190, 210, 235, 70), 1.0))
         p.drawRoundedRect(rf.adjusted(1.5, 1.5, -1.5, -1.5), self._R - 1.5, self._R - 1.5)
 
@@ -218,15 +393,32 @@ class GlassContainer(QtWidgets.QWidget):
         p.end()
 
 
+# ============================================================
+#  GlassTabContainer
+# ============================================================
+
+
 class GlassTabContainer(GlassContainer):
-    """Specialized Glass Container that acts as a Tab manager with Activity Indicators."""
+    """Specialized Glass Container that manages device tabs with activity indicators."""
 
-    deviceColorRequested = QtCore.pyqtSignal(int)  # Emits the currently active device index
+    deviceColorRequested = QtCore.pyqtSignal(int)  # Legacy: emits active device index
 
-    def __init__(self, parent: QtWidgets.QWidget = None):
-        # Initialize as a header-only glass container with no initial plot
+    # Sections shown in the main plot's dropdown
+    _MAIN_SECTIONS: List[Tuple[str, str, QtGui.QColor]] = [
+        ("dissipation", "Dissipation", QtGui.QColor(46, 155, 218)),
+        ("resonance_freq", "Resonance Frequency", QtGui.QColor(240, 100, 53)),
+    ]
+
+    def __init__(self, parent: QtWidgets.QWidget = None) -> None:
         dummy = QtWidgets.QWidget()
-        super().__init__(plot_widget=dummy, title=None, parent=parent, show_menu=False)
+        # Pass sections so _build_glass_menu picks them up
+        super().__init__(
+            plot_widget=dummy,
+            title=None,
+            parent=parent,
+            show_menu=False,
+            sections=self._MAIN_SECTIONS,
+        )
 
         self.has_header = True
 
@@ -234,7 +426,7 @@ class GlassTabContainer(GlassContainer):
         layout.removeWidget(dummy)
         dummy.deleteLater()
 
-        # Build Integrated Header
+        # ── Integrated header ──────────────────────────────────────
         self.header = QtWidgets.QWidget()
         self.header.setFixedHeight(self._HEADER_H)
         h_layout = QtWidgets.QHBoxLayout(self.header)
@@ -252,84 +444,69 @@ class GlassTabContainer(GlassContainer):
         h_layout.addLayout(self.tabs_layout)
         h_layout.addStretch(1)
 
-        # --- FIX: Dedicated Fullscreen Button for the Tab Container ---
-        self.btn_fs = QtWidgets.QToolButton()
-        fs_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "fullscreen.svg")
-        self.btn_fs.setIcon(QtGui.QIcon(fs_icon_path))
-        self.btn_fs.setIconSize(QtCore.QSize(14, 14))
-        self.btn_fs.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        self.btn_fs.setToolTip("Toggle Fullscreen")
-        self.btn_fs.setStyleSheet("""
-            QToolButton { 
-                background: transparent; border: none; 
-                padding: 4px; border-radius: 4px;
-            }
-            QToolButton:hover { 
-                background: rgba(255, 255, 255, 120); 
-            }
-        """)
+        # Fullscreen button (circular)
+        self.btn_fs = self._make_icon_button("fullscreen.svg", "Toggle Fullscreen")
         self.btn_fs.clicked.connect(self.fullscreenRequested.emit)
         h_layout.addWidget(self.btn_fs)
 
-        menu_btn = self._build_menu()
-        self.plot_menu.actions()[0].disconnect()
-        self.plot_menu.actions()[0].triggered.connect(
-            lambda: self.deviceColorRequested.emit(self.stack.currentIndex())
-        )
-        h_layout.addWidget(menu_btn)
+        # Gear menu (uses self._sections = _MAIN_SECTIONS)
+        h_layout.addWidget(self._build_menu())
 
         layout.insertWidget(0, self.header)
 
         self.stack = QtWidgets.QStackedWidget()
         layout.addWidget(self.stack, 1)
 
-        # --- Activity Indicator State Management ---
+        # ── Activity indicator state management ────────────────────
         self._anim_timer = QtCore.QTimer(self)
         self._anim_timer.timeout.connect(self._animate_icons)
-        self._device_states = {}  # Tracks state per device index
+        self._device_states: dict[int, str] = {}
 
-        # Define exact colors for states
         self._state_colors = {
-            "idle": QtGui.QColor(220, 53, 69),  # Static Red
-            "error": QtGui.QColor(220, 53, 69),  # Static Red (Failed Calibration)
-            "init": QtGui.QColor(255, 193, 7),  # Blinking Yellow
-            "success": QtGui.QColor(40, 167, 69),  # Static Green (Calibration Success)
-            "recording": QtGui.QColor(40, 167, 69),  # Breathing Green
+            "idle": QtGui.QColor(220, 53, 69),
+            "error": QtGui.QColor(220, 53, 69),
+            "init": QtGui.QColor(255, 193, 7),
+            "success": QtGui.QColor(40, 167, 69),
+            "recording": QtGui.QColor(40, 167, 69),
         }
 
-    def _create_dot_icon(self, color: QtGui.QColor) -> QtGui.QIcon:
-        """Draws a crisp dot icon for the tab buttons."""
-        pixmap = QtGui.QPixmap(16, 16)
-        pixmap.fill(QtCore.Qt.transparent)
-        painter = QtGui.QPainter(pixmap)
-        painter.setRenderHints(QtGui.QPainter.Antialiasing)
-        painter.setBrush(color)
-        painter.setPen(QtCore.Qt.NoPen)
-        painter.drawEllipse(4, 4, 8, 8)
-        painter.end()
-        return QtGui.QIcon(pixmap)
-
+    # ── Tab creation ──────────────────────────────────────────────
     def add_device(
-        self, name: str, plot_widget: GraphicsLayoutWidget, accent_color: QtGui.QColor = None
+        self,
+        name: str,
+        plot_widget: GraphicsLayoutWidget,
+        accent_color: QtGui.QColor = None,
     ) -> int:
         index = self.stack.addWidget(plot_widget)
 
         btn = QtWidgets.QPushButton(name)
         btn.setCheckable(True)
         btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        btn.setFixedHeight(20)
+        # Glassmorphic pill tabs
         btn.setStyleSheet("""
             QPushButton {
-                background: transparent; border: none; border-radius: 4px;
-                color: rgba(30, 40, 55, 160); font-size: 11px; font-weight: 600;
-                padding: 4px 8px; text-align: left;
+                background: rgba(255, 255, 255, 55);
+                border: 1px solid rgba(255, 255, 255, 110);
+                border-radius: 10px;
+                color: rgba(30, 40, 55, 155);
+                font-size: 10px;
+                font-weight: 600;
+                padding: 2px 10px;
+                text-align: center;
             }
             QPushButton:hover {
-                background: rgba(255, 255, 255, 120);
+                background: rgba(255, 255, 255, 130);
+                border: 1px solid rgba(255, 255, 255, 200);
+                color: rgba(30, 40, 55, 200);
             }
             QPushButton:checked {
-                background: rgba(255, 255, 255, 200);
-                color: rgba(30, 40, 55, 220);
-                border: 1px solid rgba(255, 255, 255, 255);
+                background: rgba(255, 255, 255, 215);
+                border: 1.5px solid rgba(255, 255, 255, 255);
+                color: rgba(30, 40, 55, 235);
+            }
+            QPushButton:checked:hover {
+                background: rgba(255, 255, 255, 240);
             }
         """)
 
@@ -339,12 +516,11 @@ class GlassTabContainer(GlassContainer):
         if index == 0:
             btn.setChecked(True)
 
-        # Initialize new device strictly to the "idle" state
         self._device_states[index] = "idle"
         self._update_button_icon(index)
-
         return index
 
+    # ── Activity indicator API ────────────────────────────────────
     def set_device_state(self, index: int, state: str) -> None:
         """
         Sets the activity state for a device tab.
@@ -355,17 +531,15 @@ class GlassTabContainer(GlassContainer):
 
         self._device_states[index] = state
 
-        # Manage global animation timer if ANY device needs to blink or breathe
         needs_anim = any(s in ("init", "recording") for s in self._device_states.values())
         if needs_anim and not self._anim_timer.isActive():
-            self._anim_timer.start(50)  # 50ms tick rate for smooth 60fps breathing
+            self._anim_timer.start(50)
         elif not needs_anim and self._anim_timer.isActive():
             self._anim_timer.stop()
 
         self._update_button_icon(index)
 
     def _animate_icons(self) -> None:
-        """Called every 50ms to push the next animation frame to active icons."""
         for idx, state in self._device_states.items():
             if state in ("init", "recording"):
                 self._update_button_icon(idx)
@@ -385,15 +559,24 @@ class GlassTabContainer(GlassContainer):
         color = QtGui.QColor(self._state_colors[state])
 
         if state == "init":
-            # Hard blink: toggles alpha every ~500ms using modulo
             alpha = 255 if (int(time.time() * 2) % 2 == 0) else 60
             color.setAlpha(alpha)
         elif state == "recording":
-            # Smooth breathing: sine wave over time (multiplier adjusts breath speed)
             alpha = int(140 + 115 * math.sin(time.time() * 3.5))
             color.setAlpha(alpha)
 
         btn.setIcon(self._create_dot_icon(color))
+
+    def _create_dot_icon(self, color: QtGui.QColor) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(16, 16)
+        pixmap.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHints(QtGui.QPainter.Antialiasing)
+        painter.setBrush(color)
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawEllipse(4, 4, 8, 8)
+        painter.end()
+        return QtGui.QIcon(pixmap)
 
     def _on_tab_clicked(self, index: int) -> None:
         self.stack.setCurrentIndex(index)
@@ -439,7 +622,7 @@ class UIPlots:
 
         self._fullscreen_active_widget = None
 
-        # Central widget ─────────────────────────────────────────────
+        # Central widget ──────────────────────────────────────────────
         self.centralwidget = QtWidgets.QWidget(MainWindow2)
         self.centralwidget.setObjectName("centralwidget")
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
@@ -448,26 +631,23 @@ class UIPlots:
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(6)
 
-        # Main Horizontal Splitter ───────────────────────────────────
+        # Main horizontal splitter ────────────────────────────────────
         self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self.centralwidget)
         self.main_splitter.setHandleWidth(6)
         self.main_splitter.setStyleSheet("QSplitter::handle { background: transparent; }")
 
-        # --- LEFT SIDE: Integrated Glass Tabs ---
+        # LEFT — Integrated glass tabs (Dissipation / Resonance Freq)
         self.left_pane = GlassTabContainer(parent=self.main_splitter)
-
         self.pltB = _make_plot_widget(self.left_pane)
         self.pltB.setObjectName("pltB")
-
-        # Add the first device. Future devices can be appended identically.
         self.left_pane.add_device("Device 1", self.pltB, QtGui.QColor(72, 190, 120))
 
-        # --- RIGHT SIDE: Stacked Splitter for Amp & Temp ---
+        # RIGHT — stacked splitter for Amp & Temp
         self.right_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical, self.main_splitter)
         self.right_splitter.setHandleWidth(6)
         self.right_splitter.setStyleSheet("QSplitter::handle { background: transparent; }")
 
-        # Amplitude Group
+        # Amplitude pane
         self.plt = _make_plot_widget(self.right_splitter)
         self.plt.setObjectName("plt")
         self.amp_glass = GlassContainer(
@@ -475,32 +655,38 @@ class UIPlots:
             title="Amplitude (dB)",
             accent_color=QtGui.QColor(46, 155, 218),
             parent=self.right_splitter,
+            sections=[
+                ("amplitude", "Amplitude", QtGui.QColor(46, 155, 218)),
+            ],
         )
         self.right_splitter.addWidget(self.amp_glass)
 
-        # Temperature Group
+        # Temperature pane
         self.plt_temp = _make_plot_widget(self.right_splitter)
         self.plt_temp.setObjectName("plt_temp")
         self.temp_glass = GlassContainer(
             plot_widget=self.plt_temp,
             title="Temperature °C",
-            accent_color=QtGui.QColor(240, 156, 53),  # was QColor(240, 156, 53)
+            accent_color=QtGui.QColor(240, 156, 53),
             parent=self.right_splitter,
+            sections=[
+                ("temperature", "Temperature", QtGui.QColor(240, 156, 53)),
+            ],
         )
         self.right_splitter.addWidget(self.temp_glass)
 
-        # Connect Fullscreen Actions
+        # Connect fullscreen signals
         self.left_pane.fullscreenRequested.connect(lambda: self._toggle_fullscreen(self.left_pane))
         self.amp_glass.fullscreenRequested.connect(lambda: self._toggle_fullscreen(self.amp_glass))
         self.temp_glass.fullscreenRequested.connect(
             lambda: self._toggle_fullscreen(self.temp_glass)
         )
 
-        # Build final view hierarchy ─────────────────────────────────
+        # Build final hierarchy ────────────────────────────────────────
         root.addWidget(self.main_splitter)
         MainWindow2.setCentralWidget(self.centralwidget)
 
-        # Set Splitter Ratios
+        # Splitter ratios
         self.main_splitter.setStretchFactor(0, 2)
         self.main_splitter.setStretchFactor(1, 1)
         self.right_splitter.setStretchFactor(0, 1)
@@ -514,78 +700,128 @@ class UIPlots:
         self.retranslateUi(MainWindow2)
         QtCore.QMetaObject.connectSlotsByName(MainWindow2)
 
+    # ── Smooth fullscreen toggle ──────────────────────────────────
     def _toggle_fullscreen(self, target_widget: QtWidgets.QWidget) -> None:
-        """Animates expansion of the target_widget to take up the full layout space and toggles the icon."""
+        """
+        Animates the splitter sizes to expand/contract the target pane.
 
-        # Define icon paths
-        expand_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "fullscreen.svg")
-        contract_icon_path = os.path.join(
+        Smoothness strategy
+        ───────────────────
+        1. A QTimer fires at ~60 fps (every 16 ms) — finer-grained than
+           QVariantAnimation's default repaint scheduling.
+        2. Before each animation, viewport updates are frozen on all three
+           pyqtgraph widgets so OpenGL/QPainter doesn't redraw mid-resize.
+        3. A quartic ease-in-out gives a natural, snappy feel.
+        4. Viewport updates are restored (and a single repaint triggered)
+           the moment the animation completes.
+        """
+        expand_icon = os.path.join(Architecture.get_path(), "QATCH", "icons", "fullscreen.svg")
+        contract_icon = os.path.join(
             Architecture.get_path(), "QATCH", "icons", "fullscreen-exit.svg"
         )
 
         if getattr(self, "_fullscreen_active_widget", None) == target_widget:
-            # Revert to normal sizes
+            # ── Contracting back to normal ──
             target_main = self._normal_main_sizes
             target_right = self._normal_right_sizes
-
-            # Change icon back to expand
-            target_widget.btn_fs.setIcon(QtGui.QIcon(expand_icon_path))
+            target_widget.btn_fs.setIcon(QtGui.QIcon(expand_icon))
             target_widget.btn_fs.setToolTip("Toggle Fullscreen")
-
             self._fullscreen_active_widget = None
         else:
-            # Maximize
+            # ── Expanding ──
             if getattr(self, "_fullscreen_active_widget", None) is None:
-                # Save normal sizes only if we aren't currently in fullscreen
                 self._normal_main_sizes = self.main_splitter.sizes()
                 self._normal_right_sizes = self.right_splitter.sizes()
             else:
-                # Reset the previously expanded widget's icon just in case
-                self._fullscreen_active_widget.btn_fs.setIcon(QtGui.QIcon(expand_icon_path))
+                # Reset icon on the previously-expanded pane
+                self._fullscreen_active_widget.btn_fs.setIcon(QtGui.QIcon(expand_icon))
 
             self._fullscreen_active_widget = target_widget
-
-            # Change icon to contract
-            target_widget.btn_fs.setIcon(QtGui.QIcon(contract_icon_path))
+            target_widget.btn_fs.setIcon(QtGui.QIcon(contract_icon))
             target_widget.btn_fs.setToolTip("Restore Size")
 
             total_main = sum(self.main_splitter.sizes())
             total_right = sum(self.right_splitter.sizes())
 
-            if target_widget == self.left_pane:
+            if target_widget is self.left_pane:
                 target_main = [total_main, 0]
-                target_right = self._normal_right_sizes  # Main splitter covers it
-            elif target_widget == self.amp_glass:
+                target_right = self._normal_right_sizes
+            elif target_widget is self.amp_glass:
                 target_main = [0, total_main]
                 target_right = [total_right, 0]
-            elif target_widget == self.temp_glass:
+            elif target_widget is self.temp_glass:
                 target_main = [0, total_main]
                 target_right = [0, total_right]
+            else:
+                return
 
-        # Stop existing animation if one is currently mid-run
-        if hasattr(self, "_fs_anim") and self._fs_anim.state() == QtCore.QAbstractAnimation.Running:
-            self._fs_anim.stop()
+        # Stop any running animation
+        if hasattr(self, "_fs_timer") and self._fs_timer.isActive():
+            self._fs_timer.stop()
+            self._freeze_plots(False)  # Ensure plots are unfrozen
 
-        # Build QVariantAnimation to transition the QSplitter sizes
-        self._fs_anim = QtCore.QVariantAnimation()
-        self._fs_anim.setDuration(400)  # Length in milliseconds
-        self._fs_anim.setEasingCurve(QtCore.QEasingCurve.InOutCubic)  # Smooth start and stop
-        self._fs_anim.setStartValue(0.0)
-        self._fs_anim.setEndValue(1.0)
+        # Freeze plots so they don't stutter during resize
+        self._freeze_plots(True)
 
-        start_main = self.main_splitter.sizes()
-        start_right = self.right_splitter.sizes()
+        # Animation parameters
+        DURATION_MS = 380
+        INTERVAL_MS = 16  # ~60 fps
+        total_steps = max(1, DURATION_MS // INTERVAL_MS)
 
-        def update_sizes(val):
-            cur_main = [int(s + (e - s) * val) for s, e in zip(start_main, target_main)]
-            cur_right = [int(s + (e - s) * val) for s, e in zip(start_right, target_right)]
-            self.main_splitter.setSizes(cur_main)
-            self.right_splitter.setSizes(cur_right)
+        start_main = list(self.main_splitter.sizes())
+        start_right = list(self.right_splitter.sizes())
+        step_counter = [0]
 
-        self._fs_anim.valueChanged.connect(update_sizes)
-        self._fs_anim.start()
+        def _ease_in_out_quart(t: float) -> float:
+            """Quartic ease — snappy acceleration, smooth landing."""
+            if t < 0.5:
+                return 8.0 * t * t * t * t
+            t -= 1.0
+            return 1.0 - 8.0 * t * t * t * t
 
-    # ────────────────────────────────────────────────────────────────
+        def _tick() -> None:
+            step_counter[0] += 1
+            raw_t = step_counter[0] / total_steps
+            clamped = min(raw_t, 1.0)
+            val = _ease_in_out_quart(clamped)
+
+            new_main = [int(s + (e - s) * val) for s, e in zip(start_main, target_main)]
+            new_right = [int(s + (e - s) * val) for s, e in zip(start_right, target_right)]
+            self.main_splitter.setSizes(new_main)
+            self.right_splitter.setSizes(new_right)
+
+            if clamped >= 1.0:
+                self._fs_timer.stop()
+                # Unfreeze and repaint now that animation is done
+                self._freeze_plots(False)
+
+        self._fs_timer = QtCore.QTimer(self.centralwidget)
+        self._fs_timer.setInterval(INTERVAL_MS)
+        self._fs_timer.timeout.connect(_tick)
+        self._fs_timer.start()
+
+    def _freeze_plots(self, freeze: bool) -> None:
+        """
+        Suspend / resume pyqtgraph viewport redraws.
+        GraphicsLayoutWidget extends QGraphicsView, so we can swap its
+        viewport update mode to prevent costly OpenGL repaints on every
+        setSizes() call during the animation.
+        """
+        from PyQt5.QtWidgets import QGraphicsView
+
+        mode = QGraphicsView.NoViewportUpdate if freeze else QGraphicsView.MinimalViewportUpdate
+        for attr in ("plt", "plt_temp", "pltB"):
+            w = getattr(self, attr, None)
+            if w is None:
+                continue
+            try:
+                w.setViewportUpdateMode(mode)
+                if not freeze:
+                    w.viewport().update()
+            except Exception:
+                pass
+
+    # ─────────────────────────────────────────────────────────────
 
     def retranslateUi(self, MainWindow2: QtWidgets.QMainWindow) -> None:
         _translate = QtCore.QCoreApplication.translate
@@ -593,7 +829,8 @@ class UIPlots:
         MainWindow2.setWindowIcon(QtGui.QIcon(icon_path))
         MainWindow2.setWindowTitle(
             _translate(
-                "MainWindow2", "{} {} - Plots".format(Constants.app_title, Constants.app_version)
+                "MainWindow2",
+                "{} {} - Plots".format(Constants.app_title, Constants.app_version),
             )
         )
 
