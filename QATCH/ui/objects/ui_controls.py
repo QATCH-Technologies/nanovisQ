@@ -2018,18 +2018,27 @@ class UIControls:  # QtWidgets.QMainWindow
                 self.run_controls.setEnabled(False)
             self.pButton_Start.clicked.emit()
             self.cal_initialized = True
+            num_devices = getattr(self, "multiplex_plots", 1)
+            for i in range(num_devices):
+                self.parent.parent.PlotsWin.ui2.left_pane.set_device_state(i, "init")
 
     def action_start(self):
         """Method to handle start UI actions."""
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.measurement.value)
             self.pButton_Start.clicked.emit()
+            num_devices = getattr(self, "multiplex_plots", 1)
+            for i in range(num_devices):
+                self.parent.parent.PlotsWin.ui2.left_pane.set_device_state(i, "recording")
 
     def action_stop(self):
         """Method to handle stop UI actions."""
         if self.pButton_Stop.isEnabled():
             self.cal_initialized = False
             self.pButton_Stop.clicked.emit()
+            num_devices = getattr(self, "multiplex_plots", 1)
+            for i in range(num_devices):
+                self.parent.parent.PlotsWin.ui2.left_pane.set_device_state(i, "idle")
 
     def action_reset(self):
         """Method to handle reset UI actions."""
@@ -2049,6 +2058,9 @@ class UIControls:  # QtWidgets.QMainWindow
             self.run_controls.setEnabled(False)
 
         self.tool_TempControl.setEnabled(self.cBox_Port.count() > 1)
+        num_devices = getattr(self, "multiplex_plots", 1)
+        for i in range(num_devices):
+            self.parent.parent.PlotsWin.ui2.left_pane.set_device_state(i, "idle")
 
     def _animate_temp_controller(self, expand: bool) -> None:
         """Smoothly expand or collapse the temperature controller panel."""

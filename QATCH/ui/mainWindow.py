@@ -2051,100 +2051,100 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if plot_item is None:
             return
+
         if not hasattr(self, "_dim_overlays"):
             self._dim_overlays = {}
 
-        # Guard against plot_item itself being a dead Qt wrapper
         try:
-            gi = plot_item.graphicsItem()
             vb = plot_item.getViewBox()
         except (RuntimeError, AttributeError):
             return
-        if gi is None or vb is None:
+
+        if vb is None:
             return
 
         key = id(plot_item)
-        existing = self._dim_overlays.get(key)
-        target_opacity = 1.0 if dim else 0.0
+
+        # 1. Stop and clean up any existing animation for this specific plot
+        if key in self._dim_overlays:
+            existing_anim = self._dim_overlays[key]
+            try:
+                existing_anim.stop()
+            except (RuntimeError, AttributeError):
+                pass
+            del self._dim_overlays[key]
+
+        target_progress = 1.0 if dim else 0.0
+        start_progress = 0.0 if dim else 1.0
         duration = 300 if animate else 0
 
-        # Validate the cached entry is still backed by a live, scene-attached
-        if existing is not None:
-            cached_rect, cached_resize_cb, cached_animator = existing
-            stale = False
-            try:
-                if cached_rect.scene() is None:
-                    stale = True
-            except RuntimeError:
-                stale = True
+        # 2. Lock/Unlock user interaction (panning/zooming) while dimmed
+        vb.setMouseEnabled(x=not dim, y=not dim)
 
-            if stale:
-                try:
-                    cached_animator.stop()
-                except RuntimeError:
-                    pass
-                try:
-                    vb.sigResized.disconnect(cached_resize_cb)
-                except (TypeError, RuntimeError):
-                    pass
+        # 3. Collect all the foundational plot elements to blur (excluding overlays)
+        frost_targets = [vb]
+
+        # Safely gather all active axis items (left, bottom, right, top)
+        if hasattr(plot_item, "axes"):
+            for axis_data in plot_item.axes.values():
+                axis_item = axis_data.get("item")
+                if axis_item is not None:
+                    frost_targets.append(axis_item)
+
+        # Safely gather the plot title if one exists
+        if hasattr(plot_item, "titleLabel") and plot_item.titleLabel is not None:
+            frost_targets.append(plot_item.titleLabel)
+
+        # 4. Create the unified animator
+        anim = QtCore.QVariantAnimation(self)
+        anim.setDuration(duration)
+        anim.setStartValue(start_progress)
+        anim.setEndValue(target_progress)
+
+        def update_frost(progress: float) -> None:
+            """Progress smoothly interpolates from 0.0 (clear) to 1.0 (fully frosted)."""
+            try:
+                # Fade the scientific data curves out
+                data_opacity = 1.0 - progress
+                for item in plot_item.listDataItems():
+                    item.setOpacity(data_opacity)
+
+                # Apply and scale the blur radius for all target components
+                for target in frost_targets:
+                    if progress > 0.01:
+                        effect = target.graphicsEffect()
+                        if not isinstance(effect, QtWidgets.QGraphicsBlurEffect):
+                            effect = QtWidgets.QGraphicsBlurEffect()
+                            effect.setBlurHints(
+                                QtWidgets.QGraphicsBlurEffect.BlurHint.PerformanceHint
+                            )
+                            target.setGraphicsEffect(effect)
+
+                        # 10.0 pixels max blur (adjust to make it more/less opaque)
+                        effect.setBlurRadius(progress * 10.0)
+                    else:
+                        # Strip the effect entirely when undimmed to restore render performance
+                        target.setGraphicsEffect(None)
+
+            except RuntimeError:
+                # Fail gracefully if PyQt objects are destroyed mid-animation
+                anim.stop()
+
+        anim.valueChanged.connect(update_frost)
+
+        def on_finished() -> None:
+            if key in self._dim_overlays:
                 del self._dim_overlays[key]
-                existing = None
 
-        if existing is not None:
-            _, _, animator = existing
-            try:
-                current_op = animator._item.opacity()
-                rect_sz = animator._item.rect()
-                in_scene = animator._item.scene() is not None
-            except RuntimeError:
-                current_op, rect_sz, in_scene = "DEAD", "DEAD", False
-            animator.fade_to(target_opacity, duration_ms=duration)
-            return
+        anim.finished.connect(on_finished)
+        self._dim_overlays[key] = anim
 
-        if not dim:
-            return
-
-        dim_rect = QtWidgets.QGraphicsRectItem()
-        dim_rect.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 200)))
-        dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
-        dim_rect.setParentItem(gi)
-        dim_rect.setZValue(997)
-        # Size the rect synchronously so the first paint after
-        # setUpdatesEnabled(True)
-        try:
-            dim_rect.setRect(vb.mapRectToItem(gi, vb.boundingRect()))
-        except Exception:
-            pass
-
-        # Start invisible when animating so the fade is actually visible; snap
-        # directly to the target when caller opted out of animation.
-        dim_rect.setOpacity(0.0 if animate else target_opacity)
-        dim_rect.setVisible(True)
-
-        def _resize_cb(*_args: Any) -> None:
-            """Synchronizes the dimming rectangle geometry with the plot viewport.
-
-            This callback is triggered by the ViewBox's ``sigResized`` signal. It
-            translates the current viewport bounds into the parent's coordinate
-            system to ensure the semi-transparent overlay precisely covers the
-            visible plot area, including during window resizes or layout shifts.
-
-            Args:
-                *_args: Variable length argument list emitted by the
-                    ``sigResized`` signal (typically contains the ViewBox instance).
-            """
-            try:
-                rect = vb.mapRectToItem(gi, vb.boundingRect())
-                dim_rect.setRect(rect)
-            except (RuntimeError, Exception):
-                pass
-
-        vb.sigResized.connect(_resize_cb)
-        animator = _PlotDimAnimator(dim_rect, parent=self)
-        self._dim_overlays[key] = (dim_rect, _resize_cb, animator)
-        QtCore.QTimer.singleShot(0, _resize_cb)
+        # 5. Execute
         if animate:
-            animator.fade_to(target_opacity, duration_ms=duration)
+            anim.start()
+        else:
+            update_frost(target_progress)
+            on_finished()
 
     def _set_plots_dimmed(
         self,
@@ -2201,7 +2201,6 @@ class MainWindow(QtWidgets.QMainWindow):
             is resized.
         """
         # Guard: Prevent welcome text from reappearing if the calibration overlay is active.
-        # This stops clear/re-annotate paths from reintroducing stale copy.
         if getattr(self, "_calib_overlay_ready", False):
             return
 
@@ -2210,39 +2209,45 @@ class MainWindow(QtWidgets.QMainWindow):
         target = self._plt2_arr[1] or self._plt2_arr[0]
         if not target:
             return
+        font_size = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
+        text_color = (45, 55, 72, 230)
+        font_family = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
-        # Determine responsive font sizes
-        font_size = 10 if getattr(self, "multiplex_plots", 1) == 1 else 9
-
-        # Initialize text items with specific HTML formatting
-        self._text1 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        self._text1 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text1.setHtml(
-            "<span style='font-size: 14pt'>"
-            "Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI</span>"
+            f"<div style='font-family: {font_family}; text-align: center;'>"
+            "<span style='font-size: 15pt; font-weight: 600; letter-spacing: 0.5px;'>"
+            "Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI</span></div>"
         )
 
-        self._text2 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        self._text2 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text2.setHtml(
-            f"<span style='font-size: {font_size}pt'>"
+            f"<div style='font-family: {font_family}; text-align: center;'>"
+            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
             "Don't forget to initialize (in air) your quartz device "
-            "<b><i>before</i></b> starting.</span>"
+            "<b style='color: #2b6cb0;'><i>before</i></b> starting.</span></div>"
         )
 
-        self._text3 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        self._text3 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text3.setHtml(
-            f"<span style='font-size: {font_size}pt'>"
+            f"<div style='font-family: {font_family}; text-align: center;'>"
+            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
             "Wait to apply the drop to your quartz device until "
-            '<b><i>after</i></b> hitting "Start".</span>'
+            "<b style='color: #2b6cb0;'><i>after</i></b> hitting \"Start\".</span></div>"
         )
 
         view_box = target.getViewBox()
         graphics_item = target.graphicsItem()
-
-        # Parent to graphicsItem (PlotItem level) so text overlays the plot space properly.
-        # Set ZValue to 998 (above the generic dim rect, below the calib overlay).
         for text_item in (self._text1, self._text2, self._text3):
+            shadow = QtWidgets.QGraphicsDropShadowEffect()
+            shadow.setBlurRadius(10)
+            shadow.setXOffset(0)
+            shadow.setYOffset(1)
+            shadow.setColor(QtGui.QColor(255, 255, 255, 220))
+            text_item.setGraphicsEffect(shadow)
             text_item.setParentItem(graphics_item)
             text_item.setZValue(998)
+
         no_users = UserProfiles.count() == 0
         self._text1.setVisible(no_users)
 
@@ -2722,6 +2727,22 @@ class MainWindow(QtWidgets.QMainWindow):
             current_count = getattr(self, "multiplex_plots", None)
             current_source = getattr(self, "_last_configured_source", None)
             new_source = self._get_source()
+            if current_count != new_count:
+                from pyqtgraph import GraphicsLayoutWidget
+
+                left_pane = self.PlotsWin.ui2.left_pane
+                current_tabs = len(left_pane.btn_group.buttons())
+                while current_tabs < new_count:
+                    dummy_plot = GraphicsLayoutWidget()
+                    dummy_plot.setBackground(None)
+
+                    left_pane.add_device(f"Device {current_tabs + 1}", dummy_plot)
+                    current_tabs += 1
+
+                for i in range(len(left_pane.btn_group.buttons())):
+                    btn = left_pane.btn_group.button(i)
+                    if btn:
+                        btn.setVisible(i < new_count)
 
             plots_already_built = any(p is not None for p in self._plt0_arr) or any(
                 p is not None for p in self._plt2_arr
@@ -3212,32 +3233,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """
 
         class DateAxis(AxisItem):
-            """Internal axis item for formatting timestamps into human-readable strings.
-
-            Inherits from pyqtgraph.AxisItem to override the tick label generation,
-            providing context-aware time formats.
-            """
-
             def __init__(self, *args, **kwargs):
-                """Initializes the DateAxis with standard AxisItem arguments."""
                 super(DateAxis, self).__init__(*args, **kwargs)
 
             def tickStrings(self, values, scale, spacing):
-                """Converts epoch timestamps into formatted time strings.
-
-                Args:
-                    values (list[float]): The raw numerical values of the ticks.
-                    scale (float): Scale factor applied to the values.
-                    spacing (float): The spacing between ticks.
-
-                Returns:
-                    list[str]: Formatted strings. If the time is within the first hour
-                        of the day (UTC), it returns 'MM:SS'. Otherwise, it returns
-                        'HH:MM:SS'. Returns an empty string on error.
-                """
                 try:
-                    # If less than 1 hour: display as "MM:SS" format.
-                    # If equal or over 1 hour: display as "HH:MM:SS".
                     z = []
                     for value in values:
                         dt = datetime.fromtimestamp(float(value), timezone.utc)
@@ -3247,27 +3247,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     return ""
 
         class GlassAxisItem(AxisItem):
-            """Minimal glass axis — no spine, no ticks, labels float on the card."""
-
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-                f = QtGui.QFont("Segoe UI")
-                f.setPixelSize(10)
-                self.setTickFont(f)
-                self.setStyle(
-                    tickLength=0,  # grid lines carry the spatial reference
-                    tickTextOffset=3,
-                    autoExpandTextSpace=False,
-                )
-                self.setPen(pg.mkPen(None))  # no spine
-
-            def paint(self, p, opt, widget):
-                p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
-                super().paint(p, opt, widget)
-
-        class GlassDateAxis(DateAxis):
-            """DateAxis variant — same minimal glass rendering as GlassAxisItem."""
-
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 f = QtGui.QFont("Segoe UI")
@@ -3284,27 +3263,37 @@ class MainWindow(QtWidgets.QMainWindow):
                 p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
                 super().paint(p, opt, widget)
 
-        # Set plot background color to white for all three tile widgets.
+        class GlassDateAxis(DateAxis):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                f = QtGui.QFont("Segoe UI")
+                f.setPixelSize(10)
+                self.setTickFont(f)
+                self.setStyle(
+                    tickLength=0,
+                    tickTextOffset=3,
+                    autoExpandTextSpace=False,
+                )
+                self.setPen(pg.mkPen(None))
+
+            def paint(self, p, opt, widget):
+                p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
+                super().paint(p, opt, widget)
+
         self.PlotsWin.ui2.plt.setBackground(None)
         self.PlotsWin.ui2.pltB.setBackground(None)
         _plt_temp = getattr(self.PlotsWin.ui2, "plt_temp", None)
         if _plt_temp:
             _plt_temp.setBackground(None)
-        title_amplitude = "Plot: Amplitude"
-        title_resonance_dissipation = "Plot: Resonance Frequency / Dissipation"
-        title_temperature = "Plot: Temperature"
-        get_suffix = lambda i: (
-            f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
-            if self.has_active_multi_port()
-            else f" {i + 1}"
-        )
 
-        # Configures elements of the PyQtGraph plots: amplitude
         self.PlotsWin.ui2.plt.setAntialiasing(True)
         self.PlotsWin.ui2.pltB.setAntialiasing(True)
         if _plt_temp:
             _plt_temp.setAntialiasing(True)
 
+        # ---------------------------------------------------------
+        # Amplitude Plot
+        # ---------------------------------------------------------
         for i in range(len(self._plt0_arr)):
             if i >= self.multiplex_plots:
                 self._plt0_arr[i] = None
@@ -3329,24 +3318,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 **{"font-size": "9pt"},
             )
             plot_layout.setVisible(visible)
+
+            # X-Axis remains, Y-Axis label removed
             plot_layout.setLabel("bottom", "Frequency", units="Hz")
-            plot_layout.setLabel(
-                "left",
-                "Amplitude",
-                units="dB",
-                color="#2E9BDA",  # sky-blue — matches _AMP_COLOR
-                **{"font-size": "9pt"},
-            )
+
             self._apply_glass_plot_style(plot_layout)
 
-            # Set size policy for show/hide for Resonance Frequency/Dissipation plots.
             not_resize = plot_layout.sizePolicy()
             not_resize.setHorizontalStretch(1)
             plot_layout.setSizePolicy(not_resize)
 
             self._plt0_arr[i] = plot_layout
 
-        # Configures elements of the PyQtGraph plots: Resonance Frequency/Dissipation
+        # ---------------------------------------------------------
+        # Resonance Frequency / Dissipation Plot
+        # ---------------------------------------------------------
         self._yaxis = []
         self._xaxis = []
         for i in range(len(self._plt2_arr)):
@@ -3357,25 +3343,30 @@ class MainWindow(QtWidgets.QMainWindow):
             x, y = i % 2, i // 2
             self._yaxis.append(GlassAxisItem(orientation="left"))
             self._xaxis.append(GlassDateAxis(orientation="bottom"))
+
             plot_layout = self.PlotsWin.ui2.pltB.addPlot(
                 col=x,
                 row=y,
                 **{"font-size": "12pt"},
                 axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
             )
-            plot_layout.setLabel("bottom", "Time", units="s")
-            plot_layout.setLabel(
-                "left",
-                "Resonance Frequency",
-                units="Hz",
-                color="#2E9BDA",
-                **{"font-size": "9pt"},
-            )
-            self._apply_glass_plot_style(plot_layout)
 
+            # Time and Left Y labels removed.
+            # Labels moved to the top via a rich-text Title.
+            plot_layout.setTitle(
+                '<div style="text-align: center;">'
+                '<span style="color: #2E9BDA; font-size: 10pt;">Resonance Frequency (Hz)</span>'
+                "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+                '<span style="color: #F09C35; font-size: 10pt;">Dissipation</span>'
+                "</div>"
+            )
+
+            self._apply_glass_plot_style(plot_layout)
             self._plt2_arr[i] = plot_layout
 
-        # Configures elements of the PyQtGraph plots: Multiple Plot Resonance Frequency/Dissipation.
+        # ---------------------------------------------------------
+        # Multiple Plot Resonance Frequency / Dissipation
+        # ---------------------------------------------------------
         for i in range(len(self._plt3_arr)):
             if i >= self.multiplex_plots:
                 self._plt3_arr[i] = None
@@ -3384,25 +3375,21 @@ class MainWindow(QtWidgets.QMainWindow):
             multi_plot = self._plt2_arr[i]
             plot_layout = pg.ViewBox()
             multi_plot.showAxis("right")
-            # Glass styling for the right (dissipation) axis
+
             multi_plot.getAxis("right").setPen(pg.mkPen(None))
             multi_plot.getAxis("right").setTextPen(pg.mkPen(color=(35, 48, 68, 140)))
             multi_plot.getAxis("right").setStyle(tickLength=0, tickTextOffset=3)
+
             multi_plot.scene().addItem(plot_layout)
             multi_plot.getAxis("right").setGrid(False)
             multi_plot.getAxis("right").linkToView(plot_layout)
             plot_layout.setXLink(multi_plot)
+
             multi_plot.enableAutoRange(axis="y", enable=True)
             plot_layout.enableAutoRange(axis="y", enable=True)
-            multi_plot.setLabel("bottom", "Time", units="s")
-            multi_plot.setLabel(
-                "right",
-                "Dissipation",
-                units="",
-                color="#F09C35",
-                **{"font-size": "9pt"},
-            )
-            # Since multi_plot is a reference to self._plt2_arr[i], we don't strictly need to re-save it
+
+            # Bottom and Right Y labels removed
+
             self._plt2_arr[i] = multi_plot
             self._plt3_arr[i] = plot_layout
 
@@ -3411,10 +3398,9 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._remove_welcome_text()
 
-        # Configures elements of the PyQtGraph plots: Temperature.
-        # Temperature now lives in its own dedicated tile (plt_temp) so it is
-        # no longer stacked below Amplitude inside the shared "plt" widget.
-        # Falls back to "plt" gracefully if plt_temp is unavailable.
+        # ---------------------------------------------------------
+        # Temperature Plot
+        # ---------------------------------------------------------
         _temp_container = _plt_temp if _plt_temp else self.PlotsWin.ui2.plt
         self._plt4 = _temp_container.addPlot(
             row=0,
@@ -3425,17 +3411,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 "left": GlassAxisItem(orientation="left"),
             },
         )
+
+        # X-Axis remains, Y-Axis label removed
         self._plt4.setLabel("bottom", "Time", units="s")
-        self._plt4.setLabel(
-            "left",
-            "Temperature",
-            units="°C",
-            color="#A069E1",  # amber — matches _TEMP_COLOR
-            **{"font-size": "9pt"},
-        )
+
         self._apply_glass_plot_style(self._plt4)
 
-        # Set size policy for show/hide for temperature plot.
         not_resize = self._plt4.sizePolicy()
         not_resize.setHorizontalStretch(1)
         self._plt4.setSizePolicy(not_resize)
@@ -3462,7 +3443,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ci_amp: list[pg.PlotCurveItem | None] = [None] * n
         self._ci_freq: list[pg.PlotCurveItem | None] = [None] * n
         self._ci_diss: list[pg.PlotCurveItem | None] = [None] * n
-
+        self._dot_freq: list[pg.ScatterPlotItem | None] = [None] * n
+        self._dot_diss: list[pg.ScatterPlotItem | None] = [None] * n
         for i in range(n):
             p0 = self._plt0_arr[i]
             p2 = self._plt2_arr[i]
@@ -3580,7 +3562,9 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             p2.addItem(ci_freq)
             self._ci_freq[i] = ci_freq
-
+            dot_freq = pg.ScatterPlotItem(size=8, pen=pg.mkPen(None), brush=pg.mkBrush(_FREQ_COLOR))
+            p2.addItem(dot_freq)
+            self._dot_freq[i] = dot_freq
             # Dissipation Plot Handling
             ci_diss = pg.PlotCurveItem(
                 pen=_diss_pen,
@@ -3592,7 +3576,9 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             p3.addItem(ci_diss)
             self._ci_diss[i] = ci_diss
-
+            dot_diss = pg.ScatterPlotItem(size=8, pen=pg.mkPen(None), brush=pg.mkBrush(_DISS_COLOR))
+            p3.addItem(dot_diss)
+            self._dot_diss[i] = dot_diss
             try:
                 p3.enableAutoRange(axis="y", enable=True)
             except (AttributeError, RuntimeError):
@@ -3851,7 +3837,7 @@ class MainWindow(QtWidgets.QMainWindow):
         css_style = Constants._CSS_YELLOW
         overlay_bar_color = "#2E9BDA"
         overlay_label_color = "#333333"
-
+        num_devices = getattr(self, "multiplex_plots", 1)
         # Evaluate Calibration State Machine
         if phase == 0:
             if temperature_err:
@@ -3874,6 +3860,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 self._calib_overlay_ready = True
                 self._set_plots_dimmed(amplitude=False)
+                for i in range(num_devices):
+                    self.PlotsWin.ui2.left_pane.set_device_state(i, "success")
             elif time_temp_err:
                 label_bar = "Warning: ValueError or generic error during signal acquisition. Please repeat the Initialize."
                 is_warning = True
@@ -3890,6 +3878,8 @@ class MainWindow(QtWidgets.QMainWindow):
             overlay_label_color = "#cc0000"
             stop_flag = 1
             self._set_plots_dimmed(amplitude=False)
+            for i in range(num_devices):
+                self.PlotsWin.ui2.left_pane.set_device_state(i, "error")
 
         # Apply updates to the Side-panel UI
         controls_ui.infostatus.setStyleSheet(css_style)
@@ -4389,20 +4379,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 np.asarray(self.worker.get_d1_buffer(i)) - self._reference_value_frequency[i]
             )
             ci_freq = self._ci_freq[i]
-            if ci_freq:
-                ci_freq.setData(x=self.worker.get_t1_buffer(i), y=self._vector_1)
+            t1_buffer = self.worker.get_t1_buffer(i)
+            if ci_freq and len(t1_buffer) > 0:
+                ci_freq.setData(x=t1_buffer, y=self._vector_1)
+                self._dot_freq[i].setData([{"pos": (t1_buffer[0], self._vector_1[0])}])
 
             # Dissipation (reference-subtracted)
             self._vector_2 = (
                 np.asarray(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
             )
             ci_diss = self._ci_diss[i]
-            if ci_diss:
-                # Switch to reference-mode pen colour once, not every tick.
+            t2_buffer = self.worker.get_t2_buffer(i)
+            if ci_diss and len(t2_buffer) > 0:
                 if i not in self._ci_diss_ref_pen_set:
                     ci_diss.setPen(Constants.plot_colors[7])
                     self._ci_diss_ref_pen_set.add(i)
-                ci_diss.setData(x=self.worker.get_t2_buffer(i), y=self._vector_2)
+                    self._dot_diss[i].setBrush(pg.mkBrush(Constants.plot_colors[7]))
+
+                ci_diss.setData(x=t2_buffer, y=self._vector_2)
+                self._dot_diss[i].setData([{"pos": (t2_buffer[0], self._vector_2[0])}])
 
             # Apply limits if measuring
             if is_measurement:
@@ -4545,9 +4540,13 @@ class MainWindow(QtWidgets.QMainWindow):
         # Update Curve Data
         if ci_freq:
             ci_freq.setData(x=slice_time_resonance_frequency, y=slice_resonance_frequency)
+            self._dot_freq[i].setData(
+                [{"pos": (slice_time_resonance_frequency[0], slice_resonance_frequency[0])}]
+            )
 
         if ci_diss:
             ci_diss.setData(x=slice_time_dissipation, y=slice_dissipation)
+            self._dot_diss[i].setData([{"pos": (slice_time_dissipation[0], slice_dissipation[0])}])
 
         # Handle X-Axis Padding & Sync
         if slice_time_resonance_frequency.size > 0:

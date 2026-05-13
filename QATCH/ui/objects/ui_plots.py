@@ -15,6 +15,8 @@ Date:
 from __future__ import annotations
 
 import os
+import math
+import time
 from PyQt5.QtGui import QCursor
 from PyQt5.QtCore import Qt
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -90,14 +92,6 @@ class GlassContainer(QtWidgets.QWidget):
             h_layout.setContentsMargins(8, 0, 4, 0)
             h_layout.setSpacing(5)
 
-            if accent_color and title:
-                dot = QtWidgets.QLabel("●")
-                dot.setStyleSheet(
-                    f"color:rgba({accent_color.red()},{accent_color.green()},{accent_color.blue()},220);font-size:9px;"
-                )
-                dot.setFixedWidth(10)
-                h_layout.addWidget(dot)
-
             if title:
                 lbl = QtWidgets.QLabel(title)
                 lbl.setStyleSheet("color:rgba(30,40,55,200);font-size:10px;font-weight:600;")
@@ -117,9 +111,7 @@ class GlassContainer(QtWidgets.QWidget):
 
         # --- CUSTOM ICON INTEGRATION ---
         # Provide your custom hamburger menu icon at this path
-        icon_path = os.path.join(
-            Architecture.get_path(), "QATCH", "icons", "hamburger-menu-dots.svg"
-        )
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
 
         menu_btn.setIcon(QtGui.QIcon(icon_path))
         menu_btn.setIconSize(QtCore.QSize(14, 14))
@@ -172,8 +164,8 @@ class GlassContainer(QtWidgets.QWidget):
         p.setClipPath(path)
 
         # ── Frosted base: near-opaque white with a breath of cool blue-white ──
-        p.fillRect(self.rect(), QtGui.QColor(250, 252, 255, 215))  # was (255,255,255,160)
-        p.fillRect(self.rect(), QtGui.QColor(208, 226, 248, 30))  # was (228,235,241,18)
+        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 160))  # was (255,255,255,160)
+        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 18))  # was (228,235,241,18)
 
         # ── Top-edge highlight — stronger shimmer for the "glass rim" look ──
         sh = QtGui.QLinearGradient(0, 0, 0, 40)
@@ -207,19 +199,17 @@ class GlassContainer(QtWidgets.QWidget):
 
 
 class GlassTabContainer(GlassContainer):
-    """Specialized Glass Container that acts as a Tab manager for multiple devices."""
+    """Specialized Glass Container that acts as a Tab manager with Activity Indicators."""
 
     deviceColorRequested = QtCore.pyqtSignal(int)  # Emits the currently active device index
 
     def __init__(self, parent: QtWidgets.QWidget = None):
         # Initialize as a header-only glass container with no initial plot
-        # We pass a dummy widget just to satisfy the base class, then swap it
         dummy = QtWidgets.QWidget()
         super().__init__(plot_widget=dummy, title=None, parent=parent, show_menu=False)
 
-        self.has_header = True  # Force header rendering
+        self.has_header = True
 
-        # Replace base layout logic
         layout = self.layout()
         layout.removeWidget(dummy)
         dummy.deleteLater()
@@ -231,7 +221,6 @@ class GlassTabContainer(GlassContainer):
         h_layout.setContentsMargins(4, 0, 4, 0)
         h_layout.setSpacing(2)
 
-        # Tab Button Group
         self.btn_group = QtWidgets.QButtonGroup(self)
         self.btn_group.setExclusive(True)
         self.btn_group.idClicked.connect(self._on_tab_clicked)
@@ -243,9 +232,7 @@ class GlassTabContainer(GlassContainer):
         h_layout.addLayout(self.tabs_layout)
         h_layout.addStretch(1)
 
-        # Kebab Menu
         menu_btn = self._build_menu()
-        # Override the color signal to emit the active index instead
         self.plot_menu.actions()[0].disconnect()
         self.plot_menu.actions()[0].triggered.connect(
             lambda: self.deviceColorRequested.emit(self.stack.currentIndex())
@@ -254,9 +241,23 @@ class GlassTabContainer(GlassContainer):
 
         layout.insertWidget(0, self.header)
 
-        # Main Stacked Plot Area
         self.stack = QtWidgets.QStackedWidget()
         layout.addWidget(self.stack, 1)
+
+        # --- Activity Indicator State Management ---
+        self._blink_timer = QtCore.QTimer(self)
+        self._blink_timer.timeout.connect(self._toggle_blink)
+        self._blink_state = False
+        self._device_states = {}  # Tracks state per device index
+
+        # Define exact colors for states
+        self._state_colors = {
+            "idle": QtGui.QColor(220, 53, 69),  # Static Red
+            "error": QtGui.QColor(220, 53, 69),  # Static Red (Failed Calibration)
+            "init": QtGui.QColor(255, 193, 7),  # Blinking Yellow
+            "success": QtGui.QColor(40, 167, 69),  # Static Green (Calibration Success)
+            "recording": QtGui.QColor(40, 167, 69),  # Breathing Green
+        }
 
     def _create_dot_icon(self, color: QtGui.QColor) -> QtGui.QIcon:
         """Draws a crisp dot icon for the tab buttons."""
@@ -271,12 +272,11 @@ class GlassTabContainer(GlassContainer):
         return QtGui.QIcon(pixmap)
 
     def add_device(
-        self, name: str, plot_widget: GraphicsLayoutWidget, accent_color: QtGui.QColor
+        self, name: str, plot_widget: GraphicsLayoutWidget, accent_color: QtGui.QColor = None
     ) -> int:
         index = self.stack.addWidget(plot_widget)
 
         btn = QtWidgets.QPushButton(name)
-        btn.setIcon(self._create_dot_icon(accent_color))
         btn.setCheckable(True)
         btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         btn.setStyleSheet("""
@@ -301,7 +301,61 @@ class GlassTabContainer(GlassContainer):
         if index == 0:
             btn.setChecked(True)
 
+        # Initialize new device strictly to the "idle" state
+        self._device_states[index] = "idle"
+        self._update_button_icon(index)
+
         return index
+
+    def set_device_state(self, index: int, state: str) -> None:
+        """
+        Sets the activity state for a device tab.
+        Valid states: 'idle', 'error', 'init', 'success', 'recording'.
+        """
+        if index not in self._device_states or state not in self._state_colors:
+            return
+
+        self._device_states[index] = state
+
+        # Manage global animation timer if ANY device needs to blink or breathe
+        needs_anim = any(s in ("init", "recording") for s in self._device_states.values())
+        if needs_anim and not self._anim_timer.isActive():
+            self._anim_timer.start(50)  # 50ms tick rate for smooth 60fps breathing
+        elif not needs_anim and self._anim_timer.isActive():
+            self._anim_timer.stop()
+
+        self._update_button_icon(index)
+
+    def _animate_icons(self) -> None:
+        """Called every 50ms to push the next animation frame to active icons."""
+        for idx, state in self._device_states.items():
+            if state in ("init", "recording"):
+                self._update_button_icon(idx)
+
+    def _toggle_blink(self) -> None:
+        self._blink_state = not self._blink_state
+        for idx, state in self._device_states.items():
+            if state == "init":
+                self._update_button_icon(idx)
+
+    def _update_button_icon(self, index: int) -> None:
+        state = self._device_states.get(index, "idle")
+        btn = self.btn_group.button(index)
+        if not btn:
+            return
+
+        color = QtGui.QColor(self._state_colors[state])
+
+        if state == "init":
+            # Hard blink: toggles alpha every ~500ms using modulo
+            alpha = 255 if (int(time.time() * 2) % 2 == 0) else 60
+            color.setAlpha(alpha)
+        elif state == "recording":
+            # Smooth breathing: sine wave over time (multiplier adjusts breath speed)
+            alpha = int(140 + 115 * math.sin(time.time() * 3.5))
+            color.setAlpha(alpha)
+
+        btn.setIcon(self._create_dot_icon(color))
 
     def _on_tab_clicked(self, index: int) -> None:
         self.stack.setCurrentIndex(index)
@@ -380,7 +434,7 @@ class UIPlots:
         self.plt.setObjectName("plt")
         self.amp_glass = GlassContainer(
             plot_widget=self.plt,
-            title="Amplitude",
+            title="Amplitude (dB)",
             accent_color=QtGui.QColor(46, 155, 218),
             parent=self.right_splitter,
         )
@@ -391,7 +445,7 @@ class UIPlots:
         self.plt_temp.setObjectName("plt_temp")
         self.temp_glass = GlassContainer(
             plot_widget=self.plt_temp,
-            title="Temperature",
+            title="Temperature °C",
             accent_color=QtGui.QColor(240, 156, 53),  # was QColor(240, 156, 53)
             parent=self.right_splitter,
         )

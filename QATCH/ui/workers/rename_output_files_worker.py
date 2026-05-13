@@ -20,7 +20,7 @@ from QATCH.processors.InterpTemps import (
     QueueCommandFormat,
 )
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
-
+from QATCH.ui.popUp import PopUp
 
 
 class RenameOutputFilesWorker(QtCore.QObject):
