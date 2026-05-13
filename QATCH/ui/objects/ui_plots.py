@@ -100,6 +100,26 @@ class GlassContainer(QtWidgets.QWidget):
                 h_layout.addStretch(1)
 
             if show_menu:
+                self.btn_fs = QtWidgets.QToolButton()
+                fs_icon_path = os.path.join(
+                    Architecture.get_path(), "QATCH", "icons", "fullscreen.svg"
+                )
+                self.btn_fs.setIcon(QtGui.QIcon(fs_icon_path))
+                self.btn_fs.setIconSize(QtCore.QSize(14, 14))
+                self.btn_fs.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+                self.btn_fs.setToolTip("Toggle Fullscreen")
+                self.btn_fs.setStyleSheet("""
+                    QToolButton { 
+                        background: transparent; border: none; 
+                        padding: 4px; border-radius: 4px;
+                    }
+                    QToolButton:hover { 
+                        background: rgba(255, 255, 255, 120); 
+                    }
+                """)
+                self.btn_fs.clicked.connect(self.fullscreenRequested.emit)
+
+                h_layout.addWidget(self.btn_fs)
                 h_layout.addWidget(self._build_menu())
 
             layout.addWidget(self.header)
@@ -149,8 +169,8 @@ class GlassContainer(QtWidgets.QWidget):
         action_color = self.plot_menu.addAction("Change Line Colors...")
         action_fullscreen = self.plot_menu.addAction("Toggle Fullscreen")
 
+        action_color = self.plot_menu.addAction("Change Line Colors...")
         action_color.triggered.connect(self.colorRequested.emit)
-        action_fullscreen.triggered.connect(self.fullscreenRequested.emit)
 
         menu_btn.setMenu(self.plot_menu)
         return menu_btn
@@ -232,6 +252,25 @@ class GlassTabContainer(GlassContainer):
         h_layout.addLayout(self.tabs_layout)
         h_layout.addStretch(1)
 
+        # --- FIX: Dedicated Fullscreen Button for the Tab Container ---
+        self.btn_fs = QtWidgets.QToolButton()
+        fs_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "fullscreen.svg")
+        self.btn_fs.setIcon(QtGui.QIcon(fs_icon_path))
+        self.btn_fs.setIconSize(QtCore.QSize(14, 14))
+        self.btn_fs.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.btn_fs.setToolTip("Toggle Fullscreen")
+        self.btn_fs.setStyleSheet("""
+            QToolButton { 
+                background: transparent; border: none; 
+                padding: 4px; border-radius: 4px;
+            }
+            QToolButton:hover { 
+                background: rgba(255, 255, 255, 120); 
+            }
+        """)
+        self.btn_fs.clicked.connect(self.fullscreenRequested.emit)
+        h_layout.addWidget(self.btn_fs)
+
         menu_btn = self._build_menu()
         self.plot_menu.actions()[0].disconnect()
         self.plot_menu.actions()[0].triggered.connect(
@@ -245,9 +284,8 @@ class GlassTabContainer(GlassContainer):
         layout.addWidget(self.stack, 1)
 
         # --- Activity Indicator State Management ---
-        self._blink_timer = QtCore.QTimer(self)
-        self._blink_timer.timeout.connect(self._toggle_blink)
-        self._blink_state = False
+        self._anim_timer = QtCore.QTimer(self)
+        self._anim_timer.timeout.connect(self._animate_icons)
         self._device_states = {}  # Tracks state per device index
 
         # Define exact colors for states
@@ -477,19 +515,75 @@ class UIPlots:
         QtCore.QMetaObject.connectSlotsByName(MainWindow2)
 
     def _toggle_fullscreen(self, target_widget: QtWidgets.QWidget) -> None:
-        """Hides other major plot areas to give the target_widget full screen layout space."""
-        if self._fullscreen_active_widget == target_widget:
-            # Restore all
-            self.left_pane.show()
-            self.amp_glass.show()
-            self.temp_glass.show()
+        """Animates expansion of the target_widget to take up the full layout space and toggles the icon."""
+
+        # Define icon paths
+        expand_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "fullscreen.svg")
+        contract_icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "fullscreen-exit.svg"
+        )
+
+        if getattr(self, "_fullscreen_active_widget", None) == target_widget:
+            # Revert to normal sizes
+            target_main = self._normal_main_sizes
+            target_right = self._normal_right_sizes
+
+            # Change icon back to expand
+            target_widget.btn_fs.setIcon(QtGui.QIcon(expand_icon_path))
+            target_widget.btn_fs.setToolTip("Toggle Fullscreen")
+
             self._fullscreen_active_widget = None
         else:
-            # Maximize target
+            # Maximize
+            if getattr(self, "_fullscreen_active_widget", None) is None:
+                # Save normal sizes only if we aren't currently in fullscreen
+                self._normal_main_sizes = self.main_splitter.sizes()
+                self._normal_right_sizes = self.right_splitter.sizes()
+            else:
+                # Reset the previously expanded widget's icon just in case
+                self._fullscreen_active_widget.btn_fs.setIcon(QtGui.QIcon(expand_icon_path))
+
             self._fullscreen_active_widget = target_widget
-            self.left_pane.setVisible(target_widget == self.left_pane)
-            self.amp_glass.setVisible(target_widget == self.amp_glass)
-            self.temp_glass.setVisible(target_widget == self.temp_glass)
+
+            # Change icon to contract
+            target_widget.btn_fs.setIcon(QtGui.QIcon(contract_icon_path))
+            target_widget.btn_fs.setToolTip("Restore Size")
+
+            total_main = sum(self.main_splitter.sizes())
+            total_right = sum(self.right_splitter.sizes())
+
+            if target_widget == self.left_pane:
+                target_main = [total_main, 0]
+                target_right = self._normal_right_sizes  # Main splitter covers it
+            elif target_widget == self.amp_glass:
+                target_main = [0, total_main]
+                target_right = [total_right, 0]
+            elif target_widget == self.temp_glass:
+                target_main = [0, total_main]
+                target_right = [0, total_right]
+
+        # Stop existing animation if one is currently mid-run
+        if hasattr(self, "_fs_anim") and self._fs_anim.state() == QtCore.QAbstractAnimation.Running:
+            self._fs_anim.stop()
+
+        # Build QVariantAnimation to transition the QSplitter sizes
+        self._fs_anim = QtCore.QVariantAnimation()
+        self._fs_anim.setDuration(400)  # Length in milliseconds
+        self._fs_anim.setEasingCurve(QtCore.QEasingCurve.InOutCubic)  # Smooth start and stop
+        self._fs_anim.setStartValue(0.0)
+        self._fs_anim.setEndValue(1.0)
+
+        start_main = self.main_splitter.sizes()
+        start_right = self.right_splitter.sizes()
+
+        def update_sizes(val):
+            cur_main = [int(s + (e - s) * val) for s, e in zip(start_main, target_main)]
+            cur_right = [int(s + (e - s) * val) for s, e in zip(start_right, target_right)]
+            self.main_splitter.setSizes(cur_main)
+            self.right_splitter.setSizes(cur_right)
+
+        self._fs_anim.valueChanged.connect(update_sizes)
+        self._fs_anim.start()
 
     # ────────────────────────────────────────────────────────────────
 

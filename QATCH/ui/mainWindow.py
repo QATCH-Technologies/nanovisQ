@@ -34,7 +34,7 @@ import pyqtgraph as pg
 import pyzipper
 from dateutil import parser
 from PyQt5 import QtCore, QtGui, QtWidgets
-from pyqtgraph import AxisItem
+from pyqtgraph import AxisItem, GraphicsLayoutWidget
 from pathlib import Path
 from QATCH.ui.workers.worker_snapshot import WorkerSnapshot
 from QATCH.ui.objects.ui_main import _MainWindow
@@ -2728,8 +2728,6 @@ class MainWindow(QtWidgets.QMainWindow):
             current_source = getattr(self, "_last_configured_source", None)
             new_source = self._get_source()
             if current_count != new_count:
-                from pyqtgraph import GraphicsLayoutWidget
-
                 left_pane = self.PlotsWin.ui2.left_pane
                 current_tabs = len(left_pane.btn_group.buttons())
                 while current_tabs < new_count:
@@ -3258,10 +3256,25 @@ class MainWindow(QtWidgets.QMainWindow):
                     autoExpandTextSpace=False,
                 )
                 self.setPen(pg.mkPen(None))
+                # Disable Pyqtgraph's SI prefix mechanism; we manage the scale factor directly
+                self.enableAutoSIPrefix(False)
 
             def paint(self, p, opt, widget):
                 p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
                 super().paint(p, opt, widget)
+
+            def tickStrings(self, values, scale, spacing):
+                strs = super().tickStrings(values, scale, spacing)
+                clean_strs = []
+                for s, v in zip(strs, values):
+                    val = v * scale
+                    abs_v = abs(val)
+                    # Suppress scientific notation for small float values like Dissipation (e.g., 0.000193)
+                    if 0 < abs_v < 0.01 or "e" in s.lower():
+                        clean_strs.append(f"{val:.6f}")
+                    else:
+                        clean_strs.append(s)
+                return clean_strs
 
         class GlassDateAxis(DateAxis):
             def __init__(self, *args, **kwargs):
@@ -3320,7 +3333,7 @@ class MainWindow(QtWidgets.QMainWindow):
             plot_layout.setVisible(visible)
 
             # X-Axis remains, Y-Axis label removed
-            plot_layout.setLabel("bottom", "Frequency", units="Hz")
+            plot_layout.setLabel("bottom", "Frequency (MHz)")
 
             self._apply_glass_plot_style(plot_layout)
 
@@ -3349,16 +3362,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 row=y,
                 **{"font-size": "12pt"},
                 axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
-            )
-
-            # Time and Left Y labels removed.
-            # Labels moved to the top via a rich-text Title.
-            plot_layout.setTitle(
-                '<div style="text-align: center;">'
-                '<span style="color: #2E9BDA; font-size: 10pt;">Resonance Frequency (Hz)</span>'
-                "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
-                '<span style="color: #F09C35; font-size: 10pt;">Dissipation</span>'
-                "</div>"
             )
 
             self._apply_glass_plot_style(plot_layout)
@@ -4147,10 +4150,20 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         ref_dissipation = self._reference_value_dissipation[0] if self._reference_flag else 0.0
 
-        d_resonance_frequency = float(
-            f"{data_resonance_frequency[0] - ref_resonance_frequency:.2f}"
-        )
-        d_dissipation = float(f"{(data_dissipation[0] - ref_dissipation) * 1e6:.4f}")
+        d_rf = data_resonance_frequency[0] - ref_resonance_frequency
+        d_diss = data_dissipation[0] - ref_dissipation
+
+        # Dynamically scale Frequency string
+        abs_rf = abs(d_rf)
+        if abs_rf >= 1e6:
+            freq_label = f"{d_rf / 1e6:.3f} MHz"
+        elif abs_rf >= 1e3:
+            freq_label = f"{d_rf / 1e3:.3f} kHz"
+        else:
+            freq_label = f"{d_rf:.2f} Hz"
+
+        # Format dissipation cleanly without scientific notation
+        diss_label = f"{d_diss:.6f}"
         d_temperature = float(f"{data_temperature[0]:.2f}")
 
         self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
@@ -4164,18 +4177,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if data_dissipation[0] in _max_diss:
             return (
-                f"{d_resonance_frequency} Hz",
+                freq_label,
                 "-",
                 f"{d_temperature} °C",
                 "Warning",
                 "#ff8000",
-                f"Warning: sensor dissipation calculation is not considered accurate above {data_dissipation[0] * 1e6:.0f}e-06 for this mode",
+                f"Warning: sensor dissipation calculation is not considered accurate above {data_dissipation[0]:.6f} for this mode",
             )
 
         # Standard Monitoring Return
         return (
-            f"{d_resonance_frequency} Hz",
-            f"{d_dissipation}e-06",
+            freq_label,
+            diss_label,
             f"{d_temperature} °C",
             "Monitoring",
             "#008000",
@@ -4311,21 +4324,72 @@ class MainWindow(QtWidgets.QMainWindow):
         dissipation plots to use specific reference colors and refreshes the
         information panel with the currently stored reference values.
         """
+        try:
+            rf_val = abs(self.worker.get_d1_buffer(0)[0] - self._reference_value_frequency[0])
+        except Exception:
+            rf_val = 0.0
+
+        if rf_val >= 1e6:
+            unit_rf = "ΔMHz"
+            scale_rf = 1e-6
+        elif rf_val >= 1e3:
+            unit_rf = "ΔkHz"
+            scale_rf = 1e-3
+        else:
+            unit_rf = "ΔHz"
+            scale_rf = 1.0
+
         for p in self._plt2_arr:
             if p is not None:
-                p.setLabel(
-                    "left",
-                    "Resonance Frequency",
-                    units="Hz",
-                    color=Constants.plot_colors[6],
-                    **{"font-size": "9pt"},
+                pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
+
+                p.setLabel("left", text=" ")
+                p.setLabel("right", text=" ")
+                p.setTitle("")
+
+                left_axis = p.getAxis("left")
+                if left_axis:
+                    left_axis.setScale(scale_rf)
+                    left_axis.enableAutoSIPrefix(False)
+                    left_axis.tickStrings = lambda values, scale, spacing: [
+                        (
+                            f"{v * scale:.3f}".rstrip("0").rstrip(".")
+                            if "." in f"{v * scale:.3f}"
+                            else f"{v * scale:.0f}"
+                        )
+                        for v in values
+                    ]
+
+                right_axis = p.getAxis("right")
+                if right_axis:
+                    # Explicitly forcing scale to 1.0 to ensure no 1e6 multiplier is applied to dissipation
+                    right_axis.setScale(1.0)
+                    right_axis.enableAutoSIPrefix(False)
+                    right_axis.tickStrings = lambda values, scale, spacing: [
+                        f"{v * scale:.6f}" for v in values
+                    ]
+
+                c_rf = Constants.plot_colors[6]
+                c_diss = Constants.plot_colors[7]
+                color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
+                color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
+
+                unit_diss = "Δ"
+
+                # Top-Left Label (Over Frequency Axis) with LINE BREAKS
+                if not hasattr(pi, "_left_title_label"):
+                    pi._left_title_label = pg.LabelItem(justify="center")
+                    pi.layout.addItem(pi._left_title_label, 0, 0)
+                pi._left_title_label.setText(
+                    f"Resonance\nFrequency\n({unit_rf})", color=color_rf, size="10pt"
                 )
-                p.setLabel(
-                    "right",
-                    "Dissipation",
-                    units="",
-                    color=Constants.plot_colors[7],
-                    **{"font-size": "9pt"},
+
+                # Top-Right Label (Over Dissipation Axis)
+                if not hasattr(pi, "_right_title_label"):
+                    pi._right_title_label = pg.LabelItem(justify="center")
+                    pi.layout.addItem(pi._right_title_label, 0, 2)
+                pi._right_title_label.setText(
+                    f"Dissipation\n({unit_diss})", color=color_diss, size="10pt"
                 )
 
         layout_ui = self.InfoWin.ui3
@@ -4429,20 +4493,68 @@ class MainWindow(QtWidgets.QMainWindow):
         auxiliary info panel correctly displays the currently loaded (but
         inactive) reference values.
         """
-        font = {"font-size": "10pt"}
         colors = Constants.plot_colors
+
+        try:
+            rf_val = abs(self.worker.get_d1_buffer(0)[0])
+        except Exception:
+            rf_val = 0.0
+
+        if rf_val >= 1e6:
+            unit_rf = "MHz"
+            scale_rf = 1e-6
+        elif rf_val >= 1e3:
+            unit_rf = "kHz"
+            scale_rf = 1e-3
+        else:
+            unit_rf = "Hz"
+            scale_rf = 1.0
 
         for p in self._plt2_arr:
             if p:
-                p.setLabel("left", "Resonance Frequency", units="Hz", color=colors[2], **font)
-                p.setLabel("right", "Dissipation", units="", color=colors[3], **font)
+                pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
+
+                p.setLabel("left", text=" ")
+                p.setLabel("right", text=" ")
+                p.setTitle("")
+                
+                left_axis = p.getAxis("left")
+                if left_axis:
+                    left_axis.setScale(scale_rf)
+                    left_axis.enableAutoSIPrefix(False)
+                    left_axis.tickStrings = lambda values, scale, spacing: [
+                        f"{v * scale:.3f}".rstrip('0').rstrip('.') if '.' in f"{v * scale:.3f}" else f"{v * scale:.0f}" 
+                        for v in values
+                    ]
+
+                right_axis = p.getAxis("right")
+                if right_axis:
+                    # Explicitly forcing scale to 1.0 to ensure no 1e6 multiplier is applied to dissipation
+                    right_axis.setScale(1.0)
+                    right_axis.enableAutoSIPrefix(False)
+                    right_axis.tickStrings = lambda values, scale, spacing: [f"{v * scale:.6f}" for v in values]
+
+                c_rf = colors[2]
+                c_diss = colors[3]
+                color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
+                color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
+
+                # Top-Left Label (Over Frequency Axis) with LINE BREAKS
+                if not hasattr(pi, "_left_title_label"):
+                    pi._left_title_label = pg.LabelItem(justify="center")
+                    pi.layout.addItem(pi._left_title_label, 0, 0)
+                pi._left_title_label.setText(f"Resonance\nFrequency\n({unit_rf})", color=color_rf, size="10pt")
+
+                # Top-Right Label (Over Dissipation Axis)
+                if not hasattr(pi, "_right_title_label"):
+                    pi._right_title_label = pg.LabelItem(justify="center")
+                    pi.layout.addItem(pi._right_title_label, 0, 2)
+                pi._right_title_label.setText("Dissipation", color=color_diss, size="10pt")
 
         layout_ui = self.InfoWin.ui3
         layout_ui.inforef1.setText(f"<font color=#0000ff> Ref. Frequency </font>{self._labelref1}")
-        layout_ui.inforef2.setText(
-            f"<font color=#0000ff> Ref. Dissipation </font>{self._labelref2}"
-        )
-
+        layout_ui.inforef2.setText(f"<font color=#0000ff> Ref. Dissipation </font>{self._labelref2}")
+        
     def _draw_amplitude_plots_no_reference(self) -> None:
         """Updates amplitude plots and associated sensor data in absolute mode.
 
