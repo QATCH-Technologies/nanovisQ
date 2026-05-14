@@ -572,6 +572,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.num_channels = -1
         # Messaging attribute for early stop messages.
         self._fill_display_msg: Optional[str] = None
+
+        self._fill_display_msg: Optional[str] = None
+        # --- fill-event marker state ---
+        # Per-channel list of cleanup callables; each removes one persistent marker.
+        self._fill_event_markers: list[list] = [[], [], [], []]
+        self._last_fill_pred: list[int] = [-99, -99, -99, -99]
+        self._drop_marker_placed: list[bool] = [False, False, False, False]
+        self._dry_marker_placed: list[bool] = [False, False, False, False]
+        # active glassmorphic tooltip state
+        self._active_marker_label: pg.TextItem | None = None
+        self._active_marker_plot: pg.PlotItem | None = None
+        self._active_marker_dict: dict | None = None
+        self._marker_label_timer: QtCore.QTimer | None = None
+        self._active_marker_line:  pg.PlotCurveItem | None = None   # leader line
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
 
@@ -1096,6 +1110,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Check for the latest calibrations.  If the last calibration data is not recent, recomend to the user
         # to recalibrate their device.
         if self._get_source() == OperationType.measurement:
+            num_devices = getattr(self, "multiplex_plots", 1)
+            for i in range(num_devices):
+                self.PlotsWin.ui2.left_pane.set_device_state(i, "recording")
             is_recent, age_in_mins = self._get_cal_age()
             if not is_recent:
                 Log.w(
@@ -1242,6 +1259,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
             self._drop_epoch_sent = False
+            for ch_markers in self._fill_event_markers:
+                for md in ch_markers:
+                    for p, key in ((md.get("p2"), "m_freq"), (md.get("p3"), "m_diss")):
+                        try:
+                            if p is not None:
+                                p.removeItem(md[key])
+                        except (RuntimeError, KeyError):
+                            pass
+            self._fill_event_markers = [[], [], [], []]
+            self._last_fill_pred = [-99, -99, -99, -99]
+            self._drop_marker_placed = [False, False, False, False]
+            self._dry_marker_placed = [False, False, False, False]
+            self._hide_marker_label()
             self._run_finished = [False, False, False, False]
             self._baselinedata = [
                 [[0, 0], [0, 0]],
@@ -3408,6 +3438,24 @@ class MainWindow(QtWidgets.QMainWindow):
             self._plt2_arr[i] = multi_plot
             self._plt3_arr[i] = plot_layout
 
+        # Pre-create the RF/Diss axis title labels for every active plot so
+        # they exist when the startup blur fires (singleShot(0)).  Without
+        # this, _apply_plot_dim's frost_targets loop skips them (hasattr
+        # returns False) and they render unblurred above the frosted plot on
+        # the very first Initialize.  Using justify="right" / justify="left"
+        # also nudges each label toward the ViewBox edge, centering it
+        # visually over its axis tick marks.
+        for i in range(len(self._plt2_arr)):
+            pi = self._plt2_arr[i]
+            if pi is None:
+                continue
+            if not hasattr(pi, "_left_title_label"):
+                pi._left_title_label = pg.LabelItem(justify="right")
+                pi.layout.addItem(pi._left_title_label, 0, 0)
+            if not hasattr(pi, "_right_title_label"):
+                pi._right_title_label = pg.LabelItem(justify="left")
+                pi.layout.addItem(pi._right_title_label, 0, 2)
+
         if _show_welcome:
             self._annotate_welcome_text()
         else:
@@ -3845,14 +3893,15 @@ class MainWindow(QtWidgets.QMainWindow):
         # Define default UI state
         stop_flag = 0 if is_worker_running else 1
         is_warning = False
-
+        num_devices = getattr(self, "multiplex_plots", 1)
+        for i in range(num_devices):
+            self.PlotsWin.ui2.left_pane.set_device_state(i, "init")
         label_status = "Calibration Processing"
         label_bar = "The operation will take a few seconds to complete\u2026 please wait\u2026"
         color_err = "#333333"
         css_style = Constants._CSS_YELLOW
         overlay_bar_color = "#2E9BDA"
         overlay_label_color = "#333333"
-        num_devices = getattr(self, "multiplex_plots", 1)
         # Evaluate Calibration State Machine
         if phase == 0:
             if temperature_err:
@@ -4018,7 +4067,42 @@ class MainWindow(QtWidgets.QMainWindow):
                 ui_step = 0
             else:
                 ui_step, status_msg = Constants._FILL_STATE_MAP.get(pred_int, (0, "Unknown"))
+                if pred_int != self._last_fill_pred[0]:
+                    prev_pred = self._last_fill_pred[0]
+                    self._last_fill_pred[0] = pred_int
 
+                    # Regression: undraw any classifier markers for states
+                    # that are now higher than the revised prediction.
+                    to_remove = [
+                        md
+                        for md in self._fill_event_markers[0]
+                        if md.get("source") == "classifier" and md.get("pred_int", -99) > pred_int
+                    ]
+                    for md in to_remove:
+                        self._fill_event_markers[0].remove(md)
+                        if self._active_marker_dict is md:
+                            self._hide_marker_label()
+                        self._undraw_fill_event_marker(md)
+
+                    # Forward/lateral: place a marker only if this exact
+                    # state has not already been marked this run.
+                    if pred_int >= 1:
+                        already_marked = any(
+                            md.get("source") == "classifier" and md.get("pred_int") == pred_int
+                            for md in self._fill_event_markers[0]
+                        )
+                        if not already_marked:
+                            try:
+                                self._place_fill_event_marker(
+                                    0,
+                                    float(self.worker.get_t1_buffer(0)[0]),
+                                    float(self.worker.get_d1_buffer(0)[0]),
+                                    float(self.worker.get_d2_buffer(0)[0]),
+                                    pred_int,
+                                    status_msg,
+                                )
+                            except Exception as e:
+                                Log.e(TAG, f"Failed to place fill-event marker: {e}")
                 if pred_int == -1 and not self._drop_epoch_sent:
                     self.worker._forecaster_in.put(
                         DropEpochSignal(float(self.worker.get_t1_buffer(0)[0]))
@@ -4246,12 +4330,31 @@ class MainWindow(QtWidgets.QMainWindow):
                     10.0 * self._baseline_diss_noise
                 ):
                     self._drop_applied[i] = True
-
+                    if not self._drop_marker_placed[i]:
+                        self._drop_marker_placed[i] = True
+                        self._place_fill_event_marker(
+                            i,
+                            float(self.worker.get_t1_buffer(i)[0]),
+                            float(self.worker.get_d1_buffer(i)[0]),
+                            float(self.worker.get_d2_buffer(i)[0]),
+                            -99,
+                            "Drop Applied",
+                        )
             except Exception as e:
                 Log.e("Error calibrating baselines for drop detection - applying drop flag.")
                 Log.d("ERROR DETAILS:", str(e))
                 self._drop_applied[i] = True
-
+                if not self._drop_marker_placed[i]:
+                    self._drop_marker_placed[i] = True
+                    try:
+                        self._place_fill_event_marker(
+                            i,
+                            float(self.worker.get_t1_buffer(i)[0]),
+                            float(self.worker.get_d1_buffer(i)[0]),
+                            float(self.worker.get_d2_buffer(i)[0]),
+                        )
+                    except Exception:
+                        pass
         return "Capturing data… Apply drop when ready…"
 
     def _calibrate_baselines(self, i: int, time_running: float) -> None:
@@ -4392,7 +4495,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 # Top-Left Label (Over Frequency Axis) with LINE BREAKS
                 if not hasattr(pi, "_left_title_label"):
-                    pi._left_title_label = pg.LabelItem(justify="center")
+                    pi._left_title_label = pg.LabelItem(justify="right")
                     pi.layout.addItem(pi._left_title_label, 0, 0)
                 pi._left_title_label.setText(
                     f"Resonance<br>Frequency<br>({unit_rf})", color=color_rf, size="10pt"
@@ -4400,7 +4503,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 # Top-Right Label (Over Dissipation Axis)
                 if not hasattr(pi, "_right_title_label"):
-                    pi._right_title_label = pg.LabelItem(justify="center")
+                    pi._right_title_label = pg.LabelItem(justify="left")
                     pi.layout.addItem(pi._right_title_label, 0, 2)
                 pi._right_title_label.setText(
                     f"Dissipation<br>({unit_diss})", color=color_diss, size="10pt"
@@ -4531,14 +4634,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 p.setLabel("left", text=" ")
                 p.setLabel("right", text=" ")
                 p.setTitle("")
-                
+
                 left_axis = p.getAxis("left")
                 if left_axis:
                     left_axis.setScale(scale_rf)
                     left_axis.enableAutoSIPrefix(False)
                     left_axis.setWidth(48)
                     left_axis.tickStrings = lambda values, scale, spacing: [
-                        f"{v * scale:.3f}".rstrip('0').rstrip('.') if '.' in f"{v * scale:.3f}" else f"{v * scale:.0f}" 
+                        (
+                            f"{v * scale:.3f}".rstrip("0").rstrip(".")
+                            if "." in f"{v * scale:.3f}"
+                            else f"{v * scale:.0f}"
+                        )
                         for v in values
                     ]
 
@@ -4558,21 +4665,29 @@ class MainWindow(QtWidgets.QMainWindow):
                 color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
 
                 # Top-Left Label (Over Frequency Axis) with LINE BREAKS
+                # justify="right" nudges the text toward the ViewBox edge so
+                # it sits centered over the left-axis tick marks.
                 if not hasattr(pi, "_left_title_label"):
-                    pi._left_title_label = pg.LabelItem(justify="center")
+                    pi._left_title_label = pg.LabelItem(justify="right")
                     pi.layout.addItem(pi._left_title_label, 0, 0)
-                pi._left_title_label.setText(f"Resonance<br>Frequency<br>({unit_rf})", color=color_rf, size="10pt")
+                pi._left_title_label.setText(
+                    f"Resonance<br>Frequency<br>({unit_rf})", color=color_rf, size="10pt"
+                )
 
                 # Top-Right Label (Over Dissipation Axis)
+                # justify="left" nudges the text toward the ViewBox edge so
+                # it sits centered over the right-axis tick marks.
                 if not hasattr(pi, "_right_title_label"):
-                    pi._right_title_label = pg.LabelItem(justify="center")
+                    pi._right_title_label = pg.LabelItem(justify="left")
                     pi.layout.addItem(pi._right_title_label, 0, 2)
                 pi._right_title_label.setText("Dissipation", color=color_diss, size="10pt")
 
         layout_ui = self.InfoWin.ui3
         layout_ui.inforef1.setText(f"<font color=#0000ff> Ref. Frequency </font>{self._labelref1}")
-        layout_ui.inforef2.setText(f"<font color=#0000ff> Ref. Dissipation </font>{self._labelref2}")
-        
+        layout_ui.inforef2.setText(
+            f"<font color=#0000ff> Ref. Dissipation </font>{self._labelref2}"
+        )
+
     def _draw_amplitude_plots_no_reference(self) -> None:
         """Updates amplitude plots and associated sensor data in absolute mode.
 
@@ -4782,6 +4897,364 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             Log.e("Error handling plot status label text!")
 
+    def _place_fill_event_marker(
+        self,
+        i: int,
+        t: float,
+        y_freq: float,
+        y_diss: float,
+        pred_int: int,
+        label_text: str,
+    ) -> None:
+        """Draws an animated open-circle event marker on the RF and Dissipation plots.
+
+        Args:
+            i: Channel index.
+            t: Event timestamp (seconds).
+            y_freq: Resonance-frequency value at the event.
+            y_diss: Dissipation value at the event.
+            pred_int: Classifier state integer (-99 for physical drop, ≥1 for fill steps).
+            label_text: Human-readable description shown in the click tooltip.
+        """
+        p2 = self._plt2_arr[i] if i < len(self._plt2_arr) else None
+        p3 = self._plt3_arr[i] if i < len(self._plt3_arr) else None
+        if p2 is None or p3 is None:
+            return
+
+        _FREQ_COLOR = QtGui.QColor(46, 155, 218)
+        _DISS_COLOR = QtGui.QColor(240, 156, 53)
+
+        FINAL_SIZE = 10
+        RIPPLE_SIZE = 22
+        DRAW_MS = 450
+        RIPPLE_MS = 600
+        FRAME_MS = 16
+
+        def _make_marker(parent, color, y):
+            item = pg.ScatterPlotItem(
+                x=[t], y=[y], symbol="o", size=0,
+                pen=pg.mkPen(color=color, width=2),
+                brush=pg.mkBrush(None),
+            )
+            item.setZValue(50)
+            item.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
+            item.setAcceptHoverEvents(True)                      
+            item.setCursor(QtCore.Qt.PointingHandCursor)           
+            parent.addItem(item)
+            return item
+        def _make_hover_handler(marker, color):
+            """Returns a slot that fills/unfills the ring on hover.
+
+            Tolerates both the old (spots, ev) and new (scatter, spots, ev)
+            sigHovered signatures by scanning args for the first list.
+            """
+            hover_brush = pg.mkBrush(QtGui.QColor(color.red(), color.green(), color.blue(), 160))
+            open_brush  = pg.mkBrush(None)
+            def _handler(*args, m=marker, hb=hover_brush, ob=open_brush):
+                pts = next((a for a in args if isinstance(a, list)), [])
+                m.setBrush(hb if pts else ob)
+            return _handler
+        def _make_ripple(parent, color, y):
+            item = pg.ScatterPlotItem(
+                x=[t],
+                y=[y],
+                symbol="o",
+                size=float(FINAL_SIZE),
+                pen=pg.mkPen(color=color, width=1.5),
+                brush=pg.mkBrush(None),
+            )
+            item.setZValue(49)
+            item.setOpacity(0.85)
+            parent.addItem(item)
+            return item
+
+        m_freq = _make_marker(p2, _FREQ_COLOR, y_freq)
+        m_diss = _make_marker(p3, _DISS_COLOR, y_diss)
+
+        # Build the record used by undraw, click, and reset
+        marker_dict = dict(
+            source="drop" if pred_int == -99 else "classifier",
+            pred_int=pred_int,
+            m_freq=m_freq,
+            m_diss=m_diss,
+            p2=p2,
+            p3=p3,
+            t=t,
+            y_freq=y_freq,
+            y_diss=y_diss,
+            label_text=label_text,
+        )
+        self._fill_event_markers[i].append(marker_dict)
+
+        # Wire click-to-label on both scatter items
+        m_freq.sigClicked.connect(lambda *a, md=marker_dict: self._on_marker_clicked(md))
+        m_diss.sigClicked.connect(lambda *a, md=marker_dict: self._on_marker_clicked(md))
+        m_freq.sigHovered.connect(_make_hover_handler(m_freq, _FREQ_COLOR))
+        m_diss.sigHovered.connect(_make_hover_handler(m_diss, _DISS_COLOR))
+
+        # ── Draw-in animation ────────────────────────────────────────────────
+        draw_start = monotonic()
+        draw_timer = QtCore.QTimer(self)
+        draw_timer.setInterval(FRAME_MS)
+
+        def _draw_step(timer=draw_timer, mf=m_freq, md=m_diss):
+            elapsed = (monotonic() - draw_start) * 1000.0
+            t_norm = min(1.0, elapsed / DRAW_MS)
+            eased = 1.0 - (1.0 - t_norm) ** 3
+            val = eased * FINAL_SIZE
+            try:
+                mf.setSize(val)
+                md.setSize(val)
+            except RuntimeError:
+                timer.stop()
+                return
+            if t_norm >= 1.0:
+                timer.stop()
+
+        draw_timer.timeout.connect(_draw_step)
+        draw_timer.start()
+
+        # ── Ripple animation ─────────────────────────────────────────────────
+        r_freq = _make_ripple(p2, _FREQ_COLOR, y_freq)
+        r_diss = _make_ripple(p3, _DISS_COLOR, y_diss)
+
+        ripple_start = monotonic()
+        ripple_timer = QtCore.QTimer(self)
+        ripple_timer.setInterval(FRAME_MS)
+
+        def _ripple_step(timer=ripple_timer, rf=r_freq, rd=r_diss, p_2=p2, p_3=p3):
+            elapsed = (monotonic() - ripple_start) * 1000.0
+            progress = min(1.0, elapsed / RIPPLE_MS)
+            eased = 1.0 - (1.0 - progress) ** 2
+            new_size = FINAL_SIZE + eased * (RIPPLE_SIZE - FINAL_SIZE)
+            opacity = 0.85 * (1.0 - eased)
+            try:
+                rf.setSize(new_size)
+                rd.setSize(new_size)
+                rf.setOpacity(opacity)
+                rd.setOpacity(opacity)
+            except RuntimeError:
+                timer.stop()
+                return
+            if progress >= 1.0:
+                timer.stop()
+                for p, item in ((p_2, rf), (p_3, rd)):
+                    try:
+                        p.removeItem(item)
+                    except RuntimeError:
+                        pass
+
+        ripple_timer.timeout.connect(_ripple_step)
+        ripple_timer.start()
+
+    def _undraw_fill_event_marker(self, marker_dict: dict) -> None:
+        """Reverse-animates a fill-event marker to size 0 then removes it.
+
+        Used when the classifier revises a prediction downward. The ring
+        shrinks with a quadratic ease-in (accelerates toward erasure) over
+        300 ms, giving a clear visual signal that the event was retracted.
+
+        Args:
+            marker_dict: The record originally built by ``_place_fill_event_marker``.
+        """
+        m_freq = marker_dict.get("m_freq")
+        m_diss = marker_dict.get("m_diss")
+        p2 = marker_dict.get("p2")
+        p3 = marker_dict.get("p3")
+        if not all((m_freq, m_diss, p2, p3)):
+            return
+
+        FINAL_SIZE = 10  # must match _place_fill_event_marker
+        UNDRAW_MS = 300
+        FRAME_MS = 16
+
+        undraw_start = monotonic()
+        undraw_timer = QtCore.QTimer(self)
+        undraw_timer.setInterval(FRAME_MS)
+
+        def _undraw_step(timer=undraw_timer, mf=m_freq, md=m_diss, p_2=p2, p_3=p3):
+            elapsed = (monotonic() - undraw_start) * 1000.0
+            t_norm = min(1.0, elapsed / UNDRAW_MS)
+            eased = t_norm**2  # ease-in: accelerates toward zero
+            val = FINAL_SIZE * (1.0 - eased)
+            try:
+                mf.setSize(max(0.0, val))
+                md.setSize(max(0.0, val))
+            except RuntimeError:
+                timer.stop()
+                return
+            if t_norm >= 1.0:
+                timer.stop()
+                for p, item in ((p_2, mf), (p_3, md)):
+                    try:
+                        p.removeItem(item)
+                    except RuntimeError:
+                        pass
+
+        undraw_timer.timeout.connect(_undraw_step)
+        undraw_timer.start()
+
+    def _on_marker_clicked(self, marker_dict: dict) -> None:
+        """Toggles the glassmorphic tooltip for the clicked fill-event marker.
+
+        A second click on the same marker dismisses it; clicking a different
+        marker replaces the current tooltip.
+        """
+        if self._active_marker_dict is marker_dict:
+            self._hide_marker_label()
+        else:
+            self._show_marker_label(marker_dict)
+    def _hide_marker_label(self) -> None:
+        """Removes the active glassmorphic tooltip and its leader line."""
+        p2   = self._active_marker_plot
+        line = self._active_marker_line
+        lbl  = self._active_marker_label
+
+        # Remove leader line first so it never outlives its label
+        if line is not None and p2 is not None:
+            try:
+                p2.removeItem(line)
+            except RuntimeError:
+                pass
+
+        if lbl is not None and p2 is not None:
+            try:
+                p2.removeItem(lbl)
+            except RuntimeError:
+                pass
+
+        timer = self._marker_label_timer
+        if timer is not None:
+            try:
+                timer.stop()
+            except RuntimeError:
+                pass
+
+        self._active_marker_label = None
+        self._active_marker_line  = None 
+        self._active_marker_plot  = None
+        self._active_marker_dict  = None
+        self._marker_label_timer  = None
+    def _show_marker_label(self, marker_dict: dict) -> None:
+        """Displays a glassmorphic tooltip with an animated leader line.
+
+        The label is centred above the marker (anchor bottom-centre).  A
+        ``PlotCurveItem`` leader line grows downward from the label's anchor
+        point to the top edge of the dot ring over 250 ms, making it
+        unambiguous which event the tooltip describes.
+
+        Args:
+            marker_dict: Record built by ``_place_fill_event_marker``.
+        """
+        self._hide_marker_label()
+
+        p2         = marker_dict.get("p2")
+        t          = marker_dict.get("t", 0.0)
+        y_freq     = marker_dict.get("y_freq", 0.0)
+        label_text = marker_dict.get("label_text", "")
+
+        if p2 is None:
+            return
+
+        # Y offset: float the label 6 % of the visible range above the dot
+        try:
+            vr       = p2.getViewBox().viewRange()
+            y_offset = (vr[1][1] - vr[1][0]) * 0.06
+        except Exception:
+            y_offset = 0.0
+
+        # Top edge of the dot in data-space so the line stops there, not at centre
+        FINAL_SIZE = 10   # must match _place_fill_event_marker
+        try:
+            data_per_px_y = p2.getViewBox().viewPixelSize()[1]
+            dot_edge_y    = y_freq + (FINAL_SIZE / 2.0) * data_per_px_y
+        except Exception:
+            dot_edge_y = y_freq
+
+        label_anchor_y = y_freq + y_offset   # bottom-centre of label (anchor point)
+
+        # ── Glassmorphic label ────────────────────────────────────────────────
+        html = (
+            "<div style='"
+            "font-family: Segoe UI, -apple-system, system-ui, sans-serif;"
+            "font-size: 9pt; color: #2d3748;'>"
+            f"<b>{label_text}</b><br/>"
+            "<span style='font-size: 8pt; color: #718096;'>"
+            f"t = {t:.2f} s"
+            "</span></div>"
+        )
+
+        lbl = pg.TextItem(
+            html=html,
+            fill=pg.mkBrush(QtGui.QColor(236, 244, 252, 220)),
+            border=pg.mkPen(QtGui.QColor(180, 210, 235, 190), width=1),
+            anchor=(0.5, 1),   # bottom-CENTRE at data point (changed from 0,1)
+        )
+
+        shadow = QtWidgets.QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(12)
+        shadow.setXOffset(1)
+        shadow.setYOffset(2)
+        shadow.setColor(QtGui.QColor(0, 0, 0, 50))
+        lbl.setGraphicsEffect(shadow)
+        lbl.setZValue(200)
+
+        p2.addItem(lbl)
+        lbl.setPos(t, label_anchor_y)
+
+        # ── Animated leader line ──────────────────────────────────────────────
+        line_pen = pg.mkPen(
+            color=QtGui.QColor(180, 210, 235, 190),
+            width=1,
+            style=QtCore.Qt.DashLine,
+        )
+        leader = pg.PlotCurveItem(
+            x=[t, t],
+            y=[label_anchor_y, label_anchor_y],   # zero length; grows downward
+            pen=line_pen,
+        )
+        leader.setZValue(199)   # just behind the label
+        p2.addItem(leader)
+
+        LINE_MS    = 250
+        FRAME_MS   = 16
+        line_start = monotonic()
+        line_timer = QtCore.QTimer(self)
+        line_timer.setInterval(FRAME_MS)
+
+        def _line_step(
+            timer=line_timer,
+            ldr=leader,
+            y_top=label_anchor_y,
+            y_bot=dot_edge_y,
+        ):
+            elapsed  = (monotonic() - line_start) * 1000.0
+            t_norm   = min(1.0, elapsed / LINE_MS)
+            eased    = 1.0 - (1.0 - t_norm) ** 2          # quad ease-out
+            current  = y_top + eased * (y_bot - y_top)    # grows toward dot
+            try:
+                ldr.setData(x=[t, t], y=[y_top, current])
+            except RuntimeError:
+                timer.stop()
+                return
+            if t_norm >= 1.0:
+                timer.stop()
+
+        line_timer.timeout.connect(_line_step)
+        line_timer.start()
+
+        # ── Store active state ────────────────────────────────────────────────
+        self._active_marker_label = lbl
+        self._active_marker_line  = leader        # ← new
+        self._active_marker_plot  = p2
+        self._active_marker_dict  = marker_dict
+
+        timer = QtCore.QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self._hide_marker_label)
+        timer.start(6000)
+        self._marker_label_timer = timer
+
     def _update_pre_drop_label(self, i: int, plot_resonance_frequency: pg.PlotWidget) -> None:
         """Updates the plot overlay label with dry-detection status prior to sample application.
 
@@ -4820,6 +5293,19 @@ class MainWindow(QtWidgets.QMainWindow):
         # Evaluate positive state first for cleaner branching
         if dry_status:
             self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
+            if not self._dry_marker_placed[i]:
+                self._dry_marker_placed[i] = True
+                try:
+                    self._place_fill_event_marker(
+                        i,
+                        float(self.worker.get_t1_buffer(i)[0]),
+                        float(self.worker.get_d1_buffer(i)[0]),
+                        float(self.worker.get_d2_buffer(i)[0]),
+                        -98,
+                        "Sensor Dry - Apply Drop",
+                    )
+                except Exception as e:
+                    Log.e(TAG, f"Failed to place dry-event marker: {e}")
         else:
             # Sensor still wet – latch the earliest dry time for this channel
             with self._sensorDriedTimeValue.get_lock():
