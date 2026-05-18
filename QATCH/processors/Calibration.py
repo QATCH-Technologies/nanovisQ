@@ -523,7 +523,7 @@ class CalibrationProcess(multiprocessing.Process):
                     if not self._exit.is_set():
                         Log.i(TAG, 'Initialize Process Started')
                         Log.i(
-                            TAG, 'The operation will take a few seconds to complete... please wait...')
+                            TAG, 'The operation will take a few seconds to complete... Please wait...')
                         # raise Exception("This is a dummy exception!")
 
                     format = -1

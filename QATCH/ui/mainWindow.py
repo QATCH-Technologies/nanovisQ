@@ -2,8 +2,8 @@
 mainWindow.py
 
 The primary container for the QATCH Q-1 application, responsible for initializing and managing the main user interface.
-This module defines the main window of the application, which includes the menu bar, user profile management, 
-and the central widget that contains the various UI components. It also handles user interactions such as toggling views, 
+This module defines the main window of the application, which includes the menu bar, user profile management,
+and the central widget that contains the various UI components. It also handles user interactions such as toggling views,
 managing user profiles, and responding to menu actions, etc.
 
 Author(s):
@@ -16,6 +16,7 @@ Date:
 Version:
     x.x.x?
 """
+
 from datetime import datetime, timezone, timedelta, date
 import hashlib
 import logging
@@ -1604,7 +1605,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
         self._drop_epoch_sent = False
-        self._run_finished = [False, False, False, False]
+        self._baseline_freq_avg = 0.0
+        self._baseline_freq_noise = float("inf")
+        self._baseline_diss_avg = 0.0
+        self._baseline_diss_noise = float("inf")
+        self._last_forecaster_push_time = 0.0
         self._baselinedata = [
             [[0, 0], [0, 0]],
             [[0, 0], [0, 0]],
@@ -2975,7 +2980,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Progress container
             container = QtWidgets.QWidget()
             container.setFixedWidth(340)
-            
+
             container.setStyleSheet(
                 "QWidget {"
                 "  background: rgba(255, 255, 255, 0);"
@@ -2990,11 +2995,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
             layout = QtWidgets.QVBoxLayout(container)
             layout.setContentsMargins(14, 8, 14, 8)
-            layout.setSpacing(6)
+            layout.setSpacing(0)
 
             status_label = QtWidgets.QLabel("Starting\u2026")
             status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            status_label.setTextFormat(QtCore.Qt.RichText)
             status_label.setWordWrap(True)
+            status_label.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.MinimumExpanding,
+            )
 
             progress_bar = RoundedProgressBar()
             progress_bar.setRange(0, 100)
@@ -3003,9 +3013,6 @@ class MainWindow(QtWidgets.QMainWindow):
             progress_bar.setFixedHeight(6)
 
             layout.addWidget(status_label)
-            
-            layout.addSpacing(10) 
-            
             layout.addWidget(progress_bar)
 
             proxy = QtWidgets.QGraphicsProxyWidget()
@@ -3173,10 +3180,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._overlay_anims = []
 
         reset_html = (
-            "<b>Calibration Processing</b><br/>"
-            "<span style='font-size:9pt; color:#333333;'>"
-            "The operation will take a few seconds to complete\u2026 please wait\u2026"
-            "</span>"
+            "<div style='margin:0; padding:0; line-height:1.2;'>"
+            "    <div><b>Calibration Processing</b></div>"
+            "    <div style='font-size:9pt; color:#333333;'>"
+            "        The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
+            "    </div>"
+            "</div>"
         )
 
         self._reset_bar_anims = []
@@ -3624,9 +3633,11 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.e("Restoration successful! Application database replaced with bundled copy.")
-                
+
             except Exception as e:
-                Log.e("FAIL: The application database is presumed to be corrupt and could not be restored.")
+                Log.e(
+                    "FAIL: The application database is presumed to be corrupt and could not be restored."
+                )
                 Log.e("Error Details:", e)
 
     ###########################################################################
@@ -4910,7 +4921,7 @@ class MainWindow(QtWidgets.QMainWindow):
         is_warning = False
 
         label_status = "Calibration Processing"
-        label_bar = "The operation will take a few seconds to complete\u2026 please wait\u2026"
+        label_bar = "The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
         color_err = "#333333"
         css_style = Constants._CSS_YELLOW
         overlay_bar_color = "#2E9BDA"
@@ -4929,7 +4940,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not time_temp_err and not temperature_err:
                 # Success State
                 label_status = "Calibration Success"
-                label_bar = "Baseline correction complete. Ready to measure. Press \u201cStart\u201d then apply drop."
+                label_bar = "Baseline correction complete. Ready to measure.\nPress \u201cStart\u201d then apply drop."
                 color_err = "#008000"
                 css_style = Constants._CSS_GREEN
                 overlay_bar_color = "#28A745"
@@ -4981,15 +4992,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
             qbar.setChunkColor(overlay_bar_color)
             new_html = (
-                f"<p style='margin-bottom: 12px; line-height: 1.2;'>"
-                f"<b>{label_status}</b><br/>"
-                f"<span style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</span>"
-                f"</p>"
+                "<div style='margin:0; padding:0; line-height:1.2;'>"
+                f"    <div><b>{label_status}</b></div>"
+                f"    <div style='font-size:9pt; color:{overlay_label_color};'>"
+                "        " + label_bar.replace("\n", "<br/>") +
+                "    </div>"
+                "</div>"
             )
-            
+
             if lbl.text() != new_html:
-                lbl.setWordWrap(True)
-                lbl.setTextFormat(QtCore.Qt.RichText)
                 lbl.setText(new_html)
                 lbl.adjustSize()
 
@@ -5326,12 +5337,12 @@ class MainWindow(QtWidgets.QMainWindow):
             the method truncates the final third of the buffer (via `[:-idx]`),
             focusing only on the earliest samples collected.
         """
-        v1 = self.worker.get_d1_buffer(0)
+        v1 = self.worker.get_d1_buffer(i)
         idx = len(v1) // 3
         if idx <= 0:
             return
         s1 = v1[:-idx]
-        s2 = self.worker.get_d2_buffer(0)[:-idx]
+        s2 = self.worker.get_d2_buffer(i)[:-idx]
 
         self._baseline_freq_avg = np.average(s1)
         self._baseline_freq_noise = np.ptp(s1)
@@ -6145,7 +6156,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         elif ":" in dev_info["PORT"]:
                             port_names[i] = dev_info["NAME"]
                         else:
-                            port_names[i] = "{} ({})".format(dev_info["NAME"], "COM" + str((10 + i)))
+                            port_names[i] = "{} ({})".format(
+                                dev_info["NAME"], "COM" + str((10 + i))
+                            )
                         if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
                             ports[i] += f";{dev_info['IP']}"
                             if " (" in port_names[i]:
@@ -6166,7 +6179,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not port_name in device_ports:
                     # found connected port with no associated device info in config folder
                     # force parse and/or write device info (to update name and/or pid)
-                    Log.d(f"New device found: querying device info for {port_name.split(':')[0]}...")
+                    Log.d(
+                        f"New device found: querying device info for {port_name.split(':')[0]}..."
+                    )
                     self.fwUpdater.checkAgain()
                     self.worker._port = port_name  # used in run()
                     # do NOT ask to update if not ReadyToShow
@@ -7258,7 +7273,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # find most recent *release* build, skipping any newer *beta* builds
                 # raise an Exception if no *release* builds are found on the server!
                 for build in builds:
-                    is_release_build = 'r' in build["name"]
+                    is_release_build = "r" in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
@@ -7267,7 +7282,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         break  # found, stop searching
             elif len(builds) > 0:
                 for build in builds:
-                    is_release_build = 'r' in build["name"]
+                    is_release_build = "r" in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
