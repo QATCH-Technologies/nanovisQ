@@ -3183,7 +3183,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "<div style='margin:0; padding:0; line-height:1.2;'>"
             "    <div><b>Calibration Processing</b></div>"
             "    <div style='font-size:9pt; color:#333333;'>"
-            "        The operation will take a few seconds to complete\u2026<br/>Please wait\u2026"
+            "        The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
             "    </div>"
             "</div>"
         )
@@ -4921,7 +4921,7 @@ class MainWindow(QtWidgets.QMainWindow):
         is_warning = False
 
         label_status = "Calibration Processing"
-        label_bar = "The operation will take a few seconds to complete\u2026<br/>Please wait\u2026"
+        label_bar = "The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
         color_err = "#333333"
         css_style = Constants._CSS_YELLOW
         overlay_bar_color = "#2E9BDA"
@@ -4940,7 +4940,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not time_temp_err and not temperature_err:
                 # Success State
                 label_status = "Calibration Success"
-                label_bar = "Baseline correction complete. Ready to measure.<br/>Press \u201cStart\u201d then apply drop."
+                label_bar = "Baseline correction complete. Ready to measure.\nPress \u201cStart\u201d then apply drop."
                 color_err = "#008000"
                 css_style = Constants._CSS_GREEN
                 overlay_bar_color = "#28A745"
@@ -4994,7 +4994,9 @@ class MainWindow(QtWidgets.QMainWindow):
             new_html = (
                 "<div style='margin:0; padding:0; line-height:1.2;'>"
                 f"    <div><b>{label_status}</b></div>"
-                f"    <div style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</div>"
+                f"    <div style='font-size:9pt; color:{overlay_label_color};'>"
+                "        " + label_bar.replace("\n", "<br/>") +
+                "    </div>"
                 "</div>"
             )
 
