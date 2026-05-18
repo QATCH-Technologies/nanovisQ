@@ -2995,11 +2995,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
             layout = QtWidgets.QVBoxLayout(container)
             layout.setContentsMargins(14, 8, 14, 8)
-            layout.setSpacing(6)
+            layout.setSpacing(0)
 
             status_label = QtWidgets.QLabel("Starting\u2026")
             status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            status_label.setTextFormat(QtCore.Qt.RichText)
             status_label.setWordWrap(True)
+            status_label.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.MinimumExpanding,
+            )
 
             progress_bar = RoundedProgressBar()
             progress_bar.setRange(0, 100)
@@ -3008,9 +3013,6 @@ class MainWindow(QtWidgets.QMainWindow):
             progress_bar.setFixedHeight(6)
 
             layout.addWidget(status_label)
-
-            layout.addSpacing(10)
-
             layout.addWidget(progress_bar)
 
             proxy = QtWidgets.QGraphicsProxyWidget()
@@ -3178,10 +3180,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._overlay_anims = []
 
         reset_html = (
-            "<b>Calibration Processing</b><br/>"
-            "<span style='font-size:9pt; color:#333333;'>"
-            "The operation will take a few seconds to complete\u2026 please wait\u2026"
-            "</span>"
+            "<div style='margin:0; padding:0; line-height:1.2;'>"
+            "    <div><b>Calibration Processing</b></div>"
+            "    <div style='font-size:9pt; color:#333333;'>"
+            "        The operation will take a few seconds to complete\u2026<br/>Please wait\u2026"
+            "    </div>"
+            "</div>"
         )
 
         self._reset_bar_anims = []
@@ -4917,7 +4921,7 @@ class MainWindow(QtWidgets.QMainWindow):
         is_warning = False
 
         label_status = "Calibration Processing"
-        label_bar = "The operation will take a few seconds to complete\u2026 please wait\u2026"
+        label_bar = "The operation will take a few seconds to complete\u2026<br/>Please wait\u2026"
         color_err = "#333333"
         css_style = Constants._CSS_YELLOW
         overlay_bar_color = "#2E9BDA"
@@ -4936,7 +4940,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not time_temp_err and not temperature_err:
                 # Success State
                 label_status = "Calibration Success"
-                label_bar = "Baseline correction complete. Ready to measure. Press \u201cStart\u201d then apply drop."
+                label_bar = "Baseline correction complete. Ready to measure.<br/>Press \u201cStart\u201d then apply drop."
                 color_err = "#008000"
                 css_style = Constants._CSS_GREEN
                 overlay_bar_color = "#28A745"
@@ -4988,15 +4992,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
             qbar.setChunkColor(overlay_bar_color)
             new_html = (
-                f"<p style='margin-bottom: 12px; line-height: 1.2;'>"
-                f"<b>{label_status}</b><br/>"
-                f"<span style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</span>"
-                f"</p>"
+                "<div style='margin:0; padding:0; line-height:1.2;'>"
+                f"    <div><b>{label_status}</b></div>"
+                f"    <div style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</div>"
+                "</div>"
             )
 
             if lbl.text() != new_html:
-                lbl.setWordWrap(True)
-                lbl.setTextFormat(QtCore.Qt.RichText)
                 lbl.setText(new_html)
                 lbl.adjustSize()
 
