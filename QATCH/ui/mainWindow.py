@@ -1610,6 +1610,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._baseline_diss_avg = 0.0
         self._baseline_diss_noise = float("inf")
         self._last_forecaster_push_time = 0.0
+        self._last_pushed_relative_time = -float("inf")
         self._baselinedata = [
             [[0, 0], [0, 0]],
             [[0, 0], [0, 0]],
@@ -2423,6 +2424,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
             self._drop_epoch_sent = False
+            self._last_pushed_relative_time = -float("inf")
+            self._last_forecaster_push_time = 0.0
             self._run_finished = [False, False, False, False]
             self._baselinedata = [
                 [[0, 0], [0, 0]],
@@ -4995,8 +4998,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "<div style='margin:0; padding:0; line-height:1.2;'>"
                 f"    <div><b>{label_status}</b></div>"
                 f"    <div style='font-size:9pt; color:{overlay_label_color};'>"
-                "        " + label_bar.replace("\n", "<br/>") +
-                "    </div>"
+                "        " + label_bar.replace("\n", "<br/>") + "    </div>"
                 "</div>"
             )
 
