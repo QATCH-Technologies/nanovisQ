@@ -78,14 +78,12 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         container_layout.addWidget(self.content_widget)
 
         # Style the content widget
-        self.content_widget.setStyleSheet(
-            """
+        self.content_widget.setStyleSheet("""
             #content_widget {
                 background-color: #DDDDDD;
                 border-radius: 10px;
             }
-            """
-        )
+            """)
 
         # Style text color of all child widgets
         self.setStyleSheet("color: #333333;")
@@ -1279,22 +1277,18 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # Cartridge Controls --------------------------------------------------
         self.rButton_Automatic = QtWidgets.QRadioButton("Automatic")
-        self.rButton_Automatic.setToolTip(
-            """
+        self.rButton_Automatic.setToolTip("""
             <b><u>Automatic:</u></b><br/>
             - Locks before init/run<br/>
             - Useful if/when user forgets
-            """
-        )
+            """)
         self.rButton_Automatic.setChecked(True)  # default
         self.rButton_Manual = QtWidgets.QRadioButton("Manual")
-        self.rButton_Manual.setToolTip(
-            """
+        self.rButton_Manual.setToolTip("""
             <b><u>Manual:</u></b><br/>
             - You control lock position<br/>
             - Must lock before init/run
-            """
-        )
+            """)
         self.rCartridgeMode = QtWidgets.QButtonGroup()
         self.rCartridgeMode.addButton(self.rButton_Automatic, 1)
         self.rCartridgeMode.addButton(self.rButton_Manual, 0)
@@ -1844,9 +1838,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                     {
                      background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
                     }
-                 """.replace(
-            "{COLOR}", color
-        )
+                 """.replace("{COLOR}", color)
         self.run_progress_bar.setStyleSheet(styleBar)
 
     def _update_progress_value(self):
@@ -2188,6 +2180,7 @@ class Ui_Plots(object):
             self.btnExpand.setVisible(False)
             width = self.Layout_graphs.width()
             self.Layout_graphs.setSizes([int(width * 0.65), int(width * 0.35)])
+
     def retranslateUi(self, MainWindow2):
         _translate = QtCore.QCoreApplication.translate
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
@@ -2198,6 +2191,7 @@ class Ui_Plots(object):
                 "{} {} - Plots".format(Constants.app_title, Constants.app_version),
             )
         )
+
     def Ui(self, MainWindow2):
         _translate = QtCore.QCoreApplication.translate
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
@@ -2843,6 +2837,7 @@ class RunControls(QWidget):
         # Right sliding status container.
         self.status_container = QFrame()
         self.status_container.setFixedWidth(0)
+        self.status_container.setFixedHeight(self.btn.height())
         self.status_container.setStyleSheet("background-color: transparent;")
 
         self.status_layout = QVBoxLayout(self.status_container)
