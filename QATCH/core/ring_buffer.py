@@ -115,8 +115,10 @@ class RingBuffer:
 
     def get_newest(self) -> Any:
         """Retrieves the most recently added element in the buffer.
+
         Raises:
             IndexError: If the buffer is empty.
+
         Returns:
             Any: The newest value.
         """
