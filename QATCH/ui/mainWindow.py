@@ -5292,8 +5292,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
 
             try:
-                time_running = self.worker.get_t2_buffer(i)[0]
-
+                time_running = self.worker.get_t2_buffer(i)[-1]
                 if time_running == 0:
                     return "Waiting for start…"
                 if time_running < 3.0:
@@ -5301,12 +5300,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     return "Capturing data… Calibrating baselines for first 3 seconds… please wait…"
 
                 # Directional gate: drop drives RF negative and dissipation positive
-                d1_buf = self.worker.get_d1_buffer(i)
-                d2_buf = self.worker.get_d2_buffer(i)
-                if len(d1_buf) == 0 or len(d2_buf) == 0:
-                    continue
-                delta_f = d1_buf[-1] - self._baseline_freq_avg
-                delta_d = d2_buf[-1] - self._baseline_diss_avg
+                delta_f = self.worker.get_d1_buffer(0)[-1] - self._baseline_freq_avg
+                delta_d = self.worker.get_d2_buffer(0)[-1] - self._baseline_diss_avg
                 if delta_f <= (10.0 * self._baseline_freq_noise) and delta_d >= (
                     10.0 * self._baseline_diss_noise
                 ):
@@ -5751,7 +5746,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 label is rendered (used for context, though label is updated via
                 `self._text4`).
         """
-        time_running = self.worker.get_t2_buffer(i)[0]
+        time_running = self.worker.get_t2_buffer(i)[-1]
         if time_running == 0:
             return
 
@@ -8866,9 +8861,9 @@ class DryingDetection:
             self._last_message = "Dried"
             return True, self._last_message
 
-        f_arr = np.asarray(resonance_frequency)[::-1]
-        d_arr = np.asarray(dissipation)[::-1]
-        t_arr = np.asarray(relative_time)[::-1]
+        f_arr = np.asarray(resonance_frequency)
+        d_arr = np.asarray(dissipation)
+        t_arr = np.asarray(relative_time)
         if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
             return False, self._last_message
 
