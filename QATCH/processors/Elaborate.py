@@ -225,11 +225,11 @@ class ElaborateProcess(multiprocessing.Process):
             window_size = np.abs(int(window_size))
             order = np.abs(int(order))
         except ValueError as msg:
-            raise ValueError("WARNING: window size and order have to be of type int!")
+            raise ValueError("WARNING: window size and order have to be of type int!") from msg
         if window_size % 2 != 1 or window_size < 1:
-            raise TypeError("WARNING: window size must be a positive odd number!")
+            raise ValueError("WARNING: window size must be a positive odd number!")
         if window_size < order + 2:
-            raise TypeError("WARNING: window size is too small for the polynomials order!")
+            raise ValueError("WARNING: window size is too small for the polynomials order!")
         order_range = range(order + 1)
         half_window = (window_size - 1) // 2
         # precompute coefficients

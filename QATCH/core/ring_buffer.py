@@ -115,18 +115,26 @@ class RingBuffer:
 
     def get_newest(self) -> Any:
         """Retrieves the most recently added element in the buffer.
-
+        Raises:
+            IndexError: If the buffer is empty.
         Returns:
             Any: The newest value.
         """
+        if self.size == 0:
+            raise ValueError("RingBuffer is empty")
         return self.get_partial()[-1]
 
     def get_oldest(self) -> Any:
         """Retrieves the oldest valid element remaining in the buffer.
 
+        Raises:
+            IndexError: If the buffer is empty.
+
         Returns:
             Any: The oldest value.
         """
+        if self.size == 0:
+            raise ValueError("RingBuffer is empty")
         return self.get_partial()[0]
 
     def __getitem__(self, key: Union[int, slice]) -> Any:

@@ -5301,9 +5301,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     return "Capturing data… Calibrating baselines for first 3 seconds… please wait…"
 
                 # Directional gate: drop drives RF negative and dissipation positive
-                delta_f = self.worker.get_d1_buffer(0)[-1] - self._baseline_freq_avg
-                delta_d = self.worker.get_d2_buffer(0)[-1] - self._baseline_diss_avg
-
+                d1_buf = self.worker.get_d1_buffer(i)
+                d2_buf = self.worker.get_d2_buffer(i)
+                if len(d1_buf) == 0 or len(d2_buf) == 0:
+                    continue
+                delta_f = d1_buf[-1] - self._baseline_freq_avg
+                delta_d = d2_buf[-1] - self._baseline_diss_avg
                 if delta_f <= (10.0 * self._baseline_freq_noise) and delta_d >= (
                     10.0 * self._baseline_diss_noise
                 ):
@@ -5613,9 +5616,9 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         # Cache the slices to prevent redundant array operations per tick
         slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[-n:]
-        slice_resonance_frequency      = self.worker.get_d1_buffer(i)[-n:]
-        slice_time_dissipation         = self.worker.get_t2_buffer(i)[-n:]
-        slice_dissipation              = self.worker.get_d2_buffer(i)[-n:]
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)[-n:]
+        slice_time_dissipation = self.worker.get_t2_buffer(i)[-n:]
+        slice_dissipation = self.worker.get_d2_buffer(i)[-n:]
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 
@@ -5635,7 +5638,7 @@ class MainWindow(QtWidgets.QMainWindow):
             x_pad = x_range * Constants.default_plot_padding
             plot_resonance_frequency.setXRange(x_min - x_pad, x_max + x_pad)
 
-        self._apply_freq_limits(i, plot_resonance_frequency, data_resonance_frequency)
+        self._apply_freq_limits(i, plot_resonance_frequency, slice_resonance_frequency)
 
         # Dissipation yMax Limit Caching
         if not hasattr(self, "_p3_last_ymax"):
@@ -5669,7 +5672,7 @@ class MainWindow(QtWidgets.QMainWindow):
             plot_resonance_frequency (pg.PlotWidget): The PyQtGraph plot widget to be updated.
             data_resonance_frequency (np.ndarray): The raw resonance frequency data buffer.
         """
-        visible = data_resonance_frequency[: Constants._NUM_DISPLAY_POINTS]
+        visible = data_resonance_frequency
         if not visible.size:
             return
 
