@@ -11,13 +11,13 @@ VSVersionInfo(
     kids=[StringFileInfo([StringTable(
     u'040904B0',
     [StringStruct(u'FileDescription', u'QATCH nanovisQ Real-Time GUI'),
-    StringStruct(u'FileVersion', u'v2.7b3 (2026-05-18)'),
+    StringStruct(u'FileVersion', u'v2.7b3 (2026-05-19)'),
     StringStruct(u'InternalName', u'QATCH'),
     StringStruct(u'CompanyName', u'QATCH Technologies LLC'),
     StringStruct(u'LegalCopyright', u'2026 QATCH Technologies LLC'),
     StringStruct(u'OriginalFilename', u'QATCH nanovisQ.exe'),
     StringStruct(u'ProductName', u'QATCH nanovisQ Real-Time GUI'),
-    StringStruct(u'ProductVersion', u'v2.7b3 (2026-05-18)'),
+    StringStruct(u'ProductVersion', u'v2.7b3 (2026-05-19)'),
     StringStruct(u'LegalTrademarks', u'GNU GPL v3')])]),
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])]
 )
