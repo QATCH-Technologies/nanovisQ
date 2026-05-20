@@ -5293,8 +5293,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
 
             try:
-                time_running = self.worker.get_t2_buffer(i)[0]
-
+                time_running = self.worker.get_t2_buffer(i)[-1]
                 if time_running == 0:
                     return "Waiting for start…"
                 if time_running < 3.0:
@@ -5302,9 +5301,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     return "Capturing data… Calibrating baselines for first 3 seconds… please wait…"
 
                 # Directional gate: drop drives RF negative and dissipation positive
-                delta_f = self.worker.get_d1_buffer(0)[0] - self._baseline_freq_avg
-                delta_d = self.worker.get_d2_buffer(0)[0] - self._baseline_diss_avg
-
+                delta_f = self.worker.get_d1_buffer(0)[-1] - self._baseline_freq_avg
+                delta_d = self.worker.get_d2_buffer(0)[-1] - self._baseline_diss_avg
                 if delta_f <= (10.0 * self._baseline_freq_noise) and delta_d >= (
                     10.0 * self._baseline_diss_noise
                 ):
@@ -5613,10 +5611,10 @@ class MainWindow(QtWidgets.QMainWindow):
               drop detection.
         """
         # Cache the slices to prevent redundant array operations per tick
-        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[:n]
-        slice_resonance_frequency = self.worker.get_d1_buffer(i)[:n]
-        slice_time_dissipation = self.worker.get_t2_buffer(i)[:n]
-        slice_dissipation = self.worker.get_d2_buffer(i)[:n]
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[-n:]
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)[-n:]
+        slice_time_dissipation = self.worker.get_t2_buffer(i)[-n:]
+        slice_dissipation = self.worker.get_d2_buffer(i)[-n:]
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 
@@ -5636,7 +5634,7 @@ class MainWindow(QtWidgets.QMainWindow):
             x_pad = x_range * Constants.default_plot_padding
             plot_resonance_frequency.setXRange(x_min - x_pad, x_max + x_pad)
 
-        self._apply_freq_limits(i, plot_resonance_frequency, data_resonance_frequency)
+        self._apply_freq_limits(i, plot_resonance_frequency, slice_resonance_frequency)
 
         # Dissipation yMax Limit Caching
         if not hasattr(self, "_p3_last_ymax"):
@@ -5670,7 +5668,7 @@ class MainWindow(QtWidgets.QMainWindow):
             plot_resonance_frequency (pg.PlotWidget): The PyQtGraph plot widget to be updated.
             data_resonance_frequency (np.ndarray): The raw resonance frequency data buffer.
         """
-        visible = data_resonance_frequency[: Constants._NUM_DISPLAY_POINTS]
+        visible = data_resonance_frequency
         if not visible.size:
             return
 
@@ -5749,7 +5747,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 label is rendered (used for context, though label is updated via
                 `self._text4`).
         """
-        time_running = self.worker.get_t2_buffer(i)[0]
+        time_running = self.worker.get_t2_buffer(i)[-1]
         if time_running == 0:
             return
 
@@ -8864,9 +8862,9 @@ class DryingDetection:
             self._last_message = "Dried"
             return True, self._last_message
 
-        f_arr = np.asarray(resonance_frequency)[::-1]
-        d_arr = np.asarray(dissipation)[::-1]
-        t_arr = np.asarray(relative_time)[::-1]
+        f_arr = np.asarray(resonance_frequency)
+        d_arr = np.asarray(dissipation)
+        t_arr = np.asarray(relative_time)
         if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
             return False, self._last_message
 

@@ -6,13 +6,13 @@ import os
 import sys
 from logging.handlers import QueueHandler
 from time import time
-
+from queue import Empty
 import numpy as np
 
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.core.ringBuffer import RingBuffer
+from QATCH.core.ring_buffer import RingBuffer
 
 TAG = "[Elaborate]"
 
@@ -23,7 +23,18 @@ TAG = "[Elaborate]"
 
 class ElaborateProcess(multiprocessing.Process):
 
-    def __init__(self, queue_log, parser_process, queue_in, queue_out, export, overtone_name, reconstruct, driedValue, appliedValue):
+    def __init__(
+        self,
+        queue_log,
+        parser_process,
+        queue_in,
+        queue_out,
+        export,
+        overtone_name,
+        reconstruct,
+        driedValue,
+        appliedValue,
+    ):
         """
         :param parser_process: Reference to a ParserProcess instance.
         :type parser_process: ParserProcess.
@@ -70,58 +81,59 @@ class ElaborateProcess(multiprocessing.Process):
     def run(self):
         try:
             # Log.create()
-            sys.stdout = open(os.devnull, 'w')
-            sys.stderr = open(os.devnull, 'w')
+            sys.stdout = open(os.devnull, "w")
+            sys.stderr = open(os.devnull, "w")
 
             logger = logging.getLogger("QATCH.logger")
             logger.addHandler(QueueHandler(self._queueLog))
             logger.setLevel(logging.DEBUG)
 
             from multiprocessing.util import get_logger
+
             multiprocessing_logger = get_logger()
             multiprocessing_logger.handlers[0].setStream(sys.stderr)
             multiprocessing_logger.setLevel(logging.WARNING)
 
-            self._queue_out.put("READY!") # flag to Serial class
+            self._queue_out.put("READY!")  # flag to Serial class
             while not self._exit.is_set():
-                # Log.d"waiting for data!")
-                while self._queue_in.empty() and not self._exit.is_set():
-                    pass  # wait for queue to fill (or exit)
+                try:
+                    # Block until data arrives, waking every 0.1s
+                    in_q = self._queue_in.get(timeout=0.1)
+                except Empty:
+                    continue
 
-                # Log.d"got data!")
-                if not self._queue_in.empty():
-                    in_q = self._queue_in.get_nowait()
+                # decompose in-queue into elaborate params
+                k = in_q[0]
+                sequence = in_q[1]
+                timestamp = in_q[2]
+                peak_mag = in_q[3]
+                peak_freq = in_q[4]
+                left = in_q[5]
+                right = in_q[6]
+                data_temp = in_q[7]
+                baseline = in_q[8]
+                overtone = in_q[9]
 
-                    # Log.d(in_q)
-                    # decompose in-queue into elaborate params
-                    k = in_q[0]
-                    sequence = in_q[1]
-                    timestamp = in_q[2]
-                    peak_mag = in_q[3]
-                    peak_freq = in_q[4]
-                    left = in_q[5]
-                    right = in_q[6]
-                    data_temp = in_q[7]
-                    baseline = in_q[8]
-                    overtone = in_q[9]
-
-                    # call elaborate to process in-queued data
-                    self.elaborate(k,
-                                   sequence,
-                                   timestamp,
-                                   peak_mag,
-                                   peak_freq,
-                                   left,
-                                   right,
-                                   data_temp,
-                                   baseline,
-                                   overtone)
+                # call elaborate to process in-queued data
+                self.elaborate(
+                    k,
+                    sequence,
+                    timestamp,
+                    peak_mag,
+                    peak_freq,
+                    left,
+                    right,
+                    data_temp,
+                    baseline,
+                    overtone,
+                )
 
         except:
             limit = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -146,14 +158,14 @@ class ElaborateProcess(multiprocessing.Process):
 
     @staticmethod
     def gaussian(x, alpha, mu, sigma):
-        return alpha * np.exp(-np.power(x - mu, 2.) / (2 * (sigma * sigma)))
+        return alpha * np.exp(-np.power(x - mu, 2.0) / (2 * (sigma * sigma)))
 
     @staticmethod
     def build_curve(x, alpha, mu, sigma_left, sigma_right):
         return np.where(
             x < mu,
             ElaborateProcess.gaussian(x, alpha, mu, sigma_left),
-            ElaborateProcess.gaussian(x, alpha, mu, sigma_right)
+            ElaborateProcess.gaussian(x, alpha, mu, sigma_right),
         )
 
     ###########################################################################
@@ -205,35 +217,44 @@ class ElaborateProcess(multiprocessing.Process):
         from math import factorial
 
         import numpy as np
+
         try:
             window_size = np.abs(int(window_size))
             order = np.abs(int(order))
         except ValueError as msg:
-            raise ValueError(
-                "WARNING: window size and order have to be of type int!")
+            raise ValueError("WARNING: window size and order have to be of type int!") from msg
         if window_size % 2 != 1 or window_size < 1:
-            raise TypeError(
-                "WARNING: window size must be a positive odd number!")
+            raise ValueError("WARNING: window size must be a positive odd number!")
         if window_size < order + 2:
-            raise TypeError(
-                "WARNING: window size is too small for the polynomials order!")
-        order_range = range(order+1)
+            raise ValueError("WARNING: window size is too small for the polynomials order!")
+        order_range = range(order + 1)
         half_window = (window_size - 1) // 2
         # precompute coefficients
-        b = np.asmatrix([[k**i for i in order_range]
-                        for k in range(-half_window, half_window+1)])
+        b = np.asmatrix([[k**i for i in order_range] for k in range(-half_window, half_window + 1)])
         m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
         # pad the signal at the extremes with values taken from the signal itself
-        firstvals = y[0] - np.abs(y[1:half_window+1][::-1] - y[0])
-        lastvals = y[-1] + np.abs(y[-half_window-1:-1][::-1] - y[-1])
+        firstvals = y[0] - np.abs(y[1 : half_window + 1][::-1] - y[0])
+        lastvals = y[-1] + np.abs(y[-half_window - 1 : -1][::-1] - y[-1])
         y = np.concatenate((firstvals, y, lastvals))
-        return np.convolve(m[::-1], y, mode='valid')
+        return np.convolve(m[::-1], y, mode="valid")
 
     ###########################################################################
     # Processes incoming data and calculates outcoming data
     ###########################################################################
 
-    def elaborate(self, k, sequence, w_time, peak_mag, peak_freq, left, right, temperature, baseline_coeffs, overtone):
+    def elaborate(
+        self,
+        k,
+        sequence,
+        w_time,
+        peak_mag,
+        peak_freq,
+        left,
+        right,
+        temperature,
+        baseline_coeffs,
+        overtone,
+    ):
 
         if overtone in (0, 255):
             if self._startFreq == 0 and self._stopFreq == 0:
@@ -249,7 +270,7 @@ class ElaborateProcess(multiprocessing.Process):
                 self._stopFreq_down = peak_freq + Constants.max_drift_r_hz
 
         # Get last temperature from buffer if none was provided this sweep
-        if temperature == None:
+        if temperature is None:
             temperature = self._temperature_buffer.get_newest()
 
         # Pass up TEC status for temp branch
@@ -264,7 +285,8 @@ class ElaborateProcess(multiprocessing.Process):
         if self._k == 0:
             self._minFREQ = self._maxFREQ = peak_freq
             self._readFREQ = np.arange(
-                self._minFREQ, self._maxFREQ + Constants.argument_default_samples - 1, 1)
+                self._minFREQ, self._maxFREQ + Constants.argument_default_samples - 1, 1
+            )
 
         peak_dB = self._convertADCtoMagnitude(peak_mag)
         dissipation = 10.0 ** (-peak_dB / 20)
@@ -303,15 +325,15 @@ class ElaborateProcess(multiprocessing.Process):
                     self._maxFREQ_down = stop
                 _min = self._minFREQ_down
                 _max = self._maxFREQ_down
-            self._readFREQ = np.linspace(
-                _min, _max, Constants.argument_default_samples - 1)
-            baseline_offset = min(self._convertMagnitudeToADC(
-                np.polyval(baseline_coeffs, peak_freq)), peak_mag)
+            self._readFREQ = np.linspace(_min, _max, Constants.argument_default_samples - 1)
+            baseline_offset = min(
+                self._convertMagnitudeToADC(np.polyval(baseline_coeffs, peak_freq)), peak_mag
+            )
             mag_result_fit = ElaborateProcess.build_curve(
-                self._readFREQ, peak_mag - baseline_offset, peak_freq, left, right)
+                self._readFREQ, peak_mag - baseline_offset, peak_freq, left, right
+            )
             self._readFREQ[np.argmax(mag_result_fit)] = peak_freq
-            mag_result_fit[np.argmax(mag_result_fit)
-                           ] = peak_mag - baseline_offset
+            mag_result_fit[np.argmax(mag_result_fit)] = peak_mag - baseline_offset
             mag_result_fit = self._convertADCtoMagnitude(mag_result_fit)
             mag_result_fit -= self._convertADCtoMagnitude(0)  # zero offset
             filtered_mag = mag_result_fit
@@ -343,32 +365,36 @@ class ElaborateProcess(multiprocessing.Process):
 
         # add data to ElaborateProcess out queue (back to SerialProcess) for downstream LoggerProcess
         self._queue_out.put(
-            [w_time,
-             temperature,
-             dissipation,
-             peak_freq,
-             left,
-             right,
-             self._err1,
-             self._err2,
-             self._err3,
-             self._err4]
+            [
+                w_time,
+                temperature,
+                dissipation,
+                peak_freq,
+                left,
+                right,
+                self._err1,
+                self._err2,
+                self._err3,
+                self._err4,
+            ]
         )
 
-# TODO AJR: Consider moving file writing operations to a separate thread
+        # TODO AJR: Consider moving file writing operations to a separate thread
         if self._export:
             # Storing acquired sweeps
             filename = "{}_{}_{}".format(
-                Constants.csv_sweeps_filename, self._overtone_name, self._count)
-            path = "{}_{}".format(
-                Constants.csv_sweeps_export_path, self._overtone_name)
+                Constants.csv_sweeps_filename, self._overtone_name, self._count
+            )
+            path = "{}_{}".format(Constants.csv_sweeps_export_path, self._overtone_name)
             path = FileStorage.DEV_populate_path(path, 0)
             if not phase is None:
                 FileStorage.TXT_sweeps_save(
-                    0, filename, path, self._readFREQ, filtered_mag, phase, appendNameToPath=False)
+                    0, filename, path, self._readFREQ, filtered_mag, phase, appendNameToPath=False
+                )
             else:
                 FileStorage.TXT_sweeps_save(
-                    0, filename, path, self._readFREQ, filtered_mag, appendNameToPath=False)
+                    0, filename, path, self._readFREQ, filtered_mag, appendNameToPath=False
+                )
             self._count += 1
 
         # # Read the shared values
@@ -390,40 +416,98 @@ class ElaborateProcess(multiprocessing.Process):
                     self._dissipation_buffer.append(dissipation)
             self._temperature_buffer.append(temperature)
 
-            filenameCSV = "{}_{}".format(
-                Constants.csv_filename, self._overtone_name.split(' ')[0])
-            write_interval = 1000 if w_time < Constants.downsample_after else Constants.downsample_file_count
+            filenameCSV = "{}_{}".format(Constants.csv_filename, self._overtone_name.split(" ")[0])
+            write_interval = (
+                1000 if w_time < Constants.downsample_after else Constants.downsample_file_count
+            )
 
-            FileStorage.CSVsave(0, filenameCSV, Constants.csv_export_path, w_time, temperature,
-                                peak_mag, peak_freq, dissipation, t_amb, (k % write_interval == 0))
+            FileStorage.CSVsave(
+                0,
+                filenameCSV,
+                Constants.csv_export_path,
+                w_time,
+                temperature,
+                peak_mag,
+                peak_freq,
+                dissipation,
+                t_amb,
+                (k % write_interval == 0),
+            )
 
         elif overtone == 1:
-            write_interval = 1000 if w_time < Constants.downsample_after else Constants.downsample_file_count * \
-                Constants.base_overtone_freq
-            FileStorage.CSVsave(0, "overtone_upper", Constants.csv_export_path, w_time, temperature,
-                                peak_mag, peak_freq, dissipation, t_amb, (k % write_interval < Constants.base_overtone_freq))
+            write_interval = (
+                1000
+                if w_time < Constants.downsample_after
+                else Constants.downsample_file_count * Constants.base_overtone_freq
+            )
+            FileStorage.CSVsave(
+                0,
+                "overtone_upper",
+                Constants.csv_export_path,
+                w_time,
+                temperature,
+                peak_mag,
+                peak_freq,
+                dissipation,
+                t_amb,
+                (k % write_interval < Constants.base_overtone_freq),
+            )
             return
         elif overtone == 2:
-            write_interval = 1000 if w_time < Constants.downsample_after else Constants.downsample_file_count * \
-                Constants.base_overtone_freq
-            FileStorage.CSVsave(0, "overtone_lower", Constants.csv_export_path, w_time, temperature,
-                                peak_mag, peak_freq, dissipation, t_amb, (k % write_interval < Constants.base_overtone_freq))
+            write_interval = (
+                1000
+                if w_time < Constants.downsample_after
+                else Constants.downsample_file_count * Constants.base_overtone_freq
+            )
+            FileStorage.CSVsave(
+                0,
+                "overtone_lower",
+                Constants.csv_export_path,
+                w_time,
+                temperature,
+                peak_mag,
+                peak_freq,
+                dissipation,
+                t_amb,
+                (k % write_interval < Constants.base_overtone_freq),
+            )
             return
 
-        # update buffers at most once every 50ms (20/s)
-        if self._k >= self._environment and (time() - self._last_parser_add) > 0.050:
-            self._last_parser_add = time()  # update
+        # update buffers at most once every 50ms
+        # Decide whether this sweep is eligible to refresh the plots.
+        #   - Before the downsample threshold: pace to ~20 Hz (one update / 50 ms).
+        #   - After the threshold: decimate by sample count, NOT by the 50 ms window.
+        # The old code reset the 50 ms throttle BEFORE the `k % downsample_plot_count`
+        # check, so past 90 s a frame only emitted when a throttle-boundary sample
+        # also happened to land on a count multiple. Those two near-independent gates
+        # rarely coincided, starving the plot for seconds at a time.
+        if w_time > Constants.downsample_after:
+            plot_eligible = k % Constants.downsample_plot_count == 0
+        else:
+            plot_eligible = (time() - self._last_parser_add) > 0.050
+
+        if self._k >= self._environment and plot_eligible:
+            self._last_parser_add = time()  # reset only when we actually emit
             # FREQUENCY
-            vec_app1 = self.savitzky_golay(self._frequency_buffer.get_partial(
-            ), window_size=Constants.SG_window_environment, order=Constants.SG_order_environment)
+            vec_app1 = self.savitzky_golay(
+                self._frequency_buffer.get_partial(),
+                window_size=Constants.SG_window_environment,
+                order=Constants.SG_order_environment,
+            )
             freq_range_mean = np.average(vec_app1)
             # DISSIPATION
-            vec_app1d = self.savitzky_golay(self._dissipation_buffer.get_partial(
-            ), window_size=Constants.SG_window_environment, order=Constants.SG_order_environment)
+            vec_app1d = self.savitzky_golay(
+                self._dissipation_buffer.get_partial(),
+                window_size=Constants.SG_window_environment,
+                order=Constants.SG_order_environment,
+            )
             diss_mean = np.average(vec_app1d)
             # TEMPERATURE
-            vec_app1t = self.savitzky_golay(self._temperature_buffer.get_partial(
-            ), window_size=Constants.SG_window_environment, order=Constants.SG_order_environment)
+            vec_app1t = self.savitzky_golay(
+                self._temperature_buffer.get_partial(),
+                window_size=Constants.SG_window_environment,
+                order=Constants.SG_order_environment,
+            )
             temperature_mean = np.average(vec_app1t)
 
             # ADDS new frequency domain data (mag and ph) to internal queues
@@ -444,8 +528,6 @@ class ElaborateProcess(multiprocessing.Process):
             # throw away first few samples to allow firmware to settle on peak
             settle_samples = Constants.initial_settle_samples
             if not (self._err1 and self._err2) and k > settle_samples:
-                if w_time > Constants.downsample_after and k % Constants.downsample_plot_count > 0:
-                    return  # do not show this sample on plot
                 # Adds new time domain data (resonance, dissipation, temp) to internal queues
                 # w_time - time in seconds
                 self._parser.add3([0, w_time, freq_range_mean])
