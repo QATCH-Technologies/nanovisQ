@@ -6,7 +6,7 @@ import os
 import sys
 from logging.handlers import QueueHandler
 from time import time
-
+from queue import Empty
 import numpy as np
 
 from QATCH.common.fileStorage import FileStorage
@@ -96,40 +96,37 @@ class ElaborateProcess(multiprocessing.Process):
 
             self._queue_out.put("READY!")  # flag to Serial class
             while not self._exit.is_set():
-                # Log.d"waiting for data!")
-                while self._queue_in.empty() and not self._exit.is_set():
-                    pass  # wait for queue to fill (or exit)
+                try:
+                    # Block until data arrives, waking every 0.1s
+                    in_q = self._queue_in.get(timeout=0.1)
+                except Empty:
+                    continue
 
-                # Log.d"got data!")
-                if not self._queue_in.empty():
-                    in_q = self._queue_in.get_nowait()
+                # decompose in-queue into elaborate params
+                k = in_q[0]
+                sequence = in_q[1]
+                timestamp = in_q[2]
+                peak_mag = in_q[3]
+                peak_freq = in_q[4]
+                left = in_q[5]
+                right = in_q[6]
+                data_temp = in_q[7]
+                baseline = in_q[8]
+                overtone = in_q[9]
 
-                    # Log.d(in_q)
-                    # decompose in-queue into elaborate params
-                    k = in_q[0]
-                    sequence = in_q[1]
-                    timestamp = in_q[2]
-                    peak_mag = in_q[3]
-                    peak_freq = in_q[4]
-                    left = in_q[5]
-                    right = in_q[6]
-                    data_temp = in_q[7]
-                    baseline = in_q[8]
-                    overtone = in_q[9]
-
-                    # call elaborate to process in-queued data
-                    self.elaborate(
-                        k,
-                        sequence,
-                        timestamp,
-                        peak_mag,
-                        peak_freq,
-                        left,
-                        right,
-                        data_temp,
-                        baseline,
-                        overtone,
-                    )
+                # call elaborate to process in-queued data
+                self.elaborate(
+                    k,
+                    sequence,
+                    timestamp,
+                    peak_mag,
+                    peak_freq,
+                    left,
+                    right,
+                    data_temp,
+                    baseline,
+                    overtone,
+                )
 
         except:
             limit = None
@@ -273,7 +270,7 @@ class ElaborateProcess(multiprocessing.Process):
                 self._stopFreq_down = peak_freq + Constants.max_drift_r_hz
 
         # Get last temperature from buffer if none was provided this sweep
-        if temperature == None:
+        if temperature is None:
             temperature = self._temperature_buffer.get_newest()
 
         # Pass up TEC status for temp branch
@@ -476,9 +473,21 @@ class ElaborateProcess(multiprocessing.Process):
             )
             return
 
-        # update buffers at most once every 50ms (20/s)
-        if self._k >= self._environment and (time() - self._last_parser_add) > 0.050:
-            self._last_parser_add = time()  # update
+        # update buffers at most once every 50ms
+        # Decide whether this sweep is eligible to refresh the plots.
+        #   - Before the downsample threshold: pace to ~20 Hz (one update / 50 ms).
+        #   - After the threshold: decimate by sample count, NOT by the 50 ms window.
+        # The old code reset the 50 ms throttle BEFORE the `k % downsample_plot_count`
+        # check, so past 90 s a frame only emitted when a throttle-boundary sample
+        # also happened to land on a count multiple. Those two near-independent gates
+        # rarely coincided, starving the plot for seconds at a time.
+        if w_time > Constants.downsample_after:
+            plot_eligible = k % Constants.downsample_plot_count == 0
+        else:
+            plot_eligible = (time() - self._last_parser_add) > 0.050
+
+        if self._k >= self._environment and plot_eligible:
+            self._last_parser_add = time()  # reset only when we actually emit
             # FREQUENCY
             vec_app1 = self.savitzky_golay(
                 self._frequency_buffer.get_partial(),
@@ -519,8 +528,6 @@ class ElaborateProcess(multiprocessing.Process):
             # throw away first few samples to allow firmware to settle on peak
             settle_samples = Constants.initial_settle_samples
             if not (self._err1 and self._err2) and k > settle_samples:
-                if w_time > Constants.downsample_after and k % Constants.downsample_plot_count > 0:
-                    return  # do not show this sample on plot
                 # Adds new time domain data (resonance, dissipation, temp) to internal queues
                 # w_time - time in seconds
                 self._parser.add3([0, w_time, freq_range_mean])
