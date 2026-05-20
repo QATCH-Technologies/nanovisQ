@@ -5301,8 +5301,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     return "Capturing data… Calibrating baselines for first 3 seconds… please wait…"
 
                 # Directional gate: drop drives RF negative and dissipation positive
-                delta_f = self.worker.get_d1_buffer(0)[0] - self._baseline_freq_avg
-                delta_d = self.worker.get_d2_buffer(0)[0] - self._baseline_diss_avg
+                delta_f = self.worker.get_d1_buffer(0)[-1] - self._baseline_freq_avg
+                delta_d = self.worker.get_d2_buffer(0)[-1] - self._baseline_diss_avg
 
                 if delta_f <= (10.0 * self._baseline_freq_noise) and delta_d >= (
                     10.0 * self._baseline_diss_noise
@@ -5612,10 +5612,10 @@ class MainWindow(QtWidgets.QMainWindow):
               drop detection.
         """
         # Cache the slices to prevent redundant array operations per tick
-        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[:n]
-        slice_resonance_frequency = self.worker.get_d1_buffer(i)[:n]
-        slice_time_dissipation = self.worker.get_t2_buffer(i)[:n]
-        slice_dissipation = self.worker.get_d2_buffer(i)[:n]
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[-n:]
+        slice_resonance_frequency      = self.worker.get_d1_buffer(i)[-n:]
+        slice_time_dissipation         = self.worker.get_t2_buffer(i)[-n:]
+        slice_dissipation              = self.worker.get_d2_buffer(i)[-n:]
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 

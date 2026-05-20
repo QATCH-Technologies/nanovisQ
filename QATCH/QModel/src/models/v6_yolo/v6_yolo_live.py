@@ -295,7 +295,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             new_data_filtered = new_data[new_data["Relative_time"] > self._last_max_time]
 
             if new_data_filtered.empty and not new_data.empty:
-                Log.w(
+                Log.d(
                     self.TAG,
                     f"Received new data chunk with max Relative_time "
                     f"{new_data['Relative_time'].max():.2f} s, which is not greater than "
@@ -484,7 +484,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         if elapsed_s >= threshold_s:
             threshold_min = threshold_s / 60.0
             elapsed_min = elapsed_s / 60.0
-            Log.w(
+            Log.d(
                 self.TAG,
                 f"Extended fill detected: channel {channel} at {elapsed_s:.1f} s "
                 f"since Initial Fill (threshold {threshold_min:.0f} min, "
