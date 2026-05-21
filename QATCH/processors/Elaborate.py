@@ -59,7 +59,9 @@ class ElaborateProcess(multiprocessing.Process):
 
         self._time_start = time()
         self._last_parser_add = time()
-        self._environment = 50  # Constants.avg_out
+        self._last_emit_time = time()
+        self._emit_count = 0
+        self._environment = Constants.avg_out
         self._frequency_buffer = RingBuffer(self._environment)
         self._dissipation_buffer = RingBuffer(self._environment)
         self._temperature_buffer = RingBuffer(self._environment)
@@ -473,21 +475,20 @@ class ElaborateProcess(multiprocessing.Process):
             )
             return
 
-        # update buffers at most once every 50ms
-        # Decide whether this sweep is eligible to refresh the plots.
-        #   - Before the downsample threshold: pace to ~20 Hz (one update / 50 ms).
-        #   - After the threshold: decimate by sample count, NOT by the 50 ms window.
-        # The old code reset the 50 ms throttle BEFORE the `k % downsample_plot_count`
-        # check, so past 90 s a frame only emitted when a throttle-boundary sample
-        # also happened to land on a count multiple. Those two near-independent gates
-        # rarely coincided, starving the plot for seconds at a time.
-        if w_time > Constants.downsample_after:
-            plot_eligible = k % Constants.downsample_plot_count == 0
-        else:
-            plot_eligible = (time() - self._last_parser_add) > 0.050
+        plot_eligible = (time() - self._last_parser_add) > 0.050
 
         if self._k >= self._environment and plot_eligible:
             self._last_parser_add = time()  # reset only when we actually emit
+            now = time()
+            interval = now - self._last_emit_time
+            self._last_emit_time = now
+            self._emit_count += 1
+            if self._emit_count % 20 == 0:
+                rate = 1.0 / interval if interval > 0 else float("inf")
+                Log.d(
+                    TAG,
+                    f"count={self._emit_count}  interval={interval*1000:.1f}ms  inst_rate={rate:.2f}Hz  w_time={w_time:.1f}s  k={k}",
+                )
             # FREQUENCY
             vec_app1 = self.savitzky_golay(
                 self._frequency_buffer.get_partial(),
