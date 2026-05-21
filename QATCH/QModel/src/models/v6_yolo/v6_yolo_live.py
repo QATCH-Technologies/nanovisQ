@@ -16,6 +16,7 @@ Version:
     2.1.4
 """
 
+import ctypes
 import logging
 import multiprocessing
 import os
@@ -236,7 +237,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
 
         elapsed_s: float = max(self._last_max_time, 0.0) - ch0_time
         if elapsed_s >= self.INITIAL_FILL_TIMEOUT_S:
-            Log.w(
+            Log.d(
                 self.TAG,
                 f"Initial Fill (ch0) confirmed at {ch0_time:.1f} s but no 1-Channel "
                 f"state detected after {elapsed_s:.1f} s "
@@ -576,11 +577,11 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 rolling data buffer. Defaults to None (unbounded).
         """
         Log.d(self.TAG, "Starting multiprocess fill status")
-        self._queueLog: multiprocessing.Queue = queue_log
-        multiprocessing.Process.__init__(self)
 
         self._exit = multiprocessing.Event()
         self._done = multiprocessing.Event()
+        multiprocessing.Process.__init__(self, name="QATCH nanovisQ-LiveFillDetection")
+        self._queueLog: multiprocessing.Queue = queue_log
         self._queue_in: multiprocessing.Queue = queue_in
         self._queue_out: multiprocessing.Queue = queue_out
 
@@ -622,6 +623,13 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             Exception: Any unhandled exception is caught, logged line-by-line via
                 ``Log.e``, and then the ``finally`` block cleans up.
         """
+        try:
+            ctypes.windll.kernel32.SetThreadDescription(
+                ctypes.windll.kernel32.GetCurrentThread(), "QATCH nanovisQ-LiveFillDetection"
+            )
+        except Exception:
+            pass
+
         devnull = open(os.devnull, "w")
         mp_devnull = None
         try:
@@ -714,7 +722,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             bool: ``True`` if the process has not yet set its completion event,
             ``False`` once ``run()`` has exited (successfully or otherwise).
         """
-        return not self._done.is_set()
+        return self._done.is_set()
 
     def stop(self) -> None:
         """Signals the process to terminate gracefully.

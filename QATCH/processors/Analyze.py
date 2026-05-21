@@ -3678,32 +3678,32 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ws = 10
         return [ws, clipped]
 
-    def _QModel_create_new_progress_dialog(self):
-        if hasattr(self, "progressBarDiag"):
-            self.progressBarDiag.close()
-            del self.progressBarDiag
-
-        # Special modal progress dialog for auto-fitting points
-        self.progressBarDiag = QtWidgets.QProgressDialog(
-            "Auto-fitting points...", "Cancel", 0, 0, self
-        )
-        # Disable auto-reset and auto-close to retain `wasCanceled()` state
-        self.progressBarDiag.setAutoReset(False)
-        self.progressBarDiag.setAutoClose(False)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
-        self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
-        self.progressBarDiag.setWindowTitle("Busy")
-        self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
-        self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
-        self.progressBarDiag.setFixedSize(
-            int(self.progressBarDiag.width() * 1.5),
-            int(self.progressBarDiag.height() * 1.1),
-        )
-        self.progressBarDiag.setModal(True)
-        self.progressBarDiag.show()
-
-        cancelButton = self.progressBarDiag.findChild(QtWidgets.QPushButton)
-        cancelButton.setEnabled(False)
+    # def _QModel_create_new_progress_dialog(self):
+    #     if hasattr(self, "progressBarDiag"):
+    #         self.progressBarDiag.close()
+    #         del self.progressBarDiag
+    #
+    #     # Special modal progress dialog for auto-fitting points
+    #     self.progressBarDiag = QtWidgets.QProgressDialog(
+    #         "Auto-fitting points...", "Cancel", 0, 0, self
+    #     )
+    #     # Disable auto-reset and auto-close to retain `wasCanceled()` state
+    #     self.progressBarDiag.setAutoReset(False)
+    #     self.progressBarDiag.setAutoClose(False)
+    #     icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
+    #     self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
+    #     self.progressBarDiag.setWindowTitle("Busy")
+    #     self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
+    #     self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+    #     self.progressBarDiag.setFixedSize(
+    #         int(self.progressBarDiag.width() * 1.5),
+    #         int(self.progressBarDiag.height() * 1.1),
+    #     )
+    #     self.progressBarDiag.setModal(True)
+    #     self.progressBarDiag.show()
+    #
+    #     cancelButton = self.progressBarDiag.findChild(QtWidgets.QPushButton)
+    #     cancelButton.setEnabled(False)
 
     def _QModel_v4_progress_update(self, pct: int, status: Optional[str]):
         if getattr(self, "_qmodel_overlay", None) is None:
@@ -5459,9 +5459,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             predict_result, detected_channels = predictor.predict(
                                 file_buffer=fh, progress_signal=self.v6_predict_progress
                             )
-                            QtCore.QTimer.singleShot(
-                                1000, self.progressBarDiag.hide
-                            )  # hide after use
+                            # QtCore.QTimer.singleShot(
+                            #     1000, self.progressBarDiag.hide
+                            # )  # hide after use
                             # Analysis only updates num_channels if not present.
                             if not self.parent.num_channels:
                                 self.parent.num_channels = detected_channels

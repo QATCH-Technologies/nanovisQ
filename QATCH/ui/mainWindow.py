@@ -4,6 +4,8 @@ mainWindow.py
 The primary container for the QATCH Q-1 application, responsible for initializing and managing the main user interface.
 This module defines the main window of the application, which includes the menu bar, user profile management,
 and the central widget that contains the various UI components. It also handles user interactions such as toggling views,
+This module defines the main window of the application, which includes the menu bar, user profile management,
+and the central widget that contains the various UI components. It also handles user interactions such as toggling views,
 managing user profiles, and responding to menu actions, etc.
 
 Author(s):
@@ -199,103 +201,6 @@ class RoundedProgressBar(QtWidgets.QWidget):
         painter.end()
 
 
-class _PlotDimAnimator(QtCore.QObject):
-    """Fades a QGraphicsItem's opacity using a cubic ease-in-out transition.
-
-    This animator provides a smooth visual ramp for dimming or undimming plot
-    elements, preventing abrupt visual jarring during state changes. It
-    operates at approximately 60 FPS using a ``QTimer``.
-
-    Attributes:
-        DEFAULT_DURATION_MS (int): Default fade time (300ms).
-        FRAME_INTERVAL_MS (int): Timer interval for ~60 FPS updates (16ms).
-    """
-
-    DEFAULT_DURATION_MS = 300
-    FRAME_INTERVAL_MS = 16
-
-    def __init__(self, item: QtWidgets.QGraphicsItem, parent: QtCore.QObject = None):
-        """Initializes the animator with a target item and timer.
-
-        Args:
-            item: The ``QGraphicsItem`` to animate (e.g., a ``QGraphicsRectItem``).
-            parent: The Qt parent object for lifecycle management.
-        """
-        super().__init__(parent)
-        self._item = item
-        self._timer = QtCore.QTimer(self)
-        self._timer.setInterval(self.FRAME_INTERVAL_MS)
-        self._timer.timeout.connect(self._step)
-        self._start_opacity = 0.0
-        self._target_opacity = 0.0
-        self._duration_ms = self.DEFAULT_DURATION_MS
-        self._elapsed_ms = 0
-
-    def fade_to(self, target_opacity: float, duration_ms: int = None) -> None:
-        """Starts or redirects a fade toward a new opacity level.
-
-        This method is re-entrant; if a fade is currently in progress, it will
-        smoothly transition from the current actual opacity toward the new
-        target.
-
-        Args:
-            target_opacity: The desired final opacity (0.0 to 1.0).
-            duration_ms: The length of the animation in milliseconds.
-                If None, defaults to ``DEFAULT_DURATION_MS``.
-        """
-        if duration_ms is None:
-            duration_ms = self.DEFAULT_DURATION_MS
-        try:
-            self._start_opacity = float(self._item.opacity())
-        except (RuntimeError, AttributeError):
-            self._start_opacity = float(target_opacity)
-        self._target_opacity = float(target_opacity)
-        self._duration_ms = max(0, int(duration_ms))
-        self._elapsed_ms = 0
-
-        # Snap to target if duration is zero or delta is imperceptible.
-        if self._duration_ms == 0 or abs(self._target_opacity - self._start_opacity) < 1e-4:
-            try:
-                self._item.setOpacity(self._target_opacity)
-            except RuntimeError:
-                pass
-            self._timer.stop()
-            return
-
-        self._timer.start()
-
-    def stop(self) -> None:
-        """Halts the animation immediately.
-
-        The item's opacity will remain at whatever value it held the moment
-        this was called.
-        """
-        self._timer.stop()
-
-    def _step(self) -> None:
-        """Calculates and applies the next opacity step based on elapsed time.
-
-        Side Effects:
-            Updates the opacity of ``self._item``. Stops the timer if the
-            duration is reached or if the item is no longer accessible.
-        """
-        self._elapsed_ms += self._timer.interval()
-        t = min(1.0, self._elapsed_ms / float(self._duration_ms))
-        # Ease-in-out cubic.
-        if t < 0.5:
-            eased = 4.0 * t * t * t
-        else:
-            eased = 1.0 - pow(-2.0 * t + 2.0, 3) / 2.0
-        opacity = self._start_opacity + (self._target_opacity - self._start_opacity) * eased
-        try:
-            self._item.setOpacity(opacity)
-        except RuntimeError:
-            self._timer.stop()
-            return
-        if t >= 1.0:
-            self._timer.stop()
-
-
 class MainWindow(QtWidgets.QMainWindow):
     """
     MainWindow is the primary interface class for the application, extending QMainWindow to manage the overall
@@ -428,7 +333,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
         self._drop_epoch_sent = False
-        self._run_finished = [False, False, False, False]
+        self._baseline_freq_avg = 0.0
+        self._baseline_freq_noise = float("inf")
+        self._baseline_diss_avg = 0.0
+        self._baseline_diss_noise = float("inf")
+        self._last_forecaster_push_time = 0.0
+        self._last_pushed_relative_time = -float("inf")
         self._baselinedata = [
             [[0, 0], [0, 0]],
             [[0, 0], [0, 0]],
@@ -585,7 +495,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._active_marker_plot: pg.PlotItem | None = None
         self._active_marker_dict: dict | None = None
         self._marker_label_timer: QtCore.QTimer | None = None
-        self._active_marker_line:  pg.PlotCurveItem | None = None   # leader line
+        self._active_marker_line: pg.PlotCurveItem | None = None  # leader line
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
 
@@ -1259,6 +1169,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
             self._drop_epoch_sent = False
+            self._last_pushed_relative_time = -float("inf")
+            self._last_forecaster_push_time = 0.0
             for ch_markers in self._fill_event_markers:
                 for md in ch_markers:
                     for p, key in ((md.get("p2"), "m_freq"), (md.get("p3"), "m_diss")):
@@ -1844,11 +1756,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
             layout = QtWidgets.QVBoxLayout(container)
             layout.setContentsMargins(14, 8, 14, 8)
-            layout.setSpacing(6)
+            layout.setSpacing(0)
 
             status_label = QtWidgets.QLabel("Starting\u2026")
             status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            status_label.setTextFormat(QtCore.Qt.RichText)
             status_label.setWordWrap(True)
+            status_label.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.MinimumExpanding,
+            )
 
             progress_bar = RoundedProgressBar()
             progress_bar.setRange(0, 100)
@@ -2027,10 +1944,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._overlay_anims = []
 
         reset_html = (
-            "<b>Calibration Processing</b><br/>"
-            "<span style='font-size:9pt; color:#333333;'>"
-            "The operation will take a few seconds to complete\u2026 please wait\u2026"
-            "</span>"
+            "<div style='margin:0; padding:0; line-height:1.2;'>"
+            "    <div><b>Calibration Processing</b></div>"
+            "    <div style='font-size:9pt; color:#333333;'>"
+            "        The operation will take a few seconds to complete\u2026 Please wait\u2026"
+            "    </div>"
+            "</div>"
         )
 
         self._reset_bar_anims = []
@@ -2472,22 +2391,26 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.e("Attempting to restore a working database file...")
                 i = 0
                 while True:
-                    try:
-                        i += 1
-                        os.rename(
-                            machine_database_path, machine_database_path.replace(".db", f"-{i}.db")
-                        )
-                        break
-                    except FileExistsError:
-                        pass
-                    except PermissionError as pe:
-                        raise pe
+                    i += 1
+                    copy_to = machine_database_path.replace(".db", f"-{i}.db")
+                    if os.path.exists(copy_to):
+                        continue
+                    shutil.copy(machine_database_path, copy_to)
+                    break
+
+            except Exception as e:
+                Log.e("FAIL: Cannot create a backup copy of the DB for restoration.")
+                Log.e("Error Details:", e)
+
+            try:
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.e("Restoration successful! Application database replaced with bundled copy.")
-            except Exception:
+
+            except Exception as e:
                 Log.e(
                     "FAIL: The application database is presumed to be corrupt and could not be restored."
                 )
+                Log.e("Error Details:", e)
 
     ###########################################################################
     # Configures the tutorials interface for user interaction
@@ -3897,7 +3820,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for i in range(num_devices):
             self.PlotsWin.ui2.left_pane.set_device_state(i, "init")
         label_status = "Calibration Processing"
-        label_bar = "The operation will take a few seconds to complete\u2026 please wait\u2026"
+        label_bar = "The operation will take a few seconds to complete\u2026 Please wait\u2026"
         color_err = "#333333"
         css_style = Constants._CSS_YELLOW
         overlay_bar_color = "#2E9BDA"
@@ -3971,15 +3894,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
             qbar.setChunkColor(overlay_bar_color)
             new_html = (
-                f"<p style='margin-bottom: 12px; line-height: 1.2;'>"
-                f"<b>{label_status}</b><br/>"
-                f"<span style='font-size:9pt; color:{overlay_label_color};'>{label_bar}</span>"
-                f"</p>"
+                "<div style='margin:0; padding:0; line-height:1.2;'>"
+                f"    <div><b>{label_status}</b></div>"
+                f"    <div style='font-size:9pt; color:{overlay_label_color};'>"
+                f"        {label_bar}"
+                "    </div>"
+                "</div>"
             )
 
             if lbl.text() != new_html:
-                lbl.setWordWrap(True)
-                lbl.setTextFormat(QtCore.Qt.RichText)
                 lbl.setText(new_html)
                 lbl.adjustSize()
 
@@ -4380,12 +4303,12 @@ class MainWindow(QtWidgets.QMainWindow):
             the method truncates the final third of the buffer (via `[:-idx]`),
             focusing only on the earliest samples collected.
         """
-        v1 = self.worker.get_d1_buffer(0)
+        v1 = self.worker.get_d1_buffer(i)
         idx = len(v1) // 3
         if idx <= 0:
             return
         s1 = v1[:-idx]
-        s2 = self.worker.get_d2_buffer(0)[:-idx]
+        s2 = self.worker.get_d2_buffer(i)[:-idx]
 
         self._baseline_freq_avg = np.average(s1)
         self._baseline_freq_noise = np.ptp(s1)
@@ -4932,16 +4855,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         def _make_marker(parent, color, y):
             item = pg.ScatterPlotItem(
-                x=[t], y=[y], symbol="o", size=0,
+                x=[t],
+                y=[y],
+                symbol="o",
+                size=0,
                 pen=pg.mkPen(color=color, width=2),
                 brush=pg.mkBrush(None),
             )
             item.setZValue(50)
             item.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
-            item.setAcceptHoverEvents(True)                      
-            item.setCursor(QtCore.Qt.PointingHandCursor)           
+            item.setAcceptHoverEvents(True)
+            item.setCursor(QtCore.Qt.PointingHandCursor)
             parent.addItem(item)
             return item
+
         def _make_hover_handler(marker, color):
             """Returns a slot that fills/unfills the ring on hover.
 
@@ -4949,11 +4876,14 @@ class MainWindow(QtWidgets.QMainWindow):
             sigHovered signatures by scanning args for the first list.
             """
             hover_brush = pg.mkBrush(QtGui.QColor(color.red(), color.green(), color.blue(), 160))
-            open_brush  = pg.mkBrush(None)
+            open_brush = pg.mkBrush(None)
+
             def _handler(*args, m=marker, hb=hover_brush, ob=open_brush):
                 pts = next((a for a in args if isinstance(a, list)), [])
                 m.setBrush(hb if pts else ob)
+
             return _handler
+
         def _make_ripple(parent, color, y):
             item = pg.ScatterPlotItem(
                 x=[t],
@@ -5104,11 +5034,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._hide_marker_label()
         else:
             self._show_marker_label(marker_dict)
+
     def _hide_marker_label(self) -> None:
         """Removes the active glassmorphic tooltip and its leader line."""
-        p2   = self._active_marker_plot
+        p2 = self._active_marker_plot
         line = self._active_marker_line
-        lbl  = self._active_marker_label
+        lbl = self._active_marker_label
 
         # Remove leader line first so it never outlives its label
         if line is not None and p2 is not None:
@@ -5131,10 +5062,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
 
         self._active_marker_label = None
-        self._active_marker_line  = None 
-        self._active_marker_plot  = None
-        self._active_marker_dict  = None
-        self._marker_label_timer  = None
+        self._active_marker_line = None
+        self._active_marker_plot = None
+        self._active_marker_dict = None
+        self._marker_label_timer = None
+
     def _show_marker_label(self, marker_dict: dict) -> None:
         """Displays a glassmorphic tooltip with an animated leader line.
 
@@ -5148,9 +5080,9 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         self._hide_marker_label()
 
-        p2         = marker_dict.get("p2")
-        t          = marker_dict.get("t", 0.0)
-        y_freq     = marker_dict.get("y_freq", 0.0)
+        p2 = marker_dict.get("p2")
+        t = marker_dict.get("t", 0.0)
+        y_freq = marker_dict.get("y_freq", 0.0)
         label_text = marker_dict.get("label_text", "")
 
         if p2 is None:
@@ -5158,20 +5090,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Y offset: float the label 6 % of the visible range above the dot
         try:
-            vr       = p2.getViewBox().viewRange()
+            vr = p2.getViewBox().viewRange()
             y_offset = (vr[1][1] - vr[1][0]) * 0.06
         except Exception:
             y_offset = 0.0
 
         # Top edge of the dot in data-space so the line stops there, not at centre
-        FINAL_SIZE = 10   # must match _place_fill_event_marker
+        FINAL_SIZE = 10  # must match _place_fill_event_marker
         try:
             data_per_px_y = p2.getViewBox().viewPixelSize()[1]
-            dot_edge_y    = y_freq + (FINAL_SIZE / 2.0) * data_per_px_y
+            dot_edge_y = y_freq + (FINAL_SIZE / 2.0) * data_per_px_y
         except Exception:
             dot_edge_y = y_freq
 
-        label_anchor_y = y_freq + y_offset   # bottom-centre of label (anchor point)
+        label_anchor_y = y_freq + y_offset  # bottom-centre of label (anchor point)
 
         # ── Glassmorphic label ────────────────────────────────────────────────
         html = (
@@ -5188,7 +5120,7 @@ class MainWindow(QtWidgets.QMainWindow):
             html=html,
             fill=pg.mkBrush(QtGui.QColor(236, 244, 252, 220)),
             border=pg.mkPen(QtGui.QColor(180, 210, 235, 190), width=1),
-            anchor=(0.5, 1),   # bottom-CENTRE at data point (changed from 0,1)
+            anchor=(0.5, 1),  # bottom-CENTRE at data point (changed from 0,1)
         )
 
         shadow = QtWidgets.QGraphicsDropShadowEffect()
@@ -5210,14 +5142,14 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         leader = pg.PlotCurveItem(
             x=[t, t],
-            y=[label_anchor_y, label_anchor_y],   # zero length; grows downward
+            y=[label_anchor_y, label_anchor_y],  # zero length; grows downward
             pen=line_pen,
         )
-        leader.setZValue(199)   # just behind the label
+        leader.setZValue(199)  # just behind the label
         p2.addItem(leader)
 
-        LINE_MS    = 250
-        FRAME_MS   = 16
+        LINE_MS = 250
+        FRAME_MS = 16
         line_start = monotonic()
         line_timer = QtCore.QTimer(self)
         line_timer.setInterval(FRAME_MS)
@@ -5228,10 +5160,10 @@ class MainWindow(QtWidgets.QMainWindow):
             y_top=label_anchor_y,
             y_bot=dot_edge_y,
         ):
-            elapsed  = (monotonic() - line_start) * 1000.0
-            t_norm   = min(1.0, elapsed / LINE_MS)
-            eased    = 1.0 - (1.0 - t_norm) ** 2          # quad ease-out
-            current  = y_top + eased * (y_bot - y_top)    # grows toward dot
+            elapsed = (monotonic() - line_start) * 1000.0
+            t_norm = min(1.0, elapsed / LINE_MS)
+            eased = 1.0 - (1.0 - t_norm) ** 2  # quad ease-out
+            current = y_top + eased * (y_bot - y_top)  # grows toward dot
             try:
                 ldr.setData(x=[t, t], y=[y_top, current])
             except RuntimeError:
@@ -5245,9 +5177,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # ── Store active state ────────────────────────────────────────────────
         self._active_marker_label = lbl
-        self._active_marker_line  = leader        # ← new
-        self._active_marker_plot  = p2
-        self._active_marker_dict  = marker_dict
+        self._active_marker_line = leader  # ← new
+        self._active_marker_plot = p2
+        self._active_marker_dict = marker_dict
 
         timer = QtCore.QTimer(self)
         timer.setSingleShot(True)
