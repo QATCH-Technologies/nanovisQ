@@ -5486,6 +5486,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     yMin=self._vector_reference_frequency[i][0],
                     minYRange=5,
                 )
+                active_plot.enableAutoRange(axis="x", enable=True)
+                active_plot.enableAutoRange(axis="y", enable=True)
 
                 active_overlay.setLimits(
                     yMax=self._vector_reference_dissipation[i][-1],
