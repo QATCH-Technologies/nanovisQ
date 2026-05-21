@@ -17,9 +17,8 @@ Version:
     x.x.x?
 """
 
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 import hashlib
-import logging
 import multiprocessing
 import os
 import shutil
@@ -27,28 +26,21 @@ import stat
 import subprocess
 import sys
 import threading
-from collections import deque
-from time import localtime, mktime, strftime, strptime, time, monotonic
-from typing import List, Optional, Any, Callable
+from time import localtime, strftime, time, monotonic
+from typing import Optional, Any, Callable
 from xml.dom import minidom
 import numpy as np
-import pandas as pd
 import pyqtgraph as pg
-import os
-import shutil
 import pyzipper
-import requests
 from dateutil import parser
 from PyQt5 import QtCore, QtGui, QtWidgets
-from pyqtgraph import AxisItem
-from serial import serialutil
+from pyqtgraph import AxisItem, GraphicsLayoutWidget
 from pathlib import Path
-
-from sympy import true
-
+from QATCH.ui.workers.worker_snapshot import WorkerSnapshot
+from QATCH.ui.objects.ui_main import _MainWindow
+from QATCH.ui.objects.ui_login import LoginWindow
 from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
-from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileManager import FileManager
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
@@ -56,7 +48,7 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.licenseManager import LicenseManager
 from QATCH.common.logger import Logger as Log
 from QATCH.common.tutorials import TutorialPages
-from QATCH.common.userProfiles import UserProfiles, UserProfilesManager, UserRoles
+from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants, OperationType, UpdateEngines
 from QATCH.core.worker import Worker
 
@@ -65,1210 +57,41 @@ from QATCH.core.worker import Worker
 from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.Device import serial  # real device hardware
-from QATCH.processors.InterpTemps import (
-    ActionType,
-    InterpTempsProcess,
-    QueueCommandFormat,
+from QATCH.processors.updater import (
+    UpdaterTask_Dbx,
+    UpdaterTask_Git,
 )
-from QATCH.ui.configure_data import UIConfigureData
-from QATCH.ui.export import Ui_Export
-from QATCH.ui.mainWindow_ui import (
-    Ui_Controls,
-    Ui_Info,
-    Ui_Logger,
-    Ui_Login,
-    Ui_Main,
-    Ui_Plots,
-)
+from QATCH.ui.objects.ui_controls import ControlsWindow
+from QATCH.ui.objects.ui_plots import PlotsWindow
+from QATCH.ui.objects.ui_logger import LoggerWindow
+from QATCH.ui.objects.ui_info import InfoWindow
 from QATCH.ui.popUp import PopUp, QueryComboBox
-from QATCH.ui.preferences_ui import PreferencesUI
-from QATCH.ui.runInfo import QueryRunInfo, RunInfoWindow
-from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+from QATCH.ui.workers.rename_output_files_worker import RenameOutputFilesWorker
+from QATCH.ui.workers.extract_worker import ExtractWorker
+from QATCH.ui.workers.tec_worker import TECWorker
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
+from QATCH.processors.drying_detector import DryingDetection
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
 
-##########################################################################################
-# Package that handles the UIs elements and connects to worker service to execute processes
-##########################################################################################
 
+class GlassFillCurveItem(pg.PlotCurveItem):
+    """PlotCurveItem that excludes fillLevel from autoRange bounds.
 
-class _MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, parent):
-        super().__init__()
-        parent.ControlsWin._createMenu(self)
-        self.ui0 = Ui_Main()
-        self.ui0.setupUi(self, parent)
-
-        # Get the application instance safely and connect the signals
-        app_instance = QtWidgets.QApplication.instance()
-        if app_instance:
-            app_instance.focusWindowChanged.connect(self.focusWindowChanged)
-            # capture clicks anywhere on gui
-            app_instance.installEventFilter(self)
-
-    def eventFilter(self, obj, event):
-        # Handle mouse click events (e.g. hide on click)
-        if event.type() == QtCore.QEvent.MouseButtonPress:
-            widget_clicked = QtWidgets.QApplication.widgetAt(event.globalPos())
-            allow_hide = True
-            if widget_clicked is self.ui0.mode_learn:
-                allow_hide = False
-            if widget_clicked is self.ui0.mode_learn_text:
-                allow_hide = False
-            if widget_clicked is self.ui0.mode_learn_arrow:
-                allow_hide = False
-            if self.ui0.floating_widget.isVisible() and allow_hide:
-                self.ui0.floating_widget.hide()
-        return super().eventFilter(obj, event)
-
-    def focusWindowChanged(self, focus_window):
-        # Hide the floating widget only when the focus leaves this window
-        # NOTE: This is a signal slot event firing, there is no `super()`
-        if focus_window is None or focus_window != self.windowHandle():
-            self.ui0.floating_widget.hide()
-
-    def moveEvent(self, event):
-        # Hide the floating widget whenever the main window moves
-        # NOTE: Its position will be recalculated on next `show()`
-        self.ui0.floating_widget.hide()
-        super().moveEvent(event)
-
-    def closeEvent(self, event):
-        # Log.d(" Exit Real-Time Plot GUI")
-        res = PopUp.question(
-            self,
-            Constants.app_title,
-            "Are you sure you want to quit QATCH Q-1 application now?",
-            True,
-        )
-        if res:
-            # self.close()
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
-
-
-# ------------------------------------------------------------------------------
-
-
-class LoginWindow(QtWidgets.QMainWindow):
-    """Main window for handling user login events.
-
-    This class provides a login window that manages user interactions, and the window close event.
-    It initializes the login UI and processes events to either authenticate the user,
-    clear the login form, or update the UI state (e.g., toggling the Caps Lock indicator).
-
-    Attributes:
-        ui5 (Ui_Login): An instance of the login UI class used to set up and manage
-            the login interface view.
+    Standard PlotCurveItem includes the fillLevel baseline in dataBounds(),
+    causing the ViewBox autoRange to expand to include the fill baseline (y=0
+    or whatever fillLevel is set to). This subclass suppresses that behaviour
+    so autoRange stays tight around the actual curve data only.
     """
 
-    def __init__(self, parent: QtWidgets.QMainWindow) -> None:
-        """Initializes the LoginWindow with the given parent window.
-
-        This method sets up the user interface for the login window by creating an instance
-        of the UI class and initializing it with the current window and parent window.
-
-        Args:
-            parent (QtWidgets.QMainWindow): The parent widget for this login window.
-        """
-        super().__init__()
-        self.ui5 = Ui_Login()
-        self.ui5.setupUi(self, parent)
-
-    def eventFilter(self, obj, event: QtCore.QEvent) -> bool:
-        """Intercepts and processes key press events for the login window.
-
-        This method handles `KeyPress` events to facilitate the following user interactions:
-          - **Enter/Return**: If the password field is empty, the focus is set to the field;
-            otherwise, the sign-in action is triggered.
-          - **Escape**: Clears the login form.
-          - **Caps Lock**: Toggles the state of the Caps Lock indicator on the UI.
-
-        This method handles `FocusIn` events to facilitate the following user interactions:
-          - **user_password**: Show Caps Lock indicator if CapsLock key is already active.
-
-        This method handles `FocusOut` events to facilitate the following user interactions:
-          - **user_password**: Hide Caps Lock indicator if CapsLock key is still active.
-
-        Args:
-            obj: The UI object for which the event is being filtered.
-            event (QtCore.QEvent): The object containing details about type of event;
-                if `type()` is `KeyPress`: `key()` contains details about the key pressed.
-
-        Returns:
-            bool: The result of the event filtering. In all cases, whether handled here or not,
-            it is passed to the base class implementation for default event handling as well.
-        """
-        # Handles key press events for all registered objects.
-        if event.type() == QtCore.QEvent.KeyPress:
-            # Handles focus for user password field and sign-in action.
-            if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
-                if len(self.ui5.user_password.text()) == 0:
-                    self.ui5.user_password.setFocus()
-                else:
-                    self.ui5.action_sign_in()
-
-            # Handles clearing the login form on EscapeKey press.
-            if event.key() == QtCore.Qt.Key_Escape:
-                self.ui5.clear_form()
-
-            # Handles toggling Caps Lock indicator while password field has focus.
-            if self.ui5.user_password.hasFocus() and event.key() == QtCore.Qt.Key_CapsLock:
-                self.ui5.caps_lock_on = not self.ui5.caps_lock_on
-                self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
-
-        # Handles focus in events for all registered objects.
-        if event.type() == QtCore.QEvent.FocusIn:
-            # Handles showing Caps Lock indicator when CapsLock key is active.
-            if obj is self.ui5.user_password:
-                self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
-                if self.ui5.caps_lock_on:
-                    self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
-                # else: already hidden (no need to clear `user_info`)
-
-        # Handles focus out events for all registered objects.
-        if event.type() == QtCore.QEvent.FocusOut:
-            # Handles hiding Caps Lock indicator when CapsLock key is active.
-            if obj is self.ui5.user_password:
-                if self.ui5.caps_lock_on:
-                    self.ui5.user_info.clear()
-                # else: already hidden (no need to clear `user_info`)
-
-        # Always process default event handling, too.
-        return super().eventFilter(obj, event)
-
-    def closeEvent(self, event: QtCore.QEvent) -> None:
-        """Handles the window close event by prompting the user for confirmation.
-
-        When a close event occurs, this method displays a confirmation dialog asking the user
-        whether they wish to quit the application. If the user confirms, the application quits;
-        otherwise, the event is ignored, and the window remains open.
-
-        Args:
-            event (QtCore.QEvent): The close event triggered when the user attempts to close the window.
-
-        Returns:
-            None
-        """
-        res = PopUp.question(
-            self,
-            Constants.app_title,
-            "Are you sure you want to quit QATCH Q-1 application now?",
-            True,
-        )
-        if res:
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
-
-
-# ------------------------------------------------------------------------------
-class LoggerWindow(QtWidgets.QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.ui4 = Ui_Logger()
-        self.ui4.setupUi(self)
-
-    def closeEvent(self, event):
-        # Log.d(" Exit Real-Time Plot GUI")
-        res = PopUp.question(
-            self,
-            Constants.app_title,
-            "Are you sure you want to quit QATCH Q-1 application now?",
-            True,
-        )
-        if res:
-            # self.close()
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
-
-
-# ------------------------------------------------------------------------------
-class PlotsWindow(QtWidgets.QMainWindow):
-    def __init__(self, samples=Constants.argument_default_samples):
-        super().__init__()
-        self.ui2 = Ui_Plots()
-        self.ui2.setupUi(self)
-
-    """
-    def closeEvent(self, event):
-        #Log.d(" Exit Real-Time Plot GUI")
-        res =PopUp.question(self, Constants.app_title,
-                            "Are you sure you want to quit QATCH Q-1 application now?")
-        if res:
-           #self.close()
-           QtWidgets.QApplication.quit()
-        else:
-           event.ignore()#pass
-        #sys.exit(0)
-    """
-
-    def closeEvent(self, event):
-        # Log.d(" Exit Real-Time Plot GUI")
-        res = PopUp.question(
-            self,
-            Constants.app_title,
-            "Are you sure you want to quit QATCH Q-1 application now?",
-            True,
-        )
-        if res:
-            # self.close()
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
-
-
-class WorkerSnapshot:
-    def __init__(self, t, d1, d2):
-        self.t = t
-        self.d1 = d1
-        self.d2 = d2
-
-    def get_t1_buffer(self, idx):
-        return self.t
-
-    def get_d1_buffer(self, idx):
-        return self.d1
-
-    def get_d2_buffer(self, idx):
-        return self.d2
-
-
-# ------------------------------------------------------------------------------
-class InfoWindow(QtWidgets.QMainWindow):
-    def __init__(self, samples=Constants.argument_default_samples):
-        super().__init__()
-        self.ui3 = Ui_Info()
-        self.ui3.setupUi(self)
-
-    def closeEvent(self, event):
-        # Log.d(" Exit Real-Time Plot GUI")
-        res = PopUp.question(
-            self,
-            Constants.app_title,
-            "Are you sure you want to quit QATCH Q-1 application now?",
-            True,
-        )
-        if res:
-            # self.close()
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
-
-
-# ------------------------------------------------------------------------------
-
-
-class ControlsWindow(QtWidgets.QMainWindow):
-    def __init__(self, parent, samples=Constants.argument_default_samples):
-        self.parent = parent
-        super().__init__()
-        self.ui1 = Ui_Controls()
-        self.ui1.setupUi(self)
-        self.ui_export = Ui_Export()
-        # self.ui_configure_data = UIConfigureData()
-        self.ui_preferences = PreferencesUI(self)
-        # self.userrole
-        self.current_timer = QtCore.QTimer()
-        # self.current_timer.timeout.connect(self.double_toggle_plots)
-        UserProfiles().session_end()
-
-    def _createMenu(self, target):
-        self.menubar = []
-        self.menubar.append(target.menuBar().addMenu("&Options"))
-        self.menubar[0].addAction("&Analyze Data", self.analyze_data)
-        self.menubar[0].addAction("&Import Data", self.import_data)
-        self.menubar[0].addAction("&Export Data", self.export_data)
-        self.menubar[0].addAction("&Recover Data", self.recover_data)
-        # self.menubar[0].addAction('&Configure Data', self.configure_data)
-        self.menubar[0].addAction("&Preferences", self.preferences)
-        self.menubar[0].addAction("&Find Devices", self.scan_subnets)
-        self.menubar[0].addAction("E&xit", self.close)
-        self.menubar.append(target.menuBar().addMenu("&Users"))
-        self.username = self.menubar[1].addAction("User: [NONE]")
-        self.username.setEnabled(False)
-        self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
-        self.menubar[1].addAction("Select &directory...", self.set_working_directory)
-        self.manage = self.menubar[1].addAction("&Manage Users...", self.manage_user_profiles)
-        self.userrole = UserRoles.NONE
-        self.menubar.append(target.menuBar().addMenu("&View"))
-        self.modebar = self.menubar[2].addMenu("&Mode")
-        self.modebar.addAction("&1: Run", lambda: self.parent.MainWin.ui0.setRunMode(None))
-        self.modebar.addAction("&2: Analyze", lambda: self.parent.MainWin.ui0.setAnalyzeMode(None))
-        if Constants.show_visQ_in_R_builds:
-            self.modebar.addAction(
-                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0.setLearnMode(None)
-            )
-        self.chk1 = self.menubar[2].addAction("&Console", self.toggle_console)
-        self.chk1.setCheckable(True)
-        self.chk1.setChecked(
-            self.parent.AppSettings.value("viewState_Console", "True").lower() == "true"
-        )
-        self.chk2 = self.menubar[2].addAction("&Amplitude", self.toggle_amplitude)
-        self.chk2.setCheckable(True)
-        self.chk2.setChecked(
-            self.parent.AppSettings.value("viewState_Amplitude", "True").lower() == "true"
-        )
-        self.chk3 = self.menubar[2].addAction("&Temperature", self.toggle_temperature)
-        self.chk3.setCheckable(True)
-        self.chk3.setChecked(
-            self.parent.AppSettings.value("viewState_Temperature", "True").lower() == "true"
-        )
-        self.chk4 = self.menubar[2].addAction("&Resonance/Dissipation", self.toggle_RandD)
-        self.chk4.setCheckable(True)
-        self.chk4.setChecked(
-            self.parent.AppSettings.value("viewState_Resonance_Dissipation", "True").lower()
-            == "true"
-        )
-        self.menubar.append(target.menuBar().addMenu("&Help"))
-        self.chk5 = self.menubar[3].addAction("View &Tutorials", self.view_tutorials)
-        self.chk5.setCheckable(False)
-        self.menubar.append(self.menubar[3].addMenu("View &Documentation"))
-        self.menubar[4].addAction("&Release Notes", self.release_notes)
-        self.menubar[4].addAction("&FW Change Log", self.fw_change_log)
-        self.menubar[4].addAction("&SW Change Log", self.sw_change_log)
-        self.menubar[3].addAction("View &License", self.view_license)
-        self.menubar[3].addAction("View &User Guide", self.view_user_guide)
-        self.menubar[3].addAction("&Check for Updates", self.check_for_updates)
-        self.menubar[3].addSeparator()
-        from QATCH.models.ModelData import __release__ as ModelData_release
-        from QATCH.models.ModelData import __version__ as ModelData_version
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
-            __release__ as QModel4_release,
-        )
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
-            __version__ as QModel4_version,
-        )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
-            __release__ as QModel6_release,
-        )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
-            __version__ as QModel6_version,
-        )
-
-        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (3 available)")
-        self.menubar.append(qmodel_versions_menu)
-        self.q_version_v1 = self.menubar[5].addAction(
-            "ModelData v{} ({})".format(ModelData_version, ModelData_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[0]
-            ),
-        )
-        self.q_version_v1.setCheckable(True)
-        self.q_version_v4 = self.menubar[5].addAction(
-            "QModel Fusion v{} ({})".format(QModel4_version, QModel4_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[1]
-            ),
-        )
-        self.q_version_v4.setCheckable(True)
-        self.q_version_v6 = self.menubar[5].addAction(
-            "QModel YOLO26 v{} ({})".format(QModel6_version, QModel6_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[2]
-            ),
-        )
-        self.q_version_v6.setCheckable(True)
-        if Constants.QModel6_predict:
-            self.q_version_v6.setChecked(True)
-        elif Constants.QModel4_predict:
-            self.q_version_v4.setChecked(True)
-        elif Constants.ModelData_predict:
-            self.q_version_v1.setChecked(True)
-        else:
-            Log.w(TAG, "No model selected on startup")
-        self.menubar[3].addSeparator()
-        sw_version = self.menubar[3].addAction(
-            "SW {}_{} ({})".format(
-                Constants.app_version,
-                "exe" if getattr(sys, "frozen", False) else "py",
-                Constants.app_date,
-            )
-        )
-        sw_version.setEnabled(False)
-        fingerprint_txt = DeviceFingerprint.get_key()
-        if fingerprint_txt is not None:
-            self.menubar[3].addSeparator()
-            fingerprint_action = self.menubar[3].addAction(fingerprint_txt)
-            fingerprint_action.setToolTip("Click to copy to clipboard")
-            fingerprint_action.triggered.connect(
-                lambda: QtWidgets.QApplication.clipboard().setText(fingerprint_txt)
-            )
-
-        # update application UI states to reflect viewStates from AppSettings
-        if not self.chk1.isChecked():
-            QtCore.QTimer.singleShot(100, self.toggle_console)
-        if not self.chk2.isChecked():
-            QtCore.QTimer.singleShot(100, self.toggle_amplitude)
-        if not self.chk3.isChecked():
-            QtCore.QTimer.singleShot(100, self.toggle_temperature)
-        if not self.chk4.isChecked():
-            QtCore.QTimer.singleShot(100, self.toggle_RandD)
-
-    def analyze_data(self):
-        self.parent.MainWin.ui0.setAnalyzeMode(self)
-
-    def import_data(self):
-        self.ui_export.showNormal(0)
-
-    def export_data(self):
-        self.ui_export.showNormal(1)
-
-    def recover_data(self):
-        self.ui_export.showNormal(2)
-
-    # def configure_data(self):
-    #     self.ui_configure_data.show()
-
-    def preferences(self):
-        self.ui_preferences.showNormal(0)
-
-    def scan_subnets(self):
-        Discovery().scanSubnets()
-        self.parent._port_list_refresh()
-
-    def set_working_directory(self):
-        # loads global/user prefs
-        self.ui_preferences.toggle_global_preferences()
-        # force sync read/write
-        self.ui_preferences.sync_write_with_load.setChecked(True)
-        # ask user for working directory
-        result = self.ui_preferences.open_load_file_dialog()
-        # auto-save, assuming user gave us a new directory AND submit button is enabled
-        if result and self.ui_preferences.submit_button.isEnabled():
-            self.ui_preferences.submit_button.click()
-        else:
-            Log.w("Working directory not changed.")
-
-    def set_user_profile(self):
-        action = self.signinout.text().lower().replace("&", "")
-        if action == "sign in":
-            if UserProfiles().count() == 0:
-                self.manage_user_profiles()
-                return
-            name, init, role = UserProfiles.change()
-            if name != None:
-                self.username.setText(f"User: {name}")
-                self.userrole = UserRoles(role)
-                self.signinout.setText("&Sign Out")
-                self.ui1.tool_User.setText(name)
-                self.parent.AnalyzeProc.tool_User.setText(name)
-                if self.userrole != UserRoles.ADMIN:
-                    self.manage.setText("&Change Password...")
-        else:
-            if self.parent.MainWin.ui0.setNoUserMode(None):
-                UserProfiles().session_end()
-                name = self.username.text()[6:]
-                Log.i(f"Goodbye, {name}! You have been signed out.")
-                self.username.setText("User: [NONE]")
-                self.userrole = UserRoles.NONE
-                self.signinout.setText("&Sign In")
-                self.manage.setText("&Manage Users...")
-                self.ui1.tool_User.setText("Anonymous")
-                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
-            else:
-                Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
-
-    def manage_user_profiles(self):
-        # dissallow user management if Analyze mode still has unsaved changes (after prompt to close)
-        # still logged in, but user cannot stay in Analyze mode
-        if not self.parent.MainWin.ui0.setRunMode(None):
-            Log.d("User has unsaved changes in Analyze mode. Manage users aborted.")
-            return
-
-        # dissallow user management if current mode is busy
-        if not self.parent.ControlsWin.ui1.pButton_Start.isEnabled():
-            PopUp.warning(
-                self,
-                "Action Not Allowed",
-                "User info cannot be changed during an active capture.\n"
-                + "Please 'Stop' the measurement before attempting this action.",
-            )
-            return
-
-        if self.userrole != UserRoles.ADMIN and self.userrole != UserRoles.NONE:
-            # change password, and return
-            name = self.username.text()[6:]
-            found, filename = UserProfiles.find(name, None)
-            if filename != None:
-                UserProfiles.change_password(filename)
-                return
-            else:
-                Log.e("Attempted to change password, but user was not found!")
-
-        name = self.username.text()[6:]
-        allow, admin = UserProfiles().manage(name, self.userrole)
-
-        if admin is None and not UserProfiles.session_info()[0]:
-            if name != "[NONE]":
-                Log.i(f"Goodbye, {name}! You have been signed out.")
-            self.username.setText("User: [NONE]")
-            self.userrole = UserRoles.NONE
-            self.signinout.setText("&Sign In")
-            self.manage.setText("&Manage Users...")
-            self.ui1.tool_User.setText("Anonymous")
-            self.parent.AnalyzeProc.tool_User.setText("Anonymous")
-            self.parent.MainWin.ui0.setNoUserMode(None)
-        if admin != name and admin != None:
-            Log.d("User name changed. Changing sign-in user info.")
-            self.username.setText(f"User: {admin}")
-            self.userrole = UserRoles.ADMIN
-            self.signinout.setText("&Sign Out")
-            self.manage.setText("&Manage Users...")
-            self.ui1.tool_User.setText(admin)
-            self.parent.AnalyzeProc.tool_User.setText(admin)
-
-        if allow:
-            self.manageUsersUI = UserProfilesManager(self, admin)
-            self.manageUsersUI.show()
-
-    def toggle_console(self):
-        if self.current_timer.isActive():
-            self.current_timer.stop()
-        if not self.chk1.isChecked():
-            Log.d("Hiding Console window")
-            self.parent.MainWin.ui0.logview.setVisible(False)
-            # self.parent.LogWin.ui4.centralwidget.setVisible(False)
-        else:
-            Log.d("Showing Console window")
-            self.parent.MainWin.ui0.logview.setVisible(True)
-            # self.parent.LogWin.ui4.centralwidget.setVisible(True)
-        self.parent.AppSettings.setValue("viewState_Console", self.chk1.isChecked())
-
-    def toggle_amplitude(self):
-        tc = self.show_top_plot()
-        if not self.chk2.isChecked():
-            Log.d("Hiding Amplitude plot(s)")
-            for i, p in enumerate(self.parent._plt0_arr):
-                if p is None:
-                    continue
-                p.setVisible(False)
-                self.parent._plt0_arr[i] = p
-        else:
-            Log.d("Showing Amplitude plot(s)")
-            for i, p in enumerate(self.parent._plt0_arr):
-                if p is None:
-                    continue
-                p.setVisible(True)
-                self.parent._plt0_arr[i] = p
-        self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue("viewState_Amplitude", self.chk2.isChecked())
-
-    def toggle_temperature(self):
-        tc = self.show_top_plot()
-        if not self.chk3.isChecked():
-            Log.d("Hiding Temperature plot")
-            self.parent._plt4.setVisible(False)
-        else:
-            Log.d("Showing Temperature plot")
-            self.parent._plt4.setVisible(True)
-        self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue("viewState_Temperature", self.chk3.isChecked())
-
-    def toggle_RandD(self):
-        if self.current_timer.isActive():
-            self.current_timer.stop()
-        if not self.chk4.isChecked():
-            Log.d("Hiding Resonance/Dissipation plot(s)")
-            self.parent.PlotsWin.ui2.pltB.setVisible(False)
-        else:
-            Log.d("Showing Resonance/Dissipation plot(s)")
-            self.parent.PlotsWin.ui2.pltB.setVisible(True)
-        self.parent.AppSettings.setValue("viewState_Resonance_Dissipation", self.chk4.isChecked())
-
-    def show_top_plot(self):
-        toggle_console = False
-        if self.chk2.isChecked() or self.chk3.isChecked():
-            Log.d("Showing top plots window")
-            toggle_console = self.parent.PlotsWin.ui2.plt.isVisible() == False
-            self.parent.PlotsWin.ui2.plt.setVisible(True)
-        return toggle_console
-
-    def hide_top_plot(self, toggle_console):
-        if self.chk2.isChecked() or self.chk3.isChecked():
-            # Remove the timer hack completely:
-            # if toggle_console:
-            #     if self.current_timer.isActive():
-            #         self.current_timer.stop()
-            #     self.current_timer.setSingleShot(True)
-            #     self.current_timer.start(100)
-
-            # Instead, optionally trigger a proper layout refresh if PyQt needs a nudge
-            if toggle_console:
-                self.parent.PlotsWin.layout().activate()  # Or update() / adjustSize()
-        else:
-            Log.d("Hiding top plots window")
-            self.parent.PlotsWin.ui2.plt.setVisible(False)
-
-    # def double_toggle_plots(self):
-    #     Log.d("Toggling console window (for sizing)")
-    #     self.chk4.setChecked(not self.chk4.isChecked())
-    #     self.toggle_RandD()
-    #     self.chk4.setChecked(not self.chk4.isChecked())
-    #     QtCore.QTimer.singleShot(0, self.toggle_RandD)
-
-    def view_tutorials(self):
-        self.parent.TutorialWin.setVisible(not self.parent.TutorialWin.isVisible())
-        self.chk5.setChecked(self.parent.TutorialWin.isVisible())
-
-    def open_file(self, filepath, relative_to_cwd=True):
-        try:
-            if relative_to_cwd:
-                fullpath = os.path.join(Architecture.get_path(), filepath)
-            os_type = Architecture.get_os()
-            if os_type == OSType.macosx:  # macOS
-                subprocess.call(("open", fullpath))
-            elif os_type == OSType.windows:  # Windows
-                os.startfile(fullpath)
-            elif os_type == OSType.linux:  # linux
-                subprocess.call(("xdg-open", fullpath))
-            else:  # other variants
-                Log.w("Unknown OS Type:", os_type)
-                Log.w("Assuming Linux variant...")
-                subprocess.call(("xdg-open", fullpath))
-        except:
-            Log.e(TAG, f'ERROR: Cannot open "{os.path.split(fullpath)[1]}"')
-
-    def release_notes(self):
-        self.open_file(f"docs/Release Notes {Constants.app_version}.pdf")
-
-    def fw_change_log(self):
-        self.open_file(f"QATCH_Q-1_FW_py_{Constants.best_fw_version}/FW Change Control Doc.pdf")
-
-    def sw_change_log(self):
-        self.open_file("QATCH/SW Change Control Doc.pdf")
-
-    def view_license(self):
-        self.open_file("docs/gpl.txt")
-        self.open_file("docs/LICENSE.txt")
-
-    def view_user_guide(self):
-        self.open_file("docs/userguide.pdf")
-
-    def check_for_updates(self):
-        if hasattr(self.parent, "url_download"):
-            delattr(self.parent, "url_download")
-        if hasattr(self.parent, "_license_manager"):
-            lm: LicenseManager = self.parent._license_manager
-            if hasattr(lm, "refresh_license") and callable(lm.refresh_license):
-                lm.refresh_license()
-        color, status = self.parent.start_download(True)
-        if color == "#ff0000":
-            if status == "ERROR":
-                PopUp.warning(self, "Check for Updates", "An error occurred checking for updates.")
-            if status == "OFFLINE":
-                PopUp.warning(self, "Check for Updates", "Unable to check online for updates.")
-        elif color != "#00ff00":
-            technicality = " available " if color == "#00c600" else " supported "
-            PopUp.information(
-                self,
-                "Check for Updates",
-                f"You are running the latest{technicality}version.",
-            )
-
-    def closeEvent(self, event):
-        # Log.d(" Exit Setup/Control GUI")
-        if hasattr(self, "close_no_confirm"):
-            res = True
-        else:
-            res = PopUp.question(
-                self,
-                Constants.app_title,
-                "Are you sure you want to quit QATCH Q-1 application now?",
-                True,
-            )
-        if res:
-            # self.close()
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
-
-
-class Rename_Output_Files(QtCore.QObject):
-    finished = QtCore.pyqtSignal()
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.parent = parent
-        self.finished.connect(self.indicate_done)
-        self.DockingWidgets = []
-        self.bThread = []
-        self.bWorker = []
-
-        # Data queues for InterpTemps.
-        self._queueLog = multiprocessing.Queue()
-        self._queueCmd = multiprocessing.Queue()
-        self._queueOut = multiprocessing.Queue()
-        self.pInterpTemps = InterpTempsProcess(self._queueLog, self._queueCmd, self._queueOut)
-        self._logHandler = QtCore.QTimer()
-        self._logHandler.timeout.connect(self.interp_logger)
-
-    def indicate_analyzing(self):
-        color_err = "#333333"
-        labelbar = "Run Stopped. Analyzing run..."
-        self.infobar_write(color_err, labelbar)
-
-    def indicate_saving(self):
-        color_err = "#333333"
-        labelbar = "Run Stopped. Saving run..."
-        self.infobar_write(color_err, labelbar)
-
-    def indicate_finalizing(self):
-        color_err = "#333333"
-        labelbar = "Run Stopped. Requesting run info..."
-        self.infobar_write(color_err, labelbar)
-
-    def indicate_error(self):
-        color_err = "#ff0000"
-        labelbar = "Run Stopped. Error saving data!"
-        self.infobar_write(color_err, labelbar)
-
-    def indicate_done(self):
-        # are we really done?
-        remaining_threads = 0
-        for i in range(len(self.bThread)):
-            if self.bWorker[i].isVisible():
-                remaining_threads += 1
-        if remaining_threads > 0:
-            Log.d(f"Waiting on {remaining_threads} Run Info threads to close...")
-            return  # not done yet
-        color_err = "#333333"
-        labelbar = "Run Stopped. Saved to local data."
-        self.infobar_write(color_err, labelbar)
-
-    def infobar_write(self, color_err, labelbar):
-        self.parent.ControlsWin.ui1.infobar.setText(
-            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-                color_err, labelbar
-            )
-        )
-
-    def interp_temps(self, new_files: List[str]) -> None:
-        """
-        The handler method for performing temperature interpolation on a list of files.
-
-        This method handles starting the `pInterpTemps` thread which interpolates temperature
-        through a list of file paths.
-
-        Args:
-            new_files (List[str]): A list of file paths as strings.
-
-        Returns:
-            None
-        """
-        # NOTE: Uncomment these 3 lines to skip entire process:
-        # self.pInterpTemps._started.set()
-        # self.pInterpTemps._done.set()
-        # return
-        self._logHandler.start(100)
-        self.pInterpTemps.start()
-        cache_loaded = False
-        for file in new_files:
-            # Skip TEC files.
-            if "output_tec.csv" in file:
-                continue
-
-            # NOTE: Might need better filtering of files to load/interp correctly
-            # Assumption here is that alphabetical order yields primary dev 1st.
-            # TODO: This will likely need modification to work with 4x6 devices.
-            self.pInterpTemps._queueCmd.put(
-                QueueCommandFormat(
-                    file.rstrip(),
-                    ActionType.load if not cache_loaded else ActionType.interp,
-                ).asdict()
-            )
-            cache_loaded = True
-        # Signal finished and end process
-        self.pInterpTemps._queueCmd.put(None)
-
-    def interp_logger(self) -> None:
-        """
-        Initializes the logging utility for the pInterpTemps thread.
-
-        Returns:
-            None
-        """
-        if not self._queueLog.empty():
-            logger = logging.getLogger("QATCH")
-            while not self._queueLog.empty():
-                logger.handle(self._queueLog.get(False))
-
-    def interp_report(self) -> None:
-        """
-        Generates the report after pInterpTemps thread executes.
-        Critical failures are propogated to the user via UI popups.
-
-        Returns:
-            None
-        """
-        while not self._queueOut.empty():
-            result = self._queueOut.get(False)
-            if not result["result"]:
-                # inform user of any failures
-                PopUp.critical(
-                    parent=self.parent,
-                    title="Temp Propagation Failure",
-                    message="ERROR: Failed to write temps to secondary.\n"
-                    + f'Filename: "{result["filename"]}"',
-                    details=result["details"],
-                    ok_only=True,
-                )
-
-    #######################################################################
-    # Prompt user for run name(s) and rename new output file(s) accordingly
-    #######################################################################
-    def run(self) -> None:
-        """
-        Executes the run process to handle new files, analyze data quality, prompt user input,
-        and manage file storage and encryption.
-
-        This method checks for newly generated files, processes them by analyzing quality,
-        renaming, and saving them into user-defined directories. It also handles user input
-        for naming runs, encrypts output files if required, and manages error conditions.
-
-        Raises:
-            Exception: If the run name entered by the user is empty.
-
-        Returns:
-            None
-        """
-        try:
-            # Check if new files were generated.  If no new files generated, log as a warnings
-            # and emit the finished signal to parent along with the error.
-            if not os.path.exists(Constants.new_files_path):
-                Log.w(TAG, "WARNING: No new files were generated by this run!")
-                self.finished.connect(self.indicate_error)
-                self.finished.emit()
-                return
-
-            # Copy and rename log files from the temporary directory in alphabetical order
-            # to include a user-defined run name string
-            content = []
-            with open(Constants.new_files_path, "r") as file:
-                self.indicate_analyzing()
-                new_file_time = strftime(Constants.csv_default_prefix, localtime())
-                content = file.readlines()
-                content.sort()
-
-            # Start InterpTempsProcess, if a multiplex run
-            self.interp_temps(content)
-
-            # Current device directory.
-            current_directory = ""
-
-            # Sub-device directory or the name of the run.
-            run_directory = ""
-
-            # Pop-up input text from user.
-            input_text = ""
-
-            # Pop-up status.
-            status_ok = False
-
-            # Additional_info_control request.
-            ask_for_info = False
-
-            # Loop through the paths of each data file re-writing them to
-            # the user defined directory.
-            for line in content:
-                old_path = line.rstrip()
-                path_parts = os.path.split(old_path)
-                this_dir = path_parts[0]
-                this_file = path_parts[1]
-                this_name = this_file[: this_file.rindex("_")]
-                copy_file = None
-
-                # Skip if the new directory is the same as the temporary directory.
-                if this_dir != current_directory:
-                    current_directory = this_dir
-                    path_split = os.path.split(this_dir)
-                    preferences_write_path = UserProfiles.user_preferences.get_preferences().get(
-                        "write_data_path", None
-                    )
-                    if not preferences_write_path:
-                        path_root = path_split[0]
-                    else:
-                        # If user preferences are set, load from the prefered write path.
-                        path_root = os.path.join(preferences_write_path)
-                    dev_name = path_split[1]
-                    try:
-                        _dev_pid = 0
-                        _dev_name = dev_name
-                        if _dev_name.count("_") > 0:
-                            _dev_parts = _dev_name.split("_")
-                            _dev_pid = int(_dev_parts[0], base=16) % 9
-                            # do not override 'dev_name'
-                            _dev_name = _dev_parts[1]
-
-                        # Retrieve device info based on the device name and port-id
-                        dev_info = FileStorage.DEV_info_get(_dev_pid, _dev_name)
-                        if "NAME" in dev_info:
-                            if dev_info["NAME"] != _dev_name:
-                                dev_name = dev_info["NAME"]
-
-                        if _dev_pid != 0:  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
-                            # Convert PID to multiplex designation (i.e. int(1) -> int(162) for "A2")
-                            if self.parent.has_active_multi_port():  # 4x6 system
-                                # mask in port, e.g. "A" -> "A1"
-                                _dev_pid = (
-                                    (_dev_pid + 9) << 4
-                                ) | self.parent.get_active_multi_port()
-                            # else: 4x1 system, nothing to do
-                    except:
-                        Log.e(TAG, f"Unable to lookup device info for: {dev_name}")
-
-                    # Controls saving with errors.
-                    force_save = True
-                    is_good = AnalyzeProcess.Model_Data(old_path)
-
-                    # If run is not deemed "good" report this to the user asking if they should save the
-                    # force save with bad data.
-                    if input_text == "" and not is_good:
-                        force_save = PopUp.critical(
-                            self.parent,
-                            "Capture Run",
-                            "Are you sure you want to save this run?",
-                            "This software contains AI technology that is trained to detect run quality and it has determined this run does not match the standard characteristics of a complete run. Analysis of this run data may enocunter issues. If so, trying again with a different crystal may yield better results.",
-                            True,
-                        )
-                    self.indicate_saving()
-
-                    # Prompt user for a runname.
-                    while True:
-                        if input_text == "":
-                            if force_save:
-                                input_text, status_ok = QtWidgets.QInputDialog.getText(
-                                    self.parent,
-                                    "Name this run...",
-                                    # for device "{}":'.format(dev_name),
-                                    "Enter a name for this run:",
-                                    text=input_text,
-                                )
-                            else:
-                                status_ok = False  # bad run, don't save with custom name
-
-                        # Remove any invalid characters from user input
-                        # invalid_characters = "\\/:*?\"'<>|"
-                        for character in Constants.invalidChars:
-                            input_text = input_text.replace(character, "")
-
-                        # Fetch run and run_parent directories based on user preferences.
-                        run_directory = UserProfiles.user_preferences.get_file_save_path(
-                            runname=input_text,
-                            device_id=_dev_name,
-                            port_id=_dev_pid,
-                        )
-                        run_parent_directory = UserProfiles.user_preferences.get_folder_save_path(
-                            runname=input_text,
-                            device_id=_dev_name,
-                            port_id=_dev_pid,
-                        )
-
-                        if status_ok:
-                            ask_for_info = True
-
-                            # Raise exception if runname retrieved from user is empty.
-                            try:
-                                if len(input_text) == 0:
-                                    raise Exception("No text entered. Please try again.")
-
-                                # Using Device folder path from UserPreferences class.
-                                # os.makedirs(os.path.join(
-                                #     path_root, dev_name, run_directory), exist_ok=False)
-
-                                os.makedirs(
-                                    os.path.join(path_root, run_parent_directory, run_directory),
-                                    exist_ok=False,
-                                )
-                                # break (done below)
-                            except:
-                                if len(input_text) > 0:
-                                    PopUp.warning(
-                                        self.parent,
-                                        "Duplicate Run Name",
-                                        "A run with this name already exists...\nPlease try again with a different name.",
-                                    )
-                                else:
-                                    PopUp.warning(
-                                        self.parent,
-                                        "Enter a Run Name",
-                                        "Please enter a run name to save this run...\nPlease try again with a valid name.",
-                                    )
-                                input_text = ""
-                                continue  # no break (try again)
-                            input_text = input_text.strip().replace(
-                                " ", "_"
-                            )  # word spaces -> underscores
-                        else:
-                            ask_for_info = False
-                            input_text = new_file_time  # uniquify
-                            if not is_good:
-                                input_text += "_BAD"
-                            run_parent_directory = "_unnamed"
-                            run_directory = UserProfiles.user_preferences.get_file_save_path(
-                                runname=input_text,
-                                device_id=_dev_name,
-                                port_id=_dev_pid,
-                            )
-                            # trim off dev_id
-                            run_directory = run_directory[: run_directory.rfind("_")]
-                            os.makedirs(
-                                os.path.join(path_root, run_parent_directory, run_directory),
-                                exist_ok=True,
-                            )
-                        break
-
-                # We *must* wait here until InterpTempsProcess has finished
-                self._logHandler.stop()  # stop log handler timer
-                if self.pInterpTemps.is_running():
-                    Log.w("Waiting for InterpTempsProcess to finish...")
-                while self.pInterpTemps.is_running():
-                    self.interp_logger()  # wait for exit, handle logger
-                self.interp_report()  # report any failures to user
-
-                # Construct new run path to the new run path under run parent directory.
-                new_run_path = os.path.join(
-                    path_root,
-                    run_parent_directory,
-                    run_directory,
-                    this_file.replace(this_name, input_text),
-                )
-
-                try:
-                    # Attempt to rename temporary files to the new run path.
-                    os.rename(old_path, new_run_path)
-                    Log.i(' Renamed "{}" ->\n         "{}"'.format(old_path, new_run_path))
-                    copy_file = new_run_path
-                except Exception:
-                    # Log and raise any errors terminating early if rename fails.
-                    Log.e(' ERROR: Failed to rename "{}" to "{}"!!!'.format(old_path, new_run_path))
-                    self.finished.connect(self.indicate_error)
-                    if os.path.isfile(old_path):
-                        copy_file = old_path
-                    if os.path.isfile(new_run_path):
-                        copy_file = new_run_path
-
-                old_path_parts = os.path.split(old_path)
-                try:
-                    # Only try to delete path if the path is empty.
-                    if len(os.listdir(old_path_parts[0])) == 0:
-                        # Delete the old path folder (throws error if not empty)
-                        os.rmdir(old_path_parts[0])
-                except:
-                    Log.e(
-                        ' ERROR: Failed to clean-up after renaming "{}"!!!'.format(
-                            old_path_parts[1]
-                        )
-                    )
-                    self.finished.connect(self.indicate_error)
-
-                if copy_file != None:  # require access controls
-                    file_parts = os.path.split(copy_file)
-                    if run_parent_directory == "_unnamed":
-                        zn = copy_file[: copy_file.rfind("_")] + ".zip"
-                        if _dev_pid > 0:  # multiplex systems, add dev_id
-                            zn = zn.replace(".zip", f"_{_dev_pid}.zip")
-                    else:
-                        zn = os.path.join(file_parts[0], f"capture.zip")
-                    archive_file = file_parts[1]
-                    crc_file = archive_file[:-4] + ".crc"
-
-                    # Create a new zip file with a password
-                    with pyzipper.AESZipFile(
-                        zn,
-                        "a",
-                        compression=pyzipper.ZIP_DEFLATED,
-                        allowZip64=True,
-                        encryption=pyzipper.WZ_AES,
-                    ) as zf:
-                        # Add a protected file to the zip archive
-                        friendly_name = f"{run_directory} ({date.today()})"
-                        zf.comment = friendly_name.encode()  # run name
-
-                        enabled, error, expires = UserProfiles.checkDevMode()
-                        if enabled == False and (error == True or expires != ""):
-                            PopUp.warning(
-                                self,
-                                "Developer Mode Expired",
-                                "Developer Mode has expired and this data capture will now be encrypted.\n"
-                                + 'An admin must renew or disable "Developer Mode" to suppress this warning.',
-                            )
-
-                        if UserProfiles.count() > 0 and enabled == False:
-                            # create a protected archive
-                            zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
-                        else:
-                            zf.setencryption(None)
-                            if enabled:
-                                Log.w("Developer Mode is ENABLED - NOT encrypting ZIP file")
-
-                        zf.write(copy_file, arcname=archive_file)
-                        if archive_file.endswith(".csv"):
-                            zf.writestr(crc_file, str(hex(zf.getinfo(archive_file).CRC)))
-
-                    os.remove(copy_file)
-
-                if ask_for_info:
-                    ask_for_info = False
-                    self.indicate_finalizing()
-                    self.bThread.append(QtCore.QThread())
-                    user_name = (
-                        None if self.parent is None else self.parent.ControlsWin.username.text()[6:]
-                    )
-                    # TODO: more secure to pass user_hash (filename)
-                    self.bWorker.append(
-                        QueryRunInfo(
-                            run_directory,
-                            new_run_path,
-                            is_good,
-                            user_name,
-                            parent=self.parent,
-                        )
-                    )
-                    self.bThread[-1].started.connect(self.bWorker[-1].show)
-                    self.bWorker[-1].finished.connect(self.bThread[-1].quit)
-                    # add here
-                    self.bWorker[-1].finished.connect(self.indicate_done)
-                    # self.finished.disconnect(self.indicate_done) # remove here
-
-            num_runs_saved = len(self.bThread)
-            for i in range(num_runs_saved):
-                # if '1' more fields shown in QueryRunInfo
-                self.bWorker[i].setRuns(num_runs_saved, i)
-            if num_runs_saved == 0:
-                pass  # do nothing
-            elif num_runs_saved == 1:
-                self.bThread[-1].start()  # only 1 run to save
-            else:
-                self.RunInfoWindow = RunInfoWindow(
-                    self.bWorker, self.bThread
-                )  # more than 1 run to save
-
-        except:
-            limit = None
-            t, v, tb = sys.exc_info()
-            from traceback import format_tb
-
-            a_list = ["Traceback (most recent call last):"]
-            a_list = a_list + format_tb(tb, limit)
-            a_list.append(f"{t.__name__}: {str(v)}")
-            for line in a_list:
-                Log.e(line)
-
-        finally:
-            if os.path.exists(Constants.new_files_path):
-                os.remove(Constants.new_files_path)
-            self.finished.emit()
-
-    def _portIDfromIndex(self, pid):  # convert ASCII byte to character
-        # For 4x1 system: expect pid 1-4, return "1" thru "4"
-        # For 4x6 system: expect pid 0xA1-0xD6, return "A1" thru "D6"
-        return hex(pid)[2:].upper()
+    def dataBounds(self, ax, frac=1.0, orthoRange=None):
+        fl = self.opts.get("fillLevel", None)
+        self.opts["fillLevel"] = None  # hide from base class bounds check
+        bounds = super().dataBounds(ax, frac, orthoRange)
+        self.opts["fillLevel"] = fl  # restore for rendering
+        return bounds
 
 
 class RoundedProgressBar(QtWidgets.QWidget):
@@ -1547,7 +370,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.VisQAIWin = VisQAIWindow(self)
 
-        self.tecWorker = TECTask()
+        self.tecWorker = TECWorker()
 
         self.MainWin = _MainWindow(self)
 
@@ -1754,6 +577,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.num_channels = -1
         # Messaging attribute for early stop messages.
         self._fill_display_msg: Optional[str] = None
+
+        self._fill_display_msg: Optional[str] = None
+        # --- fill-event marker state ---
+        # Per-channel list of cleanup callables; each removes one persistent marker.
+        self._fill_event_markers: list[list] = [[], [], [], []]
+        self._last_fill_pred: list[int] = [-99, -99, -99, -99]
+        self._drop_marker_placed: list[bool] = [False, False, False, False]
+        self._dry_marker_placed: list[bool] = [False, False, False, False]
+        # active glassmorphic tooltip state
+        self._active_marker_label: pg.TextItem | None = None
+        self._active_marker_plot: pg.PlotItem | None = None
+        self._active_marker_dict: dict | None = None
+        self._marker_label_timer: QtCore.QTimer | None = None
+        self._active_marker_line: pg.PlotCurveItem | None = None  # leader line
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
 
@@ -1911,7 +748,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self.AnalyzeProc, "_batched_runs") and self.AnalyzeProc._batched_runs:
             self.AnalyzeProc._current_run = self.AnalyzeProc.text_Created.text()
 
-        self.AnalyzeProc.Analyze_Data(data_path)
+        self.AnalyzeProc.analyze_data(data_path)
 
     def refresh_data_files(self):
         Log.i(TAG, "Refreshing data files...")
@@ -2278,6 +1115,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Check for the latest calibrations.  If the last calibration data is not recent, recomend to the user
         # to recalibrate their device.
         if self._get_source() == OperationType.measurement:
+            num_devices = getattr(self, "multiplex_plots", 1)
+            for i in range(num_devices):
+                self.PlotsWin.ui2.left_pane.set_device_state(i, "recording")
             is_recent, age_in_mins = self._get_cal_age()
             if not is_recent:
                 Log.w(
@@ -2426,6 +1266,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self._drop_epoch_sent = False
             self._last_pushed_relative_time = -float("inf")
             self._last_forecaster_push_time = 0.0
+            for ch_markers in self._fill_event_markers:
+                for md in ch_markers:
+                    for p, key in ((md.get("p2"), "m_freq"), (md.get("p3"), "m_diss")):
+                        try:
+                            if p is not None:
+                                p.removeItem(md[key])
+                        except (RuntimeError, KeyError):
+                            pass
+            self._fill_event_markers = [[], [], [], []]
+            self._last_fill_pred = [-99, -99, -99, -99]
+            self._drop_marker_placed = [False, False, False, False]
+            self._dry_marker_placed = [False, False, False, False]
+            self._hide_marker_label()
             self._run_finished = [False, False, False, False]
             self._baselinedata = [
                 [[0, 0], [0, 0]],
@@ -2621,7 +1474,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._get_source() == OperationType.measurement:
             # start rename operation in separate thread (non-blocking)
             self.renameThread = QtCore.QThread()
-            self.renameWorker = Rename_Output_Files(self)
+            self.renameWorker = RenameOutputFilesWorker(self)
             self.renameThread.started.connect(self.renameWorker.run)
             self.renameWorker.finished.connect(self.renameThread.quit)
             self.renameThread.start()
@@ -3016,6 +1869,9 @@ class MainWindow(QtWidgets.QMainWindow):
             progress_bar.setFixedHeight(6)
 
             layout.addWidget(status_label)
+
+            layout.addSpacing(10)
+
             layout.addWidget(progress_bar)
 
             proxy = QtWidgets.QGraphicsProxyWidget()
@@ -3186,7 +2042,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "<div style='margin:0; padding:0; line-height:1.2;'>"
             "    <div><b>Calibration Processing</b></div>"
             "    <div style='font-size:9pt; color:#333333;'>"
-            "        The operation will take a few seconds to complete\u2026 Please wait\u2026"
+            "        The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
             "    </div>"
             "</div>"
         )
@@ -3239,100 +2095,104 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if plot_item is None:
             return
+
         if not hasattr(self, "_dim_overlays"):
             self._dim_overlays = {}
 
-        # Guard against plot_item itself being a dead Qt wrapper
         try:
-            gi = plot_item.graphicsItem()
             vb = plot_item.getViewBox()
         except (RuntimeError, AttributeError):
             return
-        if gi is None or vb is None:
+
+        if vb is None:
             return
 
         key = id(plot_item)
-        existing = self._dim_overlays.get(key)
-        target_opacity = 1.0 if dim else 0.0
+
+        # 1. Stop and clean up any existing animation for this specific plot
+        if key in self._dim_overlays:
+            existing_anim = self._dim_overlays[key]
+            try:
+                existing_anim.stop()
+            except (RuntimeError, AttributeError):
+                pass
+            del self._dim_overlays[key]
+
+        target_progress = 1.0 if dim else 0.0
+        start_progress = 0.0 if dim else 1.0
         duration = 300 if animate else 0
 
-        # Validate the cached entry is still backed by a live, scene-attached
-        if existing is not None:
-            cached_rect, cached_resize_cb, cached_animator = existing
-            stale = False
-            try:
-                if cached_rect.scene() is None:
-                    stale = True
-            except RuntimeError:
-                stale = True
+        # 2. Lock/Unlock user interaction (panning/zooming) while dimmed
+        vb.setMouseEnabled(x=not dim, y=not dim)
 
-            if stale:
-                try:
-                    cached_animator.stop()
-                except RuntimeError:
-                    pass
-                try:
-                    vb.sigResized.disconnect(cached_resize_cb)
-                except (TypeError, RuntimeError):
-                    pass
+        # 3. Collect all the foundational plot elements to blur (excluding overlays)
+        frost_targets = [vb]
+
+        # Safely gather all active axis items (left, bottom, right, top)
+        if hasattr(plot_item, "axes"):
+            for axis_data in plot_item.axes.values():
+                axis_item = axis_data.get("item")
+                if axis_item is not None:
+                    frost_targets.append(axis_item)
+
+        # Safely gather the plot title if one exists
+        if hasattr(plot_item, "titleLabel") and plot_item.titleLabel is not None:
+            frost_targets.append(plot_item.titleLabel)
+        for attr in ("_left_title_label", "_right_title_label"):
+            lbl = getattr(plot_item, attr, None)
+            if lbl is not None:
+                frost_targets.append(lbl)
+
+        # 4. Create the unified animator
+        anim = QtCore.QVariantAnimation(self)
+        anim.setDuration(duration)
+        anim.setStartValue(start_progress)
+        anim.setEndValue(target_progress)
+
+        def update_frost(progress: float) -> None:
+            """Progress smoothly interpolates from 0.0 (clear) to 1.0 (fully frosted)."""
+            try:
+                # Fade the scientific data curves out
+                data_opacity = 1.0 - progress
+                for item in plot_item.listDataItems():
+                    item.setOpacity(data_opacity)
+
+                # Apply and scale the blur radius for all target components
+                for target in frost_targets:
+                    if progress > 0.01:
+                        effect = target.graphicsEffect()
+                        if not isinstance(effect, QtWidgets.QGraphicsBlurEffect):
+                            effect = QtWidgets.QGraphicsBlurEffect()
+                            effect.setBlurHints(
+                                QtWidgets.QGraphicsBlurEffect.BlurHint.PerformanceHint
+                            )
+                            target.setGraphicsEffect(effect)
+
+                        # 10.0 pixels max blur (adjust to make it more/less opaque)
+                        effect.setBlurRadius(progress * 10.0)
+                    else:
+                        # Strip the effect entirely when undimmed to restore render performance
+                        target.setGraphicsEffect(None)
+
+            except RuntimeError:
+                # Fail gracefully if PyQt objects are destroyed mid-animation
+                anim.stop()
+
+        anim.valueChanged.connect(update_frost)
+
+        def on_finished() -> None:
+            if key in self._dim_overlays:
                 del self._dim_overlays[key]
-                existing = None
 
-        if existing is not None:
-            _, _, animator = existing
-            try:
-                current_op = animator._item.opacity()
-                rect_sz = animator._item.rect()
-                in_scene = animator._item.scene() is not None
-            except RuntimeError:
-                current_op, rect_sz, in_scene = "DEAD", "DEAD", False
-            animator.fade_to(target_opacity, duration_ms=duration)
-            return
+        anim.finished.connect(on_finished)
+        self._dim_overlays[key] = anim
 
-        if not dim:
-            return
-
-        dim_rect = QtWidgets.QGraphicsRectItem()
-        dim_rect.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 200)))
-        dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
-        dim_rect.setParentItem(gi)
-        dim_rect.setZValue(997)
-        # Size the rect synchronously so the first paint after
-        # setUpdatesEnabled(True)
-        try:
-            dim_rect.setRect(vb.mapRectToItem(gi, vb.boundingRect()))
-        except Exception:
-            pass
-
-        # Start invisible when animating so the fade is actually visible; snap
-        # directly to the target when caller opted out of animation.
-        dim_rect.setOpacity(0.0 if animate else target_opacity)
-        dim_rect.setVisible(True)
-
-        def _resize_cb(*_args: Any) -> None:
-            """Synchronizes the dimming rectangle geometry with the plot viewport.
-
-            This callback is triggered by the ViewBox's ``sigResized`` signal. It
-            translates the current viewport bounds into the parent's coordinate
-            system to ensure the semi-transparent overlay precisely covers the
-            visible plot area, including during window resizes or layout shifts.
-
-            Args:
-                *_args: Variable length argument list emitted by the
-                    ``sigResized`` signal (typically contains the ViewBox instance).
-            """
-            try:
-                rect = vb.mapRectToItem(gi, vb.boundingRect())
-                dim_rect.setRect(rect)
-            except (RuntimeError, Exception):
-                pass
-
-        vb.sigResized.connect(_resize_cb)
-        animator = _PlotDimAnimator(dim_rect, parent=self)
-        self._dim_overlays[key] = (dim_rect, _resize_cb, animator)
-        QtCore.QTimer.singleShot(0, _resize_cb)
+        # 5. Execute
         if animate:
-            animator.fade_to(target_opacity, duration_ms=duration)
+            anim.start()
+        else:
+            update_frost(target_progress)
+            on_finished()
 
     def _set_plots_dimmed(
         self,
@@ -3389,7 +2249,6 @@ class MainWindow(QtWidgets.QMainWindow):
             is resized.
         """
         # Guard: Prevent welcome text from reappearing if the calibration overlay is active.
-        # This stops clear/re-annotate paths from reintroducing stale copy.
         if getattr(self, "_calib_overlay_ready", False):
             return
 
@@ -3398,39 +2257,45 @@ class MainWindow(QtWidgets.QMainWindow):
         target = self._plt2_arr[1] or self._plt2_arr[0]
         if not target:
             return
+        font_size = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
+        text_color = (45, 55, 72, 230)
+        font_family = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
-        # Determine responsive font sizes
-        font_size = 10 if getattr(self, "multiplex_plots", 1) == 1 else 9
-
-        # Initialize text items with specific HTML formatting
-        self._text1 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        self._text1 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text1.setHtml(
-            "<span style='font-size: 14pt'>"
-            "Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI</span>"
+            f"<div style='font-family: {font_family}; text-align: center;'>"
+            "<span style='font-size: 15pt; font-weight: 600; letter-spacing: 0.5px;'>"
+            "Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI</span></div>"
         )
 
-        self._text2 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        self._text2 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text2.setHtml(
-            f"<span style='font-size: {font_size}pt'>"
+            f"<div style='font-family: {font_family}; text-align: center;'>"
+            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
             "Don't forget to initialize (in air) your quartz device "
-            "<b><i>before</i></b> starting.</span>"
+            "<b style='color: #2b6cb0;'><i>before</i></b> starting.</span></div>"
         )
 
-        self._text3 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
+        self._text3 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text3.setHtml(
-            f"<span style='font-size: {font_size}pt'>"
+            f"<div style='font-family: {font_family}; text-align: center;'>"
+            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
             "Wait to apply the drop to your quartz device until "
-            '<b><i>after</i></b> hitting "Start".</span>'
+            "<b style='color: #2b6cb0;'><i>after</i></b> hitting \"Start\".</span></div>"
         )
 
         view_box = target.getViewBox()
         graphics_item = target.graphicsItem()
-
-        # Parent to graphicsItem (PlotItem level) so text overlays the plot space properly.
-        # Set ZValue to 998 (above the generic dim rect, below the calib overlay).
         for text_item in (self._text1, self._text2, self._text3):
+            shadow = QtWidgets.QGraphicsDropShadowEffect()
+            shadow.setBlurRadius(10)
+            shadow.setXOffset(0)
+            shadow.setYOffset(1)
+            shadow.setColor(QtGui.QColor(255, 255, 255, 220))
+            text_item.setGraphicsEffect(shadow)
             text_item.setParentItem(graphics_item)
             text_item.setZValue(998)
+
         no_users = UserProfiles.count() == 0
         self._text1.setVisible(no_users)
 
@@ -3482,7 +2347,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "Phase",
             units="deg",
             color=Constants.plot_colors[1],
-            **{"font-size": "10pt"},
+            **{"font-size": "9pt"},
         )
 
     ###########################################################################
@@ -3610,7 +2475,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 DatabaseSynchronizer.sync_on_launch(
                     local_db=machine_database, bundled_db_path=Path(bundled_database_path)
                 )
-
                 machine_database.close()
             else:
                 Log.w("Nothing to do. No local or bundled database file found.")
@@ -3915,6 +2779,20 @@ class MainWindow(QtWidgets.QMainWindow):
             current_count = getattr(self, "multiplex_plots", None)
             current_source = getattr(self, "_last_configured_source", None)
             new_source = self._get_source()
+            if current_count != new_count:
+                left_pane = self.PlotsWin.ui2.left_pane
+                current_tabs = len(left_pane.btn_group.buttons())
+                while current_tabs < new_count:
+                    dummy_plot = GraphicsLayoutWidget()
+                    dummy_plot.setBackground(None)
+
+                    left_pane.add_device(f"Device {current_tabs + 1}", dummy_plot)
+                    current_tabs += 1
+
+                for i in range(len(left_pane.btn_group.buttons())):
+                    btn = left_pane.btn_group.button(i)
+                    if btn:
+                        btn.setVisible(i < new_count)
 
             plots_already_built = any(p is not None for p in self._plt0_arr) or any(
                 p is not None for p in self._plt2_arr
@@ -3946,15 +2824,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
             plt_widget = self.PlotsWin.ui2.plt
             pltB_widget = self.PlotsWin.ui2.pltB
+            plt_temp_widget = getattr(self.PlotsWin.ui2, "plt_temp", None)
+            _all_tiles = [w for w in (plt_widget, pltB_widget, plt_temp_widget) if w]
 
-            # Freeze UI updates on parent graphics widgets. This ensures the user does
-            # not see the intermediate empty-layout state between .clear() and _configure_plot().
-            plt_widget.setUpdatesEnabled(False)
-            pltB_widget.setUpdatesEnabled(False)
+            # Freeze all tile widgets so the user sees no intermediate state.
+            for w in _all_tiles:
+                w.setUpdatesEnabled(False)
 
             try:
-                plt_widget.clear()
-                pltB_widget.clear()
+                for w in _all_tiles:
+                    w.clear()
 
                 # Pass the layout state flags down to the clearing and configuration routines
                 self.clear(_reinit_curves=False, _show_welcome=show_text)
@@ -3964,10 +2843,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     amplitude=True, rf_diss=True, temperature=True, animate=False
                 )
             finally:
-                # Re-enable updates. This fires one consolidated repaint reflecting
-                # the final dim state—avoiding any in-between frame flickering.
-                plt_widget.setUpdatesEnabled(True)
-                pltB_widget.setUpdatesEnabled(True)
+                for w in _all_tiles:
+                    w.setUpdatesEnabled(True)
 
         except Exception as e:
             Log.e(tag=TAG, msg="Unable to set count of multiplex plots.")
@@ -4350,6 +3227,46 @@ class MainWindow(QtWidgets.QMainWindow):
         finally:
             plt_widget.setUpdatesEnabled(True)
 
+    def _get_glass_curve_styles(self, base_color, width: float = 2.0):
+        """Generates a glassy antialiased pen and a translucent brush from a base color.
+
+        Args:
+            base_color: Any QColor-compatible value (hex string, QColor, tuple).
+            width: Pen stroke width in pixels (default 2.0).
+
+        Returns:
+            (pen, brush) tuple ready for PlotCurveItem.
+        """
+        color = QtGui.QColor(base_color)
+
+        # ── Pen: vivid edge with slight translucency ──
+        pen_color = QtGui.QColor(color)
+        pen_color.setAlpha(215)
+        pen = pg.mkPen(color=pen_color, width=width)
+
+        # ── Fill brush: frosted area under the curve ──
+        brush_color = QtGui.QColor(color)
+        brush_color.setAlpha(65)  # ~11% — lighter than before for cleaner glass feel
+        brush = pg.mkBrush(brush_color)
+
+        return pen, brush
+
+    def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.08) -> None:
+        """Apply minimal glass axis styling — no spines, no ticks, floating labels."""
+        _text_pen = pg.mkPen(color=(35, 48, 68, 140))  # cool charcoal, quite light
+
+        for name in ("bottom", "left", "right", "top"):
+            ax = plot_item.getAxis(name)
+            if ax is not None:
+                ax.setPen(pg.mkPen(None))  # remove spine on every axis
+                ax.setTextPen(_text_pen)
+                ax.setGrid(int(alpha * 255))
+
+        plot_item.getViewBox().setBorder(pg.mkPen(None))
+        plot_item.getViewBox().setDefaultPadding(0.02)
+        plot_item.hideButtons()
+        plot_item.showGrid(x=True, y=True, alpha=alpha)
+
     def _configure_plot(self, _show_welcome=True):
         """Initializes and configures the layout for all PyQtGraph plots.
 
@@ -4366,32 +3283,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """
 
         class DateAxis(AxisItem):
-            """Internal axis item for formatting timestamps into human-readable strings.
-
-            Inherits from pyqtgraph.AxisItem to override the tick label generation,
-            providing context-aware time formats.
-            """
-
             def __init__(self, *args, **kwargs):
-                """Initializes the DateAxis with standard AxisItem arguments."""
                 super(DateAxis, self).__init__(*args, **kwargs)
 
             def tickStrings(self, values, scale, spacing):
-                """Converts epoch timestamps into formatted time strings.
-
-                Args:
-                    values (list[float]): The raw numerical values of the ticks.
-                    scale (float): Scale factor applied to the values.
-                    spacing (float): The spacing between ticks.
-
-                Returns:
-                    list[str]: Formatted strings. If the time is within the first hour
-                        of the day (UTC), it returns 'MM:SS'. Otherwise, it returns
-                        'HH:MM:SS'. Returns an empty string on error.
-                """
                 try:
-                    # If less than 1 hour: display as "MM:SS" format.
-                    # If equal or over 1 hour: display as "HH:MM:SS".
                     z = []
                     for value in values:
                         dt = datetime.fromtimestamp(float(value), timezone.utc)
@@ -4400,22 +3296,69 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     return ""
 
-        # Set plot background color to white.
-        self.PlotsWin.ui2.plt.setBackground(background="#FFFFFF")
-        self.PlotsWin.ui2.pltB.setBackground(background="#FFFFFF")
-        title_amplitude = "Plot: Amplitude"
-        title_resonance_dissipation = "Plot: Resonance Frequency / Dissipation"
-        title_temperature = "Plot: Temperature"
-        get_suffix = lambda i: (
-            f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
-            if self.has_active_multi_port()
-            else f" {i + 1}"
-        )
+        class GlassAxisItem(AxisItem):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                f = QtGui.QFont("Segoe UI")
+                f.setPixelSize(10)
+                self.setTickFont(f)
+                self.setStyle(
+                    tickLength=0,
+                    tickTextOffset=3,
+                    autoExpandTextSpace=False,
+                )
+                self.setPen(pg.mkPen(None))
+                # Disable Pyqtgraph's SI prefix mechanism; we manage the scale factor directly
+                self.enableAutoSIPrefix(False)
 
-        # Configures elements of the PyQtGraph plots: amplitude
+            def paint(self, p, opt, widget):
+                p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
+                super().paint(p, opt, widget)
+
+            def tickStrings(self, values, scale, spacing):
+                strs = super().tickStrings(values, scale, spacing)
+                clean_strs = []
+                for s, v in zip(strs, values):
+                    val = v * scale
+                    abs_v = abs(val)
+                    # Suppress scientific notation for small float values like Dissipation (e.g., 0.000193)
+                    if 0 < abs_v < 0.01 or "e" in s.lower():
+                        clean_strs.append(f"{val:.6f}")
+                    else:
+                        clean_strs.append(s)
+                return clean_strs
+
+        class GlassDateAxis(DateAxis):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                f = QtGui.QFont("Segoe UI")
+                f.setPixelSize(10)
+                self.setTickFont(f)
+                self.setStyle(
+                    tickLength=0,
+                    tickTextOffset=3,
+                    autoExpandTextSpace=False,
+                )
+                self.setPen(pg.mkPen(None))
+
+            def paint(self, p, opt, widget):
+                p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
+                super().paint(p, opt, widget)
+
+        self.PlotsWin.ui2.plt.setBackground(None)
+        self.PlotsWin.ui2.pltB.setBackground(None)
+        _plt_temp = getattr(self.PlotsWin.ui2, "plt_temp", None)
+        if _plt_temp:
+            _plt_temp.setBackground(None)
+
         self.PlotsWin.ui2.plt.setAntialiasing(True)
         self.PlotsWin.ui2.pltB.setAntialiasing(True)
+        if _plt_temp:
+            _plt_temp.setAntialiasing(True)
 
+        # ---------------------------------------------------------
+        # Amplitude Plot
+        # ---------------------------------------------------------
         for i in range(len(self._plt0_arr)):
             if i >= self.multiplex_plots:
                 self._plt0_arr[i] = None
@@ -4433,28 +3376,36 @@ class MainWindow(QtWidgets.QMainWindow):
                 col=x,
                 row=y,
                 colspan=span,
-                title=title_amplitude + get_suffix(i),
-                **{"font-size": "10pt"},
+                axisItems={
+                    "bottom": GlassAxisItem(orientation="bottom"),
+                    "left": GlassAxisItem(orientation="left"),
+                },
+                **{"font-size": "9pt"},
             )
-            plot_layout.showGrid(x=True, y=True)
             plot_layout.setVisible(visible)
-            plot_layout.setLabel("bottom", "Frequency", units="Hz")
-            plot_layout.setLabel(
-                "left",
-                "Amplitude",
-                units="dB",
-                color=Constants.plot_colors[0],
-                **{"font-size": "10pt"},
-            )
 
-            # Set size policy for show/hide for Resonance Frequency/Dissipation plots.
+            # X-Axis remains, Y-Axis label removed
+            plot_layout.setLabel("bottom", "Frequency (MHz)")
+
+            # Convert the bottom axis from raw Hz to MHz and strip trailing zeros.
+            _amp_bottom = plot_layout.getAxis("bottom")
+            _amp_bottom.setScale(1e-6)
+            _amp_bottom.enableAutoSIPrefix(False)
+            _amp_bottom.tickStrings = lambda values, scale, spacing: [
+                f"{v / 1e6:.3f}".rstrip("0").rstrip(".") for v in values
+            ]
+
+            self._apply_glass_plot_style(plot_layout)
+
             not_resize = plot_layout.sizePolicy()
             not_resize.setHorizontalStretch(1)
             plot_layout.setSizePolicy(not_resize)
 
             self._plt0_arr[i] = plot_layout
 
-        # Configures elements of the PyQtGraph plots: Resonance Frequency/Dissipation
+        # ---------------------------------------------------------
+        # Resonance Frequency / Dissipation Plot
+        # ---------------------------------------------------------
         self._yaxis = []
         self._xaxis = []
         for i in range(len(self._plt2_arr)):
@@ -4463,29 +3414,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
 
             x, y = i % 2, i // 2
-            self._yaxis.append(AxisItem(orientation="left"))
-            self._xaxis.append(DateAxis(orientation="bottom"))
+            self._yaxis.append(GlassAxisItem(orientation="left"))
+            self._xaxis.append(GlassDateAxis(orientation="bottom"))
 
             plot_layout = self.PlotsWin.ui2.pltB.addPlot(
                 col=x,
                 row=y,
-                title=title_resonance_dissipation + get_suffix(i),
                 **{"font-size": "12pt"},
                 axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
             )
-            plot_layout.showGrid(x=True, y=True)
-            plot_layout.setLabel("bottom", "Time", units="s")
-            plot_layout.setLabel(
-                "left",
-                "Resonance Frequency",
-                units="Hz",
-                color=Constants.plot_colors[2],
-                **{"font-size": "10pt"},
-            )
 
+            self._apply_glass_plot_style(plot_layout)
             self._plt2_arr[i] = plot_layout
 
-        # Configures elements of the PyQtGraph plots: Multiple Plot Resonance Frequency/Dissipation.
+        # ---------------------------------------------------------
+        # Multiple Plot Resonance Frequency / Dissipation
+        # ---------------------------------------------------------
         for i in range(len(self._plt3_arr)):
             if i >= self.multiplex_plots:
                 self._plt3_arr[i] = None
@@ -4494,49 +3438,66 @@ class MainWindow(QtWidgets.QMainWindow):
             multi_plot = self._plt2_arr[i]
             plot_layout = pg.ViewBox()
             multi_plot.showAxis("right")
+
+            multi_plot.getAxis("right").setPen(pg.mkPen(None))
+            multi_plot.getAxis("right").setTextPen(pg.mkPen(color=(35, 48, 68, 140)))
+            multi_plot.getAxis("right").setStyle(tickLength=0, tickTextOffset=3)
+
             multi_plot.scene().addItem(plot_layout)
             multi_plot.getAxis("right").setGrid(False)
             multi_plot.getAxis("right").linkToView(plot_layout)
             plot_layout.setXLink(multi_plot)
+
             multi_plot.enableAutoRange(axis="y", enable=True)
             plot_layout.enableAutoRange(axis="y", enable=True)
-            multi_plot.setLabel("bottom", "Time", units="s")
-            multi_plot.setLabel(
-                "right",
-                "Dissipation",
-                units="",
-                color=Constants.plot_colors[3],
-                **{"font-size": "10pt"},
-            )
 
-            # Since multi_plot is a reference to self._plt2_arr[i], we don't strictly need to re-save it
+            # Bottom and Right Y labels removed
+
             self._plt2_arr[i] = multi_plot
             self._plt3_arr[i] = plot_layout
+
+        # Pre-create the RF/Diss axis title labels for every active plot so
+        # they exist when the startup blur fires (singleShot(0)).  Without
+        # this, _apply_plot_dim's frost_targets loop skips them (hasattr
+        # returns False) and they render unblurred above the frosted plot on
+        # the very first Initialize.  Using justify="right" / justify="left"
+        # also nudges each label toward the ViewBox edge, centering it
+        # visually over its axis tick marks.
+        for i in range(len(self._plt2_arr)):
+            pi = self._plt2_arr[i]
+            if pi is None:
+                continue
+            if not hasattr(pi, "_left_title_label"):
+                pi._left_title_label = pg.LabelItem(justify="right")
+                pi.layout.addItem(pi._left_title_label, 0, 0)
+            if not hasattr(pi, "_right_title_label"):
+                pi._right_title_label = pg.LabelItem(justify="left")
+                pi.layout.addItem(pi._right_title_label, 0, 2)
 
         if _show_welcome:
             self._annotate_welcome_text()
         else:
             self._remove_welcome_text()
 
-        # Configures elements of the PyQtGraph plots: Temperature.
-        self._plt4 = self.PlotsWin.ui2.plt.addPlot(
-            row=3,
+        # ---------------------------------------------------------
+        # Temperature Plot
+        # ---------------------------------------------------------
+        _temp_container = _plt_temp if _plt_temp else self.PlotsWin.ui2.plt
+        self._plt4 = _temp_container.addPlot(
+            row=0,
             col=0,
-            colspan=2,
-            title=title_temperature,
-            axisItems={"bottom": DateAxis(orientation="bottom")},
-        )
-        self._plt4.showGrid(x=True, y=True)
-        self._plt4.setLabel("bottom", "Time", units="s")
-        self._plt4.setLabel(
-            "left",
-            "Temperature",
-            units="°C",
-            color=Constants.plot_colors[4],
-            **{"font-size": "10pt"},
+            colspan=1,
+            axisItems={
+                "bottom": GlassDateAxis(orientation="bottom"),
+                "left": GlassAxisItem(orientation="left"),
+            },
         )
 
-        # Set size policy for show/hide for temperature plot.
+        # X-Axis remains, Y-Axis label removed
+        self._plt4.setLabel("bottom", "Time", units="s")
+
+        self._apply_glass_plot_style(self._plt4)
+
         not_resize = self._plt4.sizePolicy()
         not_resize.setHorizontalStretch(1)
         self._plt4.setSizePolicy(not_resize)
@@ -4563,7 +3524,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ci_amp: list[pg.PlotCurveItem | None] = [None] * n
         self._ci_freq: list[pg.PlotCurveItem | None] = [None] * n
         self._ci_diss: list[pg.PlotCurveItem | None] = [None] * n
-
+        self._dot_freq: list[pg.ScatterPlotItem | None] = [None] * n
+        self._dot_diss: list[pg.ScatterPlotItem | None] = [None] * n
         for i in range(n):
             p0 = self._plt0_arr[i]
             p2 = self._plt2_arr[i]
@@ -4646,9 +3608,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
 
             # Amplitude Plot Handling
-            ci_amp = pg.PlotCurveItem(
-                pen=Constants.plot_colors[0],
+            _AMP_COLOR = QtGui.QColor(220, 68, 80)  # rose-red
+            _FREQ_COLOR = QtGui.QColor(46, 155, 218)  # sky-blue
+            _DISS_COLOR = QtGui.QColor(240, 156, 53)  # golden amber
+
+            _amp_pen, _amp_brush = self._get_glass_curve_styles(_AMP_COLOR, width=2.0)
+            _freq_pen, _freq_brush = self._get_glass_curve_styles(_FREQ_COLOR, width=2.0)
+            _diss_pen, _diss_brush = self._get_glass_curve_styles(_DISS_COLOR, width=2.0)
+
+            # Amplitude Plot Handling
+            ci_amp = GlassFillCurveItem(
+                pen=_amp_pen,
+                brush=_amp_brush,
+                fillLevel=-300,
+                antialias=True,
             )
+
             p0.addItem(ci_amp)
             try:
                 p0.enableAutoRange(axis="xy", enable=True)
@@ -4659,34 +3634,48 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Resonance Frequency Plot Handling
             ci_freq = pg.PlotCurveItem(
-                pen=Constants.plot_colors[2],
+                pen=_freq_pen,
                 autoDownsample=True,
                 downsampleMethod="peak",
                 skipFiniteCheck=True,
+                antialias=True,
+                connect="finite",
             )
             p2.addItem(ci_freq)
             self._ci_freq[i] = ci_freq
-
+            dot_freq = pg.ScatterPlotItem(size=8, pen=pg.mkPen(None), brush=pg.mkBrush(_FREQ_COLOR))
+            p2.addItem(dot_freq)
+            self._dot_freq[i] = dot_freq
             # Dissipation Plot Handling
             ci_diss = pg.PlotCurveItem(
-                pen=Constants.plot_colors[3],
+                pen=_diss_pen,
                 autoDownsample=True,
                 downsampleMethod="peak",
                 skipFiniteCheck=True,
+                antialias=True,
+                connect="finite",
             )
             p3.addItem(ci_diss)
             self._ci_diss[i] = ci_diss
-
+            dot_diss = pg.ScatterPlotItem(size=8, pen=pg.mkPen(None), brush=pg.mkBrush(_DISS_COLOR))
+            p3.addItem(dot_diss)
+            self._dot_diss[i] = dot_diss
             try:
                 p3.enableAutoRange(axis="y", enable=True)
             except (AttributeError, RuntimeError):
                 pass
 
         # Temperature Plot Handling
-        self._ci_temp = pg.PlotCurveItem(
-            pen=Constants.plot_colors[4],
+        _TEMP_COLOR = QtGui.QColor(148, 99, 210)  # soft violet
+        _temp_pen, _temp_brush = self._get_glass_curve_styles(_TEMP_COLOR, width=1.75)
+        self._ci_temp = GlassFillCurveItem(
+            pen=_temp_pen,
+            brush=_temp_brush,
+            fillLevel=0,
             clipToView=True,
             skipFiniteCheck=True,
+            antialias=True,
+            connect="finite",
         )
         self._plt4.addItem(self._ci_temp)
 
@@ -4922,14 +3911,15 @@ class MainWindow(QtWidgets.QMainWindow):
         # Define default UI state
         stop_flag = 0 if is_worker_running else 1
         is_warning = False
-
+        num_devices = getattr(self, "multiplex_plots", 1)
+        for i in range(num_devices):
+            self.PlotsWin.ui2.left_pane.set_device_state(i, "init")
         label_status = "Calibration Processing"
-        label_bar = "The operation will take a few seconds to complete\u2026 Please wait\u2026"
+        label_bar = "The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
         color_err = "#333333"
         css_style = Constants._CSS_YELLOW
         overlay_bar_color = "#2E9BDA"
         overlay_label_color = "#333333"
-
         # Evaluate Calibration State Machine
         if phase == 0:
             if temperature_err:
@@ -4943,7 +3933,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not time_temp_err and not temperature_err:
                 # Success State
                 label_status = "Calibration Success"
-                label_bar = "Baseline correction complete. Ready to measure. Press \u201cStart\u201d then apply drop."
+                label_bar = "Baseline correction complete. Ready to measure.\nPress \u201cStart\u201d then apply drop."
                 color_err = "#008000"
                 css_style = Constants._CSS_GREEN
                 overlay_bar_color = "#28A745"
@@ -4952,6 +3942,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 self._calib_overlay_ready = True
                 self._set_plots_dimmed(amplitude=False)
+                for i in range(num_devices):
+                    self.PlotsWin.ui2.left_pane.set_device_state(i, "success")
             elif time_temp_err:
                 label_bar = "Warning: ValueError or generic error during signal acquisition. Please repeat the Initialize."
                 is_warning = True
@@ -4968,6 +3960,8 @@ class MainWindow(QtWidgets.QMainWindow):
             overlay_label_color = "#cc0000"
             stop_flag = 1
             self._set_plots_dimmed(amplitude=False)
+            for i in range(num_devices):
+                self.PlotsWin.ui2.left_pane.set_device_state(i, "error")
 
         # Apply updates to the Side-panel UI
         controls_ui.infostatus.setStyleSheet(css_style)
@@ -4998,8 +3992,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "<div style='margin:0; padding:0; line-height:1.2;'>"
                 f"    <div><b>{label_status}</b></div>"
                 f"    <div style='font-size:9pt; color:{overlay_label_color};'>"
-                f"        {label_bar}"
-                "    </div>"
+                "        " + label_bar.replace("\n", "<br/>") + "    </div>"
                 "</div>"
             )
 
@@ -5091,7 +4084,42 @@ class MainWindow(QtWidgets.QMainWindow):
                 ui_step = 0
             else:
                 ui_step, status_msg = Constants._FILL_STATE_MAP.get(pred_int, (0, "Unknown"))
+                if pred_int != self._last_fill_pred[0]:
+                    prev_pred = self._last_fill_pred[0]
+                    self._last_fill_pred[0] = pred_int
 
+                    # Regression: undraw any classifier markers for states
+                    # that are now higher than the revised prediction.
+                    to_remove = [
+                        md
+                        for md in self._fill_event_markers[0]
+                        if md.get("source") == "classifier" and md.get("pred_int", -99) > pred_int
+                    ]
+                    for md in to_remove:
+                        self._fill_event_markers[0].remove(md)
+                        if self._active_marker_dict is md:
+                            self._hide_marker_label()
+                        self._undraw_fill_event_marker(md)
+
+                    # Forward/lateral: place a marker only if this exact
+                    # state has not already been marked this run.
+                    if pred_int >= 1:
+                        already_marked = any(
+                            md.get("source") == "classifier" and md.get("pred_int") == pred_int
+                            for md in self._fill_event_markers[0]
+                        )
+                        if not already_marked:
+                            try:
+                                self._place_fill_event_marker(
+                                    0,
+                                    float(self.worker.get_t1_buffer(0)[0]),
+                                    float(self.worker.get_d1_buffer(0)[0]),
+                                    float(self.worker.get_d2_buffer(0)[0]),
+                                    pred_int,
+                                    status_msg,
+                                )
+                            except Exception as e:
+                                Log.e(TAG, f"Failed to place fill-event marker: {e}")
                 if pred_int == -1 and not self._drop_epoch_sent:
                     self.worker._forecaster_in.put(
                         DropEpochSignal(float(self.worker.get_t1_buffer(0)[0]))
@@ -5235,10 +4263,20 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         ref_dissipation = self._reference_value_dissipation[0] if self._reference_flag else 0.0
 
-        d_resonance_frequency = float(
-            f"{data_resonance_frequency[0] - ref_resonance_frequency:.2f}"
-        )
-        d_dissipation = float(f"{(data_dissipation[0] - ref_dissipation) * 1e6:.4f}")
+        d_rf = data_resonance_frequency[0] - ref_resonance_frequency
+        d_diss = data_dissipation[0] - ref_dissipation
+
+        # Dynamically scale Frequency string
+        abs_rf = abs(d_rf)
+        if abs_rf >= 1e6:
+            freq_label = f"{d_rf / 1e6:.3f} MHz"
+        elif abs_rf >= 1e3:
+            freq_label = f"{d_rf / 1e3:.3f} kHz"
+        else:
+            freq_label = f"{d_rf:.2f} Hz"
+
+        # Format dissipation cleanly without scientific notation
+        diss_label = f"{d_diss:.6f}"
         d_temperature = float(f"{data_temperature[0]:.2f}")
 
         self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
@@ -5252,18 +4290,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if data_dissipation[0] in _max_diss:
             return (
-                f"{d_resonance_frequency} Hz",
+                freq_label,
                 "-",
                 f"{d_temperature} °C",
                 "Warning",
                 "#ff8000",
-                f"Warning: sensor dissipation calculation is not considered accurate above {data_dissipation[0] * 1e6:.0f}e-06 for this mode",
+                f"Warning: sensor dissipation calculation is not considered accurate above {data_dissipation[0]:.6f} for this mode",
             )
 
         # Standard Monitoring Return
         return (
-            f"{d_resonance_frequency} Hz",
-            f"{d_dissipation}e-06",
+            freq_label,
+            diss_label,
             f"{d_temperature} °C",
             "Monitoring",
             "#008000",
@@ -5293,8 +4331,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
 
             try:
-                time_running = self.worker.get_t2_buffer(i)[0]
-
+                time_running = self.worker.get_t2_buffer(i)[-1]
                 if time_running == 0:
                     return "Waiting for start…"
                 if time_running < 3.0:
@@ -5302,19 +4339,37 @@ class MainWindow(QtWidgets.QMainWindow):
                     return "Capturing data… Calibrating baselines for first 3 seconds… please wait…"
 
                 # Directional gate: drop drives RF negative and dissipation positive
-                delta_f = self.worker.get_d1_buffer(0)[0] - self._baseline_freq_avg
-                delta_d = self.worker.get_d2_buffer(0)[0] - self._baseline_diss_avg
-
+                delta_f = self.worker.get_d1_buffer(0)[-1] - self._baseline_freq_avg
+                delta_d = self.worker.get_d2_buffer(0)[-1] - self._baseline_diss_avg
                 if delta_f <= (10.0 * self._baseline_freq_noise) and delta_d >= (
                     10.0 * self._baseline_diss_noise
                 ):
                     self._drop_applied[i] = True
-
+                    if not self._drop_marker_placed[i]:
+                        self._drop_marker_placed[i] = True
+                        self._place_fill_event_marker(
+                            i,
+                            float(self.worker.get_t1_buffer(i)[0]),
+                            float(self.worker.get_d1_buffer(i)[0]),
+                            float(self.worker.get_d2_buffer(i)[0]),
+                            -99,
+                            "Drop Applied",
+                        )
             except Exception as e:
                 Log.e("Error calibrating baselines for drop detection - applying drop flag.")
                 Log.d("ERROR DETAILS:", str(e))
                 self._drop_applied[i] = True
-
+                if not self._drop_marker_placed[i]:
+                    self._drop_marker_placed[i] = True
+                    try:
+                        self._place_fill_event_marker(
+                            i,
+                            float(self.worker.get_t1_buffer(i)[0]),
+                            float(self.worker.get_d1_buffer(i)[0]),
+                            float(self.worker.get_d2_buffer(i)[0]),
+                        )
+                    except Exception:
+                        pass
         return "Capturing data… Apply drop when ready…"
 
     def _calibrate_baselines(self, i: int, time_running: float) -> None:
@@ -5399,21 +4454,74 @@ class MainWindow(QtWidgets.QMainWindow):
         dissipation plots to use specific reference colors and refreshes the
         information panel with the currently stored reference values.
         """
+        try:
+            rf_val = abs(self.worker.get_d1_buffer(0)[0] - self._reference_value_frequency[0])
+        except Exception:
+            rf_val = 0.0
+
+        if rf_val >= 1e6:
+            unit_rf = "ΔMHz"
+            scale_rf = 1e-6
+        elif rf_val >= 1e3:
+            unit_rf = "ΔkHz"
+            scale_rf = 1e-3
+        else:
+            unit_rf = "ΔHz"
+            scale_rf = 1.0
+
         for p in self._plt2_arr:
             if p is not None:
-                p.setLabel(
-                    "left",
-                    "Resonance Frequency",
-                    units="Hz",
-                    color=Constants.plot_colors[6],
-                    **{"font-size": "10pt"},
+                pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
+
+                p.setLabel("left", text=" ")
+                p.setLabel("right", text=" ")
+                p.setTitle("")
+
+                left_axis = p.getAxis("left")
+                if left_axis:
+                    left_axis.setScale(scale_rf)
+                    left_axis.enableAutoSIPrefix(False)
+                    left_axis.setWidth(48)
+                    left_axis.tickStrings = lambda values, scale, spacing: [
+                        (
+                            f"{v * scale:.3f}".rstrip("0").rstrip(".")
+                            if "." in f"{v * scale:.3f}"
+                            else f"{v * scale:.0f}"
+                        )
+                        for v in values
+                    ]
+
+                right_axis = p.getAxis("right")
+                if right_axis:
+                    # Scale is kept at 1.0 for tick generation; display divides by 1e6
+                    # to convert from the internal ×1e6 representation to decimal dissipation.
+                    right_axis.setScale(1.0)
+                    right_axis.enableAutoSIPrefix(False)
+                    right_axis.tickStrings = lambda values, scale, spacing: [
+                        f"{v * scale / 1e6:.6f}".rstrip("0").rstrip(".") for v in values
+                    ]
+
+                c_rf = Constants.plot_colors[6]
+                c_diss = Constants.plot_colors[7]
+                color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
+                color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
+
+                unit_diss = "Δ"
+
+                # Top-Left Label (Over Frequency Axis) with LINE BREAKS
+                if not hasattr(pi, "_left_title_label"):
+                    pi._left_title_label = pg.LabelItem(justify="right")
+                    pi.layout.addItem(pi._left_title_label, 0, 0)
+                pi._left_title_label.setText(
+                    f"Resonance<br>Frequency<br>({unit_rf})", color=color_rf, size="10pt"
                 )
-                p.setLabel(
-                    "right",
-                    "Dissipation",
-                    units="",
-                    color=Constants.plot_colors[7],
-                    **{"font-size": "10pt"},
+
+                # Top-Right Label (Over Dissipation Axis)
+                if not hasattr(pi, "_right_title_label"):
+                    pi._right_title_label = pg.LabelItem(justify="left")
+                    pi.layout.addItem(pi._right_title_label, 0, 2)
+                pi._right_title_label.setText(
+                    f"Dissipation<br>({unit_diss})", color=color_diss, size="10pt"
                 )
 
         layout_ui = self.InfoWin.ui3
@@ -5467,20 +4575,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 np.asarray(self.worker.get_d1_buffer(i)) - self._reference_value_frequency[i]
             )
             ci_freq = self._ci_freq[i]
-            if ci_freq:
-                ci_freq.setData(x=self.worker.get_t1_buffer(i), y=self._vector_1)
+            t1_buffer = self.worker.get_t1_buffer(i)
+            if ci_freq and len(t1_buffer) > 0:
+                ci_freq.setData(x=t1_buffer, y=self._vector_1)
+                self._dot_freq[i].setData([{"pos": (t1_buffer[0], self._vector_1[0])}])
 
             # Dissipation (reference-subtracted)
             self._vector_2 = (
                 np.asarray(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
             )
             ci_diss = self._ci_diss[i]
-            if ci_diss:
-                # Switch to reference-mode pen colour once, not every tick.
+            t2_buffer = self.worker.get_t2_buffer(i)
+            if ci_diss and len(t2_buffer) > 0:
                 if i not in self._ci_diss_ref_pen_set:
                     ci_diss.setPen(Constants.plot_colors[7])
                     self._ci_diss_ref_pen_set.add(i)
-                ci_diss.setData(x=self.worker.get_t2_buffer(i), y=self._vector_2)
+                    self._dot_diss[i].setBrush(pg.mkBrush(Constants.plot_colors[7]))
+
+                ci_diss.setData(x=t2_buffer, y=self._vector_2)
+                self._dot_diss[i].setData([{"pos": (t2_buffer[0], self._vector_2[0])}])
 
             # Apply limits if measuring
             if is_measurement:
@@ -5512,13 +4625,77 @@ class MainWindow(QtWidgets.QMainWindow):
         auxiliary info panel correctly displays the currently loaded (but
         inactive) reference values.
         """
-        font = {"font-size": "10pt"}
         colors = Constants.plot_colors
+
+        try:
+            rf_val = abs(self.worker.get_d1_buffer(0)[0])
+        except Exception:
+            rf_val = 0.0
+
+        if rf_val >= 1e6:
+            unit_rf = "MHz"
+            scale_rf = 1e-6
+        elif rf_val >= 1e3:
+            unit_rf = "kHz"
+            scale_rf = 1e-3
+        else:
+            unit_rf = "Hz"
+            scale_rf = 1.0
 
         for p in self._plt2_arr:
             if p:
-                p.setLabel("left", "Resonance Frequency", units="Hz", color=colors[2], **font)
-                p.setLabel("right", "Dissipation", units="", color=colors[3], **font)
+                pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
+
+                p.setLabel("left", text=" ")
+                p.setLabel("right", text=" ")
+                p.setTitle("")
+
+                left_axis = p.getAxis("left")
+                if left_axis:
+                    left_axis.setScale(scale_rf)
+                    left_axis.enableAutoSIPrefix(False)
+                    left_axis.setWidth(48)
+                    left_axis.tickStrings = lambda values, scale, spacing: [
+                        (
+                            f"{v * scale:.3f}".rstrip("0").rstrip(".")
+                            if "." in f"{v * scale:.3f}"
+                            else f"{v * scale:.0f}"
+                        )
+                        for v in values
+                    ]
+
+                right_axis = p.getAxis("right")
+                if right_axis:
+                    # Scale is kept at 1.0 for tick generation; display divides by 1e6
+                    # to convert from the internal ×1e6 representation to decimal dissipation.
+                    right_axis.setScale(1.0)
+                    right_axis.enableAutoSIPrefix(False)
+                    right_axis.tickStrings = lambda values, scale, spacing: [
+                        f"{v * scale / 1e6:.6f}".rstrip("0").rstrip(".") for v in values
+                    ]
+
+                c_rf = colors[2]
+                c_diss = colors[3]
+                color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
+                color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
+
+                # Top-Left Label (Over Frequency Axis) with LINE BREAKS
+                # justify="right" nudges the text toward the ViewBox edge so
+                # it sits centered over the left-axis tick marks.
+                if not hasattr(pi, "_left_title_label"):
+                    pi._left_title_label = pg.LabelItem(justify="right")
+                    pi.layout.addItem(pi._left_title_label, 0, 0)
+                pi._left_title_label.setText(
+                    f"Resonance<br>Frequency<br>({unit_rf})", color=color_rf, size="10pt"
+                )
+
+                # Top-Right Label (Over Dissipation Axis)
+                # justify="left" nudges the text toward the ViewBox edge so
+                # it sits centered over the right-axis tick marks.
+                if not hasattr(pi, "_right_title_label"):
+                    pi._right_title_label = pg.LabelItem(justify="left")
+                    pi.layout.addItem(pi._right_title_label, 0, 2)
+                pi._right_title_label.setText("Dissipation", color=color_diss, size="10pt")
 
         layout_ui = self.InfoWin.ui3
         layout_ui.inforef1.setText(f"<font color=#0000ff> Ref. Frequency </font>{self._labelref1}")
@@ -5613,19 +4790,23 @@ class MainWindow(QtWidgets.QMainWindow):
               drop detection.
         """
         # Cache the slices to prevent redundant array operations per tick
-        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[:n]
-        slice_resonance_frequency = self.worker.get_d1_buffer(i)[:n]
-        slice_time_dissipation = self.worker.get_t2_buffer(i)[:n]
-        slice_dissipation = self.worker.get_d2_buffer(i)[:n]
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[-n:]
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)[-n:]
+        slice_time_dissipation = self.worker.get_t2_buffer(i)[-n:]
+        slice_dissipation = self.worker.get_d2_buffer(i)[-n:]
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 
         # Update Curve Data
         if ci_freq:
             ci_freq.setData(x=slice_time_resonance_frequency, y=slice_resonance_frequency)
+            self._dot_freq[i].setData(
+                [{"pos": (slice_time_resonance_frequency[0], slice_resonance_frequency[0])}]
+            )
 
         if ci_diss:
             ci_diss.setData(x=slice_time_dissipation, y=slice_dissipation)
+            self._dot_diss[i].setData([{"pos": (slice_time_dissipation[0], slice_dissipation[0])}])
 
         # Handle X-Axis Padding & Sync
         if slice_time_resonance_frequency.size > 0:
@@ -5636,7 +4817,7 @@ class MainWindow(QtWidgets.QMainWindow):
             x_pad = x_range * Constants.default_plot_padding
             plot_resonance_frequency.setXRange(x_min - x_pad, x_max + x_pad)
 
-        self._apply_freq_limits(i, plot_resonance_frequency, data_resonance_frequency)
+        self._apply_freq_limits(i, plot_resonance_frequency, slice_resonance_frequency)
 
         # Dissipation yMax Limit Caching
         if not hasattr(self, "_p3_last_ymax"):
@@ -5670,7 +4851,7 @@ class MainWindow(QtWidgets.QMainWindow):
             plot_resonance_frequency (pg.PlotWidget): The PyQtGraph plot widget to be updated.
             data_resonance_frequency (np.ndarray): The raw resonance frequency data buffer.
         """
-        visible = data_resonance_frequency[: Constants._NUM_DISPLAY_POINTS]
+        visible = data_resonance_frequency
         if not visible.size:
             return
 
@@ -5731,6 +4912,373 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             Log.e("Error handling plot status label text!")
 
+    def _place_fill_event_marker(
+        self,
+        i: int,
+        t: float,
+        y_freq: float,
+        y_diss: float,
+        pred_int: int,
+        label_text: str,
+    ) -> None:
+        """Draws an animated open-circle event marker on the RF and Dissipation plots.
+
+        Args:
+            i: Channel index.
+            t: Event timestamp (seconds).
+            y_freq: Resonance-frequency value at the event.
+            y_diss: Dissipation value at the event.
+            pred_int: Classifier state integer (-99 for physical drop, ≥1 for fill steps).
+            label_text: Human-readable description shown in the click tooltip.
+        """
+        p2 = self._plt2_arr[i] if i < len(self._plt2_arr) else None
+        p3 = self._plt3_arr[i] if i < len(self._plt3_arr) else None
+        if p2 is None or p3 is None:
+            return
+
+        _FREQ_COLOR = QtGui.QColor(46, 155, 218)
+        _DISS_COLOR = QtGui.QColor(240, 156, 53)
+
+        FINAL_SIZE = 10
+        RIPPLE_SIZE = 22
+        DRAW_MS = 450
+        RIPPLE_MS = 600
+        FRAME_MS = 16
+
+        def _make_marker(parent, color, y):
+            item = pg.ScatterPlotItem(
+                x=[t],
+                y=[y],
+                symbol="o",
+                size=0,
+                pen=pg.mkPen(color=color, width=2),
+                brush=pg.mkBrush(None),
+            )
+            item.setZValue(50)
+            item.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
+            item.setAcceptHoverEvents(True)
+            item.setCursor(QtCore.Qt.PointingHandCursor)
+            parent.addItem(item)
+            return item
+
+        def _make_hover_handler(marker, color):
+            """Returns a slot that fills/unfills the ring on hover.
+
+            Tolerates both the old (spots, ev) and new (scatter, spots, ev)
+            sigHovered signatures by scanning args for the first list.
+            """
+            hover_brush = pg.mkBrush(QtGui.QColor(color.red(), color.green(), color.blue(), 160))
+            open_brush = pg.mkBrush(None)
+
+            def _handler(*args, m=marker, hb=hover_brush, ob=open_brush):
+                pts = next((a for a in args if isinstance(a, list)), [])
+                m.setBrush(hb if pts else ob)
+
+            return _handler
+
+        def _make_ripple(parent, color, y):
+            item = pg.ScatterPlotItem(
+                x=[t],
+                y=[y],
+                symbol="o",
+                size=float(FINAL_SIZE),
+                pen=pg.mkPen(color=color, width=1.5),
+                brush=pg.mkBrush(None),
+            )
+            item.setZValue(49)
+            item.setOpacity(0.85)
+            parent.addItem(item)
+            return item
+
+        m_freq = _make_marker(p2, _FREQ_COLOR, y_freq)
+        m_diss = _make_marker(p3, _DISS_COLOR, y_diss)
+
+        # Build the record used by undraw, click, and reset
+        marker_dict = dict(
+            source="drop" if pred_int == -99 else "classifier",
+            pred_int=pred_int,
+            m_freq=m_freq,
+            m_diss=m_diss,
+            p2=p2,
+            p3=p3,
+            t=t,
+            y_freq=y_freq,
+            y_diss=y_diss,
+            label_text=label_text,
+        )
+        self._fill_event_markers[i].append(marker_dict)
+
+        # Wire click-to-label on both scatter items
+        m_freq.sigClicked.connect(lambda *a, md=marker_dict: self._on_marker_clicked(md))
+        m_diss.sigClicked.connect(lambda *a, md=marker_dict: self._on_marker_clicked(md))
+        m_freq.sigHovered.connect(_make_hover_handler(m_freq, _FREQ_COLOR))
+        m_diss.sigHovered.connect(_make_hover_handler(m_diss, _DISS_COLOR))
+
+        # ── Draw-in animation ────────────────────────────────────────────────
+        draw_start = monotonic()
+        draw_timer = QtCore.QTimer(self)
+        draw_timer.setInterval(FRAME_MS)
+
+        def _draw_step(timer=draw_timer, mf=m_freq, md=m_diss):
+            elapsed = (monotonic() - draw_start) * 1000.0
+            t_norm = min(1.0, elapsed / DRAW_MS)
+            eased = 1.0 - (1.0 - t_norm) ** 3
+            val = eased * FINAL_SIZE
+            try:
+                mf.setSize(val)
+                md.setSize(val)
+            except RuntimeError:
+                timer.stop()
+                return
+            if t_norm >= 1.0:
+                timer.stop()
+
+        draw_timer.timeout.connect(_draw_step)
+        draw_timer.start()
+
+        # ── Ripple animation ─────────────────────────────────────────────────
+        r_freq = _make_ripple(p2, _FREQ_COLOR, y_freq)
+        r_diss = _make_ripple(p3, _DISS_COLOR, y_diss)
+
+        ripple_start = monotonic()
+        ripple_timer = QtCore.QTimer(self)
+        ripple_timer.setInterval(FRAME_MS)
+
+        def _ripple_step(timer=ripple_timer, rf=r_freq, rd=r_diss, p_2=p2, p_3=p3):
+            elapsed = (monotonic() - ripple_start) * 1000.0
+            progress = min(1.0, elapsed / RIPPLE_MS)
+            eased = 1.0 - (1.0 - progress) ** 2
+            new_size = FINAL_SIZE + eased * (RIPPLE_SIZE - FINAL_SIZE)
+            opacity = 0.85 * (1.0 - eased)
+            try:
+                rf.setSize(new_size)
+                rd.setSize(new_size)
+                rf.setOpacity(opacity)
+                rd.setOpacity(opacity)
+            except RuntimeError:
+                timer.stop()
+                return
+            if progress >= 1.0:
+                timer.stop()
+                for p, item in ((p_2, rf), (p_3, rd)):
+                    try:
+                        p.removeItem(item)
+                    except RuntimeError:
+                        pass
+
+        ripple_timer.timeout.connect(_ripple_step)
+        ripple_timer.start()
+
+    def _undraw_fill_event_marker(self, marker_dict: dict) -> None:
+        """Reverse-animates a fill-event marker to size 0 then removes it.
+
+        Used when the classifier revises a prediction downward. The ring
+        shrinks with a quadratic ease-in (accelerates toward erasure) over
+        300 ms, giving a clear visual signal that the event was retracted.
+
+        Args:
+            marker_dict: The record originally built by ``_place_fill_event_marker``.
+        """
+        m_freq = marker_dict.get("m_freq")
+        m_diss = marker_dict.get("m_diss")
+        p2 = marker_dict.get("p2")
+        p3 = marker_dict.get("p3")
+        if not all((m_freq, m_diss, p2, p3)):
+            return
+
+        FINAL_SIZE = 10  # must match _place_fill_event_marker
+        UNDRAW_MS = 300
+        FRAME_MS = 16
+
+        undraw_start = monotonic()
+        undraw_timer = QtCore.QTimer(self)
+        undraw_timer.setInterval(FRAME_MS)
+
+        def _undraw_step(timer=undraw_timer, mf=m_freq, md=m_diss, p_2=p2, p_3=p3):
+            elapsed = (monotonic() - undraw_start) * 1000.0
+            t_norm = min(1.0, elapsed / UNDRAW_MS)
+            eased = t_norm**2  # ease-in: accelerates toward zero
+            val = FINAL_SIZE * (1.0 - eased)
+            try:
+                mf.setSize(max(0.0, val))
+                md.setSize(max(0.0, val))
+            except RuntimeError:
+                timer.stop()
+                return
+            if t_norm >= 1.0:
+                timer.stop()
+                for p, item in ((p_2, mf), (p_3, md)):
+                    try:
+                        p.removeItem(item)
+                    except RuntimeError:
+                        pass
+
+        undraw_timer.timeout.connect(_undraw_step)
+        undraw_timer.start()
+
+    def _on_marker_clicked(self, marker_dict: dict) -> None:
+        """Toggles the glassmorphic tooltip for the clicked fill-event marker.
+
+        A second click on the same marker dismisses it; clicking a different
+        marker replaces the current tooltip.
+        """
+        if self._active_marker_dict is marker_dict:
+            self._hide_marker_label()
+        else:
+            self._show_marker_label(marker_dict)
+
+    def _hide_marker_label(self) -> None:
+        """Removes the active glassmorphic tooltip and its leader line."""
+        p2 = self._active_marker_plot
+        line = self._active_marker_line
+        lbl = self._active_marker_label
+
+        # Remove leader line first so it never outlives its label
+        if line is not None and p2 is not None:
+            try:
+                p2.removeItem(line)
+            except RuntimeError:
+                pass
+
+        if lbl is not None and p2 is not None:
+            try:
+                p2.removeItem(lbl)
+            except RuntimeError:
+                pass
+
+        timer = self._marker_label_timer
+        if timer is not None:
+            try:
+                timer.stop()
+            except RuntimeError:
+                pass
+
+        self._active_marker_label = None
+        self._active_marker_line = None
+        self._active_marker_plot = None
+        self._active_marker_dict = None
+        self._marker_label_timer = None
+
+    def _show_marker_label(self, marker_dict: dict) -> None:
+        """Displays a glassmorphic tooltip with an animated leader line.
+
+        The label is centred above the marker (anchor bottom-centre).  A
+        ``PlotCurveItem`` leader line grows downward from the label's anchor
+        point to the top edge of the dot ring over 250 ms, making it
+        unambiguous which event the tooltip describes.
+
+        Args:
+            marker_dict: Record built by ``_place_fill_event_marker``.
+        """
+        self._hide_marker_label()
+
+        p2 = marker_dict.get("p2")
+        t = marker_dict.get("t", 0.0)
+        y_freq = marker_dict.get("y_freq", 0.0)
+        label_text = marker_dict.get("label_text", "")
+
+        if p2 is None:
+            return
+
+        # Y offset: float the label 6 % of the visible range above the dot
+        try:
+            vr = p2.getViewBox().viewRange()
+            y_offset = (vr[1][1] - vr[1][0]) * 0.06
+        except Exception:
+            y_offset = 0.0
+
+        # Top edge of the dot in data-space so the line stops there, not at centre
+        FINAL_SIZE = 10  # must match _place_fill_event_marker
+        try:
+            data_per_px_y = p2.getViewBox().viewPixelSize()[1]
+            dot_edge_y = y_freq + (FINAL_SIZE / 2.0) * data_per_px_y
+        except Exception:
+            dot_edge_y = y_freq
+
+        label_anchor_y = y_freq + y_offset  # bottom-centre of label (anchor point)
+
+        # ── Glassmorphic label ────────────────────────────────────────────────
+        html = (
+            "<div style='"
+            "font-family: Segoe UI, -apple-system, system-ui, sans-serif;"
+            "font-size: 9pt; color: #2d3748;'>"
+            f"<b>{label_text}</b><br/>"
+            "<span style='font-size: 8pt; color: #718096;'>"
+            f"t = {t:.2f} s"
+            "</span></div>"
+        )
+
+        lbl = pg.TextItem(
+            html=html,
+            fill=pg.mkBrush(QtGui.QColor(236, 244, 252, 220)),
+            border=pg.mkPen(QtGui.QColor(180, 210, 235, 190), width=1),
+            anchor=(0.5, 1),  # bottom-CENTRE at data point (changed from 0,1)
+        )
+
+        shadow = QtWidgets.QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(12)
+        shadow.setXOffset(1)
+        shadow.setYOffset(2)
+        shadow.setColor(QtGui.QColor(0, 0, 0, 50))
+        lbl.setGraphicsEffect(shadow)
+        lbl.setZValue(200)
+
+        p2.addItem(lbl)
+        lbl.setPos(t, label_anchor_y)
+
+        # ── Animated leader line ──────────────────────────────────────────────
+        line_pen = pg.mkPen(
+            color=QtGui.QColor(180, 210, 235, 190),
+            width=1,
+            style=QtCore.Qt.DashLine,
+        )
+        leader = pg.PlotCurveItem(
+            x=[t, t],
+            y=[label_anchor_y, label_anchor_y],  # zero length; grows downward
+            pen=line_pen,
+        )
+        leader.setZValue(199)  # just behind the label
+        p2.addItem(leader)
+
+        LINE_MS = 250
+        FRAME_MS = 16
+        line_start = monotonic()
+        line_timer = QtCore.QTimer(self)
+        line_timer.setInterval(FRAME_MS)
+
+        def _line_step(
+            timer=line_timer,
+            ldr=leader,
+            y_top=label_anchor_y,
+            y_bot=dot_edge_y,
+        ):
+            elapsed = (monotonic() - line_start) * 1000.0
+            t_norm = min(1.0, elapsed / LINE_MS)
+            eased = 1.0 - (1.0 - t_norm) ** 2  # quad ease-out
+            current = y_top + eased * (y_bot - y_top)  # grows toward dot
+            try:
+                ldr.setData(x=[t, t], y=[y_top, current])
+            except RuntimeError:
+                timer.stop()
+                return
+            if t_norm >= 1.0:
+                timer.stop()
+
+        line_timer.timeout.connect(_line_step)
+        line_timer.start()
+
+        # ── Store active state ────────────────────────────────────────────────
+        self._active_marker_label = lbl
+        self._active_marker_line = leader  # ← new
+        self._active_marker_plot = p2
+        self._active_marker_dict = marker_dict
+
+        timer = QtCore.QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self._hide_marker_label)
+        timer.start(6000)
+        self._marker_label_timer = timer
+
     def _update_pre_drop_label(self, i: int, plot_resonance_frequency: pg.PlotWidget) -> None:
         """Updates the plot overlay label with dry-detection status prior to sample application.
 
@@ -5749,7 +5297,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 label is rendered (used for context, though label is updated via
                 `self._text4`).
         """
-        time_running = self.worker.get_t2_buffer(i)[0]
+        time_running = self.worker.get_t2_buffer(i)[-1]
         if time_running == 0:
             return
 
@@ -5769,6 +5317,19 @@ class MainWindow(QtWidgets.QMainWindow):
         # Evaluate positive state first for cleaner branching
         if dry_status:
             self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
+            if not self._dry_marker_placed[i]:
+                self._dry_marker_placed[i] = True
+                try:
+                    self._place_fill_event_marker(
+                        i,
+                        float(self.worker.get_t1_buffer(i)[0]),
+                        float(self.worker.get_d1_buffer(i)[0]),
+                        float(self.worker.get_d2_buffer(i)[0]),
+                        -98,
+                        "Sensor Dry - Apply Drop",
+                    )
+                except Exception as e:
+                    Log.e(TAG, f"Failed to place dry-event marker: {e}")
         else:
             # Sensor still wet – latch the earliest dry time for this channel
             with self._sensorDriedTimeValue.get_lock():
@@ -6456,12 +6017,12 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         plt_widget = getattr(self.PlotsWin.ui2, "plt", None)
         pltB_widget = getattr(self.PlotsWin.ui2, "pltB", None)
+        plt_temp_widget = getattr(self.PlotsWin.ui2, "plt_temp", None)
+        _all_tiles = [w for w in (plt_widget, pltB_widget, plt_temp_widget) if w]
 
         # Freeze UI updates to batch plot mutations invisibly
-        if plt_widget:
-            plt_widget.setUpdatesEnabled(False)
-        if pltB_widget:
-            pltB_widget.setUpdatesEnabled(False)
+        for w in _all_tiles:
+            w.setUpdatesEnabled(False)
 
         try:
             # Manage Calibration Overlays
@@ -6506,10 +6067,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         finally:
             # Unfreeze UI updates to trigger a single, consolidated repaint
-            if plt_widget:
-                plt_widget.setUpdatesEnabled(True)
-            if pltB_widget:
-                pltB_widget.setUpdatesEnabled(True)
+            for w in _all_tiles:
+                w.setUpdatesEnabled(True)
 
     ###########################################################################
     # Reference set/reset
@@ -6718,7 +6277,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.tecThread.wait()  # wait for thread to quit, gracefully
             Log.d("Starting new TEC thread.")
             self.tecThread = QtCore.QThread()
-            self.tecWorker = TECTask()
+            self.tecWorker = TECWorker()
             self.tecWorker.set_port(selected_port)
             self.tecWorker.set_slider_down(self.ControlsWin.ui1.slTemp.isSliderDown())
             self.tecWorker.set_slider_value(self.ControlsWin.ui1.slTemp.value())
@@ -8000,1039 +7559,3 @@ class MainWindow(QtWidgets.QMainWindow):
             )
 
         # Log.d("GUI: Normal repaint events") # no longer needed
-
-
-class ExtractWorker(QtCore.QThread):
-    label_text = QtCore.pyqtSignal(str)
-    set_range = QtCore.pyqtSignal(int, int)
-    progress = QtCore.pyqtSignal(int)
-    finished = QtCore.pyqtSignal()
-
-    def __init__(self, save_to, new_install_path):
-        super().__init__()
-        self.save_to = save_to
-        self.new_install_path = new_install_path
-
-    def run(self):
-        save_to = self.save_to
-        new_install_path = self.new_install_path
-        zip_filename = os.path.basename(save_to)[:-4]
-
-        if os.path.basename(new_install_path) != zip_filename:
-            new_install_path = os.path.join(new_install_path, zip_filename)
-
-        # Extract ZIP and launch new build
-        with pyzipper.AESZipFile(save_to, "r") as zf:
-            file_list = zf.namelist()
-            total = len(file_list)
-            self.set_range.emit(0, total)
-
-            for i, file in enumerate(file_list):
-                zf.extract(file, new_install_path)
-                self.label_text.emit(f"Extracting: {file}")
-                self.progress.emit(i)
-
-        self.label_text.emit("Finalizing...")
-        nested_path_wrong = os.path.join(new_install_path, zip_filename)
-
-        if os.path.exists(nested_path_wrong):
-            # this guarantees files are extracted where we want them
-            os.renames(nested_path_wrong, new_install_path + "_temp")
-            if os.path.dirname(save_to) == new_install_path:
-                os.renames(
-                    save_to,
-                    os.path.join(new_install_path + "_temp", zip_filename + ".zip"),
-                )
-            os.renames(new_install_path + "_temp", new_install_path)
-
-        os.remove(save_to)
-        self.finished.emit()
-
-
-class UpdaterProcess_Dbx(multiprocessing.Process):
-    def __init__(self, dbx_conn, local, remote):
-        super().__init__()
-        self._dbx_conn = dbx_conn
-        self._local = local
-        self._remote = remote
-
-    def run(self):
-        self.progressTask(self._local, self._remote)
-
-    def progressTask(self, file_local, file_remote):
-        md = self._dbx_conn.files_download_to_file(file_local, file_remote)
-
-
-class UpdaterTask(QtCore.QThread):
-    TAG = "[UpdaterTask]"
-    finished = QtCore.pyqtSignal()
-    exception = QtCore.pyqtSignal(str)
-    progress = QtCore.pyqtSignal(str, int)
-    _cancel = False
-
-    def __init__(self, local_file, remote_file, total_size):
-        super().__init__()
-        self.local_file = local_file
-        self.remote_file = remote_file
-        self.total_size = total_size
-
-    def cancel(self):
-        Log.d("GUI: Toggle progress mode")
-        # Log.w("Process kill request")
-        self._cancel = True
-
-    def run(self):
-        raise NotImplementedError("Subclass must define a custom run() method")
-
-
-class UpdaterTask_Dbx(UpdaterTask):
-    def __init__(self, local_file, remote_file, total_size, dbx_conn):
-        super().__init__(local_file, remote_file, total_size)
-        self._dbx_connection = dbx_conn
-
-    def cancel(self):
-        super().cancel()
-        self.progressTaskHandle.kill()
-
-    def run(self):
-        try:
-            save_to = self.local_file
-            path = self.remote_file
-            size = self.total_size
-            last_pct = -1
-
-            self.progressTaskHandle = UpdaterProcess_Dbx(self._dbx_connection, save_to, path)
-            self.progressTaskHandle.start()
-
-            while True:
-                try:
-                    curr_size = os.path.getsize(save_to)
-                except FileNotFoundError as e:
-                    curr_size = 0
-                except Exception as e:
-                    curr_size = 0
-                    Log.e(self.TAG, f"ERROR: {e}")
-                    self.exception.emit(str(e))
-                pct = int(100 * curr_size / size)
-                if pct != last_pct or curr_size == size:
-                    status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
-                    if curr_size == 0:
-                        status_str = f"Starting Download: {os.path.basename(path)} ({pct}%)"
-                    Log.i(self.TAG, status_str)
-                    self.progress.emit(status_str[: status_str.rfind(" (")], pct)
-                    need_repaint = True
-                    last_pct = pct
-                if curr_size == size or self._cancel or not self.progressTaskHandle.is_alive():
-                    break
-            if not self._cancel:
-                Log.d("GUI: Toggle progress mode")
-                Log.i(self.TAG, "Finshed downloading!")
-            else:
-                self.progressTaskHandle.join()
-                if os.path.exists(save_to):
-                    Log.d(f"Removing partial file download: {save_to}")
-                    os.remove(save_to)
-        except Exception as e:
-            Log.e(self.TAG, f"ERROR: {e}")
-            self.exception.emit(str(e))
-        self.finished.emit()
-
-
-class UpdaterTask_Git(UpdaterTask):
-    def run(self):
-        try:
-            save_to = self.local_file
-            path = self.remote_file
-            size = self.total_size
-            last_pct = -1
-
-            status_str = f"Starting Download: {os.path.basename(path)} (0%)"
-            Log.i(self.TAG, status_str)
-            self.progress.emit(status_str[: status_str.rfind(" (")], 0)
-
-            file_remote = path
-            file_local = save_to
-            with requests.get(file_remote, stream=True) as r:
-                r.raise_for_status()
-                size = int(r.headers["Content-Length"])
-                with open(file_local, "wb") as f:
-                    curr_size = 0
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if self._cancel:
-                            break
-
-                        f.write(chunk)
-                        curr_size += len(chunk)
-
-                        pct = int(100 * curr_size / size)
-                        if pct != last_pct or curr_size == size:
-                            status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
-                            Log.i(self.TAG, status_str)
-                            self.progress.emit(status_str[: status_str.rfind(" (")], pct)
-                            last_pct = pct
-
-            if not self._cancel:
-                Log.d("GUI: Toggle progress mode")
-                Log.i(self.TAG, "Finshed downloading!")
-            else:
-                if os.path.exists(save_to):
-                    Log.d(f"Removing partial file download: {save_to}")
-                    os.remove(save_to)
-        except Exception as e:
-            Log.e(self.TAG, f"ERROR: {e}")
-            self.exception.emit(str(e))
-        self.finished.emit()
-
-
-class TECTask(QtCore.QThread):
-    update_now = QtCore.pyqtSignal()
-    auto_off = QtCore.pyqtSignal()
-    volt_err = QtCore.pyqtSignal()
-    finished = QtCore.pyqtSignal()
-    lTemp_setText = QtCore.pyqtSignal(str)
-    lTemp_setStyleSheet = QtCore.pyqtSignal(str)
-    infobar_setText = QtCore.pyqtSignal(str)
-
-    port = None
-
-    slider_value = 0
-    slider_down = False
-    slider_enable = False
-
-    _tec_initialized = False
-    _tec_state = "OFF"
-    _tec_cycling = False
-    _tec_status = "CYCLE"
-    _tec_setpoint = -1
-    _tec_temp = 0
-    _tec_power = -1
-    _tec_voltage = "0V (0)"
-    _tec_voltage_error_seen = False
-    _tec_offset1 = "0"
-    _tec_offset2 = "0"
-    _tec_locked = False
-    _tec_update_now = False
-    _tec_stop_thread = False
-    _tec_debug = False
-    _tec_out_of_sync = 0  # counter, task aborts if it gets to 3
-
-    _task_timer = None
-    _task_rate = 5000
-    _task_timeout = 15 * 60 * 1000 / _task_rate
-    _task_counter = 0
-    _task_active = False
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.parent = parent
-        self._task_timer = QtCore.QTimer(self)
-        self._task_timer.timeout.connect(self.task)
-        self.update_now.connect(self.task_update)
-
-    def set_port(self, value):
-        self.port = value
-
-    def set_slider_value(self, value):
-        self.slider_value = value
-
-    def set_slider_down(self, value):
-        self.slider_down = value
-
-    def set_slider_enable(self, value):
-        self.slider_enable = value
-
-    def run(self):
-        Log.i(
-            TAG,
-            f"Temp Control started ({strftime('%Y-%m-%d %H:%M:%S', localtime())})",
-        )
-        self.infobar_setText.emit(
-            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-                "#333333", "Temp Control started."
-            )
-        )
-
-        self._task_active = True
-        self._task_timer.start(self._task_rate)
-        self.task()  # fire immediately
-
-    def task(self):
-        try:
-            if not self._task_active:
-                return
-            if True:  # was while()
-                try:
-                    sp = ""  # only update TEC if changed
-                    # Log.d("TEC debug: {}, {}, {}".format(
-                    #     self.slider_value, self._tec_setpoint, self.slider_down))
-                    if self.slider_value != self._tec_setpoint and not self.slider_down:
-                        # Try to update now to re-sync; if that fails, then auto-off.
-                        if self._tec_out_of_sync < 3:
-                            Log.d("Scheduling TEC for immediate update (out-of-sync)!")
-                            self._tec_out_of_sync += 1
-                            self._tec_update_now = True
-                        else:
-                            Log.w("Shutting down TEC to re-sync states (out-of-sync)!")
-                            self._tec_out_of_sync = 0
-                            new_l1 = "[AUTO-OFF ERROR]"
-                            self._tec_update("OFF")
-                            self._task_stop()
-                            self.auto_off.emit()
-                            self.lTemp_setText.emit(new_l1)
-                            self.lTemp_setStyleSheet.emit("background-color: {}".format("red"))
-                            return
-                    else:
-                        # Log.d("TEC is in-sync!")
-                        self._tec_out_of_sync = 0
-                    if self._tec_update_now and not self._tec_locked:
-                        sp = self.slider_value
-                    if self.slider_enable:
-                        Log.d(
-                            f"{self._task_counter:.0f}/{self._task_timeout:.0f}: Querying TEC status..."
-                        )
-                        self._tec_update(sp)
-                        self._tec_locked = False
-                        if self.slider_value == self._tec_setpoint and not self.slider_down:
-                            # Log.d("TEC sync success!")
-                            self._tec_out_of_sync = 0
-                    elif not self._tec_stop_thread:
-                        if not self._tec_locked:
-                            Log.d("Temp Control is locked while main thead is busy!")
-                        self._tec_locked = True
-                        return  # stop task silently
-                    self._tec_update_now = False
-                    if self._tec_update_now == False:
-                        sp = self.slider_value
-                    pv = self._tec_temp
-                    op = self._tec_power
-                    self._task_counter += 1
-                    if sp == 0.00:
-                        sp = 0.25
-                    if op == 0 or self._task_counter > self._task_timeout:
-                        if self._tec_voltage_error_seen:
-                            new_l1 = "[VOLTAGE ERROR]"
-                            self._tec_voltage_error_seen = False
-                            self.volt_err.emit()
-                        else:
-                            new_l1 = "[AUTO-OFF ERROR]" if np.isnan(pv) else "[AUTO-OFF TIMEOUT]"
-                            self._tec_update("OFF")
-                            self._task_stop()
-                            self.auto_off.emit()
-                    else:
-                        new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(pv, sp, op)
-                    self.lTemp_setText.emit(new_l1)
-                    bgcolor = "yellow"
-                    if op == 0 or self._task_counter > self._task_timeout:
-                        self._tec_stop_thread = True
-                        self._tec_update_now = False  # invalidate flag to update TEC again
-                        bgcolor = "red" if np.isnan(pv) else "yellow"
-                    else:
-                        if self._tec_status == "CYCLE":
-                            # Log.i(TAG, "{0}: TEC setpoint is rapid cycle. Wait for READY!".format(strftime('%Y-%m-%d %H:%M:%S', localtime())))
-                            self.infobar_setText.emit(
-                                "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
-                                    "#ff0000",
-                                    "Temp Control is cycling to target. Wait for READY! (this may take a few minutes)",
-                                )
-                            )
-
-                        if self._tec_status == "WAIT":
-                            self.infobar_setText.emit(
-                                "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
-                                    "#ff9900",
-                                    "Temp Control is stabilizing. Wait for READY! (about one minute remaining)",
-                                )
-                            )
-
-                        if self._tec_status == "CLOSE":
-                            self.infobar_setText.emit(
-                                "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
-                                    "#ff9900",
-                                    "Temp Control is about ready. Wait for READY! (only a few seconds left)",
-                                )
-                            )
-
-                        if self._tec_status == "STABLE":
-                            bgcolor = "lightgreen"
-                            # Log.i(TAG, "{0}: TEC setpoint has stabilized. Ready for START!".format(strftime('%Y-%m-%d %H:%M:%S', localtime())))
-                            self.infobar_setText.emit(
-                                "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
-                                    "#009900",
-                                    "Temp Control has stabilized. Ready for START!",
-                                )
-                            )
-
-                        if self._tec_status == "ERROR":
-                            bgcolor = "red"
-                            Log.e(
-                                TAG,
-                                "TEC status is in an unkown state. Please restart Temp Control.".format(
-                                    strftime("%Y-%m-%d %H:%M:%S", localtime())
-                                ),
-                            )
-
-                    self.lTemp_setStyleSheet.emit("background-color: {}".format(bgcolor))
-                except Exception as e:
-                    Log.e(
-                        TAG,
-                        "ERROR: Port read error during TEC task".format(
-                            strftime("%Y-%m-%d %H:%M:%S", localtime())
-                        ),
-                    )
-                    if self._tec_debug:
-                        raise e  # debug only
-                finally:
-                    pass
-
-        except:
-            limit = None
-            t, v, tb = sys.exc_info()
-            from traceback import format_tb
-
-            a_list = ["Traceback (most recent call last):"]
-            a_list = a_list + format_tb(tb, limit)
-            a_list.append(f"{t.__name__}: {str(v)}")
-            for line in a_list:
-                Log.e(line)
-
-        finally:
-            pass
-
-    def task_update(self):
-        self._task_counter = 0
-        if self._tec_stop_thread:
-            self._task_stop()  # stop immediately
-        if self._tec_update_now:
-            self.task()  # fire immediately
-
-    def _task_stop(self):
-        Log.i(
-            TAG,
-            f"Temp Control stopped ({strftime('%Y-%m-%d %H:%M:%S', localtime())})",
-        )
-        self.infobar_setText.emit(
-            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-                "#333333", "Temp Control stopped."
-            )
-        )
-        self._task_active = False
-        self.finished.emit()  # stop task
-
-    def _tec_update(self, dac=""):
-        # Open, write, read and close the port accordingly
-        selected_port = self.port
-        if selected_port is None:
-            selected_port = ""  # Dissallow None
-        if selected_port == "CMD_DEV_INFO":
-            selected_port = ""  # Dissallow Action
-
-        if self._tec_initialized == False:
-            self._tec_initialized = True
-
-            if len(selected_port) == 0:
-                Log.e("No active device is currently available for TEC status updates.")
-                Log.e('Please connect a device, hit "Reset", and try "Temp Control" again.')
-                self._tec_stop_thread = True  # queue thread for 'quit' on next update
-                self._tec_update_now = False  # invalidate flag to update TEC again
-                self.auto_off.emit()  # toggle off button state now
-                # fire next instance soon-ish
-                QtCore.QTimer.singleShot(500, self.task_update)
-                return
-
-            if not self._is_port_available(selected_port):
-                Log.e(f'ERROR: The selected device "{selected_port}" is no longer available.')
-                Log.e('Please "Reset" to detect devices and then try "Temp Control" again.')
-                self._tec_stop_thread = True  # queue thread for 'quit' on next update
-                self._tec_update_now = False  # invalidate flag to update TEC again
-                self.auto_off.emit()  # toggle off button state now
-                # fire next instance soon-ish
-                QtCore.QTimer.singleShot(500, self.task_update)
-                return
-
-            # set offsetB, offsetH and offsetC prior to initialization
-            if hasattr(Constants, "temp_offset_both"):
-                self._tec_update("=OFFSET {0:2.2f}".format(Constants.temp_offset_both))
-                Log.d(
-                    TAG,
-                    "{1}: Set offsetB={0:+02.2f}".format(
-                        Constants.temp_offset_both,
-                        strftime("%Y-%m-%d %H:%M:%S", localtime()),
-                    ),
-                )
-            if self._tec_stop_thread:
-                return
-            if hasattr(Constants, "temp_offset_heat"):
-                self._tec_update("+OFFSET {0:2.2f}".format(Constants.temp_offset_heat))
-                Log.d(
-                    TAG,
-                    "{1}: Set offsetH={0:+02.2f}".format(
-                        Constants.temp_offset_heat,
-                        strftime("%Y-%m-%d %H:%M:%S", localtime()),
-                    ),
-                )
-            if self._tec_stop_thread:
-                return
-            if hasattr(Constants, "temp_offset_cool"):
-                self._tec_update("-OFFSET {0:2.2f}".format(Constants.temp_offset_cool))
-                Log.d(
-                    TAG,
-                    "{1}: Set offsetC={0:+02.2f}".format(
-                        Constants.temp_offset_cool,
-                        strftime("%Y-%m-%d %H:%M:%S", localtime()),
-                    ),
-                )
-            if self._tec_stop_thread:
-                return
-
-            if (
-                hasattr(Constants, "tune_pid_cp")
-                and hasattr(Constants, "tune_pid_ci")
-                and hasattr(Constants, "tune_pid_cd")
-                and hasattr(Constants, "tune_pid_hp")
-                and hasattr(Constants, "tune_pid_hi")
-                and hasattr(Constants, "tune_pid_hd")
-            ):
-                self._tec_update(
-                    "TUNE {0:.3g},{1:.3g},{2:.3g},{3:.3g},{4:.3g},{5:.3g}".format(
-                        Constants.tune_pid_cp,
-                        Constants.tune_pid_ci,
-                        Constants.tune_pid_cd,  # cool PID
-                        Constants.tune_pid_hp,
-                        Constants.tune_pid_hi,
-                        Constants.tune_pid_hd,
-                    )
-                )  # heat PID
-                Log.w(
-                    TAG,
-                    "{6}: Set PID tuning per Constants.py parameters: {0:.3g},{1:.3g},{2:.3g},{3:.3g},{4:.3g},{5:.3g}".format(
-                        Constants.tune_pid_cp,
-                        Constants.tune_pid_ci,
-                        Constants.tune_pid_cd,  # cool PID
-                        Constants.tune_pid_hp,
-                        Constants.tune_pid_hi,
-                        Constants.tune_pid_hd,  # heat PID
-                        strftime("%Y-%m-%d %H:%M:%S", localtime()),
-                    ),
-                )
-            if self._tec_stop_thread:
-                return
-
-        # Attempt to open port and print errors (if any)
-        TEC_serial = serial.Serial()
-        try:
-            # Configure serial port (assume baud to check before update)
-            TEC_serial.port = selected_port
-            TEC_serial.baudrate = Constants.serial_default_speed  # 115200
-            TEC_serial.stopbits = serial.STOPBITS_ONE
-            TEC_serial.bytesize = serial.EIGHTBITS
-            TEC_serial.timeout = Constants.serial_timeout_ms
-            TEC_serial.write_timeout = Constants.serial_writetimeout_ms
-            TEC_serial.open()
-
-            # Handle special values, only send to TEC FW if not the current setpoint
-            if str(dac).isnumeric():
-                if int(dac) < 0 or int(dac) > 60:
-                    dac = "OFF"  # turn off if temp is outside valid range
-                if int(dac) == 0:
-                    dac = 0.25  # temp sensor clips at 0, so target 0.25C
-                Log.i(
-                    TAG,
-                    "Temp Control setpoint: {1}C".format(
-                        strftime("%Y-%m-%d %H:%M:%S", localtime()), dac
-                    ),
-                )
-                self.infobar_setText.emit(
-                    "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
-                        "#ff0000",
-                        "Cycling temperature to Temp Control setpoint... please wait...",
-                    )
-                )
-                self._tec_cycling = True
-
-            # Read and show the TEC temp status from the device
-            TEC_serial.write("temp {}\n".format(dac).encode())
-            timeoutAt = time() + 3
-            temp_reply = ""
-            lines_in_reply = 11
-            # timeout needed if old FW
-            while temp_reply.count("\n") < lines_in_reply and time() < timeoutAt:
-                while (
-                    TEC_serial.in_waiting == 0 and time() < timeoutAt
-                ):  # timeout needed if old FW:
-                    pass
-                temp_reply += TEC_serial.read(TEC_serial.in_waiting).decode()
-
-            if time() < timeoutAt:
-                temp_reply = temp_reply.split("\n")
-                actual_lines = len(temp_reply)
-                # ends with blank line (+1)
-                sl = actual_lines - (lines_in_reply + 1)
-                status_line = temp_reply[sl + 0]  # line 1
-                setpoint_line = temp_reply[sl + 1]  # line 2
-                power_line = temp_reply[sl + 2]  # line 3
-                voltage_line = temp_reply[sl + 3]  # line 4
-                stable_total_line = temp_reply[sl + 4]  # line 5
-                min_max_line = temp_reply[sl + 5]  # line 6
-                temp_status_line = temp_reply[sl + 6]  # line 7
-                ambient_line = temp_reply[sl + 7]  # line 8
-                temp_line = temp_reply[sl + 8]  # line 9
-                offsets_line = temp_reply[sl + 9]  # line 10 (unused)
-                tune_pid_line = temp_reply[sl + 10]  # line 11 (unused)
-                status_text = status_line.split(":")[1].strip()
-                # cycle, wait, close, stable, error
-                cycle_stable = status_text.split(",")[0]
-                heat_cool_off = status_text.split(",")[1]
-                setpoint_val = float(setpoint_line.split(":")[1].strip())
-                power_val = int(power_line.split(":")[1].strip())
-                voltage_val = voltage_line.split(":")[1].strip()
-                voltage_volts = float(voltage_val.split()[0][0:-1])
-                voltage_raw = int(voltage_val.split()[1][1:-1])
-                stable_total = stable_total_line.split(":")[1].strip()
-                stable = int(stable_total.split(",")[0])
-                total = int(stable_total.split(",")[1])
-                min_max = min_max_line.split(":")[1].strip()
-                min = float(min_max.split(",")[0])
-                max = float(min_max.split(",")[1])
-                if min == 50:
-                    min = -1
-                if max == 0:
-                    max = -1
-                temp_status = temp_status_line.split(":")[1].strip()
-                ambient = float(ambient_line.split(":")[1].strip())
-                temp = float(temp_line.split(":")[1].strip())
-                offsets_text = offsets_line.split(":")[1].strip().split(",")
-                tune_pid_text = tune_pid_line.split(":")[1].strip().split(",")
-                # throw variables into global module scope
-                self._tec_status = cycle_stable
-                self._tec_state = heat_cool_off
-                if "COOL" == self._tec_state:
-                    power_val = -power_val
-                self._tec_setpoint = setpoint_val
-                self._tec_temp = temp
-                self._tec_power = power_val
-                self._tec_voltage = voltage_val
-                self._tec_offset1 = offsets_text[0]  # first: A (always)
-                self._tec_offset2 = offsets_text[-1]  # last: M (measure)
-                self._tec_pid_tune = []
-                for kp in tune_pid_text:
-                    self._tec_pid_tune.append(float(kp))
-
-                if "VOLTAGE" == self._tec_state:
-                    self._tec_voltage_error_seen = True
-                    Log.e(f"External voltage is out of bounds: {voltage_val}")
-
-                # Append to log file for temperature controller
-                # checks the path for the header insertion
-                tec_log_path = FileStorage.DEV_populate_path(Constants.tec_log_path, 0)
-                os.makedirs(os.path.split(tec_log_path)[0], exist_ok=True)
-                header_exists = os.path.exists(tec_log_path)
-                with open(tec_log_path, "a") as tempFile:
-                    if not header_exists:
-                        tempFile.write(
-                            "Date/Time,Command,Status/Mode,Power(raw),Stable/Total(sec),Min/Max(C),Temp(C),Ambient(C)\n"
-                        )
-                    log_line = "{},{},{},{},{},{},{},{}\n".format(
-                        strftime("%Y-%m-%d %H:%M:%S", localtime()),  # Date/Time
-                        "SET '{}'".format(dac) if not dac == "" else "GET",  # Command
-                        # Status/Mode
-                        "{}/{}".format(cycle_stable, heat_cool_off),
-                        # Power(raw)
-                        power_val,
-                        # Stable/Total(sec)
-                        "{}/{}".format(stable, total),
-                        # Min/Max(C)
-                        "{}/{}".format(min, max),
-                        # Temp(C)
-                        temp,
-                        ambient,
-                    )  # Ambient(C)
-                    tempFile.write(log_line)
-            else:
-                Log.e(
-                    TAG,
-                    "ERROR: Timeout during check and/or update to TEC controller.".format(
-                        strftime("%Y-%m-%d %H:%M:%S", localtime())
-                    ),
-                )
-        except serialutil.SerialException as e:
-            self._tec_state = "OFF" if dac == "OFF" else "ERROR"
-            # Ignore the following exception types:
-            # errno exception           cause
-            ##################################################
-            #   2   FileNotFoundError   scanning the source
-            #  13   PermissionError     active run in progress
-            if not any([s in str(e) for s in ["FileNotFoundError", "PermissionError"]]):
-                Log.e(
-                    TAG,
-                    "ERROR: Serial exception reading port to check and/or update TEC controller.".format(
-                        strftime("%Y-%m-%d %H:%M:%S", localtime())
-                    ),
-                )
-                if self._tec_debug:
-                    raise e  # debug only
-        except PermissionError as e:
-            self._tec_state = "OFF" if dac == "OFF" else "ERROR"
-            if (
-                "OFFSET" in dac
-            ):  # unable to open port during initialize phase is a hard-stop condition
-                # if dac == "OFF" else "ERROR" # always off here, since we are OFF in 500ms
-                self._tec_state = "OFF"
-                Log.e(
-                    f'ERROR: The selected device "{selected_port}" cannot be opened. Is the port already open in another program?'
-                )
-                Log.e('Please close the device port, hit "Reset", and try "Temp Control" again.')
-                self._tec_stop_thread = True  # queue thread for 'quit' on next update
-                self._tec_update_now = False  # invalidate flag to update TEC again
-                self.auto_off.emit()  # toggle off button state now
-                # fire next instance soon-ish
-                QtCore.QTimer.singleShot(500, self.task_update)
-        except Exception as e:
-            self._tec_state = "OFF" if dac == "OFF" else "ERROR"
-            if not any([s in str(e) for s in ["Permission"]]):
-                Log.e(
-                    TAG,
-                    "ERROR: Failure reading port to check and/or update TEC controller.".format(
-                        strftime("%Y-%m-%d %H:%M:%S", localtime())
-                    ),
-                )
-            else:
-                Log.e(
-                    TAG,
-                    "ERROR: File permission error occurred while logging TEC controller data.".format(
-                        strftime("%Y-%m-%d %H:%M:%S", localtime())
-                    ),
-                )
-            if self._tec_debug:
-                raise e  # debug only
-        finally:
-            if TEC_serial.is_open:
-                TEC_serial.close()
-
-    ###########################################################################
-    # Automatically selects the serial ports for Teensy (macox/windows)
-    ###########################################################################
-    @staticmethod
-    def get_ports():
-        return serial.enumerate()
-        from serial.tools import list_ports
-
-        from QATCH.common.architecture import Architecture, OSType
-
-        if Architecture.get_os() is OSType.macosx:
-            import glob
-
-            return glob.glob("/dev/tty.usbmodem*")
-        elif Architecture.get_os() is OSType.linux:
-            import glob
-
-            return glob.glob("/dev/ttyACM*")
-        else:
-            found_ports = []
-            port_connected = []
-            found = False
-            ports_avaiable = list(list_ports.comports())
-            for port in ports_avaiable:
-                if port[2].startswith("USB VID:PID=16C0:0483"):
-                    found = True
-                    port_connected.append(port[0])
-            if found:
-                found_ports = port_connected
-            return found_ports
-
-    ###########################################################################
-    # Checks if the serial port is currently connected
-    ###########################################################################
-    def _is_port_available(self, port):
-        """
-        :param port: Port name to be verified.
-        :return: True if the port is connected to the host :rtype: bool.
-        """
-        # dm = Discovery()
-        # if self._serial.net_port is None:
-        #     net_exists = False
-        # else:
-        #     net_exists = dm.ping(self._serial.net_port)
-        for p in self.get_ports():
-            if p == port:
-                return True
-        # if port is None:
-        #     if len(dm.doDiscover()) > 0:
-        #         return net_exists
-        return False
-
-
-class DryingDetection:
-    """State machine for detecting when a sensor has dried.
-
-    Criteria for drying:
-      - Stability: stddev of each normalized window < threshold.
-      - Flatness: absolute slope of each normalized window < threshold.
-
-    The first call that meets both criteria returns True; thereafter,
-    update() will always return False until you call reset().
-
-    Args:
-        window_size: number of samples in each rolling window.
-        sigma_stable_freq: max allowed stddev of normalized frequency.
-        sigma_stable_diss: max allowed stddev of normalized dissipation.
-        flat_slope_eps: max allowed abs(slope) of normalized windows.
-    """
-
-    def __init__(
-        self,
-        window_size: int,
-        snr_stable_freq: float,
-        snr_stable_diss: float,
-        flat_slope_eps_diss: float,
-        flat_slope_eps_freq: float,
-        debug_plot: bool = False,
-    ) -> None:
-        self.win_n = int(window_size)
-        self.freq_w = deque(maxlen=self.win_n)
-        self.diss_w = deque(maxlen=self.win_n)
-        self.time_w = deque(maxlen=self.win_n)
-        self.snr_stable_freq = float(snr_stable_freq)
-        self.snr_stable_diss = float(snr_stable_diss)
-        self.flat_eps_diss = float(flat_slope_eps_diss)
-        self.flat_eps_freq = float(flat_slope_eps_freq)
-        self._detection_index = None
-        self._last_message: str = ""
-        self._init_exec: bool = True
-        self._start_time = 0.0
-        self.debug_plot = debug_plot
-        if self.debug_plot:
-            self.plotter = LivePlotHelper()
-
-        self.reset()
-
-    def reset(self) -> None:
-        """Reset the drying detection state.
-
-        Clears all internal buffers and resets detection flags and counters.
-
-        Returns:
-            None
-        """
-        self.freq_w.clear()
-        self.diss_w.clear()
-        self.time_w.clear()
-        self._last_message = ""
-        self._dried = False
-        self._init_exec = True
-        self._sample_count = 0
-        self._dry_time = 0.0
-
-    @property
-    def is_dry(self) -> bool:
-        """bool: Whether a drying event has been detected.
-
-        Returns:
-            bool: True if drying has been detected at least once; False otherwise.
-        """
-        return self._dried
-
-    @property
-    def dry_time(self) -> float:
-        """float: The relative time at which the drying event was detected.
-
-        Returns:
-            float: The time value from the input time array where drying was first detected,
-                or None if no drying has been detected.
-        """
-        return self._dry_time
-
-    def update(
-        self,
-        resonance_frequency: np.ndarray,
-        dissipation: np.ndarray,
-        relative_time: np.ndarray,
-    ):
-        """
-        Feed in arrays of newest-first samples; process them in one batch.
-
-        Args:
-            resonance_frequency: 1D array of newest-first frequency samples.
-            dissipation:        1D array of newest-first dissipation samples.
-            relative_time:      1D array of newest-first time samples.
-
-        Returns:
-            Tuple[bool, str]:
-                dried:  True if drying has just been detected (only once).
-                status: A newline-separated string of one or more status messages.
-        """
-        if self._dried:
-            self._last_message = "Dried"
-            return True, self._last_message
-
-        f_arr = np.asarray(resonance_frequency)[::-1]
-        d_arr = np.asarray(dissipation)[::-1]
-        t_arr = np.asarray(relative_time)[::-1]
-        if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
-            return False, self._last_message
-
-        valid = t_arr > 0.0
-        f_arr, d_arr, t_arr = f_arr[valid], d_arr[valid], t_arr[valid]
-        if f_arr.size == 0:
-            return False, self._last_message
-
-        t_arr_uniq = np.unique(t_arr)
-        batch_size = t_arr_uniq.size
-        self._sample_count = batch_size
-        self.freq_w.extend(f_arr)
-        self.diss_w.extend(d_arr)
-        self.time_w.extend(t_arr)
-        current_time = float(t_arr.max())
-        arr_f = np.array(self.freq_w, dtype=float)
-        arr_d = np.array(self.diss_w, dtype=float)
-        snr_f = self._compute_snr(arr_f)
-        snr_d = self._compute_snr(arr_d)
-        slope_f = self._compute_slope(arr_f)
-        slope_d = self._compute_slope(arr_d)
-        if getattr(self, "debug_plot", False):
-            current_stats = {"snr_f": snr_f, "slope_f": slope_f, "snr_d": snr_d, "slope_d": slope_d}
-            thresholds = {
-                "snr_f": self.snr_stable_freq,
-                "slope_f": self.flat_eps_freq,
-                "snr_d": self.snr_stable_diss,
-                "slope_d": self.flat_eps_diss,
-            }
-            self.plotter.render_frame(
-                self.time_w, self.freq_w, self.diss_w, current_stats, thresholds
-            )
-        if np.max(t_arr) < 10.0:
-            self._last_message = "Calibrating..."
-            return False, self._last_message
-
-        sensor_not_dry = (
-            snr_f >= self.snr_stable_freq
-            or abs(slope_f) >= self.flat_eps_freq
-            or snr_d >= self.snr_stable_diss
-            or abs(slope_d) >= self.flat_eps_diss
-        )
-
-        if sensor_not_dry:
-            elapsed = current_time - self._start_time
-            if elapsed >= 45.0:
-                self._last_message = "Sensor not dry, please restart"
-                return False, self._last_message
-            elif not self._init_exec:
-                self._last_message = "Sensor not ready, please wait.."
-                return False, self._last_message
-            else:
-                self._init_exec = False
-                return False, self._last_message
-
-        # If we reach here, all stability conditions are met
-        self._dried = True
-        self._dry_time = current_time
-        Log.i(f"Dry time was {self._dry_time}")
-        self._last_message = "Dried"
-        return True, self._last_message
-
-    def _compute_slope(self, arr: np.ndarray) -> float:
-        """Compute the slope of a linear fit to the array.
-
-        Fits a first-degree polynomial to the data points (x, arr) with x values
-        from 0 to N-1 and returns the slope.
-
-        Args:
-            arr (np.ndarray): 1D array of values for slope computation.
-
-        Returns:
-            float: Slope of the fitted line. Returns 0.0 if the array has fewer than
-            two points.
-        """
-        if arr.size < 2:
-            return 0.0
-        x = np.arange(arr.size)
-        m, _ = np.polyfit(x, arr, 1)
-        return float(m)
-
-    def _compute_snr(self, arr: np.ndarray) -> float:
-        """Currently just comutes standard deviation"""
-        # sigma = np.power(float(np.nanstd(arr)), 2)
-        # if sigma == 0:
-        #     return np.inf
-        # return np.power(float(np.nanmean(arr)), 2) / sigma
-        sigma = float(np.nanstd(arr))
-        return sigma
-
-
-class LivePlotHelper:
-
-    def __init__(self):
-
-        plt.ion()
-        self.fig, (self.ax_freq, self.ax_diss) = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
-        self.fig.canvas.manager.set_window_title("Drying Detection Live View")
-        self.fig.suptitle("Live View")
-
-        (self.line_freq,) = self.ax_freq.plot([], [], "b-", linewidth=1.5, label="Resonance Freq")
-        (self.line_diss,) = self.ax_diss.plot([], [], "r-", linewidth=1.5, label="Dissipation")
-
-        self.ax_freq.set_ylabel("Frequency")
-        self.ax_freq.legend(loc="upper right")
-        self.ax_freq.grid(True, linestyle="--", alpha=0.6)
-
-        self.ax_diss.set_ylabel("Dissipation")
-        self.ax_diss.set_xlabel("Relative Time")
-        self.ax_diss.legend(loc="upper right")
-        self.ax_diss.grid(True, linestyle="--", alpha=0.6)
-        box_props = dict(boxstyle="round,pad=0.5", facecolor="white", alpha=0.8, edgecolor="gray")
-        self.text_freq = self.ax_freq.text(
-            0.02,
-            0.95,
-            "",
-            transform=self.ax_freq.transAxes,
-            fontsize=10,
-            verticalalignment="top",
-            bbox=box_props,
-            family="monospace",
-        )
-        self.text_diss = self.ax_diss.text(
-            0.02,
-            0.95,
-            "",
-            transform=self.ax_diss.transAxes,
-            fontsize=10,
-            verticalalignment="top",
-            bbox=box_props,
-            family="monospace",
-        )
-
-        self.fig.tight_layout()
-
-    def render_frame(self, time_w, freq_w, diss_w, stats: dict, thresholds: dict):
-        if not time_w:
-            return
-        t_arr = np.array(time_w)
-        self.line_freq.set_data(t_arr, np.array(freq_w))
-        self.line_diss.set_data(t_arr, np.array(diss_w))
-        f_snr_ok = "✗" if stats["snr_f"] >= thresholds["snr_f"] else "✓"
-        f_slp_ok = "✗" if abs(stats["slope_f"]) >= thresholds["slope_f"] else "✓"
-
-        freq_str = (
-            f"StdDev: {stats['snr_f']:.3e} / {thresholds['snr_f']:.3e} [{f_snr_ok}]\n"
-            f"Slope (Abs):  {abs(stats['slope_f']):.3e} / {thresholds['slope_f']:.3e} [{f_slp_ok}]"
-        )
-        self.text_freq.set_text(freq_str)
-
-        d_snr_ok = "✗" if stats["snr_d"] >= thresholds["snr_d"] else "✓"
-        d_slp_ok = "✗" if abs(stats["slope_d"]) >= thresholds["slope_d"] else "✓"
-
-        diss_str = (
-            f"StdDev: {stats['snr_d']:.3e} / {thresholds['snr_d']:.3e} [{d_snr_ok}]\n"
-            f"Slope (Abs):  {abs(stats['slope_d']):.3e} / {thresholds['slope_d']:.3e} [{d_slp_ok}]"
-        )
-        self.text_diss.set_text(diss_str)
-        self.ax_freq.relim()
-        self.ax_freq.autoscale_view(scalex=True, scaley=True)
-        self.ax_diss.relim()
-        self.ax_diss.autoscale_view(scalex=True, scaley=True)
-
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
-
-    def close(self):
-        plt.ioff()
-        plt.close(self.fig)
