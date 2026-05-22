@@ -21,12 +21,9 @@ Date:
     2026-05-20
 """
 
-import warnings
 import numpy as np
 import numpy.typing as npt
 from typing import Any, Union
-
-warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 class RingBuffer:

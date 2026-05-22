@@ -149,7 +149,7 @@ class ElaborateProcess(multiprocessing.Process):
                     overtone,
                 )
 
-        except:
+        except Exception:
             limit = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
@@ -292,7 +292,10 @@ class ElaborateProcess(multiprocessing.Process):
 
         # Get last temperature from buffer if none was provided this sweep
         if temperature is None:
-            temperature = self._temperature_buffer.get_newest()
+            if len(self._temperature_buffer) == 0:
+                temperature = np.nan
+            else:
+                temperature = self._temperature_buffer.get_newest()
 
         # Pass up TEC status for temp branch
         # overloaded meaning for left/right

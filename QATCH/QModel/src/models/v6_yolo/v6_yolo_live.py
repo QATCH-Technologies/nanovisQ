@@ -142,7 +142,6 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         )
         self._cached_baseline_freq: Optional[float] = None
         self._cached_baseline_diss: Optional[float] = None
-        self.enable_visualization: bool = False
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
 
     def _try_cache_baseline(self) -> None:
@@ -600,6 +599,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
 
         # Instance placeholder
         self._classifier: Optional[QModelV6YOLO_Live] = None
+        self.enable_visualization: bool = False
 
     def run(self) -> None:
         """Executes the main inference loop for the live fill classification process."""
@@ -809,75 +809,3 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         an in-progress inference call.
         """
         self._exit.set()
-
-
-class LiveDataVisualizer:
-    """
-    A non-blocking, animated visualizer for real-time sensor data.
-    Run this in your main application thread.
-    """
-
-    def __init__(self, classifier_ref):
-        """
-        Args:
-            classifier_ref: A reference to the QModelV6YOLO_Live instance
-                            so we can access `_data` directly for plotting.
-        """
-        self.classifier = classifier_ref
-
-        # Setup Figure and Axes
-        self.fig, self.ax1 = plt.subplots(figsize=(10, 6))
-        self.ax2 = self.ax1.twinx()
-        self.fig.canvas.manager.set_window_title("Live YOLO Sensor Feed")
-
-        # Line objects to update
-        (self.line_freq,) = self.ax1.plot([], [], color="tab:blue", label="Frequency")
-        (self.line_diss,) = self.ax2.plot([], [], color="tab:red", label="Dissipation")
-
-        self.ax1.set_xlabel("Relative Time (s)")
-        self.ax1.set_ylabel("Frequency", color="tab:blue")
-        self.ax2.set_ylabel("Dissipation", color="tab:red")
-
-        # Consolidate legends
-        lines = [self.line_freq, self.line_diss]
-        labels = [l.get_label() for l in lines]
-        self.ax1.legend(lines, labels, loc="upper left")
-
-    def _update_plot(self, frame):
-        """Animation callback function."""
-        # safely access the buffer
-        df: pd.DataFrame = self.classifier._data
-
-        if df is None or df.empty:
-            return self.line_freq, self.line_diss
-
-        # Extract data
-        times = df["Relative_time"].values
-        # Replace with actual column constants if needed
-        freqs = df["freq"].values
-        disss = df["diss"].values
-
-        # Update lines
-        self.line_freq.set_data(times, freqs)
-        self.line_diss.set_data(times, disss)
-
-        # Rescale axes dynamically to fit the sliding window
-        self.ax1.set_xlim(times.min(), times.max())
-        self.ax1.set_ylim(freqs.min() * 0.99, freqs.max() * 1.01)
-        self.ax2.set_ylim(disss.min() * 0.99, disss.max() * 1.01)
-
-        self.fig.suptitle(f"Prediction: {self.classifier.get_status_str()}")
-
-        return self.line_freq, self.line_diss
-
-    def start(self, update_interval_ms=500):
-        """Starts the animation loop."""
-        self.ani = animation.FuncAnimation(
-            self.fig,
-            self._update_plot,
-            interval=update_interval_ms,
-            blit=False,
-            cache_frame_data=False,
-        )
-        plt.tight_layout()
-        plt.show()
