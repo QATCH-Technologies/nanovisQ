@@ -1,6 +1,25 @@
-import logging
+"""
+Elaborate.py
 
-# from scipy.interpolate import UnivariateSpline # unused
+This module provides the `ElaborateProcess` class, a multiprocessing worker
+designed to consume raw serial sensor data, perform real-time signal processing,
+and route the elaborated metrics to downstream logging and UI parsing queues.
+Core behavior for this module include,
+- Real-time data smoothing and denoising using Savitzky-Golay filtering.
+- Gaussian curve reconstruction for frequency and magnitude data.
+- Mathematical conversion between ADC values, magnitudes, and dissipation.
+- Mode and overtone tracking, including upper/lower drift bounding.
+- High-frequency data decimation and scheduled CSV export via `FileStorage`.
+
+Author(s):
+    Alexander Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol  (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-05-22
+"""
+
+import logging
 import multiprocessing
 import os
 import sys
@@ -475,7 +494,10 @@ class ElaborateProcess(multiprocessing.Process):
             )
             return
 
-        plot_eligible = (time() - self._last_parser_add) > 0.050
+        # Current behavior is to set sample rate to ~20hz prior to 90s mark.
+        # Post 90s, the rate is limited to ~10hz.
+        _throttle = 0.100 if w_time > Constants.downsample_after else 0.050
+        plot_eligible = (time() - self._last_parser_add) > _throttle
 
         if self._k >= self._environment and plot_eligible:
             self._last_parser_add = time()  # reset only when we actually emit

@@ -10,10 +10,10 @@ for the main application.
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-04-29
+    2026-05-22
 
 Version:
-    2.1.4
+    2.1.5
 """
 
 import ctypes
@@ -25,10 +25,6 @@ from logging.handlers import QueueHandler
 from queue import Empty
 from typing import Dict, NamedTuple, Optional, Tuple
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import pandas as pd
-
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.QModel.src.models.v6_yolo.v6_yolo import (
@@ -146,6 +142,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         )
         self._cached_baseline_freq: Optional[float] = None
         self._cached_baseline_diss: Optional[float] = None
+        self.enable_visualization: bool = False
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
 
     def _try_cache_baseline(self) -> None:
@@ -616,10 +613,8 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         devnull = open(os.devnull, "w")
         mp_devnull = None
 
-        # Imports required for live visualization
-        import matplotlib.pyplot as plt
-        import cv2
-        import numpy as np
+        # Fallback in case enable_visualization isn't explicitly defined in __init__
+        enable_vis = getattr(self, "enable_visualization", False)
 
         try:
             sys.stdout = sys.stderr = devnull
@@ -636,56 +631,50 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 mp_logger.handlers[0].setStream(mp_devnull)
             mp_logger.setLevel(logging.WARNING)
 
-            # ==========================================
-            # FIX 1: Stop the rolling window
-            # By passing buffer_window_size=None, the DataFrame will accumulate
-            # all samples infinitely from start to finish without dropping early data.
-            # ==========================================
             self._classifier = QModelV6YOLO_Live(
                 model_path=self.model_path, buffer_window_size=None
             )
             Log.i(self.TAG, "YOLO Live Process Started and Model Loaded. (Infinite Buffer)")
 
-            # ==========================================
-            # LIVE VISUALIZATION: IMAGE & TEXT SETUP
-            # ==========================================
-            plt.ion()
-            fig, ax = plt.subplots(figsize=(5, 5))
-            fig.canvas.manager.set_window_title("Live YOLO Image Feed")
+            if enable_vis:
+                import matplotlib.pyplot as plt
+                import numpy as np
+                import cv2
 
-            blank_image = np.zeros((224, 224, 3), dtype=np.uint8)
-            im_display = ax.imshow(blank_image)
-            ax.axis("off")
+                plt.ion()
+                fig, ax = plt.subplots(figsize=(5, 5))
+                fig.canvas.manager.set_window_title("Live YOLO Image Feed")
 
-            # Overlay Text: Window Readout (Top Left)
-            time_text = ax.text(
-                0.03,
-                0.97,
-                "Window: 0.00s - 0.00s",
-                transform=ax.transAxes,
-                color="white",
-                fontsize=11,
-                fontweight="bold",
-                va="top",
-                ha="left",
-                bbox=dict(facecolor="black", alpha=0.6, edgecolor="none", pad=3),
-            )
+                blank_image = np.zeros((224, 224, 3), dtype=np.uint8)
+                im_display = ax.imshow(blank_image)
+                ax.axis("off")
 
-            # Overlay Text: Monotonic Warning (Bottom Center)
-            warning_text = ax.text(
-                0.5,
-                0.03,
-                "",
-                transform=ax.transAxes,
-                color="red",
-                fontsize=12,
-                fontweight="bold",
-                va="bottom",
-                ha="center",
-                bbox=dict(facecolor="black", alpha=0.8, edgecolor="red", pad=3),
-            )
-            warning_text.set_visible(False)
-            # ==========================================
+                # Overlay Text: Window Readout (Top Left)
+                time_text = ax.text(
+                    0.03,
+                    0.97,
+                    "Window: 0.00s - 0.00s",
+                    transform=ax.transAxes,
+                    color="white",
+                    fontsize=11,
+                    fontweight="bold",
+                    va="top",
+                    ha="left",
+                    bbox=dict(facecolor="black", alpha=0.6, edgecolor="none", pad=3),
+                )
+                warning_text = ax.text(
+                    0.5,
+                    0.03,
+                    "",
+                    transform=ax.transAxes,
+                    color="red",
+                    fontsize=12,
+                    fontweight="bold",
+                    va="bottom",
+                    ha="center",
+                    bbox=dict(facecolor="black", alpha=0.8, edgecolor="red", pad=3),
+                )
+                warning_text.set_visible(False)
 
             last_processed_time = -1.0
             time_error_latched = False
@@ -694,7 +683,9 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 try:
                     raw_data = self._queue_in.get(timeout=0.05)
                 except Empty:
-                    fig.canvas.flush_events()
+                    # Only flush events if visualization is enabled
+                    if enable_vis:
+                        fig.canvas.flush_events()
                     continue
 
                 chunks = [raw_data]
@@ -755,37 +746,27 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                         self._classifier.get_and_clear_display_message()
                     )
                     self._queue_out.put((pred_int, pred_str, display_message))
-
-                    # ==========================================
-                    # LIVE VISUALIZATION: UPDATE
-                    # ==========================================
-                    if (
-                        hasattr(self._classifier, "_last_image")
-                        and self._classifier._last_image is not None
-                    ):
-                        # 1. Update Image
-                        img = self._classifier._last_image
-                        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                        im_display.set_data(img_rgb)
-
-                        # 2. Update Title
-                        ax.set_title(f"Prediction: {pred_str}, {pred_int}", fontweight="bold")
-
-                        # 3. FIX 2: Update Time Readout with Min and Max
-                        if self._classifier._data is not None and not self._classifier._data.empty:
-                            t_min = self._classifier._data["Relative_time"].min()
-                            t_max = self._classifier._data["Relative_time"].max()
-                            time_text.set_text(f"Window: {t_min:.2f}s - {t_max:.2f}s")
-
-                        # 4. Show Warning if Time Error Latched
-                        if time_error_latched:
-                            warning_text.set_text("TIME ERROR: NON-MONOTONIC")
-                            warning_text.set_visible(True)
-
-                        # Force GUI refresh
-                        fig.canvas.draw_idle()
-                        fig.canvas.flush_events()
-                    # ==========================================
+                    if enable_vis:
+                        if (
+                            hasattr(self._classifier, "_last_image")
+                            and self._classifier._last_image is not None
+                        ):
+                            img = self._classifier._last_image
+                            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                            im_display.set_data(img_rgb)
+                            ax.set_title(f"Prediction: {pred_str}, {pred_int}", fontweight="bold")
+                            if (
+                                self._classifier._data is not None
+                                and not self._classifier._data.empty
+                            ):
+                                t_min = self._classifier._data["Relative_time"].min()
+                                t_max = self._classifier._data["Relative_time"].max()
+                                time_text.set_text(f"Window: {t_min:.2f}s - {t_max:.2f}s")
+                            if time_error_latched:
+                                warning_text.set_text("TIME ERROR: NON-MONOTONIC")
+                                warning_text.set_visible(True)
+                            fig.canvas.draw_idle()
+                            fig.canvas.flush_events()
 
         except Exception:
             limit: Optional[int] = None
@@ -800,9 +781,11 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         finally:
             Log.d(self.TAG, "QModelV6YOLO_LiveProcess stopped.")
 
-            import matplotlib.pyplot as plt
+            # Only attempt to close plots if visualization was enabled
+            if getattr(self, "enable_visualization", False):
+                import matplotlib.pyplot as plt
 
-            plt.close("all")
+                plt.close("all")
 
             if mp_devnull is not None:
                 mp_devnull.close()

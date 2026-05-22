@@ -369,6 +369,10 @@ class Constants:
     ##########################
     # RING BUFFER parameters #
     ##########################
+
+    # Increased from 6,000->12,000 on 2026-05-22 to support more efficient RingBuffer implementation
+    # Initially fills at rate limit of <20hz.  Post 90s rate limit is dropped to <10hz.  Rolling
+    # behavior should occur ~18mins into a run.
     ring_buffer_samples = 12000  # @ 50 ms/sample = 10 mins history
 
     ########################
