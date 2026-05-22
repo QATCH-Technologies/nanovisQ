@@ -60,7 +60,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             """)
 
     def __init__(self, parent=None, admin_name=None):
-        super(UserProfilesManagerWidget, self).__init__(None)
+        super(UserProfilesManagerWidget, self).__init__(parent)
 
         # ==========================================
         # 🔧 INSERT YOUR CUSTOM ICON PATHS HERE
@@ -78,19 +78,26 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.is_audit_mode = False
         self.all_selected = False
 
-        screen = QtWidgets.QDesktopWidget().availableGeometry()
-        pct_width = 65
-        pct_height = 65
-        self.resize(int(screen.width() * pct_width / 100), int(screen.height() * pct_height / 100))
-        self.move(
-            int(screen.width() * (100 - pct_width) / 200),
-            int(screen.height() * (100 - pct_width) / 200),
-        )
+        # --- Overlay / glassmorphic setup ---
+        # WA_TranslucentBackground is top-level windows only — on a child widget
+        # it makes the whole widget invisible. For child widgets the correct
+        # approach is to disable Qt's auto-fill so our paintEvent draws the scrim
+        # directly over the parent's backing store.
+        self.setAutoFillBackground(False)
+        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        # Install event-filter on parent and top-level window so we refit on resize.
+        if parent is not None:
+            parent.installEventFilter(self)
+            top = parent.window()
+            if top is not parent:
+                top.installEventFilter(self)
+        Log.d(f"{TAG} overlay created, parent={parent}")
 
         self.base_layout = QtWidgets.QVBoxLayout(self)
-        self.base_layout.setContentsMargins(20, 20, 20, 20)
+        # Margins define the inset of the glass panel from the overlay edges (17.5% each side)
+        self._panel_margin_pct = 0.175
+        self.base_layout.setContentsMargins(0, 0, 0, 0)
 
-        # --- Main Glass Frame ---
         self.glass_frame = QtWidgets.QFrame(self)
         self.glass_frame.setObjectName("userview")
         self.glass_frame.setStyleSheet("""
@@ -100,7 +107,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 border-radius: 12px;
             }
         """)
-        self._apply_shadow(self.glass_frame, blur_radius=25, alpha=30, offset=(0, 8))
+        self._apply_shadow(self.glass_frame, blur_radius=40, alpha=60, offset=(0, 12))
 
         self.main_layout = QtWidgets.QVBoxLayout(self.glass_frame)
         self.main_layout.setContentsMargins(20, 20, 20, 20)
@@ -223,6 +230,26 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.btn_refresh.setStyleSheet(base_action_style)
         self.btn_refresh.clicked.connect(self.update_table_data)
 
+        self.btn_close = QtWidgets.QPushButton("✕")
+        self.btn_close.setFixedSize(34, 34)
+        self.btn_close.setToolTip("Close")
+        self.btn_close.setStyleSheet("""
+            QPushButton {
+                background: rgba(220, 53, 69, 0.15);
+                border: 1px solid rgba(220, 53, 69, 0.35);
+                border-radius: 17px;
+                color: #C82333;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background: rgba(220, 53, 69, 0.30);
+                border: 1px solid rgba(220, 53, 69, 0.65);
+            }
+            QPushButton:pressed { background: rgba(220, 53, 69, 0.50); }
+        """)
+        self.btn_close.clicked.connect(self.close)
+
         # Assemble taskbar (Title removed)
         self.top_bar.addWidget(self.btn_back)
         self.top_bar.addWidget(self.search_bar)
@@ -231,6 +258,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.top_bar.addWidget(self.btn_audit_selected)
         self.top_bar.addWidget(self.btn_delete_selected)
         self.top_bar.addWidget(self.btn_refresh)
+        self.top_bar.addWidget(self.btn_close)
 
         # --- Table View ---
         self.table = self.TableView()
@@ -264,7 +292,6 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
         self.base_layout.addWidget(self.glass_frame)
         self.setLayout(self.base_layout)
-        self.setWindowTitle("Manage Users")
 
         self.update_table_data()
 
@@ -275,6 +302,63 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         shadow.setColor(QtGui.QColor(0, 0, 0, alpha))
         shadow.setOffset(offset[0], offset[1])
         widget.setGraphicsEffect(shadow)
+
+    # ------------------------------------------------------------------
+    # Overlay geometry management
+    # ------------------------------------------------------------------
+
+    def _refit_to_parent(self):
+        """Resize/reposition self to fill the parent's content area, then
+        inset the glass panel via layout margins (never via direct setGeometry,
+        which would be immediately overwritten by the layout manager)."""
+        if self.parent is None:
+            # No Qt parent — fall back to covering the primary screen
+            geo = QtWidgets.QApplication.primaryScreen().availableGeometry()
+            self.setGeometry(geo)
+            Log.w(f"{TAG} _refit_to_parent: no parent, using screen geometry {geo}")
+        else:
+            geo = self.parent.rect()
+            self.setGeometry(geo)
+            Log.d(f"{TAG} _refit_to_parent: geometry set to {geo}")
+        w, h = self.width(), self.height()
+        mx = int(w * self._panel_margin_pct)
+        my = int(h * self._panel_margin_pct)
+        # Drive the glass panel position through the layout — not setGeometry —
+        # so the layout manager and our sizing never fight each other.
+        self.base_layout.setContentsMargins(mx, my, mx, my)
+        Log.d(f"{TAG} _refit_to_parent: glass panel margins mx={mx} my={my}")
+
+    def showEvent(self, event):
+        """Fill parent geometry and raise to front each time we show."""
+        Log.d(f"{TAG} showEvent fired, parent={self.parent}")
+        self._refit_to_parent()
+        self.raise_()
+        super().showEvent(event)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+
+    def eventFilter(self, obj, event):
+        """Track parent/window resize so the overlay always covers the content area."""
+        if event.type() in (QtCore.QEvent.Resize, QtCore.QEvent.Move):
+            if self.isVisible():
+                self._refit_to_parent()
+        return super().eventFilter(obj, event)
+
+    def paintEvent(self, event):
+        """Draw a semi-transparent dark scrim over the whole overlay area."""
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        # Scrim: dark translucent fill across the full widget
+        painter.fillRect(self.rect(), QtGui.QColor(0, 0, 0, 110))
+        painter.end()
+
+    def mousePressEvent(self, event):
+        """Clicking outside the glass panel dismisses the overlay."""
+        if not self.glass_frame.geometry().contains(event.pos()):
+            self.close()
+        else:
+            super().mousePressEvent(event)
 
     def create_role_banner(self, role_name):
         """
