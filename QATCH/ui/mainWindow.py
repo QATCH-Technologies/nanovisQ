@@ -11,7 +11,7 @@ Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-04-30
+    2026-05-21
 
 Version:
     x.x.x?
@@ -3186,7 +3186,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "<div style='margin:0; padding:0; line-height:1.2;'>"
             "    <div><b>Calibration Processing</b></div>"
             "    <div style='font-size:9pt; color:#333333;'>"
-            "        The operation will take a few seconds to complete\u2026 Please wait\u2026"
+            "        The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
             "    </div>"
             "</div>"
         )
@@ -4924,7 +4924,7 @@ class MainWindow(QtWidgets.QMainWindow):
         is_warning = False
 
         label_status = "Calibration Processing"
-        label_bar = "The operation will take a few seconds to complete\u2026 Please wait\u2026"
+        label_bar = "The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
         color_err = "#333333"
         css_style = Constants._CSS_YELLOW
         overlay_bar_color = "#2E9BDA"
@@ -4943,7 +4943,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not time_temp_err and not temperature_err:
                 # Success State
                 label_status = "Calibration Success"
-                label_bar = "Baseline correction complete. Ready to measure. Press \u201cStart\u201d then apply drop."
+                label_bar = "Baseline correction complete. Ready to measure.\nPress \u201cStart\u201d then apply drop."
                 color_err = "#008000"
                 css_style = Constants._CSS_GREEN
                 overlay_bar_color = "#28A745"
@@ -4998,8 +4998,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "<div style='margin:0; padding:0; line-height:1.2;'>"
                 f"    <div><b>{label_status}</b></div>"
                 f"    <div style='font-size:9pt; color:{overlay_label_color};'>"
-                f"        {label_bar}"
-                "    </div>"
+                "        " + label_bar.replace("\n", "<br/>") + "    </div>"
                 "</div>"
             )
 
@@ -5293,8 +5292,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
 
             try:
-                time_running = self.worker.get_t2_buffer(i)[0]
-
+                time_running = self.worker.get_t2_buffer(i)[-1]
                 if time_running == 0:
                     return "Waiting for start…"
                 if time_running < 3.0:
@@ -5302,9 +5300,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     return "Capturing data… Calibrating baselines for first 3 seconds… please wait…"
 
                 # Directional gate: drop drives RF negative and dissipation positive
-                delta_f = self.worker.get_d1_buffer(0)[0] - self._baseline_freq_avg
-                delta_d = self.worker.get_d2_buffer(0)[0] - self._baseline_diss_avg
-
+                delta_f = self.worker.get_d1_buffer(0)[-1] - self._baseline_freq_avg
+                delta_d = self.worker.get_d2_buffer(0)[-1] - self._baseline_diss_avg
                 if delta_f <= (10.0 * self._baseline_freq_noise) and delta_d >= (
                     10.0 * self._baseline_diss_noise
                 ):
@@ -5489,6 +5486,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     yMin=self._vector_reference_frequency[i][0],
                     minYRange=5,
                 )
+                active_plot.enableAutoRange(axis="x", enable=True)
+                active_plot.enableAutoRange(axis="y", enable=True)
 
                 active_overlay.setLimits(
                     yMax=self._vector_reference_dissipation[i][-1],
@@ -5613,10 +5612,10 @@ class MainWindow(QtWidgets.QMainWindow):
               drop detection.
         """
         # Cache the slices to prevent redundant array operations per tick
-        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[:n]
-        slice_resonance_frequency = self.worker.get_d1_buffer(i)[:n]
-        slice_time_dissipation = self.worker.get_t2_buffer(i)[:n]
-        slice_dissipation = self.worker.get_d2_buffer(i)[:n]
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)
+        slice_time_dissipation = self.worker.get_t2_buffer(i)
+        slice_dissipation = self.worker.get_d2_buffer(i)
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 
@@ -5636,7 +5635,7 @@ class MainWindow(QtWidgets.QMainWindow):
             x_pad = x_range * Constants.default_plot_padding
             plot_resonance_frequency.setXRange(x_min - x_pad, x_max + x_pad)
 
-        self._apply_freq_limits(i, plot_resonance_frequency, data_resonance_frequency)
+        self._apply_freq_limits(i, plot_resonance_frequency, slice_resonance_frequency)
 
         # Dissipation yMax Limit Caching
         if not hasattr(self, "_p3_last_ymax"):
@@ -5670,7 +5669,7 @@ class MainWindow(QtWidgets.QMainWindow):
             plot_resonance_frequency (pg.PlotWidget): The PyQtGraph plot widget to be updated.
             data_resonance_frequency (np.ndarray): The raw resonance frequency data buffer.
         """
-        visible = data_resonance_frequency[: Constants._NUM_DISPLAY_POINTS]
+        visible = data_resonance_frequency
         if not visible.size:
             return
 
@@ -5749,7 +5748,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 label is rendered (used for context, though label is updated via
                 `self._text4`).
         """
-        time_running = self.worker.get_t2_buffer(i)[0]
+        time_running = self.worker.get_t2_buffer(i)[-1]
         if time_running == 0:
             return
 
@@ -5893,9 +5892,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if self._ci_temp:
             n = Constants._NUM_DISPLAY_POINTS
-            self._ci_temp.setData(
-                x=self.worker.get_t3_buffer(0)[:n], y=self.worker.get_d3_buffer(0)[:n]
-            )
+            self._ci_temp.setData(x=self.worker.get_t3_buffer(0), y=self.worker.get_d3_buffer(0))
 
     def _bandwidth_error_msg(self, error_left_cuttoff: int, error_right_cuttoff: int) -> str:
         """Generates a warning string when the half-power bandwidth calculation fails.
@@ -8864,9 +8861,9 @@ class DryingDetection:
             self._last_message = "Dried"
             return True, self._last_message
 
-        f_arr = np.asarray(resonance_frequency)[::-1]
-        d_arr = np.asarray(dissipation)[::-1]
-        t_arr = np.asarray(relative_time)[::-1]
+        f_arr = np.asarray(resonance_frequency)
+        d_arr = np.asarray(dissipation)
+        t_arr = np.asarray(relative_time)
         if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
             return False, self._last_message
 

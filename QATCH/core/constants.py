@@ -75,6 +75,8 @@ class Constants:
     downsample_file_count = 20
     # Only plot every X samples to the real-time view (no averaging)
     downsample_plot_count = 3
+    # Post-90s plot update interval in ms (~2 Hz)
+    downsample_plot_ms = 500
 
     ###########################
     # DISSIPATION conversions #
@@ -367,7 +369,11 @@ class Constants:
     ##########################
     # RING BUFFER parameters #
     ##########################
-    ring_buffer_samples = 6000  # @ 50 ms/sample = 5 mins history
+
+    # Increased from 6,000->12,000 on 2026-05-22 to support more efficient RingBuffer implementation
+    # Initially fills at rate limit of <20hz.  Post 90s rate limit is dropped to <10hz.  Rolling
+    # behavior should occur ~18mins into a run.
+    ring_buffer_samples = 12000  # @ 50 ms/sample = 10 mins history
 
     ########################
     # AVERAGING parameters #
