@@ -446,7 +446,11 @@ class FormulationController:
                     buffer=buffer,
                     concentration=row.Buffer_conc,
                     units="mM",
-                    pH=float(row.Buffer_pH) if pd.notna(row.Buffer_pH) and str(row.Buffer_pH).strip() != "" else None,
+                    pH=(
+                        float(row.Buffer_pH)
+                        if pd.notna(row.Buffer_pH) and str(row.Buffer_pH).strip() != ""
+                        else None
+                    ),
                 )
                 form.set_protein(
                     protein=protein,
@@ -483,6 +487,9 @@ class FormulationController:
         finally:
             self.db._defer_commit = False
             self.db._defer_backup = False
+            if self.db.conn.in_transaction:
+                self.db.conn.rollback()
+
             self.db.end_bulk()
             if verbose_print:
                 p_bar.close()
