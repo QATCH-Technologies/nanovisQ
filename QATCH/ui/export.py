@@ -136,6 +136,7 @@ class Ui_Export(QtWidgets.QWidget):
 
         self.pb1 = QtWidgets.QLabel()
         self.pb1.setAlignment(QtCore.Qt.AlignCenter)
+        self.pb1.setFixedHeight(15)
 
         self.importNow = QtWidgets.QPushButton("Import")
         self.importNow.pressed.connect(self.doImport)
@@ -175,6 +176,7 @@ class Ui_Export(QtWidgets.QWidget):
 
         self.pb = QtWidgets.QLabel()
         self.pb.setAlignment(QtCore.Qt.AlignCenter)
+        self.pb.setFixedHeight(15)
 
         self.btn4 = QtWidgets.QPushButton("Export to...")
         self.btn4.pressed.connect(self.select_folder_target)
@@ -1941,8 +1943,32 @@ class Ui_Export(QtWidgets.QWidget):
 
                     _success = False
 
+            def is_float(value):
+                try:
+                    float(str(value))
+                    return True
+                except (ValueError, TypeError):
+                    return False
+
             # convert to strings, for join to work
-            row = [str(e) for e in row]
+            try:
+                # try to round floats to 2 decimal places
+                for x1, y1 in enumerate(row):
+                    if type(y1) is list:
+                        for x2, y2 in enumerate(y1):
+                            y1[x2] = (
+                                float(f"{y2:2.2f}") if is_float(y2) else str(y2)
+                            )  # as float
+                    row[x1] = (
+                        f"{y1:2.2f}"
+                        if is_float(y1) and cols[x1] != "Notes"
+                        else str(y1)
+                    )  # as str
+            except Exception as e:
+                Log.w(
+                    "Error trying to convert row to str; using fallback (without rounding)"
+                )
+                row = [str(e) for e in row]
 
             if len(cols) != len(row):
                 Log.e(
