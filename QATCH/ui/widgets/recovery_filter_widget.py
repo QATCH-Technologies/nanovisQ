@@ -32,7 +32,77 @@ from PyQt5.QtGui import (
     QCloseEvent,
     QColor,
 )
+from typing import Optional, Any
 from QATCH.common.architecture import Architecture
+
+from PyQt5.QtWidgets import (
+    QVBoxLayout,
+    QHBoxLayout,
+    QWidget,
+    QLabel,
+    QPushButton,
+    QFrame,
+    QSizePolicy,
+    QStackedWidget,
+    QComboBox,
+    QSpinBox,
+    QDoubleSpinBox,
+    QDateEdit,
+    QTimeEdit,
+    QGraphicsDropShadowEffect,
+)
+
+from PyQt5.QtCore import (
+    Qt,
+    pyqtSignal,
+    QPropertyAnimation,
+    QEasingCurve,
+    QDateTime,
+    QDate,
+    QTime,
+    QParallelAnimationGroup,
+)
+from PyQt5.QtGui import (
+    QIcon,
+    QPainter,
+    QPaintEvent,
+    QCloseEvent,
+    QColor,
+)
+
+
+class RoundedPanel(QFrame):
+    """A custom QFrame that renders with rounded corners and a soft border.
+
+    This widget uses QPainter to draw a stylized background. It is designed to
+    look like a modern "card" or panel, featuring a semi-transparent white
+    fill and a very subtle dark border.
+
+    Attributes:
+        None (Inherits from QFrame)
+    """
+
+    def __init__(self, parent: Optional[Any] = None) -> None:
+        """Initializes the panel and sets transparency attributes.
+
+        Args:
+            parent (QWidget, optional): The parent widget.
+        """
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Overridden paint event to draw the rounded rectangle geometry.
+
+        Args:
+            event (QPaintEvent): The event triggered by the Qt paint engine.
+        """
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QColor(0, 0, 0, 18))
+        painter.setBrush(QColor(255, 255, 255, 244))
+        rect = self.rect().adjusted(0, 0, -1, -1)
+        painter.drawRoundedRect(rect, 8.0, 8.0)
 
 
 class RecoveryFilterWidget(QWidget):

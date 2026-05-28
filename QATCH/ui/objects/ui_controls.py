@@ -33,6 +33,7 @@ from QATCH.ui.widgets.user_preferences_widget import UserPreferencesWidget
 from QATCH.ui.widgets.user_profiles_manager_widget import UserProfilesManagerWidget
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.common.deviceFingerprint import DeviceFingerprint
+from QATCH.common.findDevices import Discovery
 
 # ---------------------------------------------------------------------------
 # Glass-morphism primitives
@@ -303,9 +304,12 @@ class ControlsWindow(QtWidgets.QMainWindow):
             self.parent.AnalyzeProc.tool_User.setText(admin)
 
         if allow:
-            # Parent to centralWidget() so the overlay is a child of the content
-            # area and not behind it. Falls back to self if no central widget exists.
-            overlay_parent = self.centralWidget() or self
+            # Parent to the overarching MainWin, NOT the thin ControlsWindow
+            if hasattr(self.parent, "MainWin"):
+                overlay_parent = self.parent.MainWin.centralWidget() or self.parent.MainWin
+            else:
+                overlay_parent = self.centralWidget() or self
+
             Log.d(
                 f"[ControlsWindow] manage_user_profiles: showing overlay, parent={overlay_parent}"
             )
@@ -1099,7 +1103,7 @@ class GlassAccountPopup(QtWidgets.QWidget):
             )
             layout.addWidget(divider)
 
-            icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/user.png")
+            icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "user-circle.svg")
             manage_btn = QtWidgets.QPushButton("  Manage Users…")
             manage_btn.setIcon(QtGui.QIcon(icon_path))
             manage_btn.setIconSize(QtCore.QSize(14, 14))
@@ -1845,7 +1849,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_bar_2.addSeparator()
 
         icon_user = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/user.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "user-circle.svg")
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Disabled)
         self.tool_User = QtWidgets.QToolButton()
@@ -2262,13 +2266,17 @@ class UIControls:  # QtWidgets.QMainWindow
                 return
 
             admin_name = user_info[0] or ""
-            # parent_win must be a QWidget — UIControls is not one, so resolve
-            # the real window via the stored parent reference. Use centralWidget()
-            # so the overlay is parented inside the content area, not behind it.
-            parent_win = getattr(self, "parent", None)
-            Log.d(f"[UIControls] _open_user_manager: raw parent_win={parent_win}")
-            if parent_win is not None and hasattr(parent_win, "centralWidget"):
-                parent_win = parent_win.centralWidget() or parent_win
+            # Step up to MainWindow (self.parent.parent) to target the large MainWin
+            main_app = getattr(self.parent, "parent", None)
+            
+            if main_app is not None and hasattr(main_app, "MainWin"):
+                parent_win = main_app.MainWin.centralWidget() or main_app.MainWin
+            else:
+                # Fallback if MainWin isn't found
+                parent_win = getattr(self, "parent", None)
+                if parent_win is not None and hasattr(parent_win, "centralWidget"):
+                    parent_win = parent_win.centralWidget() or parent_win
+                    
             Log.d(f"[UIControls] _open_user_manager: resolved parent_win={parent_win}")
 
             # If a manager overlay is already visible, just raise it

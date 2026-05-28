@@ -5698,10 +5698,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     port_names.append("{} ({})".format(usb, ip))
 
             # usb and ethernet icons
-            icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
-            usb_icon = QtGui.QIcon(os.path.join(icon_path, "usb-icon.png"))  # png
-            ethernet_icon = QtGui.QIcon(os.path.join(icon_path, "ethernet-icon.png"))  # png
-            controller_icon = QtGui.QIcon(os.path.join(icon_path, "controller-icon.png"))  # png
+            icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
+            usb_icon = QtGui.QIcon(os.path.join(icon_path, "usb.svg"))  # png
+            ethernet_icon = QtGui.QIcon(os.path.join(icon_path, "ethernet.svg"))  # png
+            controller_icon = QtGui.QIcon(os.path.join(icon_path, "controller.svg"))  # png
 
             if ports is not None:
                 controller_port = None

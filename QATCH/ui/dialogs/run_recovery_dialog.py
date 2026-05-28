@@ -359,39 +359,6 @@ class ToggleListWidget(QListWidget):
         super().mousePressEvent(event)
 
 
-class RoundedPanel(QFrame):
-    """A custom QFrame that renders with rounded corners and a soft border.
-
-    This widget uses QPainter to draw a stylized background. It is designed to
-    look like a modern "card" or panel, featuring a semi-transparent white
-    fill and a very subtle dark border.
-
-    Attributes:
-        None (Inherits from QFrame)
-    """
-
-    def __init__(self, parent: Optional[Any] = None) -> None:
-        """Initializes the panel and sets transparency attributes.
-
-        Args:
-            parent (QWidget, optional): The parent widget.
-        """
-        super().__init__(parent)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
-        """Overridden paint event to draw the rounded rectangle geometry.
-
-        Args:
-            event (QPaintEvent): The event triggered by the Qt paint engine.
-        """
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QColor(0, 0, 0, 18))
-        painter.setBrush(QColor(255, 255, 255, 244))
-        rect = self.rect().adjusted(0, 0, -1, -1)
-        painter.drawRoundedRect(rect, 8.0, 8.0)
-
 
 class RunRecoveryDialog(QWidget):
     """Dialog for recovering and managing unnamed experimental runs.

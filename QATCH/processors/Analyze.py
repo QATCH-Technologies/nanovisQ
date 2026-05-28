@@ -764,7 +764,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_bar.addSeparator()
 
         icon_user = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/user.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "user-circle.svg")
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Disabled)
         self.tool_User = QtWidgets.QToolButton()
@@ -5533,13 +5533,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             with secure_open(self.loaded_datapath, "r", "capture") as f:
                 fh = BytesIO(f.read())
 
-            self._QModel_create_new_progress_dialog()
-            self.progressBarDiag.setRange(0, 100)
+            # self._QModel_create_new_progress_dialog()
+            # self.progressBarDiag.setRange(0, 100)
 
             predict_result, detected_channels = self.QModel_v6_predictor.predict(
                 file_buffer=fh, progress_signal=self.v6_predict_progress
             )
-            QtCore.QTimer.singleShot(1000, self.progressBarDiag.hide)
+            # QtCore.QTimer.singleShot(1000, self.progressBarDiag.hide)
 
             if not self.parent.num_channels:
                 self.parent.num_channels = detected_channels
