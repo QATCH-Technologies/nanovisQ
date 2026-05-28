@@ -4,6 +4,8 @@ mainWindow.py
 The primary container for the QATCH Q-1 application, responsible for initializing and managing the main user interface.
 This module defines the main window of the application, which includes the menu bar, user profile management,
 and the central widget that contains the various UI components. It also handles user interactions such as toggling views,
+This module defines the main window of the application, which includes the menu bar, user profile management,
+and the central widget that contains the various UI components. It also handles user interactions such as toggling views,
 managing user profiles, and responding to menu actions, etc.
 
 Author(s):
@@ -197,103 +199,6 @@ class RoundedProgressBar(QtWidgets.QWidget):
             painter.drawRoundedRect(r, radius, radius)
 
         painter.end()
-
-
-class _PlotDimAnimator(QtCore.QObject):
-    """Fades a QGraphicsItem's opacity using a cubic ease-in-out transition.
-
-    This animator provides a smooth visual ramp for dimming or undimming plot
-    elements, preventing abrupt visual jarring during state changes. It
-    operates at approximately 60 FPS using a ``QTimer``.
-
-    Attributes:
-        DEFAULT_DURATION_MS (int): Default fade time (300ms).
-        FRAME_INTERVAL_MS (int): Timer interval for ~60 FPS updates (16ms).
-    """
-
-    DEFAULT_DURATION_MS = 300
-    FRAME_INTERVAL_MS = 16
-
-    def __init__(self, item: QtWidgets.QGraphicsItem, parent: QtCore.QObject = None):
-        """Initializes the animator with a target item and timer.
-
-        Args:
-            item: The ``QGraphicsItem`` to animate (e.g., a ``QGraphicsRectItem``).
-            parent: The Qt parent object for lifecycle management.
-        """
-        super().__init__(parent)
-        self._item = item
-        self._timer = QtCore.QTimer(self)
-        self._timer.setInterval(self.FRAME_INTERVAL_MS)
-        self._timer.timeout.connect(self._step)
-        self._start_opacity = 0.0
-        self._target_opacity = 0.0
-        self._duration_ms = self.DEFAULT_DURATION_MS
-        self._elapsed_ms = 0
-
-    def fade_to(self, target_opacity: float, duration_ms: int = None) -> None:
-        """Starts or redirects a fade toward a new opacity level.
-
-        This method is re-entrant; if a fade is currently in progress, it will
-        smoothly transition from the current actual opacity toward the new
-        target.
-
-        Args:
-            target_opacity: The desired final opacity (0.0 to 1.0).
-            duration_ms: The length of the animation in milliseconds.
-                If None, defaults to ``DEFAULT_DURATION_MS``.
-        """
-        if duration_ms is None:
-            duration_ms = self.DEFAULT_DURATION_MS
-        try:
-            self._start_opacity = float(self._item.opacity())
-        except (RuntimeError, AttributeError):
-            self._start_opacity = float(target_opacity)
-        self._target_opacity = float(target_opacity)
-        self._duration_ms = max(0, int(duration_ms))
-        self._elapsed_ms = 0
-
-        # Snap to target if duration is zero or delta is imperceptible.
-        if self._duration_ms == 0 or abs(self._target_opacity - self._start_opacity) < 1e-4:
-            try:
-                self._item.setOpacity(self._target_opacity)
-            except RuntimeError:
-                pass
-            self._timer.stop()
-            return
-
-        self._timer.start()
-
-    def stop(self) -> None:
-        """Halts the animation immediately.
-
-        The item's opacity will remain at whatever value it held the moment
-        this was called.
-        """
-        self._timer.stop()
-
-    def _step(self) -> None:
-        """Calculates and applies the next opacity step based on elapsed time.
-
-        Side Effects:
-            Updates the opacity of ``self._item``. Stops the timer if the
-            duration is reached or if the item is no longer accessible.
-        """
-        self._elapsed_ms += self._timer.interval()
-        t = min(1.0, self._elapsed_ms / float(self._duration_ms))
-        # Ease-in-out cubic.
-        if t < 0.5:
-            eased = 4.0 * t * t * t
-        else:
-            eased = 1.0 - pow(-2.0 * t + 2.0, 3) / 2.0
-        opacity = self._start_opacity + (self._target_opacity - self._start_opacity) * eased
-        try:
-            self._item.setOpacity(opacity)
-        except RuntimeError:
-            self._timer.stop()
-            return
-        if t >= 1.0:
-            self._timer.stop()
 
 
 class MainWindow(QtWidgets.QMainWindow):

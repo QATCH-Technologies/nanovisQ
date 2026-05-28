@@ -303,8 +303,16 @@ class ControlsWindow(QtWidgets.QMainWindow):
             self.parent.AnalyzeProc.tool_User.setText(admin)
 
         if allow:
-            self.manageUsersUI = UserProfilesManagerWidget(self, admin)
-            self.manageUsersUI.show()
+            # Parent to centralWidget() so the overlay is a child of the content
+            # area and not behind it. Falls back to self if no central widget exists.
+            overlay_parent = self.centralWidget() or self
+            Log.d(
+                f"[ControlsWindow] manage_user_profiles: showing overlay, parent={overlay_parent}"
+            )
+            self.user_manager = UserProfilesManagerWidget(parent=overlay_parent, admin_name=admin)
+            self.user_manager.show()
+        else:
+            Log.d(f"[ControlsWindow] manage_user_profiles: allow=False, overlay not shown")
 
     def toggle_console(self):
         if self.current_timer.isActive():
@@ -2018,7 +2026,6 @@ class UIControls:  # QtWidgets.QMainWindow
                 self.run_controls.setEnabled(False)
             self.pButton_Start.clicked.emit()
             self.cal_initialized = True
-            
 
     def action_start(self):
         """Method to handle start UI actions."""
@@ -2241,39 +2248,34 @@ class UIControls:  # QtWidgets.QMainWindow
         self._account_popup.show_anchored_to(self.tool_User, main_window=main_window)
 
     def _open_user_manager(self) -> None:
-        """Open the User Profiles Manager dialog (admin-only).
+        """Open the User Profiles Manager overlay (admin-only).
 
-        Instantiates :class:`UserProfilesManager` from
-        ``QATCH.common.userProfiles`` directly rather than going through the
-        legacy ``parent.manage`` ``QAction`` (which has no ``click`` method on
-        ``QAction`` — calling it raised ``AttributeError``).  We hold an
-        instance reference on ``self`` so the dialog stays alive after this
-        method returns.
-
-        ``UserProfilesManager.__init__`` calls
-        ``QtWidgets.QDesktopWidget().availableGeometry()`` with no argument,
-        which always returns the *primary* screen's geometry.  On multi-monitor
-        setups that means the dialog opens on the primary display regardless of
-        where the application actually is, so we override the size/position
-        after construction via :meth:`_anchor_user_manager_to_button`.
+        The manager is now a glassmorphic child overlay of the main window —
+        it covers the parent widget directly rather than opening an OS-managed
+        window.  Geometry and z-order are handled internally by the widget, so
+        no post-construction anchoring or activateWindow() calls are needed.
         """
         try:
-
             is_valid, user_info = UserProfiles.session_info()
             if not (is_valid and user_info and user_info[2] == UserRoles.ADMIN.name):
                 Log.w("User Profiles Manager: an admin session is required to manage users.")
                 return
 
             admin_name = user_info[0] or ""
+            # parent_win must be a QWidget — UIControls is not one, so resolve
+            # the real window via the stored parent reference. Use centralWidget()
+            # so the overlay is parented inside the content area, not behind it.
             parent_win = getattr(self, "parent", None)
+            Log.d(f"[UIControls] _open_user_manager: raw parent_win={parent_win}")
+            if parent_win is not None and hasattr(parent_win, "centralWidget"):
+                parent_win = parent_win.centralWidget() or parent_win
+            Log.d(f"[UIControls] _open_user_manager: resolved parent_win={parent_win}")
 
-            # If a manager dialog is already open, just bring it to the front
+            # If a manager overlay is already visible, just raise it
             existing = getattr(self, "_user_profiles_manager", None)
             if existing is not None:
                 if existing.isVisible():
-                    self._anchor_user_manager_to_button(existing)
                     existing.raise_()
-                    existing.activateWindow()
                     return
                 # Hidden / closed but still in memory — clean up before re-creating
                 try:
@@ -2284,94 +2286,18 @@ class UIControls:  # QtWidgets.QMainWindow
             self._user_profiles_manager = UserProfilesManagerWidget(
                 parent=parent_win, admin_name=admin_name
             )
-            self._anchor_user_manager_to_button(self._user_profiles_manager)
             self._user_profiles_manager.show()
-            self._user_profiles_manager.raise_()
-            self._user_profiles_manager.activateWindow()
         except Exception as exc:
             Log.e(f"UIControls._open_user_manager error: {exc}")
 
     def _anchor_user_manager_to_button(self, manager: QtWidgets.QWidget) -> None:
-        """Reposition ``manager`` onto the screen the application is running on,
-        with its top-right corner anchored to the Account button's bottom-right.
+        """DEPRECATED — no longer called.
 
-        ``UserProfilesManager.__init__`` resizes / centers the dialog using the
-        primary display's available geometry, which is wrong on multi-monitor
-        setups.  This override:
-
-        1. Resolves the screen the Account button (and therefore the app) is on
-           — falling back to the main window's screen, then the primary screen.
-        2. Resizes the dialog to ~50% of *that* screen's available area
-           (matching the dialog's original sizing intent).
-        3. Anchors the dialog's top-right corner to the Account button's
-           bottom-right corner so it appears to extend down-and-left from the
-           button that opened it.
-        4. Clamps the final rect inside the target screen's available area so
-           the dialog never spills onto another monitor or off-screen.
+        The UserProfilesManagerWidget is now a glassmorphic overlay child of
+        the main window and manages its own geometry via ``_refit_to_parent``.
+        This method can be safely removed in a future cleanup pass.
         """
-        anchor_btn = getattr(self, "tool_User", None)
-        anchor_pos: Optional[QtCore.QPoint] = None
-        if anchor_btn is not None:
-            anchor_pos = anchor_btn.mapToGlobal(QtCore.QPoint(0, 0))
-
-        # 1. Find the target screen
-        screen = None
-        if anchor_pos is not None:
-            screen = QtWidgets.QApplication.screenAt(anchor_pos)
-        if screen is None:
-            parent_win = getattr(self, "parent", None)
-            if parent_win is not None:
-                # QWidget.screen() exists in PyQt5 5.14+; window().windowHandle()
-                # is a more compatible fallback.
-                if hasattr(parent_win, "screen"):
-                    try:
-                        screen = parent_win.screen()
-                    except Exception:
-                        screen = None
-                if screen is None:
-                    try:
-                        handle = parent_win.windowHandle()
-                        if handle is not None:
-                            screen = handle.screen()
-                    except Exception:
-                        screen = None
-        if screen is None:
-            screen = QtWidgets.QApplication.primaryScreen()
-        if screen is None:
-            return  # No screens available — leave the default placement
-
-        avail = screen.availableGeometry()
-
-        # 2. Resize to ~50% of the target screen
-        new_w = max(640, int(avail.width() * 0.5))
-        new_h = max(420, int(avail.height() * 0.5))
-        # Don't exceed the available area
-        new_w = min(new_w, avail.width())
-        new_h = min(new_h, avail.height())
-        manager.resize(new_w, new_h)
-
-        # 3. Anchor: top-right of dialog at the button's bottom-right (with a
-        #    small gap so it visually extends from the button).  Fall back to
-        #    centering on the target screen if there's no button reference.
-        if anchor_btn is not None:
-            btn_br = anchor_btn.mapToGlobal(QtCore.QPoint(anchor_btn.width(), anchor_btn.height()))
-            x = btn_br.x() - new_w
-            y = btn_br.y() + 4
-        else:
-            x = avail.x() + (avail.width() - new_w) // 2
-            y = avail.y() + (avail.height() - new_h) // 2
-
-        # 4. Clamp inside the target screen's available area
-        if x + new_w > avail.right():
-            x = avail.right() - new_w + 1
-        if x < avail.left():
-            x = avail.left()
-        if y + new_h > avail.bottom():
-            y = avail.bottom() - new_h + 1
-        if y < avail.top():
-            y = avail.top()
-
-        manager.move(x, y)
+        pass
 
     def doPlateConfig(self):
         if hasattr(self, "wellPlateUI"):
