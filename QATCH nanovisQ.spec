@@ -17,7 +17,8 @@ data_files = [
     ( "QATCH\\resources", "QATCH\\resources" ),
     ( "QATCH\\VisQAI\\assets\\app.db", "QATCH\\VisQAI\\assets" ),
     ( "QATCH\\VisQAI\\assets\\VisQAI-base.visq", "QATCH\\VisQAI\\assets" ),
-    ( "QATCH\\VisQAI\\src\\view\\styles\\theme.qss", "QATCH\\VisQAI\\src\\view\\styles" ),
+    ( "QATCH\\VisQAI\\src\\view\\styles\\*.qss", "QATCH\\VisQAI\\src\\view\\styles" ),
+    ( "QATCH\\ui\\styles\\*.qss", "QATCH\\ui\\styles" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.hex", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.pdf", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( "tools\\tool-teensy", "tools\\tool-teensy" ),
@@ -111,15 +112,15 @@ a = Analysis(
 )
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 # The `splash` (experimental) feature outperforms QSplashScreen as it does not hang during load
-splash = Splash(
-    'QATCH\\icons\\qatch-splash.png',
-    binaries=[], # a.binaries,
-    datas=[( "QATCH\\icons\\qatch-splash.png", "QATCH\\icons\\qatch-splash.png" )],
-    text_pos=(10,470),
-    text_size=10,
-    minify_script=True,
-    always_on_top=False,
-)
+# splash = Splash(
+#     'QATCH\\icons\\qatch-splash.png',
+#     binaries=[], # a.binaries,
+#     datas=[( "QATCH\\icons\\qatch-splash.png", "QATCH\\icons\\qatch-splash.png" )],
+#     text_pos=(10,470),
+#     text_size=10,
+#     minify_script=True,
+#     always_on_top=False,
+# )
 # The EXE block is required for both `--onefile` and `--onedir` modes
 exe = EXE(
     pyz,
@@ -127,7 +128,7 @@ exe = EXE(
 #    a.binaries, # onefile
 #    a.zipfiles, # onefile
 #    a.datas, # onefile
-   splash, # splash
+#   splash, # splash
 #    splash.binaries, # splash onefile
     [],
     exclude_binaries=True, # False,
@@ -153,7 +154,7 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    splash.binaries,
+#    splash.binaries,
     strip=False,
     upx=True,
     upx_exclude=upx_exclude,

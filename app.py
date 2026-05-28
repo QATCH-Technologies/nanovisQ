@@ -1,17 +1,19 @@
 import ctypes
 import os  # add
+import subprocess
 import sys
 import time
 from multiprocessing import freeze_support
 
-from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtGui import QPixmap
+from PyQt5 import QtCore, QtGui
+from PyQt5.QtGui import QPixmap, QColor
 from PyQt5.QtWidgets import QApplication
 
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.arguments import Arguments
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants, MinimalPython
+from QATCH.ui.widgets.splash_screen import QatchSplashScreen
 
 # from QATCH.ui import mainWindow # lazy load
 
@@ -24,14 +26,18 @@ try:
     import pyi_splash
 
     # this is just a sanity check to confirm the splash module
-    USE_PYI_SPLASH = pyi_splash.is_alive()
+    USE_PYI_SPLASH = False  # pyi_splash.is_alive()
     # restore to default level, it's active
     logging.getLogger("pyi_splash").setLevel(logging.WARNING)
 except:
     USE_PYI_SPLASH = False
 
 if not USE_PYI_SPLASH:
-    from PyQt5.QtWidgets import QSplashScreen
+    if len(sys.argv) > 1 and sys.argv[1] == "--splash":
+        # This block only executes inside the subprocess
+        app = QApplication(sys.argv)
+        splash = QatchSplashScreen()
+        sys.exit(app.exec_())
 
 TAG = ""  # "[Application]"
 
@@ -45,6 +51,10 @@ class QATCH:
     # Initializing values for application
     ###########################################################################
     def __init__(self, argv=sys.argv):
+
+        self.win = None
+        self.flashSplashShow()
+
         if getattr(sys, "frozen", False):
             userpath = os.path.expandvars("%USERPROFILE%")
             docspath = os.path.join(userpath, "Documents", "QATCH nanovisQ")
@@ -55,9 +65,6 @@ class QATCH:
                     except OSError as ose:
                         raise ose
 
-        self.win = None
-        if USE_PYI_SPLASH:
-            self.flashSplashShow()
         print("Launching application...")
         if Architecture.get_os() is OSType.windows:
             myappid = "{} {} {} ({})".format(
@@ -67,11 +74,11 @@ class QATCH:
                 Constants.app_date,
             )  # arbitrary string, required for Windows Toolbar to display QATCH icon
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-            ctypes.windll.kernel32.SetConsoleTitleW("QATCH Q-1 Real-Time GUI - command line")
+            ctypes.windll.kernel32.SetConsoleTitleW(
+                "QATCH Q-1 Real-Time GUI - command line"
+            )
         self._args = self._init_logger()
         self._app = QApplication(argv)
-        if not USE_PYI_SPLASH:
-            self.flashSplashShow()
 
     def flashSplashShow(self):
         build_info = f" {Constants.app_title}\n Version: {Constants.app_version}\n Build Date: {Constants.app_date}\n"
@@ -79,16 +86,25 @@ class QATCH:
         if USE_PYI_SPLASH:
             # Update the text on the splash screen
             build_info = "\n".join(
-                [f"                                          {s}" for s in build_info.split("\n")]
+                [
+                    f"                                          {s}"
+                    for s in build_info.split("\n")
+                ]
             )
             pyi_splash.update_text(build_info)
         else:
-            icon_path = os.path.join(Architecture.get_path(), "QATCH\\icons\\qatch-splash.png")
-            pixmap = QPixmap(icon_path)
-            pixmap_resized = pixmap.scaledToWidth(512)
-            self.splash = QSplashScreen(pixmap_resized, QtCore.Qt.WindowStaysOnTopHint)
-            self.splash.showMessage(build_info, QtCore.Qt.AlignBottom | QtCore.Qt.AlignCenter)
-            self.splash.show()
+            try:
+                if getattr(sys, "frozen", False):
+                    # Launch the exact same executable, but pass the --splash flag
+                    # This safely tells the child copy to only run the splash screen loop
+                    self.splash_process = subprocess.Popen([sys.executable, "--splash"])
+                else:
+                    # Launch a completely separate Python instance for splash screen process
+                    self.splash_process = subprocess.Popen(
+                        [sys.executable, "app.py", "--splash"]
+                    )
+            except Exception as e:
+                Log.e("Failed to launch splash screen process:", e)
 
         # Close SplashScreen after app is loaded
         # (min 3 sec, timer will wait longer for app load, if needed)
@@ -110,7 +126,11 @@ class QATCH:
             # this function is called or the Python program is terminated.
             pyi_splash.close()
         else:
-            self.splash.close()
+            if hasattr(self, "splash_process"):
+                try:
+                    self.splash_process.terminate()
+                except PermissionError as e:
+                    Log.e("Failed to terminate splash screen:", e)
 
         # if Architecture.get_os() is OSType.windows:
         #     kernel32 = ctypes.WinDLL('kernel32')
@@ -121,6 +141,8 @@ class QATCH:
         #         user32.ShowWindow(hWnd, SW_HIDE)
 
         self.win.MainWin.showMaximized()
+        self.win.MainWin.activateWindow()
+
         if hasattr(self.win, "ask_for_update") and self.win.ask_for_update:
             self.win.start_download()
         ##
@@ -132,7 +154,9 @@ class QATCH:
         # lazy load imports
         from QATCH.ui import mainWindow
 
-        if Architecture.is_python_version(MinimalPython.major, minor=MinimalPython.minor):
+        if Architecture.is_python_version(
+            MinimalPython.major, minor=MinimalPython.minor
+        ):
             Log.i(TAG, "Application started")
 
             self.win = mainWindow.MainWindow(samples=self._args.get_user_samples())
@@ -185,9 +209,9 @@ class QATCH:
 
 if __name__ == "__main__":
     if hasattr(QtCore.Qt, "AA_EnableHighDpiScaling"):
-        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+        QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
     if hasattr(QtCore.Qt, "AA_UseHighDpiPixmaps"):
-        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+        QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
     freeze_support()
 
     QATCH().run()
