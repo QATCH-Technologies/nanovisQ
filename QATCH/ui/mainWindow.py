@@ -4017,9 +4017,9 @@ class MainWindow(QtWidgets.QMainWindow):
                             try:
                                 self._place_fill_event_marker(
                                     0,
-                                    float(self.worker.get_t1_buffer(0)[0]),
-                                    float(self.worker.get_d1_buffer(0)[0]),
-                                    float(self.worker.get_d2_buffer(0)[0]),
+                                    float(self.worker.get_t1_buffer(0)[-1]),
+                                    float(self.worker.get_d1_buffer(0)[-1]),
+                                    float(self.worker.get_d2_buffer(0)[-1]),
                                     pred_int,
                                     status_msg,
                                 )
@@ -4027,7 +4027,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                 Log.e(TAG, f"Failed to place fill-event marker: {e}")
                 if pred_int == -1 and not self._drop_epoch_sent:
                     self.worker._forecaster_in.put(
-                        DropEpochSignal(float(self.worker.get_t1_buffer(0)[0]))
+                        DropEpochSignal(float(self.worker.get_t1_buffer(0)[-1]))
+
                     )
                     self._drop_epoch_sent = True
                 elif pred_int == 3:
@@ -4254,9 +4255,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         self._drop_marker_placed[i] = True
                         self._place_fill_event_marker(
                             i,
-                            float(self.worker.get_t1_buffer(i)[0]),
-                            float(self.worker.get_d1_buffer(i)[0]),
-                            float(self.worker.get_d2_buffer(i)[0]),
+                            float(self.worker.get_t1_buffer(0)[-1]),
+                            float(self.worker.get_d1_buffer(0)[-1]),
+                            float(self.worker.get_d2_buffer(0)[-1]),
                             -99,
                             "Drop Applied",
                         )
@@ -4269,9 +4270,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     try:
                         self._place_fill_event_marker(
                             i,
-                            float(self.worker.get_t1_buffer(i)[0]),
-                            float(self.worker.get_d1_buffer(i)[0]),
-                            float(self.worker.get_d2_buffer(i)[0]),
+                            float(self.worker.get_t1_buffer(0)[-1]),
+                            float(self.worker.get_d1_buffer(0)[-1]),
+                            float(self.worker.get_d2_buffer(0)[-1]),
                         )
                     except Exception:
                         pass
@@ -4483,7 +4484,8 @@ class MainWindow(QtWidgets.QMainWindow):
             t1_buffer = self.worker.get_t1_buffer(i)
             if ci_freq and len(t1_buffer) > 0:
                 ci_freq.setData(x=t1_buffer, y=self._vector_1)
-                self._dot_freq[i].setData([{"pos": (t1_buffer[0], self._vector_1[0])}])
+                self._dot_freq[i].setData([{"pos": (t1_buffer[-1], self._vector_1[-1])}])
+
 
             # Dissipation (reference-subtracted)
             self._vector_2 = (
@@ -4498,7 +4500,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._dot_diss[i].setBrush(pg.mkBrush(Constants.plot_colors[7]))
 
                 ci_diss.setData(x=t2_buffer, y=self._vector_2)
-                self._dot_diss[i].setData([{"pos": (t2_buffer[0], self._vector_2[0])}])
+                self._dot_diss[i].setData([{"pos": (t2_buffer[-1], self._vector_2[-1])}])
+
 
             # Apply limits if measuring
             if is_measurement:
@@ -4708,12 +4711,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if ci_freq:
             ci_freq.setData(x=slice_time_resonance_frequency, y=slice_resonance_frequency)
             self._dot_freq[i].setData(
-                [{"pos": (slice_time_resonance_frequency[0], slice_resonance_frequency[0])}]
+                [{"pos": (slice_time_resonance_frequency[-1], slice_resonance_frequency[-1])}]
             )
 
         if ci_diss:
             ci_diss.setData(x=slice_time_dissipation, y=slice_dissipation)
-            self._dot_diss[i].setData([{"pos": (slice_time_dissipation[0], slice_dissipation[0])}])
+            self._dot_diss[i].setData([{"pos": (slice_time_dissipation[-1], slice_dissipation[-1])}])
+
 
         # Handle X-Axis Padding & Sync
         if slice_time_resonance_frequency.size > 0:
@@ -5229,9 +5233,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     self._place_fill_event_marker(
                         i,
-                        float(self.worker.get_t1_buffer(i)[0]),
-                        float(self.worker.get_d1_buffer(i)[0]),
-                        float(self.worker.get_d2_buffer(i)[0]),
+                        float(self.worker.get_t1_buffer(i)[-1]),
+                        float(self.worker.get_d1_buffer(i)[-1]),
+                        float(self.worker.get_d2_buffer(i)[-1]),
                         -98,
                         "Sensor Dry - Apply Drop",
                     )
@@ -7463,4 +7467,4 @@ class MainWindow(QtWidgets.QMainWindow):
                 ok_only=True,
             )
 
-        # Log.d("GUI: Normal repaint events") # no longer needed
+        # Log.d("GUI: Normal repaint events") # no longer neede
