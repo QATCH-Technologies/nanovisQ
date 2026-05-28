@@ -469,7 +469,7 @@ class Ui_Export(QtWidgets.QWidget):
         # self.layout.addWidget(groupbox3)
         self.setLayout(self.layout)
         icon_path = os.path.join(
-            Architecture.get_path(), "QATCH\icons\import-export.png"
+            Architecture.get_path(), "QATCH" , "icons", "import-export.svg"
         )
         icon = QtGui.QIcon(icon_path)
         self.setWindowIcon(icon)

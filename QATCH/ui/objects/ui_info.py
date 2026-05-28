@@ -211,7 +211,7 @@ class UIInfo:
 
         # Download button -----------------------------------------------------------------------
         self.pButton_Download = QtWidgets.QPushButton(self.centralwidget)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/refresh-icon.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-circle.svg")
         self.pButton_Download.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Download.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Download.setObjectName("pButton_Download")

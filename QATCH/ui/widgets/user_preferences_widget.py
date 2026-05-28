@@ -1,3 +1,4 @@
+from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserPreferences
@@ -38,7 +39,7 @@ class UserPreferencesWidget(QWidget):
         UserProfiles.user_preferences.set_preferences()
 
         self.setWindowTitle("Preferences")
-        self.setWindowIcon(QIcon(r"QATCH\icons\preferences_icon.png"))
+        self.setWindowIcon(QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "preferences.svg")))
 
         # Initialize the _updating flag to avoid recursion
         self._updating = False  # Initialize the _updating flag

@@ -446,8 +446,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.signForm = QtWidgets.QDialog()
         # | QtCore.Qt.WindowStaysOnTopHint)
         self.signForm.setWindowFlags(QtCore.Qt.Dialog)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/sign.png")
-        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "signature.svg")
+        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .svg
         self.signForm.setWindowTitle("Signature")
         self.signForm.setModal(True)
         layout_sign = QtWidgets.QVBoxLayout()
@@ -539,7 +539,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.setStyleSheet("color: #333333;")
 
         icon_load = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/load.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "load-circle.svg")
         icon_load.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_load.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Load = QtWidgets.QToolButton()
@@ -580,7 +580,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.addWidget(self.tBtn_Load)
 
         icon_reset = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg")
         icon_reset.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_reset.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Rescan = QtWidgets.QToolButton()
@@ -593,7 +593,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.addSeparator()
 
         icon_predict = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qmodel.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "stars.svg")
         icon_predict.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_predict.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Predict = QtWidgets.QToolButton()
@@ -604,7 +604,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.addWidget(self.tBtn_Predict)
 
         icon_info = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/info.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "info-circle.svg")
         icon_info.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_info.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Info = QtWidgets.QToolButton()
@@ -674,7 +674,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_bar.addSeparator()
 
         icon_cancel = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/cancel.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "cancel.svg")
         icon_cancel.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_cancel.addPixmap(QtGui.QPixmap('QATCH/icons/cancel-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Cancel = QtWidgets.QToolButton()
@@ -713,7 +713,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_bar.addSeparator()
 
         icon_modify = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/modify.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "modify.svg")
         icon_modify.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_modify.addPixmap(QtGui.QPixmap('QATCH/icons/modify-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Modify = QtWidgets.QToolButton()
@@ -725,7 +725,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_bar.addWidget(self.tool_Modify)
 
         icon_analyze = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/start.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "play-circle.svg")
         icon_analyze.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_analyze.addPixmap(QtGui.QPixmap('QATCH/icons/analyze-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Analyze = QtWidgets.QToolButton()
@@ -750,7 +750,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # self.toolBar.addWidget(self.tool_Advanced)
 
         icon_advanced = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/advanced.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
         icon_advanced.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_advanced.addPixmap(QtGui.QPixmap('QATCH/icons/advanced-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Advanced = QtWidgets.QToolButton()
@@ -924,7 +924,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         warningLayout.addWidget(warningWidget)
         warningLayout.addLayout(self.gridLayout)
         self.advancedwidget.setLayout(warningLayout)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/advanced.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
         self.advancedwidget.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.advancedwidget.setWindowTitle("Advanced Settings")
 
@@ -3677,34 +3677,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             clipped = True
             ws = 10
         return [ws, clipped]
-
-    # def _QModel_create_new_progress_dialog(self):
-    #     if hasattr(self, "progressBarDiag"):
-    #         self.progressBarDiag.close()
-    #         del self.progressBarDiag
-    #
-    #     # Special modal progress dialog for auto-fitting points
-    #     self.progressBarDiag = QtWidgets.QProgressDialog(
-    #         "Auto-fitting points...", "Cancel", 0, 0, self
-    #     )
-    #     # Disable auto-reset and auto-close to retain `wasCanceled()` state
-    #     self.progressBarDiag.setAutoReset(False)
-    #     self.progressBarDiag.setAutoClose(False)
-    #     icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
-    #     self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
-    #     self.progressBarDiag.setWindowTitle("Busy")
-    #     self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
-    #     self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
-    #     self.progressBarDiag.setFixedSize(
-    #         int(self.progressBarDiag.width() * 1.5),
-    #         int(self.progressBarDiag.height() * 1.1),
-    #     )
-    #     self.progressBarDiag.setModal(True)
-    #     self.progressBarDiag.show()
-    #
-    #     cancelButton = self.progressBarDiag.findChild(QtWidgets.QPushButton)
-    #     cancelButton.setEnabled(False)
-
+    
     def _QModel_v4_progress_update(self, pct: int, status: Optional[str]):
         if getattr(self, "_qmodel_overlay", None) is None:
             self._show_qmodel_plot_overlay()

@@ -75,7 +75,7 @@ class SignatureDialog(QDialog):
         except ImportError:
             pass
 
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "sign.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "signature.svg")
         self.setWindowIcon(QIcon(icon_path))
 
         layout_sign = QVBoxLayout(self)

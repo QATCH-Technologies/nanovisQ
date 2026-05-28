@@ -483,8 +483,8 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.signForm.setWindowFlags(
             QtCore.Qt.Dialog
         )  # | QtCore.Qt.WindowStaysOnTopHint)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/sign.png")
-        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "signature.svg")
+        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .svg
         self.signForm.setWindowTitle("Signature")
         self.signForm.setModal(True)
         layout_sign = QtWidgets.QVBoxLayout()

@@ -165,10 +165,10 @@ class RunInfoWindow(QtWidgets.QWidget):
 
         self.blankIcon = QtGui.QIcon()
         self.foundIcon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(), "QATCH", "icons", "checkmark.png")
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "checkmark-circle.svg")
         )
         self.missingIcon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(), "QATCH", "icons", "warning.png")
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "warning.svg")
         )
         self.t_batchAction = self.t_batch.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
@@ -201,7 +201,7 @@ class RunInfoWindow(QtWidgets.QWidget):
             self.btn, row + 2, 0, 1, col + 1, QtCore.Qt.AlignmentFlag.AlignCenter
         )
 
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/info.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "info-circle.svg")
         self.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.setWindowTitle("Enter Run Info (Multiple Ports)")
         self.show()
@@ -266,7 +266,7 @@ class RunInfoWindow(QtWidgets.QWidget):
         self.i_scannow = QtWidgets.QLabel()
         self.i_scannow.setPixmap(
             QtGui.QPixmap(
-                os.path.join(Architecture.get_path(), "QATCH", "icons", "scan.png")
+                os.path.join(Architecture.get_path(), "QATCH", "icons", "barcode.svg")
             ).scaledToHeight(self.l_scannow.height() - 2)
         )
         self.h_scannow.addWidget(self.i_scannow)

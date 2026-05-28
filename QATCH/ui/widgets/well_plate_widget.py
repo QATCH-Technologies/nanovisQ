@@ -52,7 +52,7 @@ class WellPlate(QWidget):
 
     def InitWindow(self):
         self.icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/advanced.png')
+            Architecture.get_path(), 'QATC', 'icons', 'gear.svg')
         self.setWindowIcon(QtGui.QIcon(self.icon_path))  # .png
         self.setWindowTitle(self.title)
         self.clicked.connect(self.clickEvent)

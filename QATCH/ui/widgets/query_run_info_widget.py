@@ -81,9 +81,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q_runname.addWidget(self.t_runname)
         self.h_runname = QtWidgets.QLabel()
         self.h_runname.setText("<u>?</u>")
-        self.h_runname.setToolTip(
-            "<b>Hint:</b> This name applies to all ports captured this run."
-        )
+        self.h_runname.setToolTip("<b>Hint:</b> This name applies to all ports captured this run.")
         self.q_runname.addWidget(self.h_runname)
 
         self.q_batch = QtWidgets.QHBoxLayout()  # batch #
@@ -95,18 +93,15 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q_batch.addWidget(self.t_batch)
         self.h_batch = QtWidgets.QLabel()
         self.h_batch.setText("<u>?</u>")
-        self.h_batch.setToolTip(
-            "<b>Hint:</b> Find this # on the crystal's packaging.")
+        self.h_batch.setToolTip("<b>Hint:</b> Find this # on the crystal's packaging.")
         self.q_batch.addWidget(self.h_batch)
 
         self.blankIcon = QtGui.QIcon()
         self.foundIcon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(), "QATCH",
-                         "icons", "checkmark.png")
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "checkmark-circle.svg")
         )
         self.missingIcon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(),
-                         "QATCH", "icons", "warning.png")
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "warning.svg")
         )
         self.t_batchAction = self.t_batch.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
@@ -120,8 +115,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.notes.setTabChangesFocus(True)
         self.notes.setFixedHeight(100)
 
-        self.groupBioformulation = QtWidgets.QGroupBox(
-            "Is this a bioformulation?")
+        self.groupBioformulation = QtWidgets.QGroupBox("Is this a bioformulation?")
         self.groupBioformulation.setCheckable(False)
         self.q1 = QtWidgets.QHBoxLayout()
         self.groupBioformulation.setLayout(self.q1)
@@ -146,8 +140,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         try:
             # auto complete options
             # prefer working resource path, if exists
-            working_resource_path = os.path.join(
-                os.getcwd(), "QATCH/resources/")
+            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
             # bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH/resources/") # otherwise, use bundled resource path
             # if os.path.exists(working_resource_path) else bundled_resource_path
             resource_path = working_resource_path
@@ -180,8 +173,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             completer = QtWidgets.QCompleter(self)
             completer_model = QtCore.QStringListModel(self.fluids, completer)
             completer.setModel(completer_model)
-            completer.setModelSorting(
-                QtWidgets.QCompleter.CaseInsensitivelySortedModel)
+            completer.setModelSorting(QtWidgets.QCompleter.CaseInsensitivelySortedModel)
             completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
             completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
             completer.setFilterMode(QtCore.Qt.MatchContains)
@@ -196,8 +188,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q2.addWidget(self.t0)
         self.h0 = QtWidgets.QLabel()
         self.h0.setText("<u>?</u>")
-        self.h0.setToolTip(
-            "<b>Hint:</b> If not listed, enter parameters manually.")
+        self.h0.setToolTip("<b>Hint:</b> If not listed, enter parameters manually.")
         self.q2.addWidget(self.h0)
         self.t0.textChanged.connect(self.lookup_completer)
         self.t0.editingFinished.connect(self.enforce_completer)
@@ -215,8 +206,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q3.addWidget(self.l3)
         self.t3 = QtWidgets.QLineEdit()
         self.validSurfactant = QtGui.QDoubleValidator(0, 1, 5)
-        self.validSurfactant.setNotation(
-            QtGui.QDoubleValidator.StandardNotation)
+        self.validSurfactant.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t3.setValidator(self.validSurfactant)
         self.q3.addWidget(self.t3)
         self.h3 = QtWidgets.QLabel()
@@ -232,8 +222,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q4.addWidget(self.l4)
         self.t4 = QtWidgets.QLineEdit()
         self.validConcentration = QtGui.QDoubleValidator(0, 1000, 3)
-        self.validConcentration.setNotation(
-            QtGui.QDoubleValidator.StandardNotation)
+        self.validConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t4.setValidator(self.validConcentration)
         self.q4.addWidget(self.t4)
         self.h4 = QtWidgets.QLabel()
@@ -252,8 +241,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q10.addWidget(self.c10, 1)
         self.h10 = QtWidgets.QLabel()
         self.h10.setText("<u>?</u>")
-        self.h10.setToolTip(
-            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h10.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
         self.q10.addWidget(self.h10)
         self.c10.currentTextChanged.connect(self.new_protein_type)
 
@@ -264,9 +252,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q12.addWidget(self.l12)
         self.t12 = QtWidgets.QLineEdit()
         self.validProteinConcentration = QtGui.QDoubleValidator(0, 1000, 3)
-        self.validProteinConcentration.setNotation(
-            QtGui.QDoubleValidator.StandardNotation
-        )
+        self.validProteinConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t12.setValidator(self.validProteinConcentration)
         self.q12.addWidget(self.t12)
         self.h12 = QtWidgets.QLabel()
@@ -293,8 +279,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q13.addWidget(self.c13, 1)
         self.h13 = QtWidgets.QLabel()
         self.h13.setText("<u>?</u>")
-        self.h13.setToolTip(
-            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h13.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
         self.q13.addWidget(self.h13)
         self.c13.currentTextChanged.connect(self.new_buffer_type)
 
@@ -305,9 +290,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q14.addWidget(self.l14)
         self.t14 = QtWidgets.QLineEdit()
         self.validBufferConcentration = QtGui.QDoubleValidator(0, 1000, 3)
-        self.validBufferConcentration.setNotation(
-            QtGui.QDoubleValidator.StandardNotation
-        )
+        self.validBufferConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t14.setValidator(self.validBufferConcentration)
         self.q14.addWidget(self.t14)
         self.h14 = QtWidgets.QLabel()
@@ -322,15 +305,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q20.addWidget(self.l20)
         self.t20 = QtWidgets.QLineEdit()
         self.validBufferPH = QtGui.QDoubleValidator(0, 14, 3)
-        self.validBufferPH.setNotation(
-            QtGui.QDoubleValidator.StandardNotation
-        )
+        self.validBufferPH.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t20.setValidator(self.validBufferPH)
         self.t20.textChanged.connect(self.detect_change)
         self.q20.addWidget(self.t20)
         self.h20 = QtWidgets.QLabel()
         self.h20.setText("<u>?</u>")
-        self.h20.setToolTip('<b>NOTE:</b> This is a required field.')
+        self.h20.setToolTip("<b>NOTE:</b> This is a required field.")
         self.q20.addWidget(self.h20)
 
         # Buffer Groupbox
@@ -351,8 +332,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q9.addWidget(self.c9, 1)
         self.h9 = QtWidgets.QLabel()
         self.h9.setText("<u>?</u>")
-        self.h9.setToolTip(
-            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h9.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
         self.q9.addWidget(self.h9)
         self.c9.currentTextChanged.connect(self.new_surfactant_type)
 
@@ -363,9 +343,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q6.addWidget(self.l6)
         self.t6 = QtWidgets.QLineEdit()
         self.validSurfactantConcentration = QtGui.QDoubleValidator(0, 1, 5)
-        self.validSurfactantConcentration.setNotation(
-            QtGui.QDoubleValidator.StandardNotation
-        )
+        self.validSurfactantConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t6.setValidator(self.validSurfactantConcentration)
         self.q6.addWidget(self.t6)
         self.h6 = QtWidgets.QLabel()
@@ -391,8 +369,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q11.addWidget(self.c11, 1)
         self.h11 = QtWidgets.QLabel()
         self.h11.setText("<u>?</u>")
-        self.h11.setToolTip(
-            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h11.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
         self.q11.addWidget(self.h11)
         self.c11.currentTextChanged.connect(self.new_stabilizer_type)
         self.c11.currentTextChanged.connect(self.calc_params)
@@ -404,15 +381,12 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q8.addWidget(self.l8)
         self.t8 = QtWidgets.QLineEdit()
         self.validStabilizerConcentration = QtGui.QDoubleValidator(0, 1, 3)
-        self.validStabilizerConcentration.setNotation(
-            QtGui.QDoubleValidator.StandardNotation
-        )
+        self.validStabilizerConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t8.setValidator(self.validStabilizerConcentration)
         self.q8.addWidget(self.t8)
         self.h8 = QtWidgets.QLabel()
         self.h8.setText("<u>M</u>")
-        self.h8.setToolTip(
-            '<b>Hint:</b> For a molar mass of 0.50 enter "0.50".')
+        self.h8.setToolTip('<b>Hint:</b> For a molar mass of 0.50 enter "0.50".')
         self.q8.addWidget(self.h8)
         self.t8.textChanged.connect(self.calc_params)
         self.t8.editingFinished.connect(self.calc_params)
@@ -434,8 +408,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q15.addWidget(self.c15, 1)
         self.h15 = QtWidgets.QLabel()
         self.h15.setText("<u>?</u>")
-        self.h15.setToolTip(
-            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h15.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
         self.q15.addWidget(self.h15)
         self.c15.currentTextChanged.connect(self.new_salt_type)
 
@@ -446,8 +419,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q16.addWidget(self.l16)
         self.t16 = QtWidgets.QLineEdit()
         self.validSaltConcentration = QtGui.QDoubleValidator(0, 1000, 3)
-        self.validSaltConcentration.setNotation(
-            QtGui.QDoubleValidator.StandardNotation)
+        self.validSaltConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t16.setValidator(self.validSaltConcentration)
         self.q16.addWidget(self.t16)
         self.h16 = QtWidgets.QLabel()
@@ -472,8 +444,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q17.addWidget(self.c17, 1)
         self.h17 = QtWidgets.QLabel()
         self.h17.setText("<u>?</u>")
-        self.h17.setToolTip(
-            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h17.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
         self.q17.addWidget(self.h17)
         self.c17.currentTextChanged.connect(self.new_excipient_type)
 
@@ -484,9 +455,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q18.addWidget(self.l18)
         self.t18 = QtWidgets.QLineEdit()
         self.validExcipientConcentration = QtGui.QDoubleValidator(0, 1000, 3)
-        self.validExcipientConcentration.setNotation(
-            QtGui.QDoubleValidator.StandardNotation
-        )
+        self.validExcipientConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t18.setValidator(self.validExcipientConcentration)
         self.q18.addWidget(self.t18)
         self.h18 = QtWidgets.QLabel()
@@ -517,8 +486,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.r1.addWidget(self.l6)
         self.t1 = QtWidgets.QLineEdit()
         self.validSurfaceTension = QtGui.QDoubleValidator(1, 1000, 3)
-        self.validSurfaceTension.setNotation(
-            QtGui.QDoubleValidator.StandardNotation)
+        self.validSurfaceTension.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t1.setValidator(self.validSurfaceTension)
         self.r1.addWidget(self.t1)
         self.h1 = QtWidgets.QLabel()
@@ -534,8 +502,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.r2.addWidget(self.l7)
         self.t2 = QtWidgets.QLineEdit()
         self.validContactAngle = QtGui.QDoubleValidator(10, 80, 1)
-        self.validContactAngle.setNotation(
-            QtGui.QDoubleValidator.StandardNotation)
+        self.validContactAngle.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t2.setValidator(self.validContactAngle)
         self.r2.addWidget(self.t2)
         self.h2 = QtWidgets.QLabel()
@@ -599,9 +566,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         lay_h3.addWidget(self.groupExcipient, 1)
         lay.addLayout(lay_h3)
         self.collapsibleBox.setContentLayout(lay)
-        self.collapsibleBox.toggle_button.pressed.connect(
-            self.resize_on_collapse_change
-        )
+        self.collapsibleBox.toggle_button.pressed.connect(self.resize_on_collapse_change)
         # -------------- CollapsibleBox: Advanced --------------
 
         layout_v = QtWidgets.QVBoxLayout()
@@ -640,8 +605,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q_recall = QtWidgets.QCheckBox("Remember for next run")
         self.q_recall.setChecked(True)
         self.q_recall.setEnabled(self.unsaved_changes)
-        layout_v.addWidget(
-            self.q_recall, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        layout_v.addWidget(self.q_recall, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
         from QATCH.common.userProfiles import UserProfiles
 
@@ -653,9 +617,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         else:
             try:
                 # all we can do is trust the user provided a valid username (session is now expired)
-                infos = UserProfiles.get_user_info(
-                    UserProfiles().find(self.username, None)[1]
-                )
+                infos = UserProfiles.get_user_info(UserProfiles().find(self.username, None)[1])
                 self.initials = infos[1]
             except:
                 self.initials = None
@@ -692,9 +654,8 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.signForm = QtWidgets.QDialog()
         # | QtCore.Qt.WindowStaysOnTopHint)
         self.signForm.setWindowFlags(QtCore.Qt.Dialog)
-        icon_path = os.path.join(
-            Architecture.get_path(), "QATCH/icons/sign.png")
-        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "signature.svg")
+        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .svg
         self.signForm.setWindowTitle("Signature")
         self.signForm.setModal(True)
         layout_sign = QtWidgets.QVBoxLayout()
@@ -720,8 +681,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         # self.sign = QtWidgets.QLineEdit() # declared prior
         self.sign.installEventFilter(self)
         layout_sign.addWidget(self.sign)
-        self.sign_do_not_ask = QtWidgets.QCheckBox(
-            "Do not ask again this session")
+        self.sign_do_not_ask = QtWidgets.QCheckBox("Do not ask again this session")
         self.sign_do_not_ask.setEnabled(False)
         if UserProfiles.checkDevMode()[0]:  # DevMode enabled
             auto_sign_key = None
@@ -729,8 +689,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             if os.path.exists(Constants.auto_sign_key_path):
                 with open(Constants.auto_sign_key_path, "r") as f:
                     auto_sign_key = f.readline()
-            session_key_path = os.path.join(
-                Constants.user_profiles_path, "session.key")
+            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
                     session_key = f.readline()
@@ -761,8 +720,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         layout_v.addStretch()
 
         self.setLayout(layout_v)
-        icon_path = os.path.join(
-            Architecture.get_path(), "QATCH/icons/info.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "info-circle.svg")
         self.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.setWindowTitle("Enter Run Info")
 
@@ -772,15 +730,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.l_scannow.setVisible(False)  #
         #############################################
 
-        QtWidgets.QShortcut(
-            QtGui.QKeySequence(QtCore.Qt.Key_Enter), self, activated=self.confirm
-        )
-        QtWidgets.QShortcut(
-            QtGui.QKeySequence(QtCore.Qt.Key_Return), self, activated=self.confirm
-        )
-        QtWidgets.QShortcut(
-            QtGui.QKeySequence(QtCore.Qt.Key_Escape), self, activated=self.close
-        )
+        QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Enter), self, activated=self.confirm)
+        QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Return), self, activated=self.confirm)
+        QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Escape), self, activated=self.close)
 
         self.recallFromXML()
 
@@ -791,8 +743,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.t_channels.setValue(
                 getattr(self.parent, "num_channels", 3)
                 if not (
-                    hasattr(self.parent, "forecast_end_time")
-                    and self.parent.forecast_end_time > 0
+                    hasattr(self.parent, "forecast_end_time") and self.parent.forecast_end_time > 0
                 )
                 else 3
             )
@@ -833,8 +784,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 # disable it, and never use it again
                 tb.setClearButtonEnabled(False)
                 self.reset_actions[-1].triggered.connect(tb.clear)
-                self.reset_actions[-1].triggered.connect(
-                    self.clear_manual_entry)
+                self.reset_actions[-1].triggered.connect(self.clear_manual_entry)
                 # self.reset_actions[-1].hovered.connect(QtWidgets.QToolTip.showText(tb.pos(), "Clear manual entry", tb))
         self.t_channels.valueChanged.connect(self.highlight_channels_box)
         self.highlight_manual_entry()  # run now
@@ -854,19 +804,15 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
     def _init_combobox_menu(self, combobox: QtWidgets.QComboBox):
         # Enable custom context menu policy
-        combobox.setContextMenuPolicy(
-            QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        combobox.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         # Connect the custom context menu signal to the menu-building method
-        combobox.customContextMenuRequested.connect(
-            lambda p: self.show_context_menu(combobox, p)
-        )
+        combobox.customContextMenuRequested.connect(lambda p: self.show_context_menu(combobox, p))
 
     def show_context_menu(self, combobox: QtWidgets.QComboBox, point):
         """Creates and displays the context menu."""
         menu = QtWidgets.QMenu(combobox)
         clear_icon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(),
-                         "QATCH", "icons", "cancel.png")
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "cancel.svg")
         )
         clear_action = menu.addAction(clear_icon, "Clear")
         # Connect the clear action to the QComboBox's setCurrentIndex method
@@ -879,8 +825,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
     def resizeNormal(self):
         # fixed width (from show); with dynamic height
-        super(QueryRunInfoWidget, self).resize(
-            self.width(), self.sizeHint().height())
+        super(QueryRunInfoWidget, self).resize(self.width(), self.sizeHint().height())
 
     def showScanNow(self):
         self.l_scannow.resize(self.t_batch.size())
@@ -897,8 +842,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.i_scannow = QtWidgets.QLabel()
         self.i_scannow.setPixmap(
             QtGui.QPixmap(
-                os.path.join(Architecture.get_path(),
-                             "QATCH", "icons", "scan.png")
+                os.path.join(Architecture.get_path(), "QATCH", "icons", "barcode.svg")
             ).scaledToHeight(self.l_scannow.height() - 2)
         )
         self.h_scannow.addWidget(self.i_scannow)
@@ -928,11 +872,10 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             show_single_fields = True
         else:
             run_name = self.t_runname.text()
-            self.run_port = run_name[run_name.rindex("_"):]
+            self.run_port = run_name[run_name.rindex("_") :]
             self.recall_xml = self.recall_xml[:-4] + self.run_port + ".xml"
             recall_parts = os.path.split(self.recall_xml)
-            self.recall_xml = os.path.join(
-                recall_parts[0], "recall", recall_parts[1])
+            self.recall_xml = os.path.join(recall_parts[0], "recall", recall_parts[1])
             self.recallFromXML()
         self.l_runname.setVisible(show_single_fields)
         self.t_runname.setVisible(show_single_fields)
@@ -1025,8 +968,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                             self.run_name = value
                             self.t_runname.setText(self.run_name)
                         if name == "batch_number":
-                            self.batch_found = p.getAttribute(
-                                "found").lower() == "true"
+                            self.batch_found = p.getAttribute("found").lower() == "true"
                             self.t_batch.setText(value)
                         if name == "notes":
                             if value != self.notes.placeholderText():
@@ -1100,15 +1042,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                     # new parameters for revamped run info
                     if name == "protein_type":
                         if (
-                            value.casefold()
-                            not in [p.casefold() for p in self.proteins]
+                            value.casefold() not in [p.casefold() for p in self.proteins]
                             and value.casefold() != "none"
                             and len(value) != 0
                         ):  # protein uses blank value default
                             Log.w(f'Adding new Protein Type: "{value}"')
                             self.proteins.append(value)
-                            self.proteins = sorted(
-                                self.proteins, key=str.casefold)
+                            self.proteins = sorted(self.proteins, key=str.casefold)
                             self.populate_proteins()
                             self.ing_ctrl.add(Protein(enc_id=-1, name=value))
                             self.detect_change()
@@ -1117,14 +1057,12 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                         self.t12.setText(value)
                     if name == "buffer_type":
                         if (
-                            value.casefold() not in [b.casefold()
-                                                     for b in self.buffers]
+                            value.casefold() not in [b.casefold() for b in self.buffers]
                             and value.casefold() != "none"
                         ):
                             Log.w(f'Adding new Buffer Type: "{value}"')
                             self.buffers.append(value)
-                            self.buffers = sorted(
-                                self.buffers, key=str.casefold)
+                            self.buffers = sorted(self.buffers, key=str.casefold)
                             self.populate_buffers()
                             self.ing_ctrl.add(Buffer(enc_id=-1, name=value))
                             self.detect_change()
@@ -1135,44 +1073,35 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                         self.t20.setText(value)
                     if name == "surfactant_type":
                         if (
-                            value.casefold()
-                            not in [s.casefold() for s in self.surfactants]
+                            value.casefold() not in [s.casefold() for s in self.surfactants]
                             and value.casefold() != "none"
                         ):
                             Log.w(f'Adding new Surfactant Type: "{value}"')
                             self.surfactants.append(value)
-                            self.surfactants = sorted(
-                                self.surfactants, key=str.casefold
-                            )
+                            self.surfactants = sorted(self.surfactants, key=str.casefold)
                             self.populate_surfactants()
-                            self.ing_ctrl.add(
-                                Surfactant(enc_id=-1, name=value))
+                            self.ing_ctrl.add(Surfactant(enc_id=-1, name=value))
                             self.detect_change()
                         self.c9.setCurrentText(value)
                     if name == "surfactant_concentration":
                         self.t6.setText(value)
                     if name == "stabilizer_type":
                         if (
-                            value.casefold()
-                            not in [s.casefold() for s in self.stabilizers]
+                            value.casefold() not in [s.casefold() for s in self.stabilizers]
                             and value.casefold() != "none"
                         ):
                             Log.w(f'Adding new Stabilizer Type: "{value}"')
                             self.stabilizers.append(value)
-                            self.stabilizers = sorted(
-                                self.stabilizers, key=str.casefold
-                            )
+                            self.stabilizers = sorted(self.stabilizers, key=str.casefold)
                             self.populate_stabilizers()
-                            self.ing_ctrl.add(
-                                Stabilizer(enc_id=-1, name=value))
+                            self.ing_ctrl.add(Stabilizer(enc_id=-1, name=value))
                             self.detect_change()
                         self.c11.setCurrentText(value)
                     if name == "stabilizer_concentration":
                         self.t8.setText(value)
                     if name == "salt_type":
                         if (
-                            value.casefold() not in [s.casefold()
-                                                     for s in self.salts]
+                            value.casefold() not in [s.casefold() for s in self.salts]
                             and value.casefold() != "none"
                         ):
                             Log.w(f'Adding new Salt Type: "{value}"')
@@ -1187,14 +1116,12 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
                     if name == "excipient_type":
                         if (
-                            value.casefold()
-                            not in [s.casefold() for s in self.excipients]
+                            value.casefold() not in [s.casefold() for s in self.excipients]
                             and value.casefold() != "none"
                         ):
                             Log.w(f'Adding new Excipient Type: "{value}"')
                             self.excipients.append(value)
-                            self.excipients = sorted(
-                                self.excipients, key=str.casefold)
+                            self.excipients = sorted(self.excipients, key=str.casefold)
                             self.populate_excipients()
                             self.ing_ctrl.add(Excipient(enc_id=-1, name=value))
                             self.detect_change()
@@ -1247,9 +1174,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             if given_batch_num_len % 2 == 0:  # even only
                 first_half = current_text[:split_at_idx]
                 second_half = current_text[split_at_idx:]
-                Log.d(
-                    f"prevent_duplicate_scans(): Checking '{first_half}|{second_half}'"
-                )
+                Log.d(f"prevent_duplicate_scans(): Checking '{first_half}|{second_half}'")
                 if first_half == second_half:
                     Log.w(f"Duplicate scan ignored: {second_half}")
                     self.t_batch.setText(first_half)
@@ -1290,19 +1215,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                         return
                     self.t5.setText("{:1.3f}".format(self.auto_dn))
             manual_st = (
-                float(self.t1.text()) != float(f"{self.auto_st:3.3f}")
-                if allow_reset
-                else True
+                float(self.t1.text()) != float(f"{self.auto_st:3.3f}") if allow_reset else True
             )
             manual_ca = (
-                float(self.t2.text()) != float(f"{self.auto_ca:2.1f}")
-                if allow_reset
-                else True
+                float(self.t2.text()) != float(f"{self.auto_ca:2.1f}") if allow_reset else True
             )
             manual_dn = (
-                float(self.t5.text()) != float(f"{self.auto_dn:1.3f}")
-                if allow_reset
-                else True
+                float(self.t5.text()) != float(f"{self.auto_dn:1.3f}") if allow_reset else True
             )
             self.t1.setStyleSheet(
                 "border: 2px solid black;" if manual_st else "background-color: #eee;"
@@ -1313,26 +1232,18 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.t5.setStyleSheet(
                 "border: 2px solid black;" if manual_dn else "background-color: #eee;"
             )
-            self.reset_actions[0].setVisible(
-                manual_st if allow_reset else False)
-            self.reset_actions[1].setVisible(
-                manual_ca if allow_reset else False)
-            self.reset_actions[2].setVisible(
-                manual_dn if allow_reset else False)
+            self.reset_actions[0].setVisible(manual_st if allow_reset else False)
+            self.reset_actions[1].setVisible(manual_ca if allow_reset else False)
+            self.reset_actions[2].setVisible(manual_dn if allow_reset else False)
         except Exception as e:
             Log.e(f"Invalid parameter: {e}")
 
     def highlight_channels_box(self):
-        num_channels = int(self.t_channels.text()) if len(
-            self.t_channels.text()) else 3
+        num_channels = int(self.t_channels.text()) if len(self.t_channels.text()) else 3
         manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
         if manual_nc:
-            self.t_channels.setPalette(
-                QtWidgets.QApplication.palette()
-            )  # reset background
-            self.f_channels.setStyleSheet(
-                "QFrame { border: 1px solid black; }"
-            )  # set border
+            self.t_channels.setPalette(QtWidgets.QApplication.palette())  # reset background
+            self.f_channels.setStyleSheet("QFrame { border: 1px solid black; }")  # set border
         else:
             palette = self.t_channels.palette()
             palette.setColor(QtGui.QPalette.Base, QtGui.QColor("#eeeeee"))
@@ -1342,9 +1253,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
     def switch_user_at_sign_time(self):
         from QATCH.common.userProfiles import UserProfiles, UserRoles
 
-        new_username, new_initials, new_userrole = UserProfiles.change(
-            UserRoles.ANALYZE
-        )
+        new_username, new_initials, new_userrole = UserProfiles.change(UserRoles.ANALYZE)
         if UserProfiles.check(UserRoles(new_userrole), UserRoles.ANALYZE):
             if self.username != new_username:
                 self.username = new_username
@@ -1358,19 +1267,15 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.sign.clear()
 
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(
-                    f"User: {new_username}")
+                self.parent.ControlsWin.username.setText(f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
                 self.parent.ControlsWin.ui1.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText(
-                        "&Change Password...")
+                    self.parent.ControlsWin.manage.setText("&Change Password...")
             else:
-                Log.d(
-                    "User switched users to the same user profile. Nothing to change."
-                )
+                Log.d("User switched users to the same user profile. Nothing to change.")
             # PopUp.warning(self, Constants.app_title, "User has been switched.\n\nPlease sign now.")
         # elif new_username == None and new_initials == None and new_userrole == 0:
         else:
@@ -1389,15 +1294,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 )
             if new_username != None and UserProfiles.session_info()[0]:
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(
-                    f"User: {new_username}")
+                self.parent.ControlsWin.username.setText(f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
                 self.parent.ControlsWin.ui1.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText(
-                        "&Change Password...")
+                    self.parent.ControlsWin.manage.setText("&Change Password...")
                 PopUp.warning(
                     self,
                     Constants.app_title,
@@ -1436,9 +1339,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.resize(min_width, self.height())
             return
         winAnalyze = self.parent.AnalyzeProc
-        if not hasattr(winAnalyze, "tBtn_Info") or not hasattr(
-            winAnalyze, "tool_Cancel"
-        ):
+        if not hasattr(winAnalyze, "tBtn_Info") or not hasattr(winAnalyze, "tool_Cancel"):
             self.resize(min_width, self.height())
             return
         btnInfo = winAnalyze.tBtn_Info
@@ -1446,9 +1347,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         globalPos_Window = winAnalyze.mapToGlobal(QtCore.QPoint(0, 0))
         globalPos_Info = btnInfo.mapToGlobal(QtCore.QPoint(0, 0))
         globalPos_Close = btnClose.mapToGlobal(QtCore.QPoint(0, 0))
-        width = max(
-            min_width, globalPos_Close.x() - globalPos_Info.x() - btnInfo.width() - 20
-        )
+        width = max(min_width, globalPos_Close.x() - globalPos_Info.x() - btnInfo.width() - 20)
         if width == min_width:
             width = max(
                 min_width,
@@ -1482,8 +1381,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.add_protein_type.setLayout(layout)
             self.add_protein_type.show()
             self.protein_types_multiline.setFocus()
-            self.protein_types_multiline.moveCursor(
-                QtGui.QTextCursor.MoveOperation.End)
+            self.protein_types_multiline.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         elif text.casefold() == "none" or len(text) == 0:
             self.t12.setText("0")  # clear Protein Concentration
             self.t12.setEnabled(False)
@@ -1511,8 +1409,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.add_buffer_type.setLayout(layout)
             self.add_buffer_type.show()
             self.buffer_types_multiline.setFocus()
-            self.buffer_types_multiline.moveCursor(
-                QtGui.QTextCursor.MoveOperation.End)
+            self.buffer_types_multiline.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         elif text.casefold() == "none" or len(text) == 0:
             self.t14.setText("0")  # clear Buffer Concentration
             self.t14.setEnabled(False)
@@ -1532,8 +1429,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             layout = QtWidgets.QVBoxLayout()
             label = QtWidgets.QLabel("Available Surfactant Types:")
             self.surfactant_types_multiline = QtWidgets.QPlainTextEdit()
-            self.surfactant_types_multiline.setPlainText(
-                "\n".join(self.surfactants))
+            self.surfactant_types_multiline.setPlainText("\n".join(self.surfactants))
             save = QtWidgets.QPushButton("Save")
             save.clicked.connect(self.save_surfactants)
             layout.addWidget(label)
@@ -1542,9 +1438,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.add_surfactant_type.setLayout(layout)
             self.add_surfactant_type.show()
             self.surfactant_types_multiline.setFocus()
-            self.surfactant_types_multiline.moveCursor(
-                QtGui.QTextCursor.MoveOperation.End
-            )
+            self.surfactant_types_multiline.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         elif text.casefold() == "none" or len(text) == 0:
             self.t6.setText("0")  # clear Surfactant Concentration
             self.t6.setEnabled(False)
@@ -1561,8 +1455,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             layout = QtWidgets.QVBoxLayout()
             label = QtWidgets.QLabel("Available Stabilizer Types:")
             self.stabilizer_types_multiline = QtWidgets.QPlainTextEdit()
-            self.stabilizer_types_multiline.setPlainText(
-                "\n".join(self.stabilizers))
+            self.stabilizer_types_multiline.setPlainText("\n".join(self.stabilizers))
             save = QtWidgets.QPushButton("Save")
             save.clicked.connect(self.save_stabilizers)
             layout.addWidget(label)
@@ -1571,9 +1464,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.add_stabilizer_type.setLayout(layout)
             self.add_stabilizer_type.show()
             self.stabilizer_types_multiline.setFocus()
-            self.stabilizer_types_multiline.moveCursor(
-                QtGui.QTextCursor.MoveOperation.End
-            )
+            self.stabilizer_types_multiline.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         elif text.casefold() == "none" or len(text) == 0:
             self.t8.setText("0")  # clear Stabilizer Concentration
             self.t8.setEnabled(False)
@@ -1599,8 +1490,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.add_salt_type.setLayout(layout)
             self.add_salt_type.show()
             self.salt_types_multiline.setFocus()
-            self.salt_types_multiline.moveCursor(
-                QtGui.QTextCursor.MoveOperation.End)
+            self.salt_types_multiline.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         elif text.casefold() == "none" or len(text) == 0:
             self.t16.setText("0")  # clear Salt Concentration
             self.t16.setEnabled(False)
@@ -1642,8 +1532,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             layout = QtWidgets.QVBoxLayout()
             label = QtWidgets.QLabel("Available Excipient Types:")
             self.excipient_types_multiline = QtWidgets.QPlainTextEdit()
-            self.excipient_types_multiline.setPlainText(
-                "\n".join(self.excipients))
+            self.excipient_types_multiline.setPlainText("\n".join(self.excipients))
             save = QtWidgets.QPushButton("Save")
             save.clicked.connect(self.save_excipients)
             layout.addWidget(label)
@@ -1652,9 +1541,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.add_excipient_type.setLayout(layout)
             self.add_excipient_type.show()
             self.excipient_types_multiline.setFocus()
-            self.excipient_types_multiline.moveCursor(
-                QtGui.QTextCursor.MoveOperation.End
-            )
+            self.excipient_types_multiline.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         elif text.casefold() == "none" or len(text) == 0:
             self.t18.setText("0")  # clear Excipient Concentration
             self.t18.setEnabled(False)
@@ -1974,12 +1861,8 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.auto_st = (
                     float(self.t1.text()) if len(self.t1.text()) else 0
                 )  # surface_tension
-                self.auto_ca = (
-                    float(self.t2.text()) if len(self.t2.text()) else 0
-                )  # contact_angle
-                self.auto_dn = (
-                    float(self.t5.text()) if len(self.t5.text()) else 0
-                )  # density
+                self.auto_ca = float(self.t2.text()) if len(self.t2.text()) else 0  # contact_angle
+                self.auto_dn = float(self.t5.text()) if len(self.t5.text()) else 0  # density
             else:
                 self.t1.clear()
                 self.t2.clear()
@@ -2036,39 +1919,24 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 if item.widget():
                     item.widget().deleteLater()
 
-            self.groupSolvent.setVisible(
-                not bool(is_bioformulation))  # solvent group
-            self.groupProtein.setVisible(
-                bool(is_bioformulation))  # protein group
-            self.groupBuffer.setVisible(
-                bool(is_bioformulation))  # buffer group
-            self.groupSurfactant.setVisible(
-                bool(is_bioformulation)
-            )  # surfactant group
-            self.groupStabilizer.setVisible(
-                bool(is_bioformulation)
-            )  # stabilizer group
+            self.groupSolvent.setVisible(not bool(is_bioformulation))  # solvent group
+            self.groupProtein.setVisible(bool(is_bioformulation))  # protein group
+            self.groupBuffer.setVisible(bool(is_bioformulation))  # buffer group
+            self.groupSurfactant.setVisible(bool(is_bioformulation))  # surfactant group
+            self.groupStabilizer.setVisible(bool(is_bioformulation))  # stabilizer group
             self.groupSalt.setVisible(bool(is_bioformulation))  # salt group
-            self.groupExcipient.setVisible(
-                bool(is_bioformulation))  # Excipient Group
-            self.collapsibleBox.setVisible(
-                is_bioformulation == True
-            )  # advanced information
+            self.groupExcipient.setVisible(bool(is_bioformulation))  # Excipient Group
+            self.collapsibleBox.setVisible(is_bioformulation == True)  # advanced information
 
             if curr_state is not None:
                 # resize vertically to fit fields (if visible)
                 # NOTE: use timer to add to scheduler after redraw event
-                QtCore.QTimer.singleShot(
-                    1, lambda: self.resize(self.width(), self.minimumHeight())
-                )
+                QtCore.QTimer.singleShot(1, lambda: self.resize(self.width(), self.minimumHeight()))
 
             if object == None:
-                self.auto_st = float(self.t1.text()) if len(
-                    self.t1.text()) else 0
-                self.auto_ca = float(self.t2.text()) if len(
-                    self.t2.text()) else 0
-                self.auto_dn = float(self.t5.text()) if len(
-                    self.t5.text()) else 0
+                self.auto_st = float(self.t1.text()) if len(self.t1.text()) else 0
+                self.auto_ca = float(self.t2.text()) if len(self.t2.text()) else 0
+                self.auto_dn = float(self.t5.text()) if len(self.t5.text()) else 0
             elif curr_state == None:
                 return  # Run Info not visible, stop here
             elif is_bioformulation != None:
@@ -2113,13 +1981,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         try:
             surfactant = float(self.t3.text()) if len(self.t3.text()) else 0
             # concentration = float(self.t4.text()) if len(self.t4.text()) else 0
-            protein_concentration = (
-                float(self.t12.text()) if len(self.t12.text()) else 0
-            )
+            protein_concentration = float(self.t12.text()) if len(self.t12.text()) else 0
             stabilizer_type = self.c11.currentText().casefold()  # i.e. "sucrose"
-            stabilizer_concentration = (
-                float(self.t8.text()) if len(self.t8.text()) else 0
-            )
+            stabilizer_concentration = float(self.t8.text()) if len(self.t8.text()) else 0
         except Exception as e:
             return
 
@@ -2188,15 +2052,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.t1.setText("{:3.3f}".format(surface_tension))
             self.t2.setText("{:2.1f}".format(contact_angle))
             self.t5.setText("{:1.3f}".format(density))
-            self.auto_st = (
-                float(self.t1.text()) if len(self.t1.text()) else 0
-            )  # surface_tension
-            self.auto_ca = (
-                float(self.t2.text()) if len(self.t2.text()) else 0
-            )  # contact_angle
-            self.auto_dn = (
-                float(self.t5.text()) if len(self.t5.text()) else 0
-            )  # density
+            self.auto_st = float(self.t1.text()) if len(self.t1.text()) else 0  # surface_tension
+            self.auto_ca = float(self.t2.text()) if len(self.t2.text()) else 0  # contact_angle
+            self.auto_dn = float(self.t5.text()) if len(self.t5.text()) else 0  # density
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Lookup Error: Failed to estimate ST and/or CA.")
@@ -2205,11 +2063,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.t5.clear()  # density
 
     def eventFilter(self, obj, event):
-        if (
-            event.type() == QtCore.QEvent.KeyPress
-            and obj is self.sign
-            and self.sign.hasFocus()
-        ):
+        if event.type() == QtCore.QEvent.KeyPress and obj is self.sign and self.sign.hasFocus():
             if event.key() in [
                 QtCore.Qt.Key_Enter,
                 QtCore.Qt.Key_Return,
@@ -2242,9 +2096,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         surfactant = 0  # float(self.t3.text()) if len(self.t3.text()) else 0
         concentration = float(self.t4.text()) if len(self.t4.text()) else 0
         if self.b1.isChecked():  # IS bioformulation
-            protein_concentration = (
-                float(self.t12.text()) if len(self.t12.text()) else 0
-            )
+            protein_concentration = float(self.t12.text()) if len(self.t12.text()) else 0
             st = AnalyzeProcess.Lookup_ST(
                 surfactant=surfactant, concentration=protein_concentration
             )
@@ -2259,8 +2111,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
         # Get the number of channels from the textbox.  Default to full fill if
         # they cannot be processed.
-        num_channels = int(self.t_channels.text()) if len(
-            self.t_channels.text()) else 3
+        num_channels = int(self.t_channels.text()) if len(self.t_channels.text()) else 3
         manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
 
         # Form input error checking for valid Surfactant, Concentration, Surface Tension,
@@ -2306,11 +2157,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             error_details += msg + "\n"
             input_error = True
         if self.t12.isVisible() and not self.t12.hasAcceptableInput():
-            msg = (
-                "Input Error: Protein Concentration must be between {} and {}.".format(
-                    self.validProteinConcentration.bottom(),
-                    self.validProteinConcentration.top(),
-                )
+            msg = "Input Error: Protein Concentration must be between {} and {}.".format(
+                self.validProteinConcentration.bottom(),
+                self.validProteinConcentration.top(),
             )
             Log.e(msg)
             error_details += msg + "\n"
@@ -2341,11 +2190,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 error_details += msg + "\n"
                 input_warning = True
             if self.t16.isVisible() and not self.t16.hasAcceptableInput():
-                msg = (
-                    "Input Error: Salt Concentration must be between {} and {}.".format(
-                        self.validSaltConcentration.bottom(),
-                        self.validSaltConcentration.top(),
-                    )
+                msg = "Input Error: Salt Concentration must be between {} and {}.".format(
+                    self.validSaltConcentration.bottom(),
+                    self.validSaltConcentration.top(),
                 )
                 Log.e(msg)
                 error_details += msg + "\n"
@@ -2358,11 +2205,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 Log.e(msg)
                 error_details += msg + "\n"
                 input_warning = True
-        if (
-            len(self.c10.currentText()) == 0
-            and self.c10.isEnabled()
-            and self.c10.isVisible()
-        ):
+        if len(self.c10.currentText()) == 0 and self.c10.isEnabled() and self.c10.isVisible():
             msg = "Input Error: You must provide a Protein Type if this is a bioformulation."
             Log.e(msg)
             error_details += msg + "\n"
@@ -2469,16 +2312,10 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.parent.signature_required and not self.parent.signature_received
         ):  # missing initials
             if force or self.run_idx != 0:
-                Log.w(
-                    tag=TAG, msg=f"Auto-signing CAPTURE with initials {self.initials}"
-                )
+                Log.w(tag=TAG, msg=f"Auto-signing CAPTURE with initials {self.initials}")
                 self.parent.signed_at = dt.datetime.now().isoformat()
             else:
-                if (
-                    self.run_idx == 0
-                    and self.batch_found == False
-                    and self.batch_warned == False
-                ):
+                if self.run_idx == 0 and self.batch_found == False and self.batch_warned == False:
                     if not PopUp.question(
                         self,
                         Constants.app_title,
@@ -2497,17 +2334,14 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                     if self.signForm.isVisible():
                         self.signForm.hide()
                     self.signedInAs.setText(self.username)
-                    self.signerInit.setText(
-                        f"Initials: <b>{self.initials}</b>")
+                    self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
                     # center the Sign form over the Run Info form
                     # area = QtWidgets.QDesktopWidget().availableGeometry() # todo
                     global_pos = self.mapToGlobal(QtCore.QPoint(0, 0))
                     center_x = global_pos.x() + (self.width() // 2)
                     center_y = global_pos.y() + (self.height() // 2)
-                    left = center_x - \
-                        (self.signForm.sizeHint().width() // 2) - 10
-                    top = center_y - \
-                        (self.signForm.sizeHint().height() // 2) - 10
+                    left = center_x - (self.signForm.sizeHint().width() // 2) - 10
+                    top = center_y - (self.signForm.sizeHint().height() // 2) - 10
                     self.signForm.move(left, top)
                     self.signForm.setVisible(True)
                     self.sign.setFocus()
@@ -2520,8 +2354,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         # If sign_do_not_ask attribute is checked, provide the latest session key to the
         # user to allow fo rmodification of the XML.
         if self.sign_do_not_ask.isChecked():
-            session_key_path = os.path.join(
-                Constants.user_profiles_path, "session.key")
+            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
                     session_key = f.readline()
@@ -2532,17 +2365,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         # Update the run_name to the name in the 'Run name' text box of the
         # Run Info window, after removing leading and trailing whitespace.
         name_invalid = False
-        self.run_name_changed = (
-            True if self.run_name != self.t_runname.text() else False
-        )
+        self.run_name_changed = True if self.run_name != self.t_runname.text() else False
         self.run_name = self.t_runname.text()
         for invalidChar in Constants.invalidChars:
             if invalidChar in self.run_name:
                 name_invalid = True
             self.run_name = self.run_name.replace(invalidChar, "")
-        self.run_name = self.run_name.strip().replace(
-            " ", "_"
-        )  # word spaces -> underscores
+        self.run_name = self.run_name.strip().replace(" ", "_")  # word spaces -> underscores
         if name_invalid:
             if not PopUp.question(
                 self,
@@ -2620,9 +2449,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 start = dt.datetime.strptime(
                     f"{first[0]} {first[1]}", "%Y-%m-%d %H:%M:%S"
                 ).isoformat()
-                stop = dt.datetime.strptime(
-                    f"{last[0]} {last[1]}", "%Y-%m-%d %H:%M:%S"
-                ).isoformat()
+                stop = dt.datetime.strptime(f"{last[0]} {last[1]}", "%Y-%m-%d %H:%M:%S").isoformat()
                 duration = float(last[2])
                 duration_units = "seconds"
                 if duration > 60.0:
@@ -2639,9 +2466,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
                 # Get time of last cal - based on file timestamp
                 cal_file_path = Constants.cvs_peakfrequencies_path
-                cal_file_path = FileStorage.DEV_populate_path(
-                    cal_file_path, self.run_idx + 1
-                )
+                cal_file_path = FileStorage.DEV_populate_path(cal_file_path, self.run_idx + 1)
                 timestamp = os.path.getmtime(cal_file_path)
                 last_modified = dt.datetime.fromtimestamp(timestamp)
                 cal_time = last_modified.isoformat().split(".")[0]
@@ -2684,9 +2509,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 # metrics.appendChild(metric6)
                 # ----------------------------------------------------- #
             except Exception as e:
-                Log.e(
-                    "Metrics Error: Failed to open/parse CSV file for XML file run info metrics."
-                )
+                Log.e("Metrics Error: Failed to open/parse CSV file for XML file run info metrics.")
                 # raise e
 
         # create or append new audits element
@@ -2727,9 +2550,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         # we must escape new lines, double quotes are converted to '&quot;' automatically
         param_notes.setAttribute(
             "value",
-            self.notes.toPlainText()
-            .replace("\n", "\\n")  # escape new lines
-            .replace('"', "''"),
+            self.notes.toPlainText().replace("\n", "\\n").replace('"', "''"),  # escape new lines
         )  # escape double quotes
         param_notes.setAttribute(
             "source", "single" if self.run_count == 1 else f"multi_{self.run_count}"
@@ -2738,8 +2559,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
         try:
             if Constants.export_notes_to_txt_file:
-                notes_path = os.path.join(
-                    os.path.dirname(self.run_path), "notes.txt")
+                notes_path = os.path.join(os.path.dirname(self.run_path), "notes.txt")
                 notes_txt = self.notes.toPlainText()  # .encode(
                 # encoding='ascii', errors='xmlcharrefreplace').decode(
                 # encoding='utf-8', errors='ignore')
@@ -2761,9 +2581,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             param2 = run.createElement("param")
             param2.setAttribute("name", "solvent")
             param2.setAttribute("value", self.t0.text())
-            param2.setAttribute(
-                "input", "auto" if self.t0.text() in self.fluids else "manual"
-            )
+            param2.setAttribute("input", "auto" if self.t0.text() in self.fluids else "manual")
             params.appendChild(param2)
 
         if self.b1.isChecked():  # IS bioformulation
@@ -2771,8 +2589,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             param3.setAttribute("name", "surfactant")
             param3.setAttribute(
                 "value",
-                "{0:0.{1}f}".format(
-                    surfactant, self.validSurfactant.decimals()),
+                "{0:0.{1}f}".format(surfactant, self.validSurfactant.decimals()),
             )
             param3.setAttribute("units", "mg/mL")
             param3.setAttribute("input", "manual")
@@ -2782,8 +2599,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             param4.setAttribute("name", "concentration")
             param4.setAttribute(
                 "value",
-                "{0:0.{1}f}".format(
-                    concentration, self.validConcentration.decimals()),
+                "{0:0.{1}f}".format(concentration, self.validConcentration.decimals()),
             )
             param4.setAttribute("units", "%w")
             param4.setAttribute("input", "manual")
@@ -2816,7 +2632,11 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             param20 = run.createElement("param")
             param20.setAttribute("name", "buffer_ph")
             buffer_type_text = self.c13.currentText()
-            buffer_ph_value = self.t20.text() if buffer_type_text and buffer_type_text.casefold() not in ("none", "") else ""
+            buffer_ph_value = (
+                self.t20.text()
+                if buffer_type_text and buffer_type_text.casefold() not in ("none", "")
+                else ""
+            )
             param20.setAttribute("value", buffer_ph_value)
             param20.setAttribute("units", "")
             params.appendChild(param20)
@@ -2867,28 +2687,21 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
         param5 = run.createElement("param")
         param5.setAttribute("name", "surface_tension")
-        param5.setAttribute(
-            "value", "{0:0.{1}f}".format(
-                st, self.validSurfaceTension.decimals())
-        )
+        param5.setAttribute("value", "{0:0.{1}f}".format(st, self.validSurfaceTension.decimals()))
         param5.setAttribute("units", "mN/m")
         param5.setAttribute("input", "manual" if manual_st else "auto")
         params.appendChild(param5)
 
         param6 = run.createElement("param")
         param6.setAttribute("name", "contact_angle")
-        param6.setAttribute(
-            "value", "{0:0.{1}f}".format(ca, self.validContactAngle.decimals())
-        )
+        param6.setAttribute("value", "{0:0.{1}f}".format(ca, self.validContactAngle.decimals()))
         param6.setAttribute("units", "degrees")
         param6.setAttribute("input", "manual" if manual_ca else "auto")
         params.appendChild(param6)
 
         param7 = run.createElement("param")
         param7.setAttribute("name", "density")
-        param7.setAttribute(
-            "value", "{0:0.{1}f}".format(density, self.validDensity.decimals())
-        )
+        param7.setAttribute("value", "{0:0.{1}f}".format(density, self.validDensity.decimals()))
         param7.setAttribute("units", "g/cm^3")
         param7.setAttribute("input", "manual" if manual_dn else "auto")
         params.appendChild(param7)
@@ -2979,8 +2792,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 if metric.getAttribute("name") == "stop":
                     stop_value = metric.getAttribute("value")
                     break
-            stop_datetime = datetime.date.fromisoformat(
-                stop_value.split("T")[0])
+            stop_datetime = datetime.date.fromisoformat(stop_value.split("T")[0])
             # Update the run data files and directory to reflect changes made to
             # the run name in the RunInfo window.
             updated_name, new_name, old_name = self.update_run_name(
@@ -3007,9 +2819,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
         try:
             with open(self.xml_path, "w") as f:
-                xml_str = run.toxml(encoding="ascii").decode(
-                    encoding="utf-8", errors="ignore"
-                )
+                xml_str = run.toxml(encoding="ascii").decode(encoding="utf-8", errors="ignore")
                 f.write(xml_str)
                 Log.i(f"Saved XML file: {self.xml_path}")
         except OSError as ose:  # FileNotFoundError
@@ -3036,9 +2846,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 os.makedirs(os.path.split(self.recall_xml)[0], exist_ok=True)
                 # secure_open(self.recall_xml, 'w') as f:
                 with open(self.recall_xml, "w") as f:
-                    xml_str = run.toxml(encoding="ascii").decode(
-                        encoding="utf-8", errors="ignore"
-                    )
+                    xml_str = run.toxml(encoding="ascii").decode(encoding="utf-8", errors="ignore")
                     f.write(xml_str)
                     Log.d(f"Saved XML file: {self.recall_xml}")
             except OSError as ose:  # FileNotFoundError
@@ -3051,15 +2859,10 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         if not self.post_run:
             if updated_name:
                 Log.d(tag=TAG, msg=f"Emitting {self.xml_path}")
-                self.updated_run.emit(
-                    self.xml_path, new_name, old_name, str(stop_datetime)
-                )
+                self.updated_run.emit(self.xml_path, new_name, old_name, str(stop_datetime))
                 self.updated_xml_path.emit(self.xml_path)
 
-            if (
-                hasattr(self.parent, "num_channels")
-                and num_channels != self.parent.num_channels
-            ):
+            if hasattr(self.parent, "num_channels") and num_channels != self.parent.num_channels:
                 Log.d("Number of fill channels changed by user in Run Info.")
                 Log.w('Fill channels count changed! Re-run "Predict" to update points.')
                 self.parent.num_channels = num_channels
@@ -3154,9 +2957,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         try:
             # If file name is the same, it is fine to resave.  If the path already exists elsewhere,
             # return with an error.
-            if not previous_xml_path.endswith(new_name) and not os.path.isfile(
-                previous_xml_path
-            ):
+            if not previous_xml_path.endswith(new_name) and not os.path.isfile(previous_xml_path):
                 Log.e(
                     tag=TAG,
                     msg=f"Previous XML path {previous_xml_path} does not exist or is not a file.",
@@ -3182,9 +2983,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                     if invalidChar in new_name:
                         name_invalid = True
                     new_name = new_name.replace(invalidChar, "")
-                new_name = new_name.strip().replace(
-                    " ", "_"
-                )  # word spaces -> underscores
+                new_name = new_name.strip().replace(" ", "_")  # word spaces -> underscores
                 if name_invalid:
                     Log.w(
                         tag=TAG,
@@ -3194,9 +2993,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
             # Form new directory path and validate it is within grandparent_dir to avoid path traversal
             new_dir = os.path.join(grandparent_dir, new_name)
-            if secure and not os.path.abspath(new_dir).startswith(
-                os.path.abspath(grandparent_dir)
-            ):
+            if secure and not os.path.abspath(new_dir).startswith(os.path.abspath(grandparent_dir)):
                 Log.w(
                     tag=TAG,
                     msg=f"Path traversal attempt detected in new name: {new_name}",
@@ -3207,12 +3004,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             # We can confirm that this rejection of symlinks does not break renaming for PYCODE builds; however,
             # it may when the naming structure folder config for the logged_data folder is only one dir deep.
             if secure and any(
-                os.path.islink(d)
-                for d in [previous_xml_path, parent_dir, grandparent_dir]
+                os.path.islink(d) for d in [previous_xml_path, parent_dir, grandparent_dir]
             ):
-                Log.e(
-                    tag=TAG, msg="Symbolic links are not allowed in the directory path."
-                )
+                Log.e(tag=TAG, msg="Symbolic links are not allowed in the directory path.")
                 return None, None, None
 
             # Check if new directory path is valid
@@ -3221,8 +3015,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             # Solves case change issue in run names.
             case_change = old_name.lower() == new_name.lower() and old_name != new_name
             if os.path.exists(new_dir) and not case_change:
-                Log.i(
-                    tag=TAG, msg=f"Path {new_dir} already exists, no action taken.")
+                Log.i(tag=TAG, msg=f"Path {new_dir} already exists, no action taken.")
                 return None, None, None
 
             os.rename(parent_dir, new_dir)
@@ -3232,8 +3025,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             try:
                 files = os.listdir(new_dir)
             except PermissionError:
-                Log.e(
-                    tag=TAG, msg=f"Permission denied: Cannot access {new_dir}")
+                Log.e(tag=TAG, msg=f"Permission denied: Cannot access {new_dir}")
                 return None, None, None
 
             is_xml = False
@@ -3249,8 +3041,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
                         # Get a secure list of the contents of a capture.zip archive using the
                         # path to the zip folder.
-                        capture_contents = secure_open.get_namelist(
-                            zip_path=file_path)
+                        capture_contents = secure_open.get_namelist(zip_path=file_path)
                         # Set the path of the temporary archive to write renamed files to.
                         temp_dir = os.path.join(root, "~capture.zip")
 
@@ -3263,8 +3054,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
                                 # Create each new file name for the contents of the secure
                                 # archive directory.
-                                new_file_name, _ = rename_file(
-                                    capture_file, new_name)
+                                new_file_name, _ = rename_file(capture_file, new_name)
 
                             # For each file, securely write it to the temporary location using the
                             # date of the stop time along with the name of the renamed run.
@@ -3283,10 +3073,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                                 # and rewriting of already encrypted files.
                                 if UserProfiles.count() > 0 and enabled == False:
                                     # create a protected archive
-                                    zf.setpassword(
-                                        hashlib.sha256(
-                                            zf.comment).hexdigest().encode()
-                                    )
+                                    zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
                                 else:
                                     zf.setencryption(None)
                                     if enabled:
@@ -3296,17 +3083,14 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                                         )
 
                                 # Write the bytes string to the new zip file location.
-                                zf.writestr(
-                                    zinfo_or_arcname=new_file_name, data=f_bytes.read()
-                                )
+                                zf.writestr(zinfo_or_arcname=new_file_name, data=f_bytes.read())
 
                         # Remove the old capture.zip archive and rename the temporary capture.zip archive to capture.zip.
                         os.remove(file_path)
                         os.rename(temp_dir, file_path)
                     else:
                         # Process the rest of the files in the renamed direcotry.
-                        new_file_name, is_xml = rename_file(
-                            file_name, new_name)
+                        new_file_name, is_xml = rename_file(file_name, new_name)
                         if new_file_name:
                             new_file_path = os.path.join(root, new_file_name)
                             if os.path.exists(new_file_path):
@@ -3352,9 +3136,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 event.ignore()
         else:  # closing, with no changes
             if (
-                self.run_idx == 0
-                and self.batch_found == False
-                and self.batch_warned == False
+                self.run_idx == 0 and self.batch_found == False and self.batch_warned == False
             ):  # invalid Batch Number
                 if not PopUp.question(
                     self,

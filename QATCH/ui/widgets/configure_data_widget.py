@@ -14,6 +14,8 @@ import re
 import serial.tools.list_ports
 import os
 
+from QATCH.ui.widgets.well_plate_widget import Architecture
+
 TAG = "[Configure Data]"
 
 
@@ -187,7 +189,7 @@ class UIConfigureData(QtWidgets.QWidget):
         )
 
         # Backspace buttons for Folder Format and Filename Format
-        pixmap = QPixmap(r'QATCH\icons\backspace.png')
+        pixmap = QPixmap(os.path.join(Architecture.get_path(), "QATCH", "icons", "backspace.svg"))
         pixmap = pixmap.scaled(10, 10)
         self.folder_backspace_button = QPushButton()
         self.folder_backspace_button.clicked.connect(lambda:

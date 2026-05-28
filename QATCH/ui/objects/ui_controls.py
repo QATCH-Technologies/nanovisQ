@@ -1360,7 +1360,7 @@ class UIControls:  # QtWidgets.QMainWindow
         # Identify button ---------------------------------------------------------
         self.pButton_ID = QtWidgets.QPushButton()
         self.pButton_ID.setToolTip("Identify selected Serial COM Port")
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/identify-icon.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "search-circle.svg")
         self.pButton_ID.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_ID.setStyleSheet(_GLASS_BUTTON_QSS.format(padding="3px"))
         self.pButton_ID.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
@@ -1374,7 +1374,7 @@ class UIControls:  # QtWidgets.QMainWindow
         # Refresh button ---------------------------------------------------------
         self.pButton_Refresh = QtWidgets.QPushButton()
         self.pButton_Refresh.setToolTip("Refresh Serial COM Port list")
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/refresh-icon.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-circle.svg")
         self.pButton_Refresh.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Refresh.setStyleSheet(
             _GLASS_BUTTON_QSS.format(padding="3px") + "QPushButton { margin-right: 9px; }"
@@ -1643,9 +1643,9 @@ class UIControls:  # QtWidgets.QMainWindow
         if USE_FULLSCREEN:
             self.cBox_MultiMode.setFixedHeight(50)
 
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
         self.pButton_PlateConfig = QtWidgets.QPushButton(
-            QtGui.QIcon(os.path.join(icon_path, "advanced.png")), ""
+            QtGui.QIcon(os.path.join(icon_path, "gear.svg")), ""
         )
         self.pButton_PlateConfig.setToolTip("Plate Configuration...")
         self.pButton_PlateConfig.clicked.connect(self.doPlateConfig)
@@ -1702,11 +1702,11 @@ class UIControls:  # QtWidgets.QMainWindow
 
         self.action_NextPortSep = self.tool_bar.addSeparator()
 
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
         icon_init = QtGui.QIcon()
         icon_init.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "initialize.png")), QtGui.QIcon.Normal
+            QtGui.QPixmap(os.path.join(icon_path, "speedometer.svg")), QtGui.QIcon.Normal
         )
         self.tool_Initialize = QtWidgets.QToolButton()
         self.tool_Initialize.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
@@ -1731,7 +1731,7 @@ class UIControls:  # QtWidgets.QMainWindow
 
         icon_reset = QtGui.QIcon()
         icon_reset.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "reset.png")), QtGui.QIcon.Normal
+            QtGui.QPixmap(os.path.join(icon_path, "reset.svg")), QtGui.QIcon.Normal
         )
         self.tool_Reset = QtWidgets.QToolButton()
         self.tool_Reset.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
@@ -1749,7 +1749,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self._warningTimer.setInterval(2000)
 
         icon_temp = QtGui.QIcon()
-        icon_temp.addPixmap(QtGui.QPixmap(os.path.join(icon_path, "temp.png")), QtGui.QIcon.Normal)
+        icon_temp.addPixmap(QtGui.QPixmap(os.path.join(icon_path, "temperature-control.svg")), QtGui.QIcon.Normal)
         self.tool_TempControl = QtWidgets.QToolButton()
         self.tool_TempControl.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_TempControl.setIcon(icon_temp)
@@ -1836,7 +1836,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_bar_2.setStyleSheet(_GLASS_TOOLBAR_QSS)
 
         icon_advanced = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/advanced.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
         icon_advanced.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         self.tool_Advanced = QtWidgets.QToolButton()
         self.tool_Advanced.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
@@ -1939,9 +1939,9 @@ class UIControls:  # QtWidgets.QMainWindow
                 "{} {} - Setup/Control".format(Constants.app_title, Constants.app_version),
             )
         )
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
         MainWindow.setWindowIcon(QtGui.QIcon(os.path.join(icon_path, "qatch-icon.png")))
-        self.advancedwidget.setWindowIcon(QtGui.QIcon(os.path.join(icon_path, "advanced.png")))
+        self.advancedwidget.setWindowIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
         self.advancedwidget.setWindowTitle(_translate("MainWindow2", "Advanced Settings"))
         self.pButton_Stop.setText(_translate("MainWindow", " STOP"))
         self.pButton_Start.setText(_translate("MainWindow", "START"))
@@ -2268,7 +2268,7 @@ class UIControls:  # QtWidgets.QMainWindow
             admin_name = user_info[0] or ""
             # Step up to MainWindow (self.parent.parent) to target the large MainWin
             main_app = getattr(self.parent, "parent", None)
-            
+
             if main_app is not None and hasattr(main_app, "MainWin"):
                 parent_win = main_app.MainWin.centralWidget() or main_app.MainWin
             else:
@@ -2276,7 +2276,7 @@ class UIControls:  # QtWidgets.QMainWindow
                 parent_win = getattr(self, "parent", None)
                 if parent_win is not None and hasattr(parent_win, "centralWidget"):
                     parent_win = parent_win.centralWidget() or parent_win
-                    
+
             Log.d(f"[UIControls] _open_user_manager: resolved parent_win={parent_win}")
 
             # If a manager overlay is already visible, just raise it
