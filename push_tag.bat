@@ -1,5 +1,5 @@
-git tag -a v2.7r3 -m "nanovisQ_SW_v2.7r3 (2026-05-20)"
-git push origin v2.7r3
+git tag -a v2.7r4 -m "nanovisQ_SW_v2.7r4 (2026-05-22)"
+git push origin v2.7r4
 git tag -l --sort=taggerdate > tags.txt
 call filter_yanked_tags
 REM move 'tags.txt' to 'dist' folder

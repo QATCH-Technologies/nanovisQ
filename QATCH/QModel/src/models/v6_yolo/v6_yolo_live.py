@@ -10,10 +10,10 @@ for the main application.
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-04-29
+    2026-05-22
 
 Version:
-    2.1.4
+    2.1.5
 """
 
 import ctypes
@@ -25,7 +25,6 @@ from logging.handlers import QueueHandler
 from queue import Empty
 from typing import Dict, NamedTuple, Optional, Tuple
 import pandas as pd
-
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.QModel.src.models.v6_yolo.v6_yolo import (
@@ -116,7 +115,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         self._data: Optional[pd.DataFrame] = None
         self._last_max_time = -float("inf")
         self._prediction_buffer_size = 0
-
+        self._drop_applied_received: bool = False
         # Debounce state: candidate and consecutive count
         self._debounce_candidate = -1
         self._debounce_count = 0
@@ -199,6 +198,8 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             relative_time: The Relative_time value (seconds) recorded by the UI
                 at the instant the drop was detected.
         """
+        self._drop_applied_received = True
+
         if self._fill_epoch is None or self._fill_epoch_source == "channel_0_fallback":
             self._fill_epoch = relative_time
             self._fill_epoch_source = "drop_signal"
@@ -354,6 +355,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             )
             if processed_df is not None and not processed_df.empty:
                 pred = self.predict(processed_df)
+
+                if not self._drop_applied_received:
+                    pred = -1
                 if pred == self._debounce_candidate:
                     self._debounce_count += 1
                 else:
@@ -595,34 +599,10 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
 
         # Instance placeholder
         self._classifier: Optional[QModelV6YOLO_Live] = None
+        self.enable_visualization: bool = False
 
     def run(self) -> None:
-        """Executes the main inference loop for the live fill classification process.
-
-        This method is called automatically when the process is started via
-        ``multiprocessing.Process.start()``. It performs the following steps in order:
-
-        1. Redirects ``stdout`` and ``stderr`` to ``/dev/null`` to suppress console output
-           from the YOLO runtime.
-        2. Configures the process-local logger to forward records through ``_queueLog``
-           so they appear in the main-process log.
-        3. Initializes the ``QModelV6YOLO_Live`` classifier (must occur here to avoid
-           pickling errors).
-        4. Enters the main loop: blocks on ``_queue_in`` with a short timeout, drains
-           any additional queued chunks, feeds them to the classifier, then runs a single
-           inference pass.
-        5. Publishes ``(pred_int, pred_str, display_message)`` to ``_queue_out`` after
-           each inference batch.  ``display_message`` is the result of
-           ``get_and_clear_display_message()`` - a non-``None`` value means the main UI
-           should display it; subsequent puts will carry ``None`` until the next
-           qualifying state transition.
-        6. On exit (normal or exceptional), closes the devnull handle and sets
-           ``_done`` to signal callers that the process has finished.
-
-        Raises:
-            Exception: Any unhandled exception is caught, logged line-by-line via
-                ``Log.e``, and then the ``finally`` block cleans up.
-        """
+        """Executes the main inference loop for the live fill classification process."""
         try:
             ctypes.windll.kernel32.SetThreadDescription(
                 ctypes.windll.kernel32.GetCurrentThread(), "QATCH nanovisQ-LiveFillDetection"
@@ -632,6 +612,10 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
 
         devnull = open(os.devnull, "w")
         mp_devnull = None
+
+        # Fallback in case enable_visualization isn't explicitly defined in __init__
+        enable_vis = getattr(self, "enable_visualization", False)
+
         try:
             sys.stdout = sys.stderr = devnull
 
@@ -648,18 +632,63 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             mp_logger.setLevel(logging.WARNING)
 
             self._classifier = QModelV6YOLO_Live(
-                model_path=self.model_path, buffer_window_size=self.buffer_window_size
+                model_path=self.model_path, buffer_window_size=None
             )
-            Log.i(TAG, "YOLO Live Process Started and Model Loaded.")
+            Log.i(self.TAG, "YOLO Live Process Started and Model Loaded. (Infinite Buffer)")
+
+            if enable_vis:
+                import matplotlib.pyplot as plt
+                import numpy as np
+                import cv2
+
+                plt.ion()
+                fig, ax = plt.subplots(figsize=(5, 5))
+                fig.canvas.manager.set_window_title("Live YOLO Image Feed")
+
+                blank_image = np.zeros((224, 224, 3), dtype=np.uint8)
+                im_display = ax.imshow(blank_image)
+                ax.axis("off")
+
+                # Overlay Text: Window Readout (Top Left)
+                time_text = ax.text(
+                    0.03,
+                    0.97,
+                    "Window: 0.00s - 0.00s",
+                    transform=ax.transAxes,
+                    color="white",
+                    fontsize=11,
+                    fontweight="bold",
+                    va="top",
+                    ha="left",
+                    bbox=dict(facecolor="black", alpha=0.6, edgecolor="none", pad=3),
+                )
+                warning_text = ax.text(
+                    0.5,
+                    0.03,
+                    "",
+                    transform=ax.transAxes,
+                    color="red",
+                    fontsize=12,
+                    fontweight="bold",
+                    va="bottom",
+                    ha="center",
+                    bbox=dict(facecolor="black", alpha=0.8, edgecolor="red", pad=3),
+                )
+                warning_text.set_visible(False)
+
+            last_processed_time = -1.0
+            time_error_latched = False
 
             while not self._exit.is_set():
                 try:
                     raw_data = self._queue_in.get(timeout=0.05)
                 except Empty:
+                    # Only flush events if visualization is enabled
+                    if enable_vis:
+                        fig.canvas.flush_events()
                     continue
 
                 chunks = [raw_data]
-                # Drain any additional queued items
                 while True:
                     try:
                         chunks.append(self._queue_in.get_nowait())
@@ -677,18 +706,38 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                     try:
                         df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(chunk)
                         if df_chunk is not None and not df_chunk.empty:
+
+                            # Monotonicity check
+                            time_series = df_chunk["Relative_time"]
+                            if not time_series.is_monotonic_increasing:
+                                time_error_latched = True
+                                Log.w(
+                                    self.TAG, "Non-monotonic time detected within a single chunk!"
+                                )
+
+                            chunk_start = time_series.iloc[0]
+                            if last_processed_time >= 0 and chunk_start <= last_processed_time:
+                                time_error_latched = True
+                                Log.w(
+                                    self.TAG,
+                                    f"Time moving backwards! Previous Max: {last_processed_time:.3f}s, Chunk Start: {chunk_start:.3f}s",
+                                )
+
+                            last_processed_time = time_series.iloc[-1]
                             df_list.append(df_chunk)
+
                     except ValueError as ve:
-                        Log.w(TAG, f"Skipping worker data chunk: {ve}")
+                        Log.w(self.TAG, f"Skipping worker data chunk: {ve}")
                     except Exception as e:
-                        Log.e(TAG, f"Error converting worker data: {e}")
+                        Log.e(self.TAG, f"Error converting worker data: {e}")
+
                 if df_list:
                     try:
                         combined_chunk = pd.concat(df_list, ignore_index=True)
                         self._classifier.add_chunk(combined_chunk)
                         data_received = True
                     except Exception as e:
-                        Log.e(TAG, f"Error batching chunks: {e}")
+                        Log.e(self.TAG, f"Error batching chunks: {e}")
 
                 if data_received:
                     pred_int = self._classifier.attempt_classification()
@@ -697,6 +746,27 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                         self._classifier.get_and_clear_display_message()
                     )
                     self._queue_out.put((pred_int, pred_str, display_message))
+                    if enable_vis:
+                        if (
+                            hasattr(self._classifier, "_last_image")
+                            and self._classifier._last_image is not None
+                        ):
+                            img = self._classifier._last_image
+                            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                            im_display.set_data(img_rgb)
+                            ax.set_title(f"Prediction: {pred_str}, {pred_int}", fontweight="bold")
+                            if (
+                                self._classifier._data is not None
+                                and not self._classifier._data.empty
+                            ):
+                                t_min = self._classifier._data["Relative_time"].min()
+                                t_max = self._classifier._data["Relative_time"].max()
+                                time_text.set_text(f"Window: {t_min:.2f}s - {t_max:.2f}s")
+                            if time_error_latched:
+                                warning_text.set_text("TIME ERROR: NON-MONOTONIC")
+                                warning_text.set_visible(True)
+                            fig.canvas.draw_idle()
+                            fig.canvas.flush_events()
 
         except Exception:
             limit: Optional[int] = None
@@ -707,9 +777,16 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             a_list += format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
-                Log.e(TAG, line)
+                Log.e(self.TAG, line)
         finally:
-            Log.d(TAG, "QModelV6YOLO_LiveProcess stopped.")
+            Log.d(self.TAG, "QModelV6YOLO_LiveProcess stopped.")
+
+            # Only attempt to close plots if visualization was enabled
+            if getattr(self, "enable_visualization", False):
+                import matplotlib.pyplot as plt
+
+                plt.close("all")
+
             if mp_devnull is not None:
                 mp_devnull.close()
             devnull.close()
