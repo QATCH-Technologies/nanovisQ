@@ -28,8 +28,8 @@ from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
 from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
-from QATCH.common.userProfiles import UserProfiles, UserRoles
-from QATCH.core.constants import Constants
+from QATCH.common.userProfiles import UserProfiles
+from QATCH.core.constants import Constants, UserRoles
 from QATCH.models.ModelData import ModelData
 from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,

@@ -627,3 +627,13 @@ class Constants:
 #         except:
 #             z= ''
 #         return z
+
+
+class UserRoles(Enum):
+    NONE = 0x00
+    CAPTURE = 0x01
+    ANALYZE = 0x10
+    OPERATE = CAPTURE | ANALYZE
+    ADMIN = 0xFF
+    ANY = NONE
+    INVALID = NONE

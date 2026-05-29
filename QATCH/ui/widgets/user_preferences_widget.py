@@ -1,8 +1,8 @@
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
-from QATCH.common.userProfiles import UserProfiles, UserRoles, UserPreferences
-from QATCH.core.constants import Constants
+from QATCH.common.userProfiles import UserProfiles, UserPreferences
+from QATCH.core.constants import Constants, UserRoles
 from PyQt5.QtWidgets import (
     QMessageBox,
     QWidget,

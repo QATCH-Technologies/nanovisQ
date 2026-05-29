@@ -12,7 +12,7 @@ from QATCH.common.architecture import Architecture
 from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
-from QATCH.core.constants import Constants
+from QATCH.core.constants import Constants, UserRoles
 from QATCH.ui.widgets.collapsible_box_widget import CollapsibleBox
 from QATCH.ui.popUp import PopUp
 from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
@@ -26,7 +26,7 @@ from QATCH.VisQAI.src.models.ingredient import (
     Surfactant,
 )
 from QATCH.VisQAI.src.utils.list_utils import ListUtils
-
+from QATCH.common.userProfiles import UserProfiles
 TAG = "[QueryRunInfoWidget]"
 
 
@@ -1251,7 +1251,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.t_channels.setPalette(palette)  # set background
 
     def switch_user_at_sign_time(self):
-        from QATCH.common.userProfiles import UserProfiles, UserRoles
+        
 
         new_username, new_initials, new_userrole = UserProfiles.change(UserRoles.ANALYZE)
         if UserProfiles.check(UserRoles(new_userrole), UserRoles.ANALYZE):

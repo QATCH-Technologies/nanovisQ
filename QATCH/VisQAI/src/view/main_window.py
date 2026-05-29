@@ -1,10 +1,10 @@
 try:
-    from typing import Optional, Tuple
-
+    from typing import Optional
+    
     from QATCH.common.architecture import Architecture
     from QATCH.common.logger import Logger as Log
-    from QATCH.common.userProfiles import UserProfiles, UserRoles
-    from QATCH.core.constants import Constants
+    from QATCH.common.userProfiles import UserProfiles
+    from QATCH.core.constants import Constants, UserRoles
     from QATCH.ui.popUp import PopUp
 except (ModuleNotFoundError, ImportError):
     print("Running VisQAI as standalone app")

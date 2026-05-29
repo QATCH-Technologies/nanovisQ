@@ -50,8 +50,8 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.licenseManager import LicenseManager
 from QATCH.common.logger import Logger as Log
 from QATCH.common.tutorials import TutorialPages
-from QATCH.common.userProfiles import UserProfiles, UserRoles
-from QATCH.core.constants import Constants, OperationType, UpdateEngines
+from QATCH.common.userProfiles import UserProfiles
+from QATCH.core.constants import Constants, OperationType, UpdateEngines, UserRoles
 from QATCH.core.worker import Worker
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.

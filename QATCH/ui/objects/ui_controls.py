@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import (
 
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.logger import Logger as Log
-from QATCH.core.constants import Constants, OperationType
+from QATCH.core.constants import Constants, OperationType, UserRoles
 from QATCH.ui.widgets.well_plate_widget import WellPlate
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.components.number_icon_button import NumberIconButton
@@ -31,9 +31,10 @@ from QATCH.ui.components.run_controls_button import RunControls
 from QATCH.ui.widgets.export_widget import Ui_Export
 from QATCH.ui.widgets.user_preferences_widget import UserPreferencesWidget
 from QATCH.ui.widgets.user_profiles_manager_widget import UserProfilesManagerWidget
-from QATCH.common.userProfiles import UserProfiles, UserRoles
+from QATCH.common.userProfiles import UserProfiles
 from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.findDevices import Discovery
+from QATCH.common.licenseManager import LicenseManager
 
 # ---------------------------------------------------------------------------
 # Glass-morphism primitives

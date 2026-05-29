@@ -4,9 +4,9 @@ from typing import Optional, Any
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
-from QATCH.common.userProfiles import UserProfiles, UserRoles
+from QATCH.common.userProfiles import UserProfiles
 from QATCH.ui.popUp import PopUp
-from QATCH.core.constants import Constants
+from QATCH.core.constants import Constants, UserRoles
 from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
 
 

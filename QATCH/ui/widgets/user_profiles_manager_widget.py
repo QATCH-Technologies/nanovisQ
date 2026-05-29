@@ -1,5 +1,4 @@
 import os
-import sys
 import hashlib
 import datetime as dt
 from xml.dom import minidom
@@ -7,10 +6,15 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileManager import FileManager
-from QATCH.core.constants import Constants
+from QATCH.core.constants import Constants, UserRoles
 from QATCH.ui.popUp import PopUp
-from QATCH.common.userProfiles import UserProfiles, UserRoles, UserConstants
+from QATCH.common.userProfiles import UserProfiles, UserConstants
 from QATCH.common.architecture import Architecture
+from QATCH.ui.components.animated_combo_box import AnimatedComboBox
+from QATCH.ui.components.glass_line_edit import GlassLineEdit
+from QATCH.ui.components.glass_push_button import GlassPushButton
+from QATCH.ui.components.glass_toggle import GlassToggle
+from QATCH.ui.widgets.reset_password_widget import ResetPasswordWidget
 
 TAG = "[UserProfilesManager]"
 
@@ -26,6 +30,10 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             self.setSizePolicy(sp)
             self.setShowGrid(False)
             self.verticalHeader().setVisible(False)
+
+            # --- NEW: Pointing hand cursor for the select/unselect all header ---
+            self.horizontalHeader().setCursor(QtCore.Qt.PointingHandCursor)
+
             self.setAlternatingRowColors(True)
             self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
             self.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
@@ -86,6 +94,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.ICON_REFRESH = os.path.join(
             Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg"
         )
+        self.ICON_USERS = os.path.join(Architecture.get_path(), "QATCH", "icons", "users.svg")
         self.ICON_PWD = os.path.join(
             Architecture.get_path(), "QATCH", "icons", "reset-password.svg"
         )
@@ -149,7 +158,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # background-alpha instead, which is safe at any call site.
 
         self.main_layout = QtWidgets.QVBoxLayout(self.glass_frame)
-        self.main_layout.setContentsMargins(20, 38, 20, 20)
+        self.main_layout.setContentsMargins(20, 12, 20, 20)
         self.main_layout.setSpacing(20)
 
         # --- Top Control Bar (Glass Pill Taskbar) ---
@@ -164,58 +173,44 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             }
         """)
         self._apply_shadow(self.taskbar_frame, blur_radius=15, alpha=20, offset=(0, 4))
+        self.header_layout = QtWidgets.QHBoxLayout()
+        self.header_layout.setContentsMargins(0, 0, 0, 0)
 
+        self.window_icon_label = QtWidgets.QLabel()
+        self.window_icon_label.setPixmap(QtGui.QIcon(self.ICON_USERS).pixmap(16, 16))
+
+        self.window_title_label = QtWidgets.QLabel("User Management")
+        self.window_title_label.setStyleSheet("""
+            QLabel {
+                color: #333;
+                font-weight: bold;
+                font-size: 13px;
+                background: transparent;
+            }
+        """)
+
+        self.header_layout.addWidget(self.window_icon_label)
+        self.header_layout.addWidget(self.window_title_label)
+        self.header_layout.addStretch()
         self.top_bar = QtWidgets.QHBoxLayout(self.taskbar_frame)
         self.top_bar.setContentsMargins(20, 0, 20, 0)
         self.top_bar.setSpacing(15)
 
-        self.btn_back = QtWidgets.QPushButton(" Back")
+        self.btn_back = GlassPushButton(" Back", variant="default")
         self.btn_back.setIcon(QtGui.QIcon(self.ICON_BACK))
         self.btn_back.setIconSize(QtCore.QSize(16, 16))
-        self.btn_back.setStyleSheet("""
-            QPushButton { 
-                background: rgba(255, 255, 255, 140); 
-                color: #333; 
-                border-radius: 17px; 
-                padding: 0px 15px; 
-                font-weight: bold; 
-                border: 1px solid rgba(255, 255, 255, 200);
-                min-height: 34px;
-                max-height: 34px;
-            }
-            QPushButton:hover { 
-                background: rgba(255, 255, 255, 220); 
-                border: 1px solid #0AA3E6; 
-            }
-            QPushButton:pressed { 
-                background: rgba(255, 255, 255, 100); 
-            }
-        """)
-        self.btn_back.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_back.setFixedHeight(34)
         self.btn_back.setVisible(False)
         self.btn_back.clicked.connect(self.back_to_users)
 
         # --- Search Bar ---
-        self.search_bar = QtWidgets.QLineEdit()
+        self.search_bar = GlassLineEdit()
         self.search_bar.setPlaceholderText("Search Initials or Name...")
         self.search_bar.addAction(
             QtGui.QIcon(self.ICON_SEARCH), QtWidgets.QLineEdit.LeadingPosition
         )
         self.search_bar.setFixedWidth(250)
         self.search_bar.setFixedHeight(34)
-        self.search_bar.setStyleSheet("""
-            QLineEdit {
-                background: rgba(255, 255, 255, 180);
-                border: 1px solid rgba(255, 255, 255, 240);
-                border-radius: 17px;
-                padding: 0px 15px;
-                color: #333;
-            }
-            QLineEdit:focus { 
-                background: rgba(255, 255, 255, 255);
-                border: 1px solid #0AA3E6; 
-            }
-        """)
         self.search_bar.textChanged.connect(self.filter_users)
 
         # --- Audit / mode title label (replaces search bar in audit mode) ---
@@ -231,115 +226,84 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             }
         """)
 
-        # --- Enhanced Symbolic Toolbar Buttons ---
-        # Added a slight default background so actions are more visible, and crisp borders
-        base_action_style = """
-            QPushButton { 
-                background: rgba(255, 255, 255, 140); 
-                border: 1px solid rgba(255, 255, 255, 200); 
-                border-radius: 17px; 
-                min-width: 34px;
-                max-width: 34px;
-                min-height: 34px;
-                max-height: 34px;
-            }
-            QPushButton:hover { 
-                background: rgba(255, 255, 255, 220); 
-                border: 1px solid #0AA3E6; 
-            }
-            QPushButton:pressed { 
-                background: rgba(255, 255, 255, 100); 
-            }
-        """
-
         # Ensure icon size scales well inside the 34x34 button
         icon_size = QtCore.QSize(18, 18)
 
-        self.btn_add = QtWidgets.QPushButton("")
+        self.btn_add = GlassPushButton(" Add", variant="default")
         self.btn_add.setIcon(QtGui.QIcon(self.ICON_ADD))
         self.btn_add.setIconSize(icon_size)
         self.btn_add.setToolTip("Add New User")
-        self.btn_add.setStyleSheet(base_action_style)
-        self.btn_add.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_add.setFixedHeight(34)
         self.btn_add.clicked.connect(self.add_user)
 
-        self.btn_audit_selected = QtWidgets.QPushButton("")
+        self.btn_audit_selected = GlassPushButton(" Audit", variant="default")
         self.btn_audit_selected.setIcon(QtGui.QIcon(self.ICON_AUDIT))
         self.btn_audit_selected.setIconSize(icon_size)
         self.btn_audit_selected.setToolTip("Audit Selected Users")
-        self.btn_audit_selected.setStyleSheet(base_action_style)
-        self.btn_audit_selected.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_audit_selected.setFixedHeight(34)
         self.btn_audit_selected.clicked.connect(lambda: self.audit_selected())
 
-        self.btn_delete_selected = QtWidgets.QPushButton("")
+        self.btn_delete_selected = GlassPushButton(" Delete", variant="danger")
         self.btn_delete_selected.setIcon(QtGui.QIcon(self.ICON_DELETE))
         self.btn_delete_selected.setIconSize(icon_size)
         self.btn_delete_selected.setToolTip("Delete Selected Users")
-        # Distinct red danger styling for delete
-        self.btn_delete_selected.setStyleSheet("""
-            QPushButton { 
-                background: rgba(220, 53, 69, 0.1); 
-                border: 1px solid rgba(220, 53, 69, 0.3); 
-                border-radius: 17px; 
-                min-width: 34px; max-width: 34px; min-height: 34px; max-height: 34px;
-            }
-            QPushButton:hover { 
-                background: rgba(220, 53, 69, 0.25); 
-                border: 1px solid rgba(220, 53, 69, 0.6); 
-            }
-            QPushButton:pressed { background: rgba(220, 53, 69, 0.4); }
-        """)
-        self.btn_delete_selected.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_delete_selected.setFixedHeight(34)
         self.btn_delete_selected.clicked.connect(lambda: self.delete_selected())
 
-        self.btn_refresh = QtWidgets.QPushButton("")
+        self.btn_refresh = GlassPushButton(" Refresh", variant="default")
         self.btn_refresh.setIcon(QtGui.QIcon(self.ICON_REFRESH))
         self.btn_refresh.setIconSize(icon_size)
         self.btn_refresh.setToolTip("Refresh Table")
-        self.btn_refresh.setStyleSheet(base_action_style)
-        self.btn_refresh.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_refresh.setFixedHeight(34)
         self.btn_refresh.clicked.connect(self._animate_refresh_spin)
 
         self._default_margin_pct = 0.175
-        button_size = 16
-        icon_size = QtCore.QSize(10, 10)
+        button_size = 28
+        icon_size = QtCore.QSize(14, 14)
 
-        # Fullscreen Toggle (Green Dot)
+        # Fullscreen Toggle (Transparent icon button — matches create_user_widget btn_close style)
+        _FS_NORMAL = QtGui.QColor(110, 120, 130, 190)
+        _FS_HOVER = QtGui.QColor(185, 190, 200, 230)
+        self._fs_normal_icon = self._tinted_icon(self.ICON_EXPAND, _FS_NORMAL, size=14)
+        self._fs_hover_icon = self._tinted_icon(self.ICON_EXPAND, _FS_HOVER, size=14)
+
         self.btn_fullscreen = QtWidgets.QPushButton("", self)
         self.btn_fullscreen.setFixedSize(button_size, button_size)
-        self.btn_fullscreen.setIcon(QtGui.QIcon(self.ICON_EXPAND))
+        self.btn_fullscreen.setIcon(self._fs_normal_icon)
         self.btn_fullscreen.setIconSize(icon_size)
         self.btn_fullscreen.setToolTip("Toggle Fullscreen")
         self.btn_fullscreen.setStyleSheet("""
-            QPushButton {
-                background: rgba(39, 201, 63, 140);
-                border: 1px solid rgba(39, 201, 63, 190);
-                border-radius: 8px;
-            }
-            QPushButton:hover { background: rgba(39, 201, 63, 255); }
+            QPushButton { background: transparent; border: none; }
         """)
-        self.btn_fullscreen.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_fullscreen.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_fullscreen.installEventFilter(self)
         self.btn_fullscreen.clicked.connect(self.toggle_fullscreen)
 
-        # Close Window (Red Dot)
-        self.btn_close = QtWidgets.QPushButton("", self)
+        # Close Window (Transparent icon button — matches create_user_widget btn_close style)
+        self.btn_close = QtWidgets.QPushButton("×", self)
         self.btn_close.setFixedSize(button_size, button_size)
-        self.btn_close.setIcon(QtGui.QIcon(self.ICON_CLEAR))
-        self.btn_close.setIconSize(icon_size)
         self.btn_close.setToolTip("Close")
         self.btn_close.setStyleSheet("""
             QPushButton {
-                background: rgba(255, 95, 86, 140);
-                border: 1px solid rgba(255, 95, 86, 190);
-                border-radius: 8px;
+                background: transparent;
+                border: none;
+                color: rgba(110, 120, 130, 190);
+                font-size: 18px;
+                font-weight: bold;
+                padding-bottom: 2px;
             }
-            QPushButton:hover { background: rgba(255, 95, 86, 255); }
+            QPushButton:hover   { color: rgba(210, 55, 55, 230); }
+            QPushButton:pressed { color: rgba(160, 30, 30, 255); }
         """)
-        self.btn_close.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_close.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_close.clicked.connect(self.close)
         self.btn_close.raise_()
-
         # Assemble taskbar — add, audit, refresh, delete (no close; panel click-outside handles dismiss)
+        self.top_section_layout = QtWidgets.QVBoxLayout()
+        self.top_section_layout.setSpacing(10)
+
+        self.top_section_layout.addLayout(self.header_layout)
+        self.top_section_layout.addWidget(self.taskbar_frame)
         self.top_bar.addWidget(self.btn_back)
         self.top_bar.addWidget(self.view_title)
         self.top_bar.addWidget(self.search_bar)
@@ -348,7 +312,6 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.top_bar.addWidget(self.btn_audit_selected)
         self.top_bar.addWidget(self.btn_refresh)
         self.top_bar.addWidget(self.btn_delete_selected)
-
         # --- Table View (wrapped in a rounded-corner container frame) ---
         self.table = self.TableView()
         self.table.itemChanged.connect(self.handle_inline_edit)
@@ -367,7 +330,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         _sp = self.table_container.sizePolicy()
         _sp.setRetainSizeWhenHidden(True)
         self.table_container.setSizePolicy(_sp)
-
+        self.table.viewport().installEventFilter(self)
         _container_layout = QtWidgets.QVBoxLayout(self.table_container)
         _container_layout.setContentsMargins(0, 0, 0, 0)
         _container_layout.setSpacing(0)
@@ -375,26 +338,90 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
         # --- Bottom Settings Bar ---
         self.settings_layout = QtWidgets.QHBoxLayout()
+        self.settings_layout.setSpacing(0)
 
-        self.developerModeChk = QtWidgets.QCheckBox("Enable Developer Mode (unencrypted)")
+        # ── Developer Mode toggle ──────────────────────────────────────
         enabled, error, expires = UserProfiles.checkDevMode()
+
+        self.developerModeChk = GlassToggle()
+        # setChecked before connecting so the handler doesn't fire on init
         self.developerModeChk.setChecked(enabled)
-        color = "#D32F2F" if error else ("#388E3C" if enabled else "#444")
-        self.developerModeChk.setStyleSheet(
-            f"QCheckBox {{ color: {color}; font-weight: bold; background: transparent; }}"
-        )
-        self.developerModeChk.stateChanged.connect(self.toggleDevMode)
 
-        self.reqAdminUpd_chkbox = QtWidgets.QCheckBox("Require Admin for Updates")
+        dev_label_color = "#D32F2F" if error else ("#388E3C" if enabled else "#555")
+        self.dev_mode_label = QtWidgets.QLabel("Enable Developer Mode")
+        self.dev_mode_label.setStyleSheet(f"""
+            QLabel {{
+                color: {dev_label_color};
+                font-weight: bold;
+                font-size: 11px;
+                background: transparent;
+            }}
+        """)
+
+        # Inline expiry label — shown only when dev mode is active
+        expiry_text = ""
+        expiry_color = "#D32F2F" if error else "#388E3C"
+        if enabled and expires:
+            expiry_text = f"Expired: {expires}" if error else f"Expires: {expires}"
+        self.dev_expiry_label = QtWidgets.QLabel(expiry_text)
+        self.dev_expiry_label.setVisible(bool(expiry_text))
+        self.dev_expiry_label.setStyleSheet(f"""
+            QLabel {{
+                color: {expiry_color};
+                font-size: 10px;
+                background: transparent;
+                padding-left: 6px;
+            }}
+        """)
+
+        # Connect after initial state is fully applied
+        self.developerModeChk.toggled.connect(self.toggle_dev_mode)
+
+        # ── Require Admin for Updates toggle ──────────────────────────
+        self.reqAdminUpd_chkbox = GlassToggle()
         self.reqAdminUpd_chkbox.setChecked(UserConstants.REQ_ADMIN_UPDATES)
-        self.reqAdminUpd_chkbox.setStyleSheet("QCheckBox { color: #444; background: transparent; }")
-        self.reqAdminUpd_chkbox.stateChanged.connect(self.toggleReqAdminUpdates)
+        self.reqAdminUpd_chkbox.toggled.connect(self.toggle_req_admin_updates)
 
-        self.settings_layout.addWidget(self.developerModeChk)
-        self.settings_layout.addStretch()
-        self.settings_layout.addWidget(self.reqAdminUpd_chkbox)
+        self.admin_label = QtWidgets.QLabel("Require Admin for Updates")
+        self.admin_label.setStyleSheet("""
+            QLabel {
+                color: #555;
+                font-size: 11px;
+                background: transparent;
+            }
+        """)
 
-        self.main_layout.addWidget(self.taskbar_frame)
+        # ── Assemble ─────────────────────────────────────────────────
+        # Dev mode group — absorbs all leftover space so the admin group
+        # stays pinned to the right regardless of expiry label visibility.
+        dev_group = QtWidgets.QWidget()
+        dev_group.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        dev_layout = QtWidgets.QHBoxLayout(dev_group)
+        dev_layout.setContentsMargins(0, 0, 0, 0)
+        dev_layout.setSpacing(0)
+        dev_layout.addWidget(self.developerModeChk)
+        dev_layout.addSpacing(8)
+        dev_layout.addWidget(self.dev_mode_label)
+        dev_layout.addSpacing(6)
+        dev_layout.addWidget(self.dev_expiry_label)
+        dev_layout.addStretch()  # internal stretch — soaks up excess left-side space
+
+        # Admin group — fixed to the right edge
+        admin_group = QtWidgets.QWidget()
+        admin_group.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        admin_layout = QtWidgets.QHBoxLayout(admin_group)
+        admin_layout.setContentsMargins(0, 0, 0, 0)
+        admin_layout.setSpacing(0)
+        admin_layout.addWidget(self.admin_label)
+        admin_layout.addSpacing(8)
+        admin_layout.addWidget(self.reqAdminUpd_chkbox)
+
+        # Stretch factor 1 on dev_group, 0 on admin_group — dev expands,
+        # admin never moves.
+        self.settings_layout.addWidget(dev_group, 1)
+        self.settings_layout.addWidget(admin_group, 0)
+        self.main_layout.addLayout(self.top_section_layout)
+
         self.main_layout.addWidget(self.table_container)
         self.main_layout.addLayout(self.settings_layout)
 
@@ -411,8 +438,25 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         shadow.setOffset(offset[0], offset[1])
         widget.setGraphicsEffect(shadow)
 
+    @staticmethod
+    def _tinted_icon(path: str, color: QtGui.QColor, size: int = 14) -> QtGui.QIcon:
+        """Returns a copy of the icon at *path* fully painted in *color*.
+
+        Uses SourceAtop composition so the tint respects the original
+        alpha channel — transparent SVG areas stay transparent.
+        """
+        src = QtGui.QIcon(path).pixmap(size, size)
+        dst = QtGui.QPixmap(src.size())
+        dst.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(dst)
+        p.drawPixmap(0, 0, src)
+        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+        p.fillRect(dst.rect(), color)
+        p.end()
+        return QtGui.QIcon(dst)
+
     def _animate_refresh_spin(self):
-        """Animates a single 360-degree spin on the refresh icon, slow with deceleration."""
+        """Animates a single 360-degree spin on the refresh icon, smooth with parabolic acceleration."""
         if (
             hasattr(self, "refresh_anim")
             and self.refresh_anim.state() == QtCore.QAbstractAnimation.Running
@@ -421,7 +465,8 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
         self.refresh_anim = QtCore.QVariantAnimation(self)
         self.refresh_anim.setDuration(900)  # slow, satisfying rotation
-        self.refresh_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)  # decelerates naturally
+        # InOutCubic provides the parabolic curve: slow start -> fast middle -> slow stop
+        self.refresh_anim.setEasingCurve(QtCore.QEasingCurve.InOutCubic)
         self.refresh_anim.setStartValue(0.0)
         self.refresh_anim.setEndValue(360.0)
 
@@ -429,11 +474,24 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         w, h = orig_pixmap.width(), orig_pixmap.height()
 
         def update_icon(angle):
-            transform = (
-                QtGui.QTransform().translate(w / 2, h / 2).rotate(angle).translate(-w / 2, -h / 2)
-            )
-            rotated = orig_pixmap.transformed(transform, QtCore.Qt.SmoothTransformation)
-            self.btn_refresh.setIcon(QtGui.QIcon(rotated))
+            # Create a fixed-size transparent canvas so the bounding box NEVER expands
+            rotated_pixmap = QtGui.QPixmap(w, h)
+            rotated_pixmap.fill(QtGui.QColor(0, 0, 0, 0))  # Fully transparent
+
+            # Use QPainter to draw the rotated original inside our fixed canvas
+            painter = QtGui.QPainter(rotated_pixmap)
+            painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+            # Move the origin to the center, rotate, and move it back
+            painter.translate(w / 2, h / 2)
+            painter.rotate(angle)
+            painter.translate(-w / 2, -h / 2)
+
+            painter.drawPixmap(0, 0, orig_pixmap)
+            painter.end()
+
+            self.btn_refresh.setIcon(QtGui.QIcon(rotated_pixmap))
 
         def finish_refresh():
             self.btn_refresh.setIcon(QtGui.QIcon(self.ICON_REFRESH))
@@ -583,10 +641,18 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
         self._is_fullscreen = not getattr(self, "_is_fullscreen", False)
 
-        # --- NEW: Swap the icon based on the new state ---
-        icon_path = self.ICON_COLLAPSE if self._is_fullscreen else self.ICON_EXPAND
-        self.btn_fullscreen.setIcon(QtGui.QIcon(icon_path))
-        # -------------------------------------------------
+        _icon_path = self.ICON_COLLAPSE if self._is_fullscreen else self.ICON_EXPAND
+        self._fs_normal_icon = self._tinted_icon(
+            _icon_path, QtGui.QColor(110, 120, 130, 190), size=14
+        )
+        self._fs_hover_icon = self._tinted_icon(
+            _icon_path, QtGui.QColor(185, 190, 200, 230), size=14
+        )
+        # Show hover or normal depending on where the cursor currently is
+        if self.btn_fullscreen.underMouse():
+            self.btn_fullscreen.setIcon(self._fs_hover_icon)
+        else:
+            self.btn_fullscreen.setIcon(self._fs_normal_icon)
 
         w = self.width()
         start_m = self.base_layout.contentsMargins().left()
@@ -614,6 +680,17 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             """)
 
         # QVariantAnimation drives the layout margin float over 250ms
+        # Freeze every column to its current pixel width so that the per-frame
+        # setContentsMargins call in _apply_margin_step cannot trigger a Stretch/
+        # ResizeToContents recalculation on every frame — the main source of stutter.
+        header = self.table.horizontalHeader()
+        if self.table.columnCount() > 0:
+            frozen_widths = [header.sectionSize(c) for c in range(self.table.columnCount())]
+            for c, pw in enumerate(frozen_widths):
+                header.setSectionResizeMode(c, QtWidgets.QHeaderView.Fixed)
+                header.resizeSection(c, pw)
+
+        # QVariantAnimation drives the layout margin float over 250ms
         self.anim = QtCore.QVariantAnimation(self)
         self.anim.setDuration(250)
         self.anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
@@ -621,8 +698,42 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.anim.setEndValue(float(target_m))
 
         self.anim.valueChanged.connect(self._apply_margin_step)
-        self.anim.finished.connect(self._refit_to_parent)
+
+        def _finish():
+            # Snap geometry to exact final state, then let columns recalculate once
+            # at the settled panel size. Both calls are synchronous, so only one
+            # paint event fires — no visible jump.
+            self._refit_to_parent()
+            self._restore_column_modes()
+
+        self.anim.finished.connect(_finish)
         self.anim.start()
+
+    def _restore_column_modes(self):
+        """Re-apply the correct header resize modes after a fullscreen animation.
+
+        Columns are frozen to Fixed widths during the animation to suppress
+        per-frame Stretch/ResizeToContents recalculation.  This method restores
+        them once at the settled final panel size so they expand/contract correctly.
+        """
+        header = self.table.horizontalHeader()
+        if getattr(self, "is_audit_mode", False):
+            # Audit view: all columns auto-fit, last one stretches
+            header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+            header.setStretchLastSection(True)
+        else:
+            # User management view: mirror the modes set in update_table_data
+            header.setStretchLastSection(False)
+            header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
+            header.resizeSection(0, 36)
+            header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+            header.setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
+            header.resizeSection(3, 155)
+            header.setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(6, QtWidgets.QHeaderView.Fixed)
+            header.resizeSection(6, 115)
 
     def _apply_margin_step(self, current_mx):
         """Fired every frame by the expand/collapse animation.
@@ -768,10 +879,28 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self._closing = False
 
     def eventFilter(self, obj, event):
-        """Track parent/window resize so the overlay always covers the content area."""
+        """Track parent/window resize so the overlay always covers the content area,
+        and listen for table clicks to cancel pending deletions."""
+
+        # --- 1. Handle Table Viewport Clicks (Cancel Delete) ---
+        if hasattr(self, "table") and obj == self.table.viewport():
+            if event.type() == QtCore.QEvent.MouseButtonPress:
+                if getattr(self, "_pending_delete", []):
+                    self._cancel_delete()
+
         if event.type() in (QtCore.QEvent.Resize, QtCore.QEvent.Move):
+            if getattr(self, "_pending_delete", []):
+                self._cancel_delete()
+
             if self.isVisible():
                 self._refit_to_parent()
+
+        if hasattr(self, "btn_fullscreen") and obj is self.btn_fullscreen:
+            if event.type() == QtCore.QEvent.Enter:
+                self.btn_fullscreen.setIcon(self._fs_hover_icon)
+            elif event.type() == QtCore.QEvent.Leave:
+                self.btn_fullscreen.setIcon(self._fs_normal_icon)
+
         return super().eventFilter(obj, event)
 
     def paintEvent(self, event):
@@ -891,8 +1020,12 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             self.table.setItem(row, 2, item_name)
 
             # 3. Role
-            role_combo = QtWidgets.QComboBox()
+            down_arrow_path = os.path.join(
+                Architecture.get_path(), "QATCH", "icons", "down-arrow.svg"
+            )
+            role_combo = AnimatedComboBox(down_arrow_path)
             role_combo.addItems(roles_list)
+
             curr_role = data["Role"][row]
             idx = role_combo.findText(curr_role, QtCore.Qt.MatchContains)
             if idx >= 0:
@@ -928,55 +1061,25 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
             icon_size_table = QtCore.QSize(16, 16)
 
-            btn_pwd = QtWidgets.QPushButton("")
+            btn_pwd = GlassPushButton("", variant="default")
             btn_pwd.setIcon(QtGui.QIcon(self.ICON_PWD))
             btn_pwd.setIconSize(icon_size_table)
             btn_pwd.setToolTip("Reset Password")
             btn_pwd.setFixedSize(28, 28)
-            btn_pwd.setCursor(QtCore.Qt.PointingHandCursor)
-            btn_pwd.setStyleSheet("""
-                QPushButton {
-                    background: rgba(255, 193, 7, 0.12);
-                    border: 1px solid rgba(255, 193, 7, 0.5);
-                    border-radius: 14px;
-                }
-                QPushButton:hover { background: rgba(255, 193, 7, 0.28); }
-                QPushButton:pressed { background: rgba(255, 193, 7, 0.45); }
-            """)
             btn_pwd.clicked.connect(lambda _, i=initials: self.change_password(i))
 
-            btn_audit = QtWidgets.QPushButton("")
+            btn_audit = GlassPushButton("", variant="default")
             btn_audit.setIcon(QtGui.QIcon(self.ICON_AUDIT))
             btn_audit.setIconSize(icon_size_table)
             btn_audit.setToolTip("Audit User")
             btn_audit.setFixedSize(28, 28)
-            btn_audit.setCursor(QtCore.Qt.PointingHandCursor)
-            btn_audit.setStyleSheet("""
-                QPushButton {
-                    background: rgba(108, 117, 125, 0.12);
-                    border: 1px solid rgba(108, 117, 125, 0.45);
-                    border-radius: 14px;
-                }
-                QPushButton:hover { background: rgba(108, 117, 125, 0.28); }
-                QPushButton:pressed { background: rgba(108, 117, 125, 0.45); }
-            """)
             btn_audit.clicked.connect(lambda _, i=initials: self.audit_selected([i]))
 
-            btn_delete = QtWidgets.QPushButton("")
+            btn_delete = GlassPushButton("", variant="danger")
             btn_delete.setIcon(QtGui.QIcon(self.ICON_DELETE))
             btn_delete.setIconSize(icon_size_table)
             btn_delete.setToolTip("Delete User")
             btn_delete.setFixedSize(28, 28)
-            btn_delete.setCursor(QtCore.Qt.PointingHandCursor)
-            btn_delete.setStyleSheet("""
-                QPushButton {
-                    background: rgba(220, 53, 69, 0.12);
-                    border: 1px solid rgba(220, 53, 69, 0.45);
-                    border-radius: 14px;
-                }
-                QPushButton:hover { background: rgba(220, 53, 69, 0.28); }
-                QPushButton:pressed { background: rgba(220, 53, 69, 0.45); }
-            """)
             btn_delete.clicked.connect(lambda _, i=initials: self.delete_selected([i]))
 
             action_layout.addStretch()
@@ -987,6 +1090,9 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             self.table.setCellWidget(row, 6, action_widget)
 
         header = self.table.horizontalHeader()
+        # Reset stretchLastSection unconditionally — audit mode sets it True and
+        # the column-mode calls below do not clear it, leaving col-6 stretched on return.
+        header.setStretchLastSection(False)
         # Checkbox col — fixed narrow
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
         header.resizeSection(0, 36)
@@ -1003,7 +1109,6 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # Actions — fixed width for three 28px buttons + padding
         header.setSectionResizeMode(6, QtWidgets.QHeaderView.Fixed)
         header.resizeSection(6, 115)
-
         # Comfortable row height so cell widgets breathe
         self.table.verticalHeader().setDefaultSectionSize(54)
 
@@ -1143,13 +1248,19 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             border_color = "rgba(108, 117, 125, 0.45)"
             text_color = "#495057"
 
+        # --- NEW: Dynamically dye the SVG arrow to match the role text color ---
+        if hasattr(combo, "arrow_lbl"):
+            effect = QtWidgets.QGraphicsColorizeEffect(combo.arrow_lbl)
+            effect.setColor(QtGui.QColor(text_color))
+            combo.arrow_lbl.setGraphicsEffect(effect)
+
         combo.setStyleSheet(f"""
             QComboBox {{
                 background-color: {bg_color};
                 color: {text_color};
                 border: 1px solid {border_color};
                 border-radius: 10px;
-                padding: 2px 24px 2px 10px;
+                padding: 2px 28px 2px 10px; /* Slight right padding increase to accommodate label */
                 font-weight: bold;
                 font-size: 11px;
             }}
@@ -1160,18 +1271,17 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             QComboBox::drop-down {{
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
-                width: 20px;
+                width: 24px; /* Widened slightly to fit the AnimatedComboBox label */
                 border: none;
                 border-left: 1px solid {border_color};
                 border-top-right-radius: 10px;
                 border-bottom-right-radius: 10px;
             }}
             QComboBox::down-arrow {{
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 5px solid {text_color};
-                width: 0; height: 0;
+                image: none; /* Handled dynamically by AnimatedComboBox */
             }}
+            
+            /* --- Dropdown Viewport Fixes --- */
             QComboBox QAbstractItemView {{
                 background-color: rgba(255, 255, 255, 250);
                 border: 1px solid {border_color};
@@ -1180,12 +1290,18 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 selection-background-color: transparent;
                 selection-color: #333;
                 color: #333;
-                padding: 2px;
+                padding: 4px;
+            }}
+            QComboBox QAbstractItemView::viewport {{
+                background: transparent;
+                border-radius: 6px;
             }}
             QComboBox QAbstractItemView::item {{
                 padding: 4px 10px;
+                min-height: 20px;
                 color: #333;
                 background-color: transparent;
+                border-radius: 4px;
             }}
             QComboBox QAbstractItemView::item:hover {{
                 background-color: rgba(10, 163, 230, 25);
@@ -1270,16 +1386,23 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         found, filename = UserProfiles.find(None, target_initials)
         if not found:
             return
-        pwd, ok = QtWidgets.QInputDialog.getText(
-            None,
-            "Reset Password",
-            f"New Password for {target_initials}:",
-            QtWidgets.QLineEdit.Password,
+
+        user_data = UserProfiles.get_user_info(os.path.join(UserProfiles.PATH, filename))
+
+        overlay = ResetPasswordWidget(
+            name=user_data[0],
+            initials=user_data[1],
+            role=user_data[2],
+            parent=self,
         )
-        if ok and len(pwd) >= 8:
-            self._update_user_xml(filename, new_pwd_plain=pwd)
-        elif ok:
-            PopUp.warning(self, "Invalid", "Passwords must be at least 8 characters.")
+        overlay.resize(self.size())
+        overlay.show()
+        overlay.raise_()
+        # password_confirmed is emitted before the close animation starts,
+        # so the filename closure is still valid when the lambda fires.
+        overlay.password_confirmed.connect(
+            lambda pwd, fn=filename: self._update_user_xml(fn, new_pwd_plain=pwd)
+        )
 
     # --- Unified Audit Engine ---
 
@@ -1313,12 +1436,45 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                     initials_list.append(self.table.item(row, 1).text())
 
         if not initials_list:
-            PopUp.warning(self, "No Selection", "Please select at least one user to audit.")
+            # Shake the button instead of showing a popup
+            self._shake_widget(self.btn_audit_selected)
             return
 
         self._animate_table_transition(
             lambda: self._do_audit_selected(initials_list), direction="left"
         )
+
+    def _shake_widget(self, widget: QtWidgets.QWidget) -> None:
+        """Animates a widget with a rapid horizontal jiggle to indicate an error."""
+        # Wrap in a try-except block just to be absolutely safe against C++ deletions
+        try:
+            if (
+                hasattr(widget, "_shake_anim")
+                and widget._shake_anim.state() == QtCore.QAbstractAnimation.Running
+            ):
+                return
+        except RuntimeError:
+            pass  # The C++ object was deleted, meaning it's not running anyway
+
+        start_pos = widget.pos()
+        anim = QtCore.QPropertyAnimation(widget, b"pos", self)
+        anim.setDuration(350)
+
+        # Keyframes for left-right jiggle
+        anim.setKeyValueAt(0.0, start_pos)
+        anim.setKeyValueAt(0.1, start_pos + QtCore.QPoint(-6, 0))
+        anim.setKeyValueAt(0.3, start_pos + QtCore.QPoint(6, 0))
+        anim.setKeyValueAt(0.5, start_pos + QtCore.QPoint(-4, 0))
+        anim.setKeyValueAt(0.7, start_pos + QtCore.QPoint(4, 0))
+        anim.setKeyValueAt(0.9, start_pos + QtCore.QPoint(-2, 0))
+        anim.setKeyValueAt(1.0, start_pos)
+
+        widget._shake_anim = anim
+
+        # FIX: Removed QtCore.QAbstractAnimation.DeleteWhenStopped
+        # Now Python's garbage collector will handle memory cleanup safely
+        # when the _shake_anim reference is overwritten.
+        anim.start()
 
     def _do_audit_selected(self, initials_list):
         self.is_audit_mode = True
@@ -1515,9 +1671,12 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
     def delete_selected(self, override_list=None):
         """Stage 1: gather target list then hand off to inline symbolic confirmation."""
         initials_list = []
+        is_topbar_action = False
+
         if override_list:
             initials_list = override_list
         else:
+            is_topbar_action = True
             for row in range(self.table.rowCount()):
                 chk_item = self.table.item(row, 0)
                 if (
@@ -1528,20 +1687,28 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                     initials_list.append(self.table.item(row, 1).text())
 
         if not initials_list:
-            PopUp.warning(self, "No Selection", "Please select at least one user to delete.")
+            # Shake the button instead of showing a popup
+            self._shake_widget(self.btn_delete_selected)
             return
 
-        self._show_delete_confirmation(initials_list)
+        self._show_delete_confirmation(initials_list, is_topbar_action)
 
-    def _show_delete_confirmation(self, initials_list):
-        """Tint the full row red via viewport overlays then show confirmation.
+    def _set_table_actions_enabled(self, enabled: bool):
+        """Enables or disables the action buttons in all table rows."""
+        for row in range(self.table.rowCount()):
+            action_widget = self.table.cellWidget(row, 6)
+            if action_widget:
+                action_widget.setEnabled(enabled)
 
-        Single delete  → animated slide-in: action cell is replaced with Cancel / Confirm
-                         buttons that expand left from width=0, replacing all action buttons.
-        Multi delete   → action cells remain; a Cancel / Confirm pair slides into the top
-                         bar from the right, replacing the delete button."""
+    def _show_delete_confirmation(self, initials_list, is_topbar_action=False):
+        """Tint the full row red via viewport overlays then show confirmation."""
         self._pending_delete = list(initials_list)
-        is_bulk = len(initials_list) > 1
+
+        # --- NEW: Disable all row action buttons while any confirmation is active ---
+        self._set_table_actions_enabled(False)
+
+        # If triggered from the top bar, ALWAYS use the top bar confirmation
+        is_bulk = is_topbar_action or (len(initials_list) > 1)
 
         for row in range(self.table.rowCount()):
             init_item = self.table.item(row, 1)
@@ -1550,10 +1717,10 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
             if not is_bulk:
                 # Single: animated expand-from-right confirm widget in the action cell
+                # (Because this is a brand new widget replacement, it ignores the False lock above)
                 self._install_single_delete_confirm(row, initials_list)
 
-        # Overlay the full row(s) in red — works for both single and bulk, and is
-        # immune to QSS alternating-row overrides and cell-widget child coverage.
+        # Overlay the full row(s) in red — works for both single and bulk
         self._add_delete_row_overlays(initials_list)
 
         if is_bulk:
@@ -1562,69 +1729,51 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
     # ------------------------------------------------------------------
     # Single-delete animated confirm widget
     # ------------------------------------------------------------------
-
     def _install_single_delete_confirm(self, row, initials_list):
-        """Replace col-6 with Cancel+Confirm buttons that slide in from the right."""
+        """Replace col-6 with a layout where Cancel slides out from the Delete button."""
         confirm_w = QtWidgets.QWidget()
         confirm_w.setStyleSheet("background: transparent;")
         cl = QtWidgets.QHBoxLayout(confirm_w)
-        cl.setContentsMargins(4, 4, 4, 4)
-        cl.setSpacing(8)
+        cl.setContentsMargins(5, 2, 5, 2)
+        cl.setSpacing(5)
+        # Right-align so the confirm button stays stationary on the right
+        cl.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        btn_cancel = QtWidgets.QPushButton("")
+        # Cancel button
+        btn_cancel = GlassPushButton("", variant="neutral")
         btn_cancel.setIcon(QtGui.QIcon(self.ICON_CLEAR))
-        btn_cancel.setIconSize(QtCore.QSize(12, 12))
-        btn_cancel.setFixedSize(26, 26)
-        btn_cancel.setCursor(QtCore.Qt.PointingHandCursor)
-        btn_cancel.setToolTip("Cancel")
-        btn_cancel.setStyleSheet("""
-            QPushButton {
-                background: rgba(108,117,125,0.15);
-                border: 1px solid rgba(108,117,125,0.40);
-                border-radius: 13px;
-            }
-            QPushButton:hover  { background: rgba(108,117,125,0.30); }
-            QPushButton:pressed{ background: rgba(108,117,125,0.50); }
-        """)
+        btn_cancel.setIconSize(QtCore.QSize(16, 16))
+        btn_cancel.setFixedSize(0, 0)
         btn_cancel.clicked.connect(self._cancel_delete)
 
-        btn_confirm = QtWidgets.QPushButton("")
-        btn_confirm.setIcon(QtGui.QIcon(self.ICON_DELETE))
-        btn_confirm.setIconSize(QtCore.QSize(12, 12))
-        btn_confirm.setFixedSize(26, 26)
-        btn_confirm.setCursor(QtCore.Qt.PointingHandCursor)
-        btn_confirm.setToolTip("Confirm delete")
-        btn_confirm.setStyleSheet("""
-            QPushButton {
-                background: rgba(220,53,69,0.18);
-                border: 1px solid rgba(220,53,69,0.50);
-                border-radius: 13px;
-            }
-            QPushButton:hover  { background: rgba(220,53,69,0.35); }
-            QPushButton:pressed{ background: rgba(220,53,69,0.55); }
-        """)
-        btn_confirm.clicked.connect(
-            lambda _c=False, il=list(initials_list): self._confirm_delete(il)
-        )
+        # Save reference for the hide animation
+        self._single_delete_cancel_btn = btn_cancel
 
-        # Right-aligned so the buttons appear from the right edge as width expands left
-        cl.addStretch()
+        # Confirm button
+        btn_confirm = GlassPushButton("", variant="danger_confirm")
+        btn_confirm.setIcon(QtGui.QIcon(self.ICON_DELETE))
+        btn_confirm.setIconSize(QtCore.QSize(16, 16))
+        btn_confirm.setFixedSize(28, 28)
+
         cl.addWidget(btn_cancel)
         cl.addWidget(btn_confirm)
 
-        # Start collapsed — the setCellWidget swap is invisible at width 0
-        confirm_w.setMaximumWidth(0)
         self.table.setCellWidget(row, 6, confirm_w)
 
-        col_width = self.table.columnWidth(6)
+        # Animate the cancel button opening to full 28px width
         anim = QtCore.QVariantAnimation(self)
         anim.setDuration(220)
-        anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        anim.setStartValue(0)
-        anim.setEndValue(col_width)
-        anim.valueChanged.connect(lambda v: confirm_w.setMaximumWidth(int(v)))
+        anim.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
+        anim.setStartValue(0.0)
+        anim.setEndValue(28.0)
+
+        def _expand_single_cancel(v):
+            s = int(v)
+            btn_cancel.setFixedSize(s, s)
+
+        anim.valueChanged.connect(_expand_single_cancel)
         anim.start()
-        self._single_delete_anim = anim  # keep reference alive
+        self._single_delete_anim = anim
 
     # ------------------------------------------------------------------
     # Full-row red overlay helpers (viewport widgets, immune to QSS)
@@ -1702,99 +1851,122 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
     # ------------------------------------------------------------------
 
     def _show_topbar_delete_confirm(self, initials_list):
-        """Append a Cancel + Confirm widget to the top bar and animate its width 0 → full.
-        The QHBoxLayout stretch contracts, so the existing action buttons shift left."""
+        """Insert a Cancel button into the top bar and animate its width to push other buttons left."""
         icon_sz = QtCore.QSize(18, 18)
 
-        btn_cancel = QtWidgets.QPushButton("", self.taskbar_frame)
-        btn_cancel.setIcon(QtGui.QIcon(self.ICON_CLEAR))
-        btn_cancel.setIconSize(icon_sz)
-        btn_cancel.setToolTip("Cancel")
-        btn_cancel.setCursor(QtCore.Qt.PointingHandCursor)
-        btn_cancel.setStyleSheet("""
-            QPushButton {
-                background: rgba(108,117,125,0.15);
-                border: 1px solid rgba(108,117,125,0.40);
-                border-radius: 17px;
-                min-width: 34px; max-width: 34px;
-                min-height: 34px; max-height: 34px;
-            }
-            QPushButton:hover  { background: rgba(108,117,125,0.30);
-                                 border: 1px solid rgba(108,117,125,0.65); }
-            QPushButton:pressed{ background: rgba(108,117,125,0.50); }
-        """)
-        btn_cancel.clicked.connect(self._cancel_delete)
-
-        btn_confirm = QtWidgets.QPushButton("", self.taskbar_frame)
-        btn_confirm.setIcon(QtGui.QIcon(self.ICON_DELETE))
-        btn_confirm.setIconSize(icon_sz)
-        btn_confirm.setToolTip(f"Confirm delete  ({len(initials_list)} users)")
-        btn_confirm.setCursor(QtCore.Qt.PointingHandCursor)
-        btn_confirm.setStyleSheet("""
-            QPushButton {
-                background: rgba(220,53,69,0.18);
-                border: 1px solid rgba(220,53,69,0.50);
-                border-radius: 17px;
-                min-width: 34px; max-width: 34px;
-                min-height: 34px; max-height: 34px;
-            }
-            QPushButton:hover  { background: rgba(220,53,69,0.35);
-                                 border: 1px solid rgba(220,53,69,0.80); }
-            QPushButton:pressed{ background: rgba(220,53,69,0.55); }
-        """)
-        btn_confirm.clicked.connect(
+        self.btn_delete_selected.setText("")
+        self.btn_delete_selected.setToolTip(f"Confirm delete  ({len(initials_list)} users)")
+        self.btn_delete_selected.set_variant("danger_confirm")
+        self.btn_delete_selected.setFixedSize(34, 34)
+        # Swap the connection safely
+        try:
+            self.btn_delete_selected.clicked.disconnect()
+        except RuntimeError:
+            pass
+        self.btn_delete_selected.clicked.connect(
             lambda _c=False, il=list(initials_list): self._confirm_delete(il)
         )
 
-        # Single container so we animate one widget width instead of two
-        container = QtWidgets.QWidget(self.taskbar_frame)
-        container.setStyleSheet("background: transparent;")
-        cl = QtWidgets.QHBoxLayout(container)
-        cl.setContentsMargins(0, 0, 0, 0)
-        cl.setSpacing(self.top_bar.spacing())
-        cl.addWidget(btn_cancel)
-        cl.addWidget(btn_confirm)
+        self.btn_cancel_bulk = GlassPushButton("", self.taskbar_frame, variant="neutral")
+        self.btn_cancel_bulk.setIcon(QtGui.QIcon(self.ICON_CLEAR))
+        self.btn_cancel_bulk.setIconSize(icon_sz)
+        self.btn_cancel_bulk.setToolTip("Cancel")
+        self.btn_cancel_bulk.setFixedSize(0, 0)
+        self.btn_cancel_bulk.clicked.connect(self._cancel_delete)
 
-        # Start collapsed so the slide-in is visible
-        container.setMaximumWidth(0)
-        self.top_bar.addWidget(container)
-        self._topbar_confirm_widget = container
+        # 3. Insert it right before the delete button
+        idx = self.top_bar.indexOf(self.btn_delete_selected)
+        self.top_bar.insertWidget(idx, self.btn_cancel_bulk)
 
-        target_w = 34 + self.top_bar.spacing() + 34  # cancel + gap + confirm
-
+        # 4. Animate the Cancel button opening
         anim = QtCore.QVariantAnimation(self)
         anim.setDuration(220)
-        anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        anim.setStartValue(0)
-        anim.setEndValue(target_w)
-        anim.valueChanged.connect(lambda v: container.setMaximumWidth(int(v)))
-        anim.start()
-        self._topbar_confirm_anim = anim  # keep reference alive
+        anim.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
+        anim.setStartValue(0.0)
+        anim.setEndValue(34.0)
 
-    def _hide_topbar_delete_confirm(self):
-        """Collapse and remove the top-bar confirmation container (if present)."""
-        widget = getattr(self, "_topbar_confirm_widget", None)
-        if widget is None:
+        def _expand_bulk_cancel(v):
+            s = int(v)
+            self.btn_cancel_bulk.setFixedSize(s, s)
+
+        anim.valueChanged.connect(_expand_bulk_cancel)
+        anim.start()
+        self._topbar_confirm_anim = anim
+
+    def _hide_single_delete_confirm(self):
+        """Collapse the single-delete cancel button, then restore the action buttons."""
+        btn_cancel = getattr(self, "_single_delete_cancel_btn", None)
+        if not btn_cancel:
             return
-        # Stop any in-progress expand animation
-        anim_in = getattr(self, "_topbar_confirm_anim", None)
-        if anim_in and anim_in.state() == QtCore.QAbstractAnimation.Running:
+
+        # Stop any opening animation if it's currently running
+        anim_in = getattr(self, "_single_delete_anim", None)
+        if anim_in and anim_in.state() == QtCore.QAbstractAnimation.State.Running:
             anim_in.stop()
 
-        start_w = widget.maximumWidth()
+        start_w = btn_cancel.width()  # equals height since both were set together
         anim = QtCore.QVariantAnimation(self)
         anim.setDuration(160)
-        anim.setEasingCurve(QtCore.QEasingCurve.InCubic)
-        anim.setStartValue(start_w)
-        anim.setEndValue(0)
-        anim.valueChanged.connect(lambda v: widget.setMaximumWidth(int(v)))
+        anim.setEasingCurve(QtCore.QEasingCurve.Type.InCubic)
+        anim.setStartValue(float(start_w))
+        anim.setEndValue(0.0)
 
-        def _done():
-            self.top_bar.removeWidget(widget)
-            widget.deleteLater()
-            self._topbar_confirm_widget = None
+        def _collapse_single_cancel(v):
+            s = int(v)
+            btn_cancel.setFixedSize(s, s)
 
-        anim.finished.connect(_done)
+        anim.valueChanged.connect(_collapse_single_cancel)
+
+        def _cleanup():
+            self._single_delete_cancel_btn = None
+            self.update_table_data()  # Restores standard action buttons
+
+        anim.finished.connect(_cleanup)
+        anim.start()
+        self._single_delete_anim = anim
+
+    def _hide_topbar_delete_confirm(self):
+        """Collapse the cancel button, then restore the delete button to its normal state."""
+        if not hasattr(self, "btn_cancel_bulk") or not self.btn_cancel_bulk:
+            return
+
+        anim_in = getattr(self, "_topbar_confirm_anim", None)
+        if anim_in and anim_in.state() == QtCore.QAbstractAnimation.State.Running:
+            anim_in.stop()
+
+        # Restore the normal delete button logic, text, and width
+        self.btn_delete_selected.setText(" Delete")
+        self.btn_delete_selected.setToolTip("Delete Selected Users")
+        self.btn_delete_selected.set_variant("danger")
+        self.btn_delete_selected.setMinimumWidth(0)
+        self.btn_delete_selected.setMaximumWidth(16777215)
+        self.btn_delete_selected.setFixedHeight(34)
+        try:
+            self.btn_delete_selected.clicked.disconnect()
+        except RuntimeError:
+            pass
+        self.btn_delete_selected.clicked.connect(lambda: self.delete_selected())
+
+        # Animate the cancel button closing
+        start_w = self.btn_cancel_bulk.width()
+        anim = QtCore.QVariantAnimation(self)
+        anim.setDuration(160)
+        anim.setEasingCurve(QtCore.QEasingCurve.Type.InCubic)
+        anim.setStartValue(float(start_w))
+        anim.setEndValue(0.0)
+
+        def _collapse_bulk_cancel(v):
+            s = int(v)
+            self.btn_cancel_bulk.setFixedSize(s, s)
+
+        anim.valueChanged.connect(_collapse_bulk_cancel)
+
+        def _cleanup():
+            self.top_bar.removeWidget(self.btn_cancel_bulk)
+            self.btn_cancel_bulk.deleteLater()
+            self.btn_cancel_bulk = None
+
+        anim.finished.connect(_cleanup)
         anim.start()
         self._topbar_confirm_anim = anim
 
@@ -1803,21 +1975,62 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
     # ------------------------------------------------------------------
 
     def _cancel_delete(self):
-        """Discard the pending confirmation and restore normal state."""
+        """Discard the pending confirmation, remove overlays, and trigger collapse animations."""
         self._pending_delete = []
-        self._hide_topbar_delete_confirm()
-        self.update_table_data()
+
+        # Instantly remove the red row highlights
+        self._remove_delete_overlays()
+
+        # --- NEW: Instantly re-enable all other row action buttons ---
+        self._set_table_actions_enabled(True)
+
+        # Trigger the slide-out animations instead of instantly redrawing the table
+        if getattr(self, "btn_cancel_bulk", None):
+            self._hide_topbar_delete_confirm()
+        elif getattr(self, "_single_delete_cancel_btn", None):
+            self._hide_single_delete_confirm()
 
     def _confirm_delete(self, initials_list):
-        """Stage 2: confirmed — collapse the top-bar widget then run row animation."""
+        """Stage 2: confirmed — instantly discard topbar UI, then run row collapse animation."""
         self._pending_delete = []
-        self._hide_topbar_delete_confirm()
+
+        if hasattr(self, "btn_cancel_bulk") and self.btn_cancel_bulk:
+            anim_in = getattr(self, "_topbar_confirm_anim", None)
+            if anim_in and anim_in.state() == QtCore.QAbstractAnimation.State.Running:
+                anim_in.stop()
+            self.top_bar.removeWidget(self.btn_cancel_bulk)
+            self.btn_cancel_bulk.deleteLater()
+            self.btn_cancel_bulk = None
+
+            # Restore delete button state now that the bulk confirm UI is gone
+            self.btn_delete_selected.setText(" Delete")
+            self.btn_delete_selected.setToolTip("Delete Selected Users")
+            self.btn_delete_selected.setStyleSheet("""
+                QPushButton { 
+                    background: rgba(220, 53, 69, 0.1); 
+                    color: #B02A37;
+                    font-weight: bold;
+                    border: 1px solid rgba(220, 53, 69, 0.3); 
+                    border-radius: 17px; 
+                    padding: 0px 14px;
+                    min-height: 34px; max-height: 34px;
+                    min-width: 0px; max-width: 16777215px; /* Free the width constraints */
+                }
+                QPushButton:hover { background: rgba(220, 53, 69, 0.25); border: 1px solid rgba(220, 53, 69, 0.6); }
+                QPushButton:pressed { background: rgba(220, 53, 69, 0.4); }
+            """)
+            try:
+                self.btn_delete_selected.clicked.disconnect()
+            except RuntimeError:
+                pass
+            self.btn_delete_selected.clicked.connect(lambda: self.delete_selected())
+
         self._animate_delete_rows(initials_list)
 
     def _animate_delete_rows(self, initials_list):
-        """Phase 1: deepen the red wash on the full row (text + widget cells).
-        Phase 2: after 160 ms collapse each row height 0 (bottom-to-top visual).
-        Phase 3: archive files and refresh."""
+        """Phase 1: Retain viewport overlays to guarantee perfect edge-to-edge red tint.
+        Phase 2: Immediately collapse each row's height to 0 while dynamically shrinking the overlays.
+        Phase 3: Clean up overlays, archive files, and refresh."""
         affected_rows = [
             row
             for row in range(self.table.rowCount())
@@ -1825,23 +2038,15 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         ]
 
         if not affected_rows:
+            self._remove_delete_overlays()
             self._execute_delete(initials_list)
             return
 
-        # Phase 1 — deepen tint across all cell types
-        for row in affected_rows:
-            for col in range(self.table.columnCount()):
-                item = self.table.item(row, col)
-                if item:
-                    item.setBackground(QtGui.QBrush(QtGui.QColor(220, 53, 69, 90)))
-            role_cw = self.table.cellWidget(row, 3)
-            if role_cw:
-                role_cw.setStyleSheet("background: rgba(220, 53, 69, 55);")
-            cw = self.table.cellWidget(row, 6)
-            if cw:
-                cw.setStyleSheet("background: rgba(220, 53, 69, 55);")
+        # Phase 1: DO NOT remove the overlays here! The QWidget overlays placed by
+        # _show_delete_confirmation provide a perfect, unbroken red tint that ignores
+        # QSS overrides. We will keep them alive and animate them down to 0 height.
 
-        # Phase 2 — collapse rows simultaneously after the flash settles
+        # Phase 2 — collapse rows and dynamically shrink the overlays
         row_height = self.table.rowHeight(affected_rows[0])
         self._delete_anims = []
         completed = [0]
@@ -1857,6 +2062,8 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             def _make_step(r):
                 def _step(v):
                     self.table.setRowHeight(r, max(0, int(v)))
+                    # Force the perfect red overlays to shrink in lockstep with the row
+                    self._reposition_delete_overlays()
 
                 return _step
 
@@ -1864,6 +2071,8 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 def _finish():
                     completed[0] += 1
                     if completed[0] >= total:
+                        # Phase 3 - Clean up the overlays right BEFORE the table redraws
+                        self._remove_delete_overlays()
                         self._execute_delete(initials_list)
 
                 return _finish
@@ -1872,7 +2081,8 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             anim.finished.connect(_make_finish())
             self._delete_anims.append(anim)
 
-        QtCore.QTimer.singleShot(160, lambda: [a.start() for a in self._delete_anims])
+        # Start the collapse animations
+        QtCore.QTimer.singleShot(0, lambda: [a.start() for a in self._delete_anims])
 
     def _execute_delete(self, initials_list):
         """Archive user files after the animation completes; self-admin edge case preserved."""
@@ -1934,23 +2144,18 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             Log.e(f"Failed to archive user {initials}: {str(e)}")
 
     def add_user(self):
-        roles = [e.name for e in UserRoles][1:]
-        if UserRoles.OPERATE.name in roles:
-            roles[roles.index(UserRoles.OPERATE.name)] += " (Capture & Analyze)"
+        """Spawns the user creation overlay and updates the table on completion."""
+        UserProfiles.create_new_user()
+        self.update_table_data()
 
-        role_str, ok = QtWidgets.QInputDialog().getItem(None, "Add User", "Role:", roles, 0, False)
-        if ok:
-            UserProfiles.create_new_user(UserRoles[role_str.split()[0]])
-            self.update_table_data()
-
-    def toggleDevMode(self, arg):
+    def toggle_dev_mode(self, arg):
         try:
             dev_path = os.path.join(Constants.local_app_data_path, ".dev_mode")
             if self.developerModeChk.isChecked():
+                expires_at = str(
+                    (dt.datetime.now() + dt.timedelta(days=UserConstants.DEV_EXPIRE_LEN)).date()
+                )
                 with open(dev_path, "w") as dev:
-                    expires_at = str(
-                        (dt.datetime.now() + dt.timedelta(days=UserConstants.DEV_EXPIRE_LEN)).date()
-                    )
                     hexify_str1 = expires_at.encode().hex()
                     hexify_str2 = Constants.app_date.encode().hex()
                     encode_key = "DEADBEEFDEADBEEFDEAD"
@@ -1961,21 +2166,26 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                     dev.write(
                         bytes([(ord(a) ^ ord(b)) for a, b in zip(hexify_str2, encode_key)]).decode()
                     )
-
-                    self.developerModeChk.setStyleSheet("color:#388E3C; font-weight: bold;")
-                    PopUp.information(
-                        self,
-                        "Developer Mode Status",
-                        f"Developer Mode: ENABLED.\nExpires on {expires_at}",
-                    )
+                self.dev_mode_label.setStyleSheet("""
+                    QLabel { color: #388E3C; font-weight: bold; font-size: 11px; background: transparent; }
+                """)
+                self.dev_expiry_label.setStyleSheet("""
+                    QLabel { color: #388E3C; font-size: 10px; background: transparent; padding-left: 6px; }
+                """)
+                self.dev_expiry_label.setText(f"Expires: {expires_at}")
+                self.dev_expiry_label.setVisible(True)
             else:
                 if os.path.exists(dev_path):
                     os.remove(dev_path)
-                self.developerModeChk.setStyleSheet("color:#444; font-weight: bold;")
+                self.dev_mode_label.setStyleSheet("""
+                    QLabel { color: #555; font-weight: bold; font-size: 11px; background: transparent; }
+                """)
+                self.dev_expiry_label.setVisible(False)
+                self.dev_expiry_label.setText("")
         except Exception as e:
             Log.e(f"Error updating Developer Mode: {str(e)}")
 
-    def toggleReqAdminUpdates(self, arg):
+    def toggle_req_admin_updates(self, arg):
         try:
             if not os.path.isfile(Constants.user_constants_path):
                 os.makedirs(os.path.split(Constants.user_constants_path)[0], exist_ok=True)
