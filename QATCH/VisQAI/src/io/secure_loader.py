@@ -7,14 +7,18 @@ SHA256 hashing to ensure that manifest files and binary assets have
 not been tampered with. It supports dynamic importing of Python
 inference logic while allowing configurable security enforcement levels.
 
+Supports multi-module packages: the manifest's ``modules`` section
+declares a load order and entry point so each .visq package is
+self-describing.
+
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-16
+    2026-04-03
 
 Version:
-    2.0
+    3.1
 """
 
 import base64
@@ -22,14 +26,23 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
+# Sentinel used by SecurePackageLoader to distinguish "key was absent from
+# sys.modules" from "key mapped to None" when saving prior alias values.
+_MISSING = object()
+
 try:
+    TAG = "[SecureLoader]"
+    from QATCH.common.logger import Logger as Log
+
+except ImportError:
+
     TAG = "[SecureLoader (HEADLESS)]"
 
     class Log:
@@ -48,10 +61,6 @@ try:
         @staticmethod
         def e(TAG, msg=""):
             print("ERROR:", TAG, msg)
-
-except (ImportError, ModuleNotFoundError):
-    TAG = "[SecureLoader]"
-    from QATCH.common.logger import Logger as Log
 
 
 class SecurityError(Exception):
@@ -208,6 +217,15 @@ class SecurePackageLoader:
     triggering signature and integrity checks, and finally importing the
     required inference modules.
 
+    Supports two manifest formats:
+
+    **Legacy (v1):** A flat ``files`` dict where exactly one entry has
+    ``"type": "inference_code"``.  Loaded via :meth:`load_inference_module`.
+
+    **Multi-module (v2):** An additional ``modules`` section with
+    ``load_order`` (list of filenames) and ``entry_point`` (module + class).
+    Loaded via :meth:`load_modules`.
+
     Note:
         Current implementation downgrades signature and integrity failures
         to warnings to support user-imported (non-official) models.
@@ -217,6 +235,7 @@ class SecurePackageLoader:
         enforce_signatures (bool): Security policy for the loader.
         loader (SecureModuleLoader): The worker instance for crypto operations.
         manifest_data (dict): Cached dictionary of the manifest contents.
+        loaded_modules (dict): Filename -> module mapping after loading.
     """
 
     def __init__(self, extracted_dir: Path, enforce_signatures: bool = True):
@@ -229,7 +248,11 @@ class SecurePackageLoader:
         self.root = extracted_dir
         self.enforce_signatures = enforce_signatures
         self.loader = SecureModuleLoader(enforce_signatures)
-        self.manifest_data = {}
+        self.manifest_data: Dict[str, Any] = {}
+        self.loaded_modules: Dict[str, Any] = {}
+        # Maps plain stem -> prior sys.modules value (or _MISSING sentinel) so
+        # that unload/reset can restore the interpreter state cleanly.
+        self.injected_aliases: Dict[str, Any] = {}
 
     def load_manifest(self) -> Dict[str, Any]:
         """Loads and verifies the package manifest and asset integrity.
@@ -285,7 +308,161 @@ class SecurePackageLoader:
 
         return self.manifest_data
 
-    def load_inference_module(self, module_filename: str = None):
+    @property
+    def has_module_manifest(self) -> bool:
+        """True if the manifest contains an explicit ``modules`` section."""
+        return "modules" in self.manifest_data
+
+    def get_module_load_order(self) -> List[str]:
+        """Returns the declared module filenames in the order they should load.
+
+        Falls back to scanning ``files`` for any entry whose ``type``
+        contains ``"inference"`` (legacy behaviour).
+
+        Returns:
+            List of filenames relative to the package root.
+        """
+        modules_section = self.manifest_data.get("modules", {})
+        if "load_order" in modules_section:
+            return list(modules_section["load_order"])
+
+        # Legacy fallback: collect all inference-typed files
+        files_map = self.manifest_data.get("files", {})
+        return [fname for fname, meta in files_map.items() if "inference" in meta.get("type", "")]
+
+    def get_entry_point(self) -> Tuple[Optional[str], Optional[str]]:
+        """Returns ``(module_filename, class_name)`` from the manifest.
+
+        If no explicit entry point is declared the first inference module
+        is returned with *class_name* as ``None`` (caller must auto-detect).
+
+        Returns:
+            Tuple of (module_filename, class_name | None).
+        """
+        modules_section = self.manifest_data.get("modules", {})
+        ep = modules_section.get("entry_point", {})
+
+        module_file = ep.get("module")
+        class_name = ep.get("class")
+
+        if module_file:
+            return module_file, class_name
+
+        # Legacy: pick the first inference_code file
+        load_order = self.get_module_load_order()
+        if load_order:
+            return load_order[-1], None  # last is typically the main one
+        return None, None
+
+    def load_modules(self) -> Dict[str, Any]:
+        """Loads all declared code modules in dependency order.
+
+        Iterates over :meth:`get_module_load_order`, adds the package root
+        to ``sys.path`` so that inter-module imports resolve, and dynamically
+        imports each file.
+
+        Returns:
+            Dict mapping each filename to its loaded Python module object.
+
+        Raises:
+            FileNotFoundError: If a declared module file is missing.
+        """
+        load_order = self.get_module_load_order()
+        if not load_order:
+            Log.w(TAG, "No code modules declared in manifest.")
+            return {}
+
+        # Ensure the package root is on sys.path so modules can import
+        # each other using plain ``import <name>`` statements.
+        root_str = str(self.root)
+        if root_str not in sys.path:
+            sys.path.insert(0, root_str)
+
+        self.loaded_modules = {}
+        for filename in load_order:
+            module_path = (self.root / filename).resolve()
+            try:
+                module_path.relative_to(self.root.resolve())
+            except ValueError:
+                raise SecurityError(
+                    f"Module path '{filename}' escapes the package root — load rejected."
+                )
+            if not module_path.exists():
+                raise FileNotFoundError(f"Declared module '{filename}' not found in package.")
+
+            # Derive a clean module name (e.g. "inference")
+            module_name = f"visq_pkg.{module_path.stem}"
+            Log.i(TAG, f"Loading module: {filename} as {module_name}")
+            mod = self.loader.load_module_from_path(module_name, module_path)
+            # Inject a plain-stem alias so ``import <stem>`` resolves to the
+            # same object.  Save whatever was there before (or _MISSING if the
+            # key was absent) so unload/reset can restore the prior state.
+            stem = module_path.stem
+            prior = sys.modules.get(stem, _MISSING)
+            if stem not in self.injected_aliases:
+                self.injected_aliases[stem] = prior
+            sys.modules[stem] = mod
+            self.loaded_modules[filename] = mod
+
+        return self.loaded_modules
+
+    def get_engine_class(self):
+        """Resolves and returns the entry-point class from loaded modules.
+
+        Must be called *after* :meth:`load_modules`.
+
+        Returns:
+            The class object declared as the package entry point.
+
+        Raises:
+            ValueError: If the entry-point module or class cannot be resolved.
+        """
+        ep_module, ep_class = self.get_entry_point()
+
+        if not ep_module or ep_module not in self.loaded_modules:
+            raise ValueError(
+                f"Entry-point module '{ep_module}' was not loaded. "
+                f"Loaded modules: {list(self.loaded_modules.keys())}"
+            )
+
+        mod = self.loaded_modules[ep_module]
+
+        if ep_class:
+            if not hasattr(mod, ep_class):
+                raise ValueError(
+                    f"Entry-point class '{ep_class}' not found in {ep_module}. "
+                    f"Available: {[a for a in dir(mod) if not a.startswith('_')]}"
+                )
+            return getattr(mod, ep_class)
+
+        # Auto-detect: look for a class whose name contains "Predictor" that is
+        # defined in this module (not merely imported into it).
+        candidates = [
+            (attr_name, getattr(mod, attr_name))
+            for attr_name in dir(mod)
+            if isinstance(getattr(mod, attr_name), type)
+            and "Predictor" in attr_name
+            and getattr(mod, attr_name).__module__ == mod.__name__
+        ]
+
+        if len(candidates) == 1:
+            attr_name, obj = candidates[0]
+            Log.i(TAG, f"Auto-detected entry-point class: {attr_name}")
+            return obj
+
+        if len(candidates) == 0:
+            raise ValueError(
+                f"Could not auto-detect an entry-point class in {ep_module}. "
+                f"Declare 'class' in manifest modules.entry_point."
+            )
+
+        names = [name for name, _ in candidates]
+        raise ValueError(
+            f"Ambiguous entry-point: multiple 'Predictor' classes found in "
+            f"{ep_module}: {names}. Declare 'class' in manifest modules.entry_point."
+        )
+
+    def load_inference_module(self, module_filename: str | None = None):
         """Imports the primary inference logic from the package.
 
         If a filename is not provided, the method scans the manifest for a file
@@ -304,7 +481,7 @@ class SecurePackageLoader:
         if not module_filename:
             files_map = self.manifest_data.get("files", {})
             for fname, meta in files_map.items():
-                if "inference" in meta.get("type"):
+                if "inference" in meta.get("type", ""):
                     module_filename = fname
                     break
 

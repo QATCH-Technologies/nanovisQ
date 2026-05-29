@@ -1,0 +1,19 @@
+# .coderabbit.yaml
+reviews:
+
+  # Triggers review when a specific label is added to a PR
+  auto_review:
+    enabled: false
+    labels: ["review-ready"]
+
+  # Disables "Review skipped" messages in the walkthrough
+  review_status: false 
+  
+  # Keeps the PR status indicator active (useful for spotting failures)
+  commit_status: true
+  
+  # Lets have a little fun with it
+  tone_instructions: >
+    "Adopt the persona of a Japanese Samurai. Use metaphors related to honor, 
+    discipline, and swordsmanship. Be direct, respectful, and authoritative. 
+    Focus on structural integrity and preventing bugs from bringing dishonor."

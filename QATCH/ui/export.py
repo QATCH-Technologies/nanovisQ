@@ -19,6 +19,7 @@ from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
+from QATCH.ui.run_recovery_ui import RunRecoveryDialog
 
 # TODO copy this to QATCH core context, not from VisQAI
 from QATCH.VisQAI.src.io.parser import Parser
@@ -68,6 +69,7 @@ class Ui_Export(QtWidgets.QWidget):
         # Add tabs
         self.tabs.addTab(self.tab1, "Import")
         self.tabs.addTab(self.tab2, "Export")
+        self.tabs.addTab(RunRecoveryDialog(), "Recover")
         self.tabs.addTab(self.tabAdv, "Advanced")
         self.tabs.addTab(self.tab3, "History")
 
@@ -374,6 +376,8 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox3.setChecked(False)
         self.groupbox3.setLayout(exportGridLayout)
 
+        ### BEGIN: Advanced tab init
+
         layout_h3 = QtWidgets.QVBoxLayout()
         erase_notice = QtWidgets.QLabel(
             "<h1 style='color: #FF0000;'>WARNING</h1><br/>"
@@ -519,15 +523,17 @@ class Ui_Export(QtWidgets.QWidget):
         self.main = Thread(target=self.mainTask)
         self.main.start()
 
+        # self.tabs.widget(2).show()  # load unnamed runs on Recover tab
+
     def do_clearAllHistory(self):
         history_path = os.path.join(
             os.getcwd(), Constants.log_export_path, "export_history.log"
         )
         send2trash.send2trash(history_path)
-        self.tabChanged(2)
+        self.tabChanged(4)
 
     def tabChanged(self, idx):
-        if idx == 2:
+        if idx == 4:  # History
             history_path = os.path.join(
                 os.getcwd(), Constants.log_export_path, "export_history.log"
             )

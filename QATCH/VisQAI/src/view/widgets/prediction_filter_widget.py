@@ -145,14 +145,14 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         self.spin_temp_min = QtWidgets.QDoubleSpinBox()
         self.spin_temp_min.setRange(0, 100)
         self.spin_temp_min.setValue(0)
-        self.spin_temp_min.setFixedWidth(60)
+        self.spin_temp_min.setFixedWidth(72)
 
         self.range_slider = RangeSlider(0, 100)
 
         self.spin_temp_max = QtWidgets.QDoubleSpinBox()
         self.spin_temp_max.setRange(0, 100)
         self.spin_temp_max.setValue(100)
-        self.spin_temp_max.setFixedWidth(60)
+        self.spin_temp_max.setFixedWidth(72)
 
         self.range_slider.rangeChanged.connect(self._on_slider_changed)
         self.spin_temp_min.valueChanged.connect(self._on_spin_changed)
@@ -333,8 +333,7 @@ class PredictionFilterWidget(QtWidgets.QWidget):
             "temp_min": self.spin_temp_min.value(),
             "temp_max": self.spin_temp_max.value(),
             "ingredients": {
-                ing_type: btn.get_selected_items()
-                for ing_type, btn in self.ing_buttons.items()
+                ing_type: btn.get_selected_items() for ing_type, btn in self.ing_buttons.items()
             },
         }
 

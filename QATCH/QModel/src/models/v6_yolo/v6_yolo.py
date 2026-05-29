@@ -19,10 +19,10 @@ Dependencies:
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-01-09
+    2026-04-29
 
 Version:
-    6.1.0 
+    6.1.2
 """
 
 import datetime
@@ -31,7 +31,7 @@ import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import cv2  # New project requirement as of 2026-01-12
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -191,6 +191,7 @@ class QModelV6YOLO_FillClassifier:
             (QModelV6Config.FILL_INFERENCE_W, QModelV6Config.FILL_INFERENCE_H),
             interpolation=cv2.INTER_AREA,
         )
+        self._last_image = img_input
         # # --- Debugging for live fill frames and type cls ---
         # debug_dir = os.path.join(os.getcwd(), "debug_frames")
         # os.makedirs(debug_dir, exist_ok=True)
@@ -214,13 +215,13 @@ class QModelV6YOLO_FillClassifier:
             pred_label = results[0].names[top1_index]
             confidence = probs.top1conf.item()
 
-            Log.d(self.TAG, f"Prediction: '{pred_label}' ({confidence:.1%})")
+            # Log.d(self.TAG, f"Prediction: '{pred_label}' ({confidence:.1%})")
 
-            if confidence < 0.5:
-                Log.w(
-                    self.TAG,
-                    f"Low confidence ({confidence:.2f}) for class: {pred_label}",
-                )
+            # if confidence < 0.5:
+            #     Log.w(
+            #         self.TAG,
+            #         f"Low confidence ({confidence:.2f}) for class: {pred_label}",
+            #     )
 
             return self._map_label_to_channels(pred_label)
 
@@ -309,9 +310,7 @@ class QModelV6YOLO_Detector:
         img_base = QModelV6YOLO_DataProcessor.generate_channel_det(
             df, img_w=QModelV6Config.IMG_WIDTH, img_h=QModelV6Config.IMG_HEIGHT
         )
-        results = self.model(
-            img_base, verbose=False, conf=QModelV6Config.CONF_THRESHOLD
-        )
+        results = self.model(img_base, verbose=False, conf=QModelV6Config.CONF_THRESHOLD)
         col_time = "Relative_time"
         if col_time not in df.columns:
             col_time = "time" if "time" in df.columns else df.columns[0]
@@ -443,8 +442,7 @@ class QModelV6YOLO:
             {"indices": [-1], "confidences": [-1]}.
         """
         return {
-            poi_name: {"indices": [-1], "confidences": [-1]}
-            for poi_name in self.POI_MAP.values()
+            poi_name: {"indices": [-1], "confidences": [-1]} for poi_name in self.POI_MAP.values()
         }
 
     def _format_output(
@@ -573,11 +571,7 @@ class QModelV6YOLO:
         final_save_path = f"{base_name}_{timestamp}{ext}"
 
         time = df["Relative_time"].values
-        signal = (
-            df["Dissipation"].values
-            if "Dissipation" in df.columns
-            else df.iloc[:, 1].values
-        )
+        signal = df["Dissipation"].values if "Dissipation" in df.columns else df.iloc[:, 1].values
 
         plt.figure(figsize=(12, 6))
         plt.plot(time, signal, color="gray", alpha=0.6, label="Raw Signal")
@@ -607,6 +601,8 @@ class QModelV6YOLO:
         df: pd.DataFrame | None = None,
         visualize: bool = False,
         num_channels: int | None = None,
+        avg_res_freq: Optional[float] = None,
+        avg_diss: Optional[float] = None,
     ) -> Tuple[Dict[str, Dict[str, List]], int]:
         """
         Executes the QModel V6 YOLO prediction pipeline on the provided data.
@@ -630,18 +626,26 @@ class QModelV6YOLO:
             num_channels (int, optional): The number of channels to enforce. If None,
                 the fill classifier is used to automatically determine the channel count.
                 Defaults to None.
+            avg_res_freq (Optional[float]): Pre-computed baseline mean of
+                `Resonance_Frequency` from the pre-fill window. When provided together
+                with `avg_diss`, the baseline window search inside `preprocess_dataframe`
+                is bypassed. This is required for live inference once the rolling buffer
+                has trimmed past the baseline window and the early reference data is no
+                longer present in the DataFrame.
+            avg_diss (Optional[float]): Pre-computed baseline mean of `Dissipation` from
+                the pre-fill window. See `avg_res_freq` for details.
 
         Returns:
             Tuple[Dict[str, Dict[str, List]], int]: A tuple containing:
                 1. A dictionary of predictions mapping POI names to their results:
-                   {
-                       "POI_NAME": {
-                           "indices": [int],       # Row indices in the raw DataFrame
-                           "confidences": [float], # Model confidence scores
-                           "time": [float]         # (Optional) Time values if retained
-                       },
-                       ...
-                   }
+                {
+                    "POI_NAME": {
+                        "indices": [int],       # Row indices in the raw DataFrame
+                        "confidences": [float], # Model confidence scores
+                        "time": [float]         # (Optional) Time values if retained
+                    },
+                    ...
+                }
                 2. The integer number of channels detected (or enforced) for this run.
 
         Note:
@@ -660,9 +664,12 @@ class QModelV6YOLO:
             if progress_signal:
                 progress_signal.emit(10, "Data Loaded")
 
-            master_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(raw_df.copy())
+            master_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(
+                raw_df.copy(),
+                baseline_freq=avg_res_freq,
+                baseline_diss=avg_diss,
+            )
 
-            # --- UPDATE: Preprocessing Complete ---
             if progress_signal:
                 progress_signal.emit(20, "Preprocessing Data...")
 
@@ -682,9 +689,7 @@ class QModelV6YOLO:
             final_results = {}
             current_df = master_df.copy()
             col_time = (
-                "Relative_time"
-                if "Relative_time" in current_df.columns
-                else current_df.columns[0]
+                "Relative_time" if "Relative_time" in current_df.columns else current_df.columns[0]
             )
             cut_history = []
 
@@ -753,9 +758,7 @@ class QModelV6YOLO:
                         progress_signal.emit(90, "Applying Fine Adjustment...")
                     anchor_time = final_results[5]["time"]
                     fine_slice = master_df[master_df[col_time] >= anchor_time]
-                    res_fine = det_fine.predict_single(
-                        fine_slice, target_class_map={0: 6}
-                    )
+                    res_fine = det_fine.predict_single(fine_slice, target_class_map={0: 6})
 
                     if 6 in res_fine:
                         process_detection(res_fine, 6)

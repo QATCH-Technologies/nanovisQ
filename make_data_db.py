@@ -10,10 +10,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-19
+    2026-04-14
 
 Version:
-    1.5
+    1.5.1
 """
 
 import json
@@ -63,9 +63,7 @@ def get_project_paths() -> Tuple[Path, Path]:
             csv_path = base_path / SOURCE_CSV
             return db_path.resolve(), csv_path.resolve()
 
-    raise FileNotFoundError(
-        "Could not locate QATCH/VisQAI/assets relative to make_data_db.py"
-    )
+    raise FileNotFoundError("Could not locate QATCH/VisQAI/assets relative to make_data_db.py")
 
 
 def shuffle_text(text: str, seed: Union[int, None] = None) -> Tuple[str, int]:
@@ -180,9 +178,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def verify_database_integrity(
-    db_path: Path, original_df: pd.DataFrame, expected_key: str
-):
+def verify_database_integrity(db_path: Path, original_df: pd.DataFrame, expected_key: str):
     """Performs rigorous integrity checks on the generated database.
 
     Verifies metadata keys, viscosity profile validity, ingredient uniqueness,
@@ -216,9 +212,7 @@ def verify_database_integrity(
 
             viscs = f.viscosity_profile.viscosities
             if any(v <= 0 for v in viscs):
-                logger.warning(
-                    f"Formulation {f.id} has non-positive viscosities: {viscs}"
-                )
+                logger.warning(f"Formulation {f.id} has non-positive viscosities: {viscs}")
 
         logger.info("Viscosity verification passed.")
 
@@ -240,9 +234,7 @@ def verify_database_integrity(
 
         if duplicates:
             raise ValueError(f"Duplicate ingredients found: {duplicates}")
-        logger.info(
-            f"Ingredient verification passed ({len(ingredients)} unique ingredients)."
-        )
+        logger.info(f"Ingredient verification passed ({len(ingredients)} unique ingredients).")
 
         # Verify DataFrame Equality
         db_df = form_ctrl.get_all_as_dataframe(encoded=False)
@@ -298,12 +290,8 @@ def verify_database_integrity(
             df_src = df_src_dedup
 
         if len(df_src) != len(df_db):
-            logger.error(
-                f"Row count mismatch: Source (Unique) {len(df_src)} vs DB {len(df_db)}"
-            )
-            raise ValueError(
-                f"Row count mismatch: Source {len(df_src)} vs DB {len(df_db)}"
-            )
+            logger.error(f"Row count mismatch: Source (Unique) {len(df_src)} vs DB {len(df_db)}")
+            raise ValueError(f"Row count mismatch: Source {len(df_src)} vs DB {len(df_db)}")
 
         try:
             # Sort by stable columns to ensure alignment
@@ -348,6 +336,7 @@ def main():
         raise FileNotFoundError(f"CSV file not found at: {csv_path}")
 
     app_key = uuid.uuid4().hex
+    build_version = int(time.time())
     metadata = {
         "app_date": Constants.app_date,
         "app_encoding": Constants.app_encoding,
@@ -367,6 +356,7 @@ def main():
     ing_ctrl._user_mode = False
     form_ctrl = FormulationController(db=database)
     form_ctrl.ingredient_controller._user_mode = False
+
     logger.info("Reading and normalizing CSV...")
     df_normalized = normalize_dataframe(pd.read_csv(csv_path))
 
@@ -374,31 +364,13 @@ def main():
     t_import = time.perf_counter()
     form_ctrl.add_all_from_dataframe(df_normalized, verbose_print=True)
     logger.info(f"Import completed in {time.perf_counter() - t_import:.2f}s.")
+    # Assign the metadata to the database instance
+    database.metadata = metadata
+    database.update_metadata_version(build_version)
 
+    database.flush()
     database.close()
-
-    # Inject Encrypted Metadata Header
-    header_bytes = None
-    temp_db = Database(path=":memory:")
-    try:
-        temp_db.metadata = {"app_encoding": Constants.app_encoding}
-        header_bytes = encrypt_metadata_header(metadata, temp_db)
-    finally:
-        temp_db.close()
-
-    if not header_bytes:
-        logger.warning("Failed to encrypt metadata header")
-        raise EncodingWarning("Failed to encrypt metadata header")
-
-    with open(db_path, "rb") as f:
-        f.readline()  # Skip default header
-        content = f.read()
-
-    with open(db_path, "wb") as f:
-        f.write(header_bytes)
-        f.write(content)
-
-    logger.info(f"Encrypted metadata injected (Seed: {header_bytes[0]}).")
+    logger.info("Database cleanly saved and encrypted natively via db module.")
 
     t_verify = time.perf_counter()
     verify_database_integrity(db_path, df_normalized, app_key)

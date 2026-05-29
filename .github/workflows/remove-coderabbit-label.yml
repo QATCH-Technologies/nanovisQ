@@ -1,0 +1,19 @@
+name: Remove CodeRabbit Label
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  remove-label:
+    # Only run if the review was submitted by the CodeRabbit bot
+    if: github.event.review.user.login == 'coderabbitai[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Remove review-ready label
+        uses: actions-ecosystem/action-remove-labels@v1
+        with:
+          labels: 'review-ready'
+          # This action automatically extracts the PR number from context
