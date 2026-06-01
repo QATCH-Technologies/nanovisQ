@@ -1,3 +1,19 @@
+"""
+Things that I need to update:
+- Refresh should blur users when loading
+- add filter button filter by creation dates, accessed dates, and roles
+
+- fix full screen animation to be smooth
+- Closing user management from full screen also needs the close animation.
+
+- Initials, name, role, created, and accessed should have sort by options on the header row
+- Make name and initials fields more clearly editable
+
+- Bug in audit view where if the 'Timestamp' cell is double clicked it brings up a select all option.
+
+- Optional: pretty print creation dates, access dates and audit logs
+"""
+
 import os
 import hashlib
 import datetime as dt
@@ -430,6 +446,14 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
         self.update_table_data()
 
+        # Start hidden and pre-sized to the parent's content area. If the widget
+        # is ever shown without its geometry first being set, Qt briefly paints
+        # it as a small top-level window (the "dialog flash"). Fitting here, at
+        # construction, means the geometry is already correct before any show.
+        self.hide()
+        self._scrim_alpha = 0
+        self._refit_to_parent()
+
     def _apply_shadow(self, widget, blur_radius=15, alpha=40, offset=(0, 4)):
         """Helper method to add depth to glass components."""
         shadow = QtWidgets.QGraphicsDropShadowEffect(self)
@@ -527,24 +551,40 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             new_pixmap = self.table_container.grab()
             self.table_container.setVisible(False)
 
-            # Build overlay labels as glass_frame children so they clip correctly
-            old_overlay = QtWidgets.QLabel(self.glass_frame)
-            old_overlay.setPixmap(old_pixmap)
-            old_overlay.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-            old_overlay.setGeometry(tbl_geo)
-            old_overlay.show()
-            old_overlay.raise_()
+            # Clipping wrapper: a plain child frame sized exactly to the table
+            # area, with clipped children enabled. The sliding pixmaps are
+            # parented INTO this wrapper, so anything that slides past the table
+            # bounds is masked instead of bleeding over the panel's padded
+            # margins and rounded corners (the "persistent edge items" bug).
+            clip = QtWidgets.QFrame(self.glass_frame)
+            clip.setObjectName("slideClip")
+            clip.setStyleSheet("QFrame#slideClip { background: transparent; border: none; }")
+            clip.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+            clip.setGeometry(tbl_geo)
+            clip.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+            # Force hard clipping of child widgets to the wrapper's rect.
+            clip.setMask(QtGui.QRegion(0, 0, tbl_geo.width(), tbl_geo.height()))
+            clip.show()
+            clip.raise_()
 
             w = tbl_geo.width()
-            start_pos = tbl_geo.topLeft()
+            # Inside the clip wrapper everything is in wrapper-local coords,
+            # so the resting position is (0, 0).
+            rest_pos = QtCore.QPoint(0, 0)
             if direction == "right":
-                old_end = QtCore.QPoint(start_pos.x() + w, start_pos.y())
-                new_start = QtCore.QPoint(start_pos.x() - w, start_pos.y())
+                old_end = QtCore.QPoint(w, 0)
+                new_start = QtCore.QPoint(-w, 0)
             else:
-                old_end = QtCore.QPoint(start_pos.x() - w, start_pos.y())
-                new_start = QtCore.QPoint(start_pos.x() + w, start_pos.y())
+                old_end = QtCore.QPoint(-w, 0)
+                new_start = QtCore.QPoint(w, 0)
 
-            new_overlay = QtWidgets.QLabel(self.glass_frame)
+            old_overlay = QtWidgets.QLabel(clip)
+            old_overlay.setPixmap(old_pixmap)
+            old_overlay.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+            old_overlay.setGeometry(QtCore.QRect(rest_pos, tbl_geo.size()))
+            old_overlay.show()
+
+            new_overlay = QtWidgets.QLabel(clip)
             new_overlay.setPixmap(new_pixmap)
             new_overlay.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             new_overlay.setGeometry(QtCore.QRect(new_start, tbl_geo.size()))
@@ -555,23 +595,26 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             anim_old = QtCore.QPropertyAnimation(old_overlay, b"pos")
             anim_old.setDuration(320)
             anim_old.setEasingCurve(QtCore.QEasingCurve.OutQuint)
-            anim_old.setStartValue(start_pos)
+            anim_old.setStartValue(rest_pos)
             anim_old.setEndValue(old_end)
 
             anim_new = QtCore.QPropertyAnimation(new_overlay, b"pos")
             anim_new.setDuration(320)
             anim_new.setEasingCurve(QtCore.QEasingCurve.OutQuint)
             anim_new.setStartValue(new_start)
-            anim_new.setEndValue(start_pos)
+            anim_new.setEndValue(rest_pos)
 
             self.transition_group = QtCore.QParallelAnimationGroup(self)
             self.transition_group.addAnimation(anim_old)
             self.transition_group.addAnimation(anim_new)
 
             def _cleanup():
-                old_overlay.deleteLater()
-                new_overlay.deleteLater()
+                # Reveal the real container FIRST so there is never a frame where
+                # neither the overlays nor the live table is painted, then drop
+                # the whole clip wrapper (and its child overlays) in one shot.
                 self.table_container.setVisible(True)
+                clip.hide()
+                clip.deleteLater()
 
             self.transition_group.finished.connect(_cleanup)
             self.transition_group.start()
@@ -635,9 +678,22 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.btn_fullscreen.raise_()
 
     def toggle_fullscreen(self):
-        """Toggles between inset glass panel and a full-bleed opaque window with animation."""
+        """Toggle between inset glass panel and full-bleed window.
+
+        Smoothness strategy: animate a STATIC PIXMAP of the panel, not the live
+        widget. Animating the real glass_frame's geometry still lets the
+        QTableView redistribute its Stretch/ResizeToContents columns on every
+        frame — that live column reflow is the "contents resizing weirdly"
+        artifact. Instead we grab the frame to a pixmap once, hide the real
+        frame, and animate a QLabel holding that frozen image from the start
+        rect to the target rect (scaled to fill). Nothing inside reflows during
+        the motion. At the end we resize the real frame once and reveal it, so
+        the table relayouts a single time at its final width.
+        """
         if hasattr(self, "anim") and self.anim.state() == QtCore.QAbstractAnimation.Running:
             self.anim.stop()
+        # Tear down any leftover proxy from an interrupted toggle.
+        self._destroy_fs_proxy()
 
         self._is_fullscreen = not getattr(self, "_is_fullscreen", False)
 
@@ -648,66 +704,91 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self._fs_hover_icon = self._tinted_icon(
             _icon_path, QtGui.QColor(185, 190, 200, 230), size=14
         )
-        # Show hover or normal depending on where the cursor currently is
         if self.btn_fullscreen.underMouse():
             self.btn_fullscreen.setIcon(self._fs_hover_icon)
         else:
             self.btn_fullscreen.setIcon(self._fs_normal_icon)
 
         w = self.width()
-        start_m = self.base_layout.contentsMargins().left()
+        h = self.height()
+        pct = getattr(self, "_default_margin_pct", 0.175)
+        start_rect = self.glass_frame.geometry()
 
-        # Determine targets and instantly apply the static CSS to avoid layout engine thrashing
         if self._is_fullscreen:
-            target_m = 0
-            self._panel_alpha = 255  # <--- FIX: Update the internal state tracker
+            target_rect = QtCore.QRect(0, 0, w, h)
+            self._panel_alpha = 255
+        else:
+            mx = int(w * pct)
+            my = int(h * pct)
+            target_rect = QtCore.QRect(mx, my, w - 2 * mx, h - 2 * my)
+            self._panel_alpha = 215
+
+        # 1. Freeze the current panel to a pixmap.
+        frozen = self.glass_frame.grab()
+
+        # 2. Pre-apply the FINAL stylesheet + final geometry to the real frame
+        #    while it is hidden, so when we reveal it at the end it is already
+        #    correct (one relayout, off-screen, invisible to the user).
+        if self._is_fullscreen:
             self.glass_frame.setStyleSheet("""
-                QFrame#userview { 
-                    background: rgba(255, 255, 255, 255); 
-                    border: 0px solid rgba(255, 255, 255, 230); 
-                    border-radius: 0px; 
+                QFrame#userview {
+                    background: rgba(255, 255, 255, 255);
+                    border: 0px solid rgba(255, 255, 255, 230);
+                    border-radius: 0px;
                 }
             """)
         else:
-            target_m = int(w * getattr(self, "_default_margin_pct", 0.175))
-            self._panel_alpha = 215  # <--- FIX: Update the internal state tracker
             self.glass_frame.setStyleSheet("""
-                QFrame#userview { 
-                    background: rgba(255, 255, 255, 215); 
-                    border: 1.5px solid rgba(255, 255, 255, 230); 
-                    border-radius: 12px; 
+                QFrame#userview {
+                    background: rgba(255, 255, 255, 215);
+                    border: 1.5px solid rgba(255, 255, 255, 230);
+                    border-radius: 12px;
                 }
             """)
+        # Hide the live frame during the motion so only the pixmap shows.
+        self.glass_frame.hide()
 
-        # QVariantAnimation drives the layout margin float over 250ms
-        # Freeze every column to its current pixel width so that the per-frame
-        # setContentsMargins call in _apply_margin_step cannot trigger a Stretch/
-        # ResizeToContents recalculation on every frame — the main source of stutter.
-        header = self.table.horizontalHeader()
-        if self.table.columnCount() > 0:
-            frozen_widths = [header.sectionSize(c) for c in range(self.table.columnCount())]
-            for c, pw in enumerate(frozen_widths):
-                header.setSectionResizeMode(c, QtWidgets.QHeaderView.Fixed)
-                header.resizeSection(c, pw)
+        # 3. Proxy label that displays the frozen pixmap, scaled to its rect.
+        self._fs_proxy = QtWidgets.QLabel(self)
+        self._fs_proxy.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self._fs_proxy.setScaledContents(True)  # uniform stretch → smooth zoom
+        self._fs_proxy.setPixmap(frozen)
+        self._fs_proxy.setGeometry(start_rect)
+        self._fs_proxy.show()
+        self._fs_proxy.raise_()
+        # Keep the corner buttons above the proxy.
+        self.btn_close.raise_()
+        self.btn_fullscreen.raise_()
 
-        # QVariantAnimation drives the layout margin float over 250ms
-        self.anim = QtCore.QVariantAnimation(self)
-        self.anim.setDuration(250)
+        # 4. Animate the proxy's geometry (pure image scale — no reflow).
+        self.anim = QtCore.QPropertyAnimation(self._fs_proxy, b"geometry", self)
+        self.anim.setDuration(260)
         self.anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self.anim.setStartValue(float(start_m))
-        self.anim.setEndValue(float(target_m))
-
-        self.anim.valueChanged.connect(self._apply_margin_step)
+        self.anim.setStartValue(start_rect)
+        self.anim.setEndValue(target_rect)
+        self.anim.valueChanged.connect(lambda rect: self._update_dots_position(rect.x(), rect.y()))
 
         def _finish():
-            # Snap geometry to exact final state, then let columns recalculate once
-            # at the settled panel size. Both calls are synchronous, so only one
-            # paint event fires — no visible jump.
-            self._refit_to_parent()
-            self._restore_column_modes()
+            # Reveal the already-correct live frame, then drop the proxy.
+            self._refit_to_parent()  # sets real frame geometry/margins once
+            self.glass_frame.show()
+            self.glass_frame.raise_()
+            self._update_dots_position(target_rect.x(), target_rect.y())
+            self._destroy_fs_proxy()
 
         self.anim.finished.connect(_finish)
         self.anim.start()
+
+    def _destroy_fs_proxy(self):
+        """Remove the fullscreen-transition pixmap proxy if one exists."""
+        proxy = getattr(self, "_fs_proxy", None)
+        if proxy is not None:
+            try:
+                proxy.hide()
+                proxy.deleteLater()
+            except RuntimeError:
+                pass
+            self._fs_proxy = None
 
     def _restore_column_modes(self):
         """Re-apply the correct header resize modes after a fullscreen animation.
@@ -735,19 +816,19 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             header.setSectionResizeMode(6, QtWidgets.QHeaderView.Fixed)
             header.resizeSection(6, 115)
 
-    def _apply_margin_step(self, current_mx):
+    def _apply_margin_step(self, progress):
         """Fired every frame by the expand/collapse animation.
 
-        The animated value is the *horizontal* margin (derived from width).
-        The vertical margin is kept proportional to height independently so the
-        glass panel maintains its intended inset regardless of window aspect ratio.
+        *progress* is a normalized 0→1 value. Both the horizontal and vertical
+        margins are interpolated independently between their true start and
+        target pixel values (stashed in toggle_fullscreen). Deriving the
+        vertical margin from the horizontal ratio — the old approach — produced
+        non-proportional motion and the "strange resizing" on expand.
         """
-        w = self.width()
-        h = self.height()
-        mx = int(current_mx)
-        # Back-compute the fractional progress so we can apply it to height too
-        pct = (current_mx / w) if w > 0 else self._default_margin_pct
-        my = int(h * pct)
+        start_mx, start_my = getattr(self, "_fs_margin_start", (0, 0))
+        target_mx, target_my = getattr(self, "_fs_margin_target", (0, 0))
+        mx = int(start_mx + (target_mx - start_mx) * progress)
+        my = int(start_my + (target_my - start_my) * progress)
         self.base_layout.setContentsMargins(mx, my, mx, my)
         self._update_dots_position(mx, my)
 
@@ -770,12 +851,41 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         """)
         self._update_dots_position(current_m, current_m)
 
+    def setVisible(self, visible):
+        """Fit to parent and suppress painting until layout settles — kills the
+        'tiny dialog' flash on open.
+
+        UIControls calls .show()/.setVisible(True) on this overlay. At that
+        instant the child layout has not resolved to the parent-fitted size yet,
+        so Qt paints one transient frame of the panel/table at a small size,
+        which reads as a little dialog popping up. We disable widget updates,
+        become visible, fit to the parent, and only re-enable painting on the
+        next event-loop tick once geometry + layout are fully settled. The first
+        frame the user actually sees is therefore the final, full-size layout.
+        """
+        if visible and not self.isVisible():
+            self._scrim_alpha = 0
+            self.setUpdatesEnabled(False)
+            self._refit_to_parent()
+            super().setVisible(True)
+            self._refit_to_parent()
+
+            def _reveal():
+                self._refit_to_parent()
+                self.setUpdatesEnabled(True)
+                self.update()
+                self._animate_open()
+
+            QtCore.QTimer.singleShot(0, _reveal)
+            return
+        super().setVisible(visible)
+
     def showEvent(self, event):
-        """Fill parent geometry, raise to front, then fade in."""
+        """Raise to front. Geometry is fitted and painting is gated by
+        setVisible(); the fade is kicked off from there once layout settles."""
         Log.d(f"{TAG} showEvent fired, parent={self.parent}")
         self._refit_to_parent()
         self.raise_()
-        self._animate_open()
         super().showEvent(event)
 
     def hideEvent(self, event):
@@ -848,35 +958,94 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self._open_anim.start()
 
     def _animate_close(self):
-        """Fade the scrim out over 180 ms then perform the real close.
-        Panel stays fully opaque — only the scrim animates for the same reason as open."""
+        """Fade the scrim out then perform the real close.
+
+        Inset state: the panel is semi-transparent, so a simple scrim fade reads
+        cleanly. Fullscreen: the panel is opaque and edge-to-edge, so a scrim-
+        only fade looks like an instant pop. For a smooth dismissal we collapse a
+        STATIC PIXMAP of the panel inward (same proxy technique as
+        toggle_fullscreen — no live table reflow) while the scrim fades.
+        """
         if (
             hasattr(self, "_open_anim")
             and self._open_anim.state() == QtCore.QAbstractAnimation.Running
         ):
             self._open_anim.stop()
+        # A fullscreen expand/collapse may still be in flight — stop it cleanly.
+        if hasattr(self, "anim") and self.anim.state() == QtCore.QAbstractAnimation.Running:
+            self.anim.stop()
+        self._destroy_fs_proxy()
 
         start_scrim = self._scrim_alpha
+        is_fs = getattr(self, "_is_fullscreen", False)
 
+        # Scrim fade (drives paintEvent).
         self._close_anim = QtCore.QVariantAnimation(self)
         self._close_anim.setDuration(180)
         self._close_anim.setEasingCurve(QtCore.QEasingCurve.InQuad)
-        self._close_anim.setStartValue(start_scrim)
-        self._close_anim.setEndValue(0)
+        self._close_anim.setStartValue(0.0)
+        self._close_anim.setEndValue(1.0)
 
-        def _step(v):
-            self._scrim_alpha = int(v)
+        def _step(progress):
+            self._scrim_alpha = int(start_scrim * (1.0 - progress))
             self.update()
 
         self._close_anim.valueChanged.connect(_step)
         self._close_anim.finished.connect(self._do_close)
+
+        if is_fs:
+            # Collapse a frozen pixmap of the frame inward, parallel to the fade.
+            w, h = self.width(), self.height()
+            pct = getattr(self, "_default_margin_pct", 0.175)
+            mx, my = int(w * pct), int(h * pct)
+            start_rect = self.glass_frame.geometry()
+            target_rect = QtCore.QRect(mx, my, w - 2 * mx, h - 2 * my)
+
+            frozen = self.glass_frame.grab()
+            self.glass_frame.hide()
+
+            self._fs_proxy = QtWidgets.QLabel(self)
+            self._fs_proxy.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+            self._fs_proxy.setScaledContents(True)
+            self._fs_proxy.setPixmap(frozen)
+            self._fs_proxy.setGeometry(start_rect)
+            self._fs_proxy.show()
+            self._fs_proxy.raise_()
+
+            self._close_frame_anim = QtCore.QPropertyAnimation(self._fs_proxy, b"geometry", self)
+            self._close_frame_anim.setDuration(180)
+            self._close_frame_anim.setEasingCurve(QtCore.QEasingCurve.InQuad)
+            self._close_frame_anim.setStartValue(start_rect)
+            self._close_frame_anim.setEndValue(target_rect)
+            self._close_frame_anim.valueChanged.connect(
+                lambda rect: self._update_dots_position(rect.x(), rect.y())
+            )
+            self._close_frame_anim.start()
+
         self._close_anim.start()
 
     def _do_close(self):
         """Actually perform the close after the fade-out animation completes."""
+        self._destroy_fs_proxy()
         self._closing = True
         self.close()  # closeEvent sees _closing=True → accepts → Qt calls hide()
         self._closing = False
+        # Reset to inset state so the next open always starts clean, regardless
+        # of whether we closed from fullscreen. The live frame is restored to a
+        # visible, inset, semi-transparent panel here.
+        self.glass_frame.show()
+        if getattr(self, "_is_fullscreen", False):
+            self._is_fullscreen = False
+            self._fs_normal_icon = self._tinted_icon(
+                self.ICON_EXPAND, QtGui.QColor(110, 120, 130, 190), size=14
+            )
+            self._fs_hover_icon = self._tinted_icon(
+                self.ICON_EXPAND, QtGui.QColor(185, 190, 200, 230), size=14
+            )
+            self.btn_fullscreen.setIcon(self._fs_normal_icon)
+        self._panel_alpha = 215
+        self._set_panel_alpha(215)
+        self._refit_to_parent()
 
     def eventFilter(self, obj, event):
         """Track parent/window resize so the overlay always covers the content area,

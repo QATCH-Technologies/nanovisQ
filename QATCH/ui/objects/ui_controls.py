@@ -315,6 +315,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 f"[ControlsWindow] manage_user_profiles: showing overlay, parent={overlay_parent}"
             )
             self.user_manager = UserProfilesManagerWidget(parent=overlay_parent, admin_name=admin)
+            self.user_manager.setGeometry(self.rect())
             self.user_manager.show()
         else:
             Log.d(f"[ControlsWindow] manage_user_profiles: allow=False, overlay not shown")
@@ -1750,7 +1751,9 @@ class UIControls:  # QtWidgets.QMainWindow
         self._warningTimer.setInterval(2000)
 
         icon_temp = QtGui.QIcon()
-        icon_temp.addPixmap(QtGui.QPixmap(os.path.join(icon_path, "temperature-control.svg")), QtGui.QIcon.Normal)
+        icon_temp.addPixmap(
+            QtGui.QPixmap(os.path.join(icon_path, "temperature-control.svg")), QtGui.QIcon.Normal
+        )
         self.tool_TempControl = QtWidgets.QToolButton()
         self.tool_TempControl.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_TempControl.setIcon(icon_temp)
