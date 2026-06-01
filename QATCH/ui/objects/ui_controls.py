@@ -35,6 +35,7 @@ from QATCH.common.userProfiles import UserProfiles
 from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.findDevices import Discovery
 from QATCH.common.licenseManager import LicenseManager
+from QATCH.ui.widgets.advanced_main_widget import AdvancedMainWidget
 
 # ---------------------------------------------------------------------------
 # Glass-morphism primitives
@@ -1891,14 +1892,16 @@ class UIControls:  # QtWidgets.QMainWindow
             self.Layout_controls.removeWidget(self.l3)
             self.Layout_controls.removeWidget(self.infostatus)
 
-            self.advancedwidget = QtWidgets.QWidget()
-            self.advancedwidget.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint)
-            self.advancedwidget.setWhatsThis("These settings are for Advanced Users ONLY!")
-            warningWidget = GlassWarningLabel(f"WARNING: {self.advancedwidget.whatsThis()}")
-            warningLayout = QtWidgets.QVBoxLayout()
+            self.advanced_container = QtWidgets.QWidget()
+            self.advanced_container.setWhatsThis("These settings are for Advanced Users ONLY!")
+            warningWidget = GlassWarningLabel(f"WARNING: {self.advanced_container.whatsThis()}")
+
+            warningLayout = QtWidgets.QVBoxLayout(self.advanced_container)
             warningLayout.addWidget(warningWidget)
             warningLayout.addLayout(self.gridLayout)
-            self.advancedwidget.setLayout(warningLayout)
+
+            # Hide it initially; the popup will show it when anchored
+            self.advanced_container.hide()
         else:
             self.centralwidget.setLayout(self.gridLayout)
 
@@ -1945,8 +1948,8 @@ class UIControls:  # QtWidgets.QMainWindow
         )
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
         MainWindow.setWindowIcon(QtGui.QIcon(os.path.join(icon_path, "qatch-icon.png")))
-        self.advancedwidget.setWindowIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
-        self.advancedwidget.setWindowTitle(_translate("MainWindow2", "Advanced Settings"))
+        self.advanced_container.setWindowIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
+        self.advanced_container.setWindowTitle(_translate("MainWindow2", "Advanced Settings"))
         self.pButton_Stop.setText(_translate("MainWindow", " STOP"))
         self.pButton_Start.setText(_translate("MainWindow", "START"))
         self.pButton_Clear.setText(_translate("MainWindow", "Clear Plots"))
@@ -2192,11 +2195,15 @@ class UIControls:  # QtWidgets.QMainWindow
             else:
                 Log.w('To stop Temp Control: Press "Stop" first, then click "Temp Control" button.')
 
-    def action_advanced(self, obj):
-        if self.advancedwidget.isVisible():
-            self.advancedwidget.hide()
-        self.advancedwidget.move(0, 0)
-        self.advancedwidget.show()
+    def action_advanced(self, obj=None):
+        existing_popup = getattr(self, "_advanced_popup", None)
+        if existing_popup is not None and existing_popup.isVisible():
+            existing_popup.close()
+            return
+        self._advanced_popup = AdvancedMainWidget()
+        self._advanced_popup.set_content_widget(self.advanced_container)
+        main_window = getattr(self, "parent", None)
+        self._advanced_popup.show_anchored_to(self.tool_Advanced, main_window=main_window)
         self.pButton_PlateConfig.setFixedWidth(self.pButton_PlateConfig.height())
 
     # -- Account dropdown -----------------------------------------------------
