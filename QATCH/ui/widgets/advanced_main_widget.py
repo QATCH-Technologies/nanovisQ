@@ -45,7 +45,7 @@ class _GlassAdvancedInnerPanel(QtWidgets.QWidget):
         p.end()
 
 
-class GlassAdvancedPopup(QtWidgets.QWidget):
+class AdvancedMainWidget(QtWidgets.QWidget):
     """Frosted-glass dropdown panel for the Advanced Settings."""
 
     _SHADOW_MARGIN_L = 22
