@@ -221,6 +221,7 @@ class Ui_Main(object):
         self.mode_run.mousePressEvent = self.setRunMode
         self.mode_analyze = QtWidgets.QLabel("Analyze")
         self.mode_analyze.mousePressEvent = self.setAnalyzeMode
+        self.mode_tools = QtWidgets.QLabel("<b>TOOLS</b>")
         self.mode_learn = QtWidgets.QWidget()
         self.mode_learn_layout = QtWidgets.QHBoxLayout()
         self.mode_learn_text = QtWidgets.QLabel("VisQ.AI<sup>TM</sup>")
@@ -233,18 +234,29 @@ class Ui_Main(object):
         self.mode_learn_layout.addWidget(self.mode_learn_arrow)
         self.mode_learn.setLayout(self.mode_learn_layout)
         self.mode_learn.mousePressEvent = self.setLearnMode  # self.showLearnTools
+        self.mode_donnan = QtWidgets.QLabel("Donnan-Gibbs Calculator")
+        self.mode_donnan.setWordWrap(True)
+        self.mode_donnan.mousePressEvent = self.setDonnanMode
+        self.mode_injection = QtWidgets.QLabel("Injection Force")
+        self.mode_injection.mousePressEvent = self.setInjectionMode
         modelayout.setContentsMargins(0, 0, 0, 0)
         modelayout.addWidget(self.logolabel)
         modelayout.addWidget(self.mode_mode)
         modelayout.addWidget(self.mode_run)
         modelayout.addWidget(self.mode_analyze)
         if Constants.show_visQ_in_R_builds:
+            modelayout.addWidget(self.mode_tools)
             modelayout.addWidget(self.mode_learn)
+            modelayout.addWidget(self.mode_donnan)
+            modelayout.addWidget(self.mode_injection)
         modelayout.addStretch()
         modewidget.setLayout(modelayout)
         self.modemenu = QtWidgets.QScrollArea()
         self.modemenu.setStyleSheet("background: #DDDDDD; color: #333333;")
         self.mode_mode.setStyleSheet("padding: 10px; padding-top: 15px;")
+        self.mode_tools.setStyleSheet("padding: 10px; padding-top: 15px;")
+        self.mode_donnan.setStyleSheet("padding: 10px; padding-left: 15px;")
+        self.mode_injection.setStyleSheet("padding: 10px; padding-left: 15px;")
         # StyledPanel | QtWidgets.QFrame.Plain)
         self.modemenu.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.modemenu.setLineWidth(0)
@@ -307,6 +319,35 @@ class Ui_Main(object):
         self.learn_ui.setWidgetResizable(True)
         self.learn_ui.setWidget(parent.VisQAIWin)
         self.learn_ui.setMinimumSize(QtCore.QSize(1000, 122))
+
+        _donnan_placeholder = QtWidgets.QLabel("Donnan-Gibbs Calculator\n\nComing soon.")
+        _donnan_placeholder.setAlignment(QtCore.Qt.AlignCenter)
+        _donnan_placeholder.setStyleSheet("color: #888888; font-size: 16px;")
+        self.donnan_ui = QtWidgets.QScrollArea()
+        self.donnan_ui.setObjectName("donnan_ui")
+        self.donnan_ui.setStyleSheet("#donnan_ui {border: 1px solid #DDDDDD; border-radius: 2px;}")
+        self.donnan_ui.setFrameShape(QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+        self.donnan_ui.setLineWidth(0)
+        self.donnan_ui.setMidLineWidth(0)
+        self.donnan_ui.setWidgetResizable(True)
+        self.donnan_ui.setWidget(_donnan_placeholder)
+        self.donnan_ui.setMinimumSize(QtCore.QSize(1000, 122))
+
+        # injection mode view frame: placeholder
+        _injection_placeholder = QtWidgets.QLabel("Injection Force Calculator\n\nComing soon.")
+        _injection_placeholder.setAlignment(QtCore.Qt.AlignCenter)
+        _injection_placeholder.setStyleSheet("color: #888888; font-size: 16px;")
+        self.injection_ui = QtWidgets.QScrollArea()
+        self.injection_ui.setObjectName("injection_ui")
+        self.injection_ui.setStyleSheet(
+            "#injection_ui {border: 1px solid #DDDDDD; border-radius: 2px;}"
+        )
+        self.injection_ui.setFrameShape(QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+        self.injection_ui.setLineWidth(0)
+        self.injection_ui.setMidLineWidth(0)
+        self.injection_ui.setWidgetResizable(True)
+        self.injection_ui.setWidget(_injection_placeholder)
+        self.injection_ui.setMinimumSize(QtCore.QSize(1000, 122))
 
         # log view frame: Logger
         self.logview = QtWidgets.QScrollArea()
@@ -435,6 +476,8 @@ class Ui_Main(object):
             self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
             self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
             self.mode_learn.setStyleSheet("")
+            self.mode_donnan.setStyleSheet("padding: 10px; padding-left: 15px;")
+            self.mode_injection.setStyleSheet("padding: 10px; padding-left: 15px;")
             self.splitter.replaceWidget(0, self.userview)
             # login, forgot pw, create user (must match pages in _configure_tutorials() too)
             self.parent.viewTutorialPage([1, 2, 0])
@@ -492,10 +535,9 @@ class Ui_Main(object):
                 self.splitter.widget(0) == self.analyze
                 and not self.parent.AnalyzeProc.hasUnsavedChanges()
             )
-            or (
-                self.splitter.widget(0) == self.learn_ui
-                and not self.parent.VisQAIWin.hasUnsavedChanges()
-            )
+            or (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())
+            or self.splitter.widget(0) == self.donnan_ui 
+            or self.splitter.widget(0) == self.injection_ui 
         ):
             action_role = UserRoles.CAPTURE
             check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -516,6 +558,8 @@ class Ui_Main(object):
                 )
                 self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
                 self.mode_learn.setStyleSheet("")
+                self.mode_donnan.setStyleSheet("padding: 10px; padding-left: 15px;")  # ADD
+                self.mode_injection.setStyleSheet("padding: 10px; padding-left: 15px;")
                 self.splitter.replaceWidget(0, self.runview)
                 self.parent.PlotsWin.ui2.handleSplitterButton(collapse=False)
                 if UserProfiles.count() == 0:
@@ -585,10 +629,9 @@ class Ui_Main(object):
                 self.splitter.widget(0) == self.analyze
                 and not self.parent.AnalyzeProc.hasUnsavedChanges()
             )
-            or (
-                self.splitter.widget(0) == self.learn_ui
-                and not self.parent.VisQAIWin.hasUnsavedChanges()
-            )
+            or (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())
+            or self.splitter.widget(0) == self.donnan_ui 
+            or self.splitter.widget(0) == self.injection_ui 
         ):
             self.parent.analyze_data()
             action_role = UserRoles.ANALYZE
@@ -601,6 +644,8 @@ class Ui_Main(object):
                     "padding: 10px; padding-left: 15px; background: #B7D3DC;"
                 )
                 self.mode_learn.setStyleSheet("")
+                self.mode_donnan.setStyleSheet("padding: 10px; padding-left: 15px;")  # ADD
+                self.mode_injection.setStyleSheet("padding: 10px; padding-left: 15px;")
                 self.splitter.replaceWidget(0, self.analyze)
                 self.parent.viewTutorialPage([5, 6])  # analyze / prior results
                 if obj == None:
@@ -654,10 +699,9 @@ class Ui_Main(object):
                 self.splitter.widget(0) == self.analyze
                 and not self.parent.AnalyzeProc.hasUnsavedChanges()
             )
-            or (
-                self.splitter.widget(0) == self.learn_ui
-                and not self.parent.VisQAIWin.hasUnsavedChanges()
-            )
+            or (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())
+            or self.splitter.widget(0) == self.donnan_ui  
+            or self.splitter.widget(0) == self.injection_ui 
         ):
             self.parent.VisQAIWin.reset()
             action_role = UserRoles.OPERATE
@@ -679,7 +723,17 @@ class Ui_Main(object):
                 self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
                 self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
                 self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
-                self.mode_learn.setStyleSheet("background: #B7D3DC;")
+                self.mode_learn.setStyleSheet("background: #B7D3DC;" if tab_index == 0 else "")
+                self.mode_donnan.setStyleSheet(
+                    "padding: 10px; padding-left: 15px; background: #B7D3DC;"
+                    if tab_index == 1
+                    else "padding: 10px; padding-left: 15px;"
+                )
+                self.mode_injection.setStyleSheet(
+                    "padding: 10px; padding-left: 15px; background: #B7D3DC;"
+                    if tab_index == 2
+                    else "padding: 10px; padding-left: 15px;"
+                )
                 self.splitter.replaceWidget(0, self.learn_ui)
                 self.parent.viewTutorialPage(8)  # VisQ.AI(tm) coming soon
                 if obj == None:
@@ -688,6 +742,166 @@ class Ui_Main(object):
                 Log.e("Please sign in to access VisQ.AI<sup>TM</sup> mode.")
             else:
                 Log.e("You are not authorized to access VisQ.AI<sup>TM</sup> mode.")
+        else:
+            if self.splitter.widget(0) == self.runview:
+                Log.e("Please stop the current run before switching modes.")
+            else:
+                Log.e(
+                    'Please "Analyze" to save or "Close" to lose your changes before switching modes.'
+                )
+        if obj == None:
+            return False
+
+    def setDonnanMode(self, obj=None):
+        if self.splitter.widget(0) == self.donnan_ui and not self._force_splitter_mode_set:
+            Log.d("Donnan-Gibbs Calculator already active. Skipping mode change request.")
+            if obj == None:
+                return True
+            return
+        if self.parent.VisQAIWin.isBusy():
+            PopUp.warning(
+                self.parent, "Learning In-Progress...", "Mode change is not allowed while learning."
+            )
+            return
+        if self.parent.AnalyzeProc.hasUnsavedChanges():
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
+                self.parent.AnalyzeProc.clear()
+        if self.parent.VisQAIWin.hasUnsavedChanges():
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
+                self.parent.VisQAIWin.clear()
+        if (
+            self.splitter.widget(0) == self.userview
+            or (
+                self.splitter.widget(0) == self.runview
+                and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
+            )
+            or (
+                self.splitter.widget(0) == self.analyze
+                and not self.parent.AnalyzeProc.hasUnsavedChanges()
+            )
+            or (
+                self.splitter.widget(0) == self.learn_ui
+                and not self.parent.VisQAIWin.hasUnsavedChanges()
+            )
+            or self.splitter.widget(0) == self.donnan_ui
+            or self.splitter.widget(0) == self.injection_ui
+        ):
+            action_role = UserRoles.OPERATE
+            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            if check_result == None:
+                Log.w(
+                    f"Not signed in: User with role {action_role.name} is required to perform this action."
+                )
+                Log.i("Please sign in to continue.")
+                self.parent.ControlsWin.set_user_profile()
+                check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            if check_result:
+                self.parent._enable_ui(False)
+                self.parent.VisQAIWin.enable(False)
+                self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_learn.setStyleSheet("")
+                self.mode_donnan.setStyleSheet(
+                    "padding: 10px; padding-left: 15px; background: #B7D3DC;"
+                )
+                self.mode_injection.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.splitter.replaceWidget(0, self.donnan_ui)
+                if obj == None:
+                    return True
+            elif check_result == None:
+                Log.e("Please sign in to access the Donnan-Gibbs Calculator.")
+            else:
+                Log.e("You are not authorized to access the Donnan-Gibbs Calculator.")
+        else:
+            if self.splitter.widget(0) == self.runview:
+                Log.e("Please stop the current run before switching modes.")
+            else:
+                Log.e(
+                    'Please "Analyze" to save or "Close" to lose your changes before switching modes.'
+                )
+        if obj == None:
+            return False
+
+    def setInjectionMode(self, obj=None):
+        if self.splitter.widget(0) == self.injection_ui and not self._force_splitter_mode_set:
+            Log.d("Injection Force Calculator already active. Skipping mode change request.")
+            if obj == None:
+                return True
+            return
+        if self.parent.VisQAIWin.isBusy():
+            PopUp.warning(
+                self.parent, "Learning In-Progress...", "Mode change is not allowed while learning."
+            )
+            return
+        if self.parent.AnalyzeProc.hasUnsavedChanges():
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
+                self.parent.AnalyzeProc.clear()
+        if self.parent.VisQAIWin.hasUnsavedChanges():
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
+                self.parent.VisQAIWin.clear()
+        if (
+            self.splitter.widget(0) == self.userview
+            or (
+                self.splitter.widget(0) == self.runview
+                and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
+            )
+            or (
+                self.splitter.widget(0) == self.analyze
+                and not self.parent.AnalyzeProc.hasUnsavedChanges()
+            )
+            or (
+                self.splitter.widget(0) == self.learn_ui
+                and not self.parent.VisQAIWin.hasUnsavedChanges()
+            )
+            or self.splitter.widget(0) == self.donnan_ui
+            or self.splitter.widget(0) == self.injection_ui
+        ):
+            action_role = UserRoles.OPERATE
+            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            if check_result == None:
+                Log.w(
+                    f"Not signed in: User with role {action_role.name} is required to perform this action."
+                )
+                Log.i("Please sign in to continue.")
+                self.parent.ControlsWin.set_user_profile()
+                check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            if check_result:
+                self.parent._enable_ui(False)
+                self.parent.VisQAIWin.enable(False)
+                self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_learn.setStyleSheet("")
+                self.mode_donnan.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_injection.setStyleSheet(
+                    "padding: 10px; padding-left: 15px; background: #B7D3DC;"
+                )
+                self.splitter.replaceWidget(0, self.injection_ui)
+                if obj == None:
+                    return True
+            elif check_result == None:
+                Log.e("Please sign in to access the Injection Force Calculator.")
+            else:
+                Log.e("You are not authorized to access the Injection Force Calculator.")
         else:
             if self.splitter.widget(0) == self.runview:
                 Log.e("Please stop the current run before switching modes.")
