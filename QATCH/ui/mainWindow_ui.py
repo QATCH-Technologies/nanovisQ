@@ -47,6 +47,8 @@ from QATCH.core.constants import Constants, OperationType
 from QATCH.processors.Device import serial  # real device hardware
 from QATCH.ui.drawPlateConfig import WellPlate
 from QATCH.ui.popUp import PopUp
+from QATCH.tools.donnan_gibbs_calculator import DonnanCalculatorModule
+from QATCH.tools.injection_force_calculator import InjectionForceCalculatorModule
 
 # import threading
 
@@ -262,6 +264,7 @@ class Ui_Main(object):
         self.modemenu.setLineWidth(0)
         self.modemenu.setMidLineWidth(0)
         self.modemenu.setWidgetResizable(True)
+        self.modemenu.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.modemenu.setMinimumSize(QtCore.QSize(100, 700))
         self.modemenu.setWidget(modewidget)
 
@@ -320,9 +323,7 @@ class Ui_Main(object):
         self.learn_ui.setWidget(parent.VisQAIWin)
         self.learn_ui.setMinimumSize(QtCore.QSize(1000, 122))
 
-        _donnan_placeholder = QtWidgets.QLabel("Donnan-Gibbs Calculator\n\nComing soon.")
-        _donnan_placeholder.setAlignment(QtCore.Qt.AlignCenter)
-        _donnan_placeholder.setStyleSheet("color: #888888; font-size: 16px;")
+        self.donnan_calc_module = DonnanCalculatorModule()  # Instantiate the module
         self.donnan_ui = QtWidgets.QScrollArea()
         self.donnan_ui.setObjectName("donnan_ui")
         self.donnan_ui.setStyleSheet("#donnan_ui {border: 1px solid #DDDDDD; border-radius: 2px;}")
@@ -330,13 +331,11 @@ class Ui_Main(object):
         self.donnan_ui.setLineWidth(0)
         self.donnan_ui.setMidLineWidth(0)
         self.donnan_ui.setWidgetResizable(True)
-        self.donnan_ui.setWidget(_donnan_placeholder)
+        self.donnan_ui.setWidget(self.donnan_calc_module)
         self.donnan_ui.setMinimumSize(QtCore.QSize(1000, 122))
 
         # injection mode view frame: placeholder
-        _injection_placeholder = QtWidgets.QLabel("Injection Force Calculator\n\nComing soon.")
-        _injection_placeholder.setAlignment(QtCore.Qt.AlignCenter)
-        _injection_placeholder.setStyleSheet("color: #888888; font-size: 16px;")
+        self.injection_calc_module = InjectionForceCalculatorModule()  # Instantiate the module
         self.injection_ui = QtWidgets.QScrollArea()
         self.injection_ui.setObjectName("injection_ui")
         self.injection_ui.setStyleSheet(
@@ -346,7 +345,7 @@ class Ui_Main(object):
         self.injection_ui.setLineWidth(0)
         self.injection_ui.setMidLineWidth(0)
         self.injection_ui.setWidgetResizable(True)
-        self.injection_ui.setWidget(_injection_placeholder)
+        self.injection_ui.setWidget(self.injection_calc_module)
         self.injection_ui.setMinimumSize(QtCore.QSize(1000, 122))
 
         # log view frame: Logger
@@ -535,9 +534,12 @@ class Ui_Main(object):
                 self.splitter.widget(0) == self.analyze
                 and not self.parent.AnalyzeProc.hasUnsavedChanges()
             )
-            or (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())
-            or self.splitter.widget(0) == self.donnan_ui 
-            or self.splitter.widget(0) == self.injection_ui 
+            or (
+                self.splitter.widget(0) == self.learn_ui
+                and not self.parent.VisQAIWin.hasUnsavedChanges()
+            )
+            or self.splitter.widget(0) == self.donnan_ui
+            or self.splitter.widget(0) == self.injection_ui
         ):
             action_role = UserRoles.CAPTURE
             check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -629,9 +631,12 @@ class Ui_Main(object):
                 self.splitter.widget(0) == self.analyze
                 and not self.parent.AnalyzeProc.hasUnsavedChanges()
             )
-            or (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())
-            or self.splitter.widget(0) == self.donnan_ui 
-            or self.splitter.widget(0) == self.injection_ui 
+            or (
+                self.splitter.widget(0) == self.learn_ui
+                and not self.parent.VisQAIWin.hasUnsavedChanges()
+            )
+            or self.splitter.widget(0) == self.donnan_ui
+            or self.splitter.widget(0) == self.injection_ui
         ):
             self.parent.analyze_data()
             action_role = UserRoles.ANALYZE
@@ -699,9 +704,12 @@ class Ui_Main(object):
                 self.splitter.widget(0) == self.analyze
                 and not self.parent.AnalyzeProc.hasUnsavedChanges()
             )
-            or (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())
-            or self.splitter.widget(0) == self.donnan_ui  
-            or self.splitter.widget(0) == self.injection_ui 
+            or (
+                self.splitter.widget(0) == self.learn_ui
+                and not self.parent.VisQAIWin.hasUnsavedChanges()
+            )
+            or self.splitter.widget(0) == self.donnan_ui
+            or self.splitter.widget(0) == self.injection_ui
         ):
             self.parent.VisQAIWin.reset()
             action_role = UserRoles.OPERATE
