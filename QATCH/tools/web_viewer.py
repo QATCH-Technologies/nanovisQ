@@ -354,7 +354,6 @@ class OfflineViewer(QWebEngineView):
                 # Format as a Data URI
                 img_src = f"data:image/svg+xml;base64,{encoded_string}"
         except FileNotFoundError:
-            print(f"Warning: Offline icon not found at {icon_path}")
             img_src = ""
 
         html_template = f"""

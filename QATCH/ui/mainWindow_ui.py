@@ -459,7 +459,7 @@ class Ui_Main(object):
 
         if self.splitter.widget(0) == self.userview and not self._force_splitter_mode_set:
             Log.d("User sign-in mode already active. Skipping mode change request.")
-            if obj == None:
+            if obj is None:
                 return True
             # return # do not return when 'obj != None' to allow mode button styles to be set on 'setupUi()'' call
         if self.parent.AnalyzeProc.hasUnsavedChanges():
@@ -481,7 +481,7 @@ class Ui_Main(object):
             # login, forgot pw, create user (must match pages in _configure_tutorials() too)
             self.parent.viewTutorialPage([1, 2, 0])
             QtCore.QTimer.singleShot(500, self.parent.LoginWin.ui5.user_initials.setFocus)
-            if obj == None:
+            if obj is None:
                 if not UserProfiles.session_info()[0]:  # user session expired
                     self.parent.LoginWin.ui5.error_expired()
                 else:  # user manually logged out
@@ -492,13 +492,13 @@ class Ui_Main(object):
             Log.e(
                 'Please "Analyze" to save or "Close" to lose your changes before switching modes.'
             )
-        if obj == None:
+        if obj is None:
             return False
 
     def setRunMode(self, obj):
         if self.splitter.widget(0) == self.runview and not self._force_splitter_mode_set:
             Log.d("Run mode already active. Skipping mode change request.")
-            if obj == None:
+            if obj is None:
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
@@ -570,7 +570,7 @@ class Ui_Main(object):
                 else:
                     # measure / next steps (must match pages in _configure_tutorials() too, without page 0)
                     self.parent.viewTutorialPage([3, 4])
-                if obj == None:
+                if obj is None:
                     return True
             elif check_result == None:
                 Log.w(
@@ -589,13 +589,13 @@ class Ui_Main(object):
                 )
             else:
                 Log.e("Please save your unsaved changes in VisQ.AI(tm) before switching modes.")
-        if obj == None:
+        if obj is None:
             return False
 
     def setAnalyzeMode(self, obj):
         if self.splitter.widget(0) == self.analyze and not self._force_splitter_mode_set:
             Log.d("Analyze mode already active. Skipping mode change request.")
-            if obj == None:
+            if obj is None:
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
@@ -653,7 +653,7 @@ class Ui_Main(object):
                 self.mode_injection.setStyleSheet("padding: 10px; padding-left: 15px;")
                 self.splitter.replaceWidget(0, self.analyze)
                 self.parent.viewTutorialPage([5, 6])  # analyze / prior results
-                if obj == None:
+                if obj is None:
                     return True
             elif check_result == None:
                 Log.e("Please sign in to access Analyze mode.")
@@ -664,7 +664,7 @@ class Ui_Main(object):
                 Log.e("Please stop the current run before switching modes.")
             else:
                 Log.e("Please save your unsaved changes in VisQ.AI(tm) before switching modes.")
-        if obj == None:
+        if obj is None:
             return False
 
     def setLearnMode(self, obj=None, tab_index=0):
@@ -675,7 +675,7 @@ class Ui_Main(object):
                 self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
             else:
                 Log.d("VisQ.AI<sup>TM</sup> mode already active. Skipping mode change request.")
-            if obj == None:
+            if obj is None:
                 return True
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
@@ -744,7 +744,7 @@ class Ui_Main(object):
                 )
                 self.splitter.replaceWidget(0, self.learn_ui)
                 self.parent.viewTutorialPage(8)  # VisQ.AI(tm) coming soon
-                if obj == None:
+                if obj is None:
                     return True
             elif check_result == None:
                 Log.e("Please sign in to access VisQ.AI<sup>TM</sup> mode.")
@@ -757,13 +757,13 @@ class Ui_Main(object):
                 Log.e(
                     'Please "Analyze" to save or "Close" to lose your changes before switching modes.'
                 )
-        if obj == None:
+        if obj is None:
             return False
 
     def setDonnanMode(self, obj=None):
         if self.splitter.widget(0) == self.donnan_ui and not self._force_splitter_mode_set:
             Log.d("Donnan-Gibbs Calculator already active. Skipping mode change request.")
-            if obj == None:
+            if obj is None:
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
@@ -824,7 +824,7 @@ class Ui_Main(object):
                 )
                 self.mode_injection.setStyleSheet("padding: 10px; padding-left: 15px;")
                 self.splitter.replaceWidget(0, self.donnan_ui)
-                if obj == None:
+                if obj is None:
                     return True
             elif check_result == None:
                 Log.e("Please sign in to access the Donnan-Gibbs Calculator.")
@@ -837,13 +837,13 @@ class Ui_Main(object):
                 Log.e(
                     'Please "Analyze" to save or "Close" to lose your changes before switching modes.'
                 )
-        if obj == None:
+        if obj is None:
             return False
 
     def setInjectionMode(self, obj=None):
         if self.splitter.widget(0) == self.injection_ui and not self._force_splitter_mode_set:
             Log.d("Injection Force Calculator already active. Skipping mode change request.")
-            if obj == None:
+            if obj is None:
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
@@ -904,7 +904,7 @@ class Ui_Main(object):
                     "padding: 10px; padding-left: 15px; background: #B7D3DC;"
                 )
                 self.splitter.replaceWidget(0, self.injection_ui)
-                if obj == None:
+                if obj is None:
                     return True
             elif check_result == None:
                 Log.e("Please sign in to access the Injection Force Calculator.")
@@ -917,7 +917,7 @@ class Ui_Main(object):
                 Log.e(
                     'Please "Analyze" to save or "Close" to lose your changes before switching modes.'
                 )
-        if obj == None:
+        if obj is None:
             return False
 
     def showLearnTools(self, obj):
