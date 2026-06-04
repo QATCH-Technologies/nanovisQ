@@ -5610,10 +5610,10 @@ class MainWindow(QtWidgets.QMainWindow):
               drop detection.
         """
         # Cache the slices to prevent redundant array operations per tick
-        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)
-        slice_resonance_frequency = self.worker.get_d1_buffer(i)
-        slice_time_dissipation = self.worker.get_t2_buffer(i)
-        slice_dissipation = self.worker.get_d2_buffer(i)
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[-n:]
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)[-n:]
+        slice_time_dissipation = self.worker.get_t2_buffer(i)[-n:]
+        slice_dissipation = self.worker.get_d2_buffer(i)[-n:]
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 
@@ -5882,7 +5882,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _draw_temperature_plot(self) -> None:
         """Updates the temperature curve in the global environment plot.
 
-        This method refreshes the time-series temperature data by pulling from the
+        This method refreshes the time-series temperature data by pullingo frm the
         worker's temperature time buffer. It is designed to be agnostic of the
         reference/absolute mode logic, providing a consistent update for the
         environmental monitoring window.
@@ -5890,7 +5890,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if self._ci_temp:
             n = Constants._NUM_DISPLAY_POINTS
-            self._ci_temp.setData(x=self.worker.get_t3_buffer(0), y=self.worker.get_d3_buffer(0))
+            
+            t_data = self.worker.get_t3_buffer(0)[-n:]
+            d_data = self.worker.get_d3_buffer(0)[-n:]
+            
+            self._ci_temp.setData(x=t_data, y=d_data)
 
     def _bandwidth_error_msg(self, error_left_cuttoff: int, error_right_cuttoff: int) -> str:
         """Generates a warning string when the half-power bandwidth calculation fails.
