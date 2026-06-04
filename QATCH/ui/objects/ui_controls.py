@@ -36,6 +36,7 @@ from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.findDevices import Discovery
 from QATCH.common.licenseManager import LicenseManager
 from QATCH.ui.widgets.advanced_main_widget import AdvancedMainWidget
+from QATCH.ui.components.glass_push_button import GlassPushButton
 
 # ---------------------------------------------------------------------------
 # Glass-morphism primitives
@@ -969,6 +970,7 @@ class GlassAccountPopup(QtWidgets.QWidget):
     def __init__(
         self,
         open_manager_cb=None,
+        sign_out_cb=None,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         super().__init__(
@@ -980,6 +982,7 @@ class GlassAccountPopup(QtWidgets.QWidget):
         self.setAutoFillBackground(False)
 
         self._open_manager_cb = open_manager_cb
+        self._sign_out_cb = sign_out_cb
         self._main_window: Optional[QtWidgets.QWidget] = None  # set by show_anchored_to
 
         # -- outer container with shadow margins --
@@ -1097,7 +1100,9 @@ class GlassAccountPopup(QtWidgets.QWidget):
             )
             layout.addWidget(status_lbl)
 
-        if is_admin:
+        show_manage = is_admin
+        show_sign_out = is_signed_in
+        if show_manage or show_sign_out:
             # Hairline divider
             divider = QtWidgets.QFrame()
             divider.setFrameShape(QtWidgets.QFrame.HLine)
@@ -1106,8 +1111,9 @@ class GlassAccountPopup(QtWidgets.QWidget):
             )
             layout.addWidget(divider)
 
+        if show_manage:
             icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "user-circle.svg")
-            manage_btn = QtWidgets.QPushButton("  Manage Users…")
+            manage_btn = GlassPushButton("  Manage Users…")
             manage_btn.setIcon(QtGui.QIcon(icon_path))
             manage_btn.setIconSize(QtCore.QSize(14, 14))
             manage_btn.setStyleSheet("""
@@ -1133,6 +1139,36 @@ class GlassAccountPopup(QtWidgets.QWidget):
             manage_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
             manage_btn.clicked.connect(self._on_manage_users)
             layout.addWidget(manage_btn)
+
+        if show_sign_out:
+            icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "sign-out.svg")
+            sign_out_btn = GlassPushButton("  Sign Out")
+            if os.path.exists(icon_path):
+                sign_out_btn.setIcon(QtGui.QIcon(icon_path))
+                sign_out_btn.setIconSize(QtCore.QSize(14, 14))
+            sign_out_btn.setStyleSheet("""
+                QPushButton {
+                    background: rgba(200, 70, 40, 16);
+                    color: rgba(170, 55, 30, 235);
+                    border: 1px solid rgba(200, 70, 40, 60);
+                    border-radius: 5px;
+                    padding: 6px 10px;
+                    text-align: left;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover  {
+                    background: rgba(210, 80, 45, 38);
+                    border: 1px solid rgba(200, 70, 40, 120);
+                }
+                QPushButton:pressed {
+                    background: rgba(200, 70, 40, 75);
+                    border: 1px solid rgba(200, 70, 40, 170);
+                }
+            """)
+            sign_out_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+            sign_out_btn.clicked.connect(self._on_sign_out)
+            layout.addWidget(sign_out_btn)
 
         self._panel.setMinimumWidth(230)
 
@@ -1280,6 +1316,11 @@ class GlassAccountPopup(QtWidgets.QWidget):
         self.close()
         if self._open_manager_cb:
             self._open_manager_cb()
+
+    def _on_sign_out(self) -> None:
+        self.close()
+        if self._sign_out_cb:
+            self._sign_out_cb()
 
 
 # ---------------------------------------------------------------------------
@@ -2257,10 +2298,32 @@ class UIControls:  # QtWidgets.QMainWindow
             except Exception:
                 pass
 
-        self._account_popup = GlassAccountPopup(open_manager_cb=self._open_user_manager)
+        self._account_popup = GlassAccountPopup(
+            open_manager_cb=self._open_user_manager,
+            sign_out_cb=self._sign_out_current_user,
+        )
         # Anchor below the Account button; clamp to main window; auto-close on resize
         main_window = getattr(self, "parent", None)
         self._account_popup.show_anchored_to(self.tool_User, main_window=main_window)
+
+    def _sign_out_current_user(self) -> None:
+        """Sign out the current user and refresh the UI state accordingly."""
+        try:
+            if self.parent.parent.MainWin.ui0._set_no_user_mode(None):
+                UserProfiles().session_end()
+                name = self.parent.username.text()[6:]
+                Log.i(f"Goodbye, {name}! You have been signed out.")
+                self.parent.username.setText("User: [NONE]")
+                self.parent.userrole = UserRoles.NONE
+                self.parent.signinout.setText("&Sign In")
+                self.parent.manage.setText("&Manage Users...")
+                self.parent.ui1.tool_User.setText("Anonymous")
+                self.parent.parent.AnalyzeProc.tool_User.setText("Anonymous")
+                self.refresh_user_button_state()
+            else:
+                Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
+        except Exception as exc:
+            Log.e(f"Error signing out user: {exc}")
 
     def _open_user_manager(self) -> None:
         """Open the User Profiles Manager overlay (admin-only).
