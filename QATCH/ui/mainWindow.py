@@ -4057,7 +4057,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if not self.tecWorker._tec_locked:
             return
-        self.tecWorker._tec_temp = data_temperature[0]
+        self.tecWorker._tec_temp = data_temperature[-1]
         self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
         tec_temperature = self.tecWorker._tec_temp
         tec_set_point = self.tecWorker._tec_setpoint or 0.25
