@@ -4134,7 +4134,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Error states
         ui.infostatus.setStyleSheet(Constants._CSS_RED)
 
-        if data_resonance_frequency[0] == 0 and (e1 or e2):
+        if data_resonance_frequency[-1] == 0 and (e1 or e2):
             return ("", "", "", "Warning", "#ff0000", self._bandwidth_error_msg(e1, e2))
 
         return ("-", "-", "-", "Warning", "#ff0000", self._serial_error_message(e1, e2, e3, e4))
@@ -4168,9 +4168,9 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         # Determine baseline offsets inline
         ref_resonance_frequency = (
-            self._reference_value_frequency[0] if self._reference_flag else 0.0
+            self._reference_value_frequency[-1] if self._reference_flag else 0.0
         )
-        ref_dissipation = self._reference_value_dissipation[0] if self._reference_flag else 0.0
+        ref_dissipation = self._reference_value_dissipation[-1] if self._reference_flag else 0.0
 
         d_resonance_frequency = float(
             f"{data_resonance_frequency[-1] - ref_resonance_frequency:.2f}"
