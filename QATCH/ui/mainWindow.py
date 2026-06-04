@@ -5176,7 +5176,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ui = self.ControlsWin.ui1
 
         # Early-data processing state
-        if data_resonance_frequency[-1] == 0 and not (e1 or e2):
+        if data_resonance_frequency[0] == 0 and not (e1 or e2):
             ui.infostatus.setStyleSheet(Constants._CSS_YELLOW)
             return (
                 "processing...",
@@ -5196,7 +5196,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Error states
         ui.infostatus.setStyleSheet(Constants._CSS_RED)
 
-        if data_resonance_frequency[-1] == 0 and (e1 or e2):
+        if data_resonance_frequency[0] == 0 and (e1 or e2):
             return ("", "", "", "Warning", "#ff0000", self._bandwidth_error_msg(e1, e2))
 
         return ("-", "-", "-", "Warning", "#ff0000", self._serial_error_message(e1, e2, e3, e4))
@@ -5235,29 +5235,31 @@ class MainWindow(QtWidgets.QMainWindow):
         ref_dissipation = self._reference_value_dissipation[0] if self._reference_flag else 0.0
 
         d_resonance_frequency = float(
-            f"{data_resonance_frequency[-1] - ref_resonance_frequency:.2f}"
+            f"{data_resonance_frequency[0] - ref_resonance_frequency:.2f}"
         )
-        d_dissipation = float(f"{(data_dissipation[-1] - ref_dissipation) * 1e6:.4f}")
-        d_temperature = float(f"{data_temperature[-1]:.2f}")
+        d_dissipation = float(f"{(data_dissipation[0] - ref_dissipation) * 1e6:.4f}")
+        d_temperature = float(f"{data_temperature[0]:.2f}")
 
         self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
 
+        # Check for max dissipation warning bounds
         _max_diss = (
             Constants.max_dissipation_1st_mode,
             Constants.max_dissipation_3rd_mode,
             Constants.max_dissipation_5th_mode,
         )
 
-        if data_dissipation[-1] in _max_diss:
+        if data_dissipation[0] in _max_diss:
             return (
                 f"{d_resonance_frequency} Hz",
                 "-",
                 f"{d_temperature} °C",
                 "Warning",
                 "#ff8000",
-                f"Warning: sensor dissipation calculation is not considered accurate above {data_dissipation[-1] * 1e6:.0f}e-06 for this mode",
+                f"Warning: sensor dissipation calculation is not considered accurate above {data_dissipation[0] * 1e6:.0f}e-06 for this mode",
             )
 
+        # Standard Monitoring Return
         return (
             f"{d_resonance_frequency} Hz",
             f"{d_dissipation}e-06",
@@ -5610,10 +5612,10 @@ class MainWindow(QtWidgets.QMainWindow):
               drop detection.
         """
         # Cache the slices to prevent redundant array operations per tick
-        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[-n:]
-        slice_resonance_frequency = self.worker.get_d1_buffer(i)[-n:]
-        slice_time_dissipation = self.worker.get_t2_buffer(i)[-n:]
-        slice_dissipation = self.worker.get_d2_buffer(i)[-n:]
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)
+        slice_time_dissipation = self.worker.get_t2_buffer(i)
+        slice_dissipation = self.worker.get_d2_buffer(i)
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 
@@ -5882,7 +5884,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _draw_temperature_plot(self) -> None:
         """Updates the temperature curve in the global environment plot.
 
-        This method refreshes the time-series temperature data by pullingo frm the
+        This method refreshes the time-series temperature data by pulling from the
         worker's temperature time buffer. It is designed to be agnostic of the
         reference/absolute mode logic, providing a consistent update for the
         environmental monitoring window.
@@ -5890,11 +5892,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if self._ci_temp:
             n = Constants._NUM_DISPLAY_POINTS
-            
-            t_data = self.worker.get_t3_buffer(0)[-n:]
-            d_data = self.worker.get_d3_buffer(0)[-n:]
-            
-            self._ci_temp.setData(x=t_data, y=d_data)
+            self._ci_temp.setData(x=self.worker.get_t3_buffer(0), y=self.worker.get_d3_buffer(0))
 
     def _bandwidth_error_msg(self, error_left_cuttoff: int, error_right_cuttoff: int) -> str:
         """Generates a warning string when the half-power bandwidth calculation fails.
