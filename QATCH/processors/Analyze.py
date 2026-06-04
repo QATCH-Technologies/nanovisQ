@@ -7839,13 +7839,32 @@ class AnalyzerWorker(QtCore.QObject):
 
             p0 = (1, 0)  # start with values near those we expect
             n_slope, n_offset = p0  # default, not yet optimized
-            best_fit_idx = log_velocity_46
-            best_fit_pts = log_position_46  # default, not yet optimized
-            # kludgy code to remove the 20% and 40% fill points from fit
-            best_fit_idx = np.delete(best_fit_idx, len(log_velocity_46) - len(distances) + 2)
-            best_fit_idx = np.delete(best_fit_idx, len(log_velocity_46) - len(distances) + 1)
-            best_fit_pts = np.delete(best_fit_pts, len(log_position_46) - len(distances) + 2)
-            best_fit_pts = np.delete(best_fit_pts, len(log_position_46) - len(distances) + 1)
+            end_fill_idx = max(0, len(log_velocity_46) - len(distances))
+            best_fill_idx = log_velocity_46[:end_fill_idx]
+            best_fill_pts = log_position_46[:end_fill_idx]
+            best_fit_idx = []
+            best_fit_pts = []
+            try:
+                if len(best_fill_idx):
+                    best_fill_idx = [best_fill_idx[0], 
+                        (best_fill_idx.min() + best_fill_idx.max()) / 2]
+                    best_fit_idx.extend(best_fill_idx)
+                if len(best_fill_pts):
+                    best_fill_pts = [best_fill_pts[0],
+                    #    np.interp(best_fill_idx[1], log_velocity_46, log_position_46)]
+                        (best_fill_pts.min() + best_fill_pts.max()) / 2]
+                    best_fit_pts.extend(best_fill_pts)
+                best_fit_idx.extend(log_velocity_46[end_fill_idx:])
+                best_fit_pts.extend(log_position_46[end_fill_idx:])
+                # kludgy code to remove the 20% and 40% fill points from fit
+                best_fit_idx = np.delete(best_fit_idx, len(best_fill_idx) + 2)
+                best_fit_idx = np.delete(best_fit_idx, len(best_fill_idx) + 1)
+                best_fit_pts = np.delete(best_fit_pts, len(best_fill_pts) + 2)
+                best_fit_pts = np.delete(best_fit_pts, len(best_fill_pts) + 1)
+            except Exception as e:
+                Log.e("An error occurred while interpolating initial fill points")
+                best_fit_idx = log_velocity_46
+                best_fit_pts = log_position_46
             try:
                 params, cv = curve_fit(monoLine, best_fit_idx, best_fit_pts, p0)
                 n_slope, n_offset = params
@@ -7853,6 +7872,7 @@ class AnalyzerWorker(QtCore.QObject):
             except:
                 Log.w('Curve fit 3 failed to find optimal parameters for Figure 3 "slope" fit.')
                 Log.w('Using raw points in place of fit line (assuming "slope = 1").')
+                best_fit_pts = log_position_46
 
             n_rounded = max(
                 0.05, min(1, round((n_slope + 0.05) * 20) / 20)
@@ -7937,19 +7957,20 @@ class AnalyzerWorker(QtCore.QObject):
             ax6.plot(log_velocity_20p, log_position_20p, ".", color="red")
             ax6.plot(log_velocity_46, log_position_46, ":", color="orange")
             ax6.plot(log_velocity_46, best_fit_pts, "-", color="blue")
+            ax6.plot(best_fill_idx, best_fill_pts, "s", color="black") # initial fill (avg)
             try:
                 for i in range(-len(distances), 0):
                     ax6.plot(log_velocity_46[i], log_position_46[i], "d", color="black")
                 # mark the 20% and 40% points as not being included in the fit approximation
                 ax6.plot(
-                    log_velocity_46[len(log_velocity_46) - len(distances) + 2],
-                    log_position_46[len(log_position_46) - len(distances) + 2],
+                    log_velocity_46[end_fill_idx + 2],
+                    log_position_46[end_fill_idx + 2],
                     "x",
                     color="red",
                 )
                 ax6.plot(
-                    log_velocity_46[len(log_velocity_46) - len(distances) + 1],
-                    log_position_46[len(log_position_46) - len(distances) + 1],
+                    log_velocity_46[end_fill_idx + 1],
+                    log_position_46[end_fill_idx + 1],
                     "x",
                     color="red",
                 )
