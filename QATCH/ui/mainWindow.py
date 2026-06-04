@@ -5176,7 +5176,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ui = self.ControlsWin.ui1
 
         # Early-data processing state
-        if data_resonance_frequency[0] == 0 and not (e1 or e2):
+        if data_resonance_frequency[-1] == 0 and not (e1 or e2):
             ui.infostatus.setStyleSheet(Constants._CSS_YELLOW)
             return (
                 "processing...",
@@ -5196,7 +5196,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Error states
         ui.infostatus.setStyleSheet(Constants._CSS_RED)
 
-        if data_resonance_frequency[0] == 0 and (e1 or e2):
+        if data_resonance_frequency[-1] == 0 and (e1 or e2):
             return ("", "", "", "Warning", "#ff0000", self._bandwidth_error_msg(e1, e2))
 
         return ("-", "-", "-", "Warning", "#ff0000", self._serial_error_message(e1, e2, e3, e4))
@@ -5235,31 +5235,29 @@ class MainWindow(QtWidgets.QMainWindow):
         ref_dissipation = self._reference_value_dissipation[0] if self._reference_flag else 0.0
 
         d_resonance_frequency = float(
-            f"{data_resonance_frequency[0] - ref_resonance_frequency:.2f}"
+            f"{data_resonance_frequency[-1] - ref_resonance_frequency:.2f}"
         )
-        d_dissipation = float(f"{(data_dissipation[0] - ref_dissipation) * 1e6:.4f}")
-        d_temperature = float(f"{data_temperature[0]:.2f}")
+        d_dissipation = float(f"{(data_dissipation[-1] - ref_dissipation) * 1e6:.4f}")
+        d_temperature = float(f"{data_temperature[-1]:.2f}")
 
         self.ControlsWin.ui1.infostatus.setStyleSheet(Constants._CSS_GREEN)
 
-        # Check for max dissipation warning bounds
         _max_diss = (
             Constants.max_dissipation_1st_mode,
             Constants.max_dissipation_3rd_mode,
             Constants.max_dissipation_5th_mode,
         )
 
-        if data_dissipation[0] in _max_diss:
+        if data_dissipation[-1] in _max_diss:
             return (
                 f"{d_resonance_frequency} Hz",
                 "-",
                 f"{d_temperature} °C",
                 "Warning",
                 "#ff8000",
-                f"Warning: sensor dissipation calculation is not considered accurate above {data_dissipation[0] * 1e6:.0f}e-06 for this mode",
+                f"Warning: sensor dissipation calculation is not considered accurate above {data_dissipation[-1] * 1e6:.0f}e-06 for this mode",
             )
 
-        # Standard Monitoring Return
         return (
             f"{d_resonance_frequency} Hz",
             f"{d_dissipation}e-06",

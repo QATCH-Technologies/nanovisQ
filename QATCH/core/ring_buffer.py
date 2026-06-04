@@ -120,7 +120,7 @@ class RingBuffer:
             Any: The newest value.
         """
         if self.size == 0:
-            raise ValueError("RingBuffer is empty")
+            raise IndexError("RingBuffer is empty")
         return self._data[(self._head - 1) % self.size_max]
 
     def get_oldest(self) -> Any:
@@ -133,7 +133,7 @@ class RingBuffer:
             Any: The oldest value.
         """
         if self.size == 0:
-            raise ValueError("RingBuffer is empty")
+            raise IndexError("RingBuffer is empty")
         # When full, oldest sits at the write head; otherwise at index 0
         return self._data[self._head] if self._full else self._data[0]
 
@@ -146,7 +146,29 @@ class RingBuffer:
         Returns:
             Any: The requested element or slice from the valid samples.
         """
-        return self.get_partial()[key]
+        if isinstance(key, slice):
+            return self.get_partial()[key]
+
+        if not isinstance(key, int):
+            raise TypeError(f"Invalid index type: {type(key)}")
+
+        if self.size == 0:
+            raise IndexError("RingBuffer is empty")
+
+        # Support standard Python negative indexing
+        if key < 0:
+            key += self.size
+
+        if key < 0 or key >= self.size:
+            raise IndexError(f"Index {key} out of range for buffer of size {self.size}")
+
+        # Map logical index to physical array index
+        if self._full:
+            physical_index = (self._head + key) % self.size_max
+        else:
+            physical_index = key
+
+        return self._data[physical_index]
 
     def __len__(self) -> int:
         """Returns the number of valid items currently in the buffer.
