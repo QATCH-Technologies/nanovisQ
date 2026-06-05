@@ -7837,23 +7837,29 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            p0 = (1, 0)  # start with values near those we expect
-            n_slope, n_offset = p0  # default, not yet optimized
+            # See issue #410: Reduce Initial Fill Point Weighting in n_coeff Calculation
             end_fill_idx = max(0, len(log_velocity_46) - len(distances))
             best_fill_idx = log_velocity_46[:end_fill_idx]
             best_fill_pts = log_position_46[:end_fill_idx]
             best_fit_idx = []
             best_fit_pts = []
             try:
-                if len(best_fill_idx):
-                    best_fill_idx = [best_fill_idx[0], 
-                        (best_fill_idx.min() + best_fill_idx.max()) / 2]
-                    best_fit_idx.extend(best_fill_idx)
-                if len(best_fill_pts):
-                    best_fill_pts = [best_fill_pts[0],
-                    #    np.interp(best_fill_idx[1], log_velocity_46, log_position_46)]
-                        (best_fill_pts.min() + best_fill_pts.max()) / 2]
-                    best_fit_pts.extend(best_fill_pts)
+                def _find_closest_index(target):
+                    # find closest index for target in initial fill region
+                    absolute_differences = np.abs(best_fill_idx - target)
+                    closest_idx = absolute_differences.argmin()
+                    return closest_idx
+                if len(best_fill_idx) and len(best_fill_pts):
+                    # Shown as black squares on "velocity vs position" plot
+                    num_fill_pts = 5  # one point for every 20% region (see log_velocity_20p)
+                    target_pts = np.geomspace(  # like `linspace` but for log10
+                        best_fill_idx.max(), best_fill_idx.min(), num_fill_pts, endpoint=False)
+                    for target in target_pts:
+                        idx = _find_closest_index(target)
+                        best_fit_idx.append(best_fill_idx[idx])
+                        best_fit_pts.append(best_fill_pts[idx])
+                best_fill_idx = best_fit_idx.copy()  # copy for later plotting
+                best_fill_pts = best_fit_pts.copy()  # copy for later plotting
                 best_fit_idx.extend(log_velocity_46[end_fill_idx:])
                 best_fit_pts.extend(log_position_46[end_fill_idx:])
                 # kludgy code to remove the 20% and 40% fill points from fit
@@ -7862,9 +7868,12 @@ class AnalyzerWorker(QtCore.QObject):
                 best_fit_pts = np.delete(best_fit_pts, len(best_fill_pts) + 2)
                 best_fit_pts = np.delete(best_fit_pts, len(best_fill_pts) + 1)
             except Exception as e:
-                Log.e("An error occurred while interpolating initial fill points")
+                Log.e("An error occurred while finding the initial fill points median value")
                 best_fit_idx = log_velocity_46
                 best_fit_pts = log_position_46
+
+            p0 = (1, 0)  # start with values near those we expect
+            n_slope, n_offset = p0  # default, not yet optimized
             try:
                 params, cv = curve_fit(monoLine, best_fit_idx, best_fit_pts, p0)
                 n_slope, n_offset = params
