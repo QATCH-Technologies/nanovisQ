@@ -9017,7 +9017,7 @@ class AnalyzerWorker(QtCore.QObject):
                     np.column_stack(
                         [
                             in_shear_rate,
-                            in_viscosity,
+                            lin_viscosity,
                             lin_viscosity,
                             err_viscosity,
                             in_temp,

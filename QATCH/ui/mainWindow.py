@@ -2982,7 +2982,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Progress container
             container = QtWidgets.QWidget()
-            container.setFixedWidth(340)
+            container.setFixedWidth(375)
 
             container.setStyleSheet(
                 "QWidget {"
