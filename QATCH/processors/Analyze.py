@@ -7839,27 +7839,25 @@ class AnalyzerWorker(QtCore.QObject):
 
             # See issue #410: Reduce Initial Fill Point Weighting in n_coeff Calculation
             end_fill_idx = max(0, len(log_velocity_46) - len(distances))
-            best_fill_idx = log_velocity_46[:end_fill_idx]
-            best_fill_pts = log_position_46[:end_fill_idx]
+            fill_velocity = log_velocity_46[:end_fill_idx]
+            fill_position = log_position_46[:end_fill_idx]
             best_fit_idx = []
             best_fit_pts = []
             try:
-                def _find_closest_index(target):
-                    # find closest index for target in initial fill region
-                    absolute_differences = np.abs(best_fill_idx - target)
-                    closest_idx = absolute_differences.argmin()
-                    return closest_idx
-                if len(best_fill_idx) and len(best_fill_pts):
+                if len(fill_velocity) and len(fill_position):
                     # Shown as black squares on "velocity vs position" plot
-                    num_fill_pts = 5  # one point for every 20% region (see log_velocity_20p)
-                    target_pts = np.geomspace(  # like `linspace` but for log10
-                        best_fill_idx.max(), best_fill_idx.min(), num_fill_pts, endpoint=False)
-                    for target in target_pts:
-                        idx = _find_closest_index(target)
-                        best_fit_idx.append(best_fill_idx[idx])
-                        best_fit_pts.append(best_fill_pts[idx])
-                best_fill_idx = best_fit_idx.copy()  # copy for later plotting
-                best_fill_pts = best_fit_pts.copy()  # copy for later plotting
+                    num_fill_pts = min(5, len(fill_velocity))
+                    target_offsets = np.linspace(
+                        1, len(fill_velocity), num_fill_pts, endpoint=False
+                    )
+                    selected_offsets = np.unique(
+                        np.clip(np.rint(target_offsets).astype(int) - 1, 0, len(fill_velocity) - 1)
+                    )
+                    selected_offsets.sort()
+                    best_fit_idx.extend(fill_velocity[selected_offsets].tolist())
+                    best_fit_pts.extend(fill_position[selected_offsets].tolist())
+                best_fill_idx = np.asarray(best_fit_idx, dtype=float)  # copy for later plotting
+                best_fill_pts = np.asarray(best_fit_pts, dtype=float)  # copy for later plotting
                 best_fit_idx.extend(log_velocity_46[end_fill_idx:])
                 best_fit_pts.extend(log_position_46[end_fill_idx:])
                 # kludgy code to remove the 20% and 40% fill points from fit
