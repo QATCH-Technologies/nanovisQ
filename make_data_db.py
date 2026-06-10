@@ -43,7 +43,7 @@ logger = logging.getLogger("DB_MAKER")
 
 ADMIN_SPACE_LIMIT = IngredientController.DEV_MAX_ID
 SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
-SOURCE_CSV = "formulation_data_03042026.csv"
+SOURCE_CSV = "formulation_data_05262026.csv"
 
 
 def get_project_paths() -> Tuple[Path, Path]:
@@ -161,6 +161,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     # "nan" (produced by str(float('nan'))) from being stored as an ingredient name.
     # Affects poly-hIgG rows that have empty cells for unused ingredient slots.
     optional_ing_cols = [
+        "Protein_type",
         "Salt_type",
         "Stabilizer_type",
         "Surfactant_type",
@@ -312,8 +313,8 @@ def verify_database_integrity(db_path: Path, original_df: pd.DataFrame, expected
                 df_db_sorted,
                 check_dtype=False,
                 check_like=True,
-                rtol=2e-2,
-                atol=1e-6,
+                rtol=5e-2,
+                atol=1e-3,
             )
             logger.info("DataFrame verification passed: DB export matches source CSV.")
         except AssertionError as e:

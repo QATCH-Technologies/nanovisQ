@@ -5,8 +5,10 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
-from QATCH.ui.popUp import PopUp
 from QATCH.core.constants import Constants, UserRoles
+from QATCH.tools.donnan_gibbs_calculator import DonnanCalculatorModule
+from QATCH.tools.injection_force_calculator import InjectionForceCalculatorModule
+from QATCH.ui.popUp import PopUp
 from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
 
 
@@ -181,7 +183,11 @@ class UIMain:
         self.mode_analyze.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.mode_analyze.mousePressEvent = self._set_analyze_mode
 
-        # VisQ.AI Mode
+        # Tools Header
+        self.mode_tools = QtWidgets.QLabel("<b>TOOLS</b>")
+        self.mode_tools.setStyleSheet("padding: 10px; padding-top: 15px;")
+
+        # VisQ.AI Tool
         self.mode_learn = QtWidgets.QLabel("VisQ.AI™")
         # Using this instead of <sup> for beter antialiasing.
         self.mode_learn.setObjectName("menuItem")
@@ -189,26 +195,50 @@ class UIMain:
         self.mode_learn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.mode_learn.mousePressEvent = self._set_learn_mode
 
+        # Donnan Calculator Tool
+        self.mode_donnan = QtWidgets.QLabel("Donnan-Gibbs Calculator")
+        self.mode_donnan.setObjectName("menuItem")
+        self.mode_donnan.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.mode_donnan.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.mode_donnan.setWordWrap(True)
+        self.mode_donnan.mousePressEvent = self._set_donnan_mode
+
+        # Injection Force Calculator Tool
+        self.mode_injection = QtWidgets.QLabel("Injection Force Calculator")
+        self.mode_injection.setObjectName("menuItem")
+        self.mode_injection.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.mode_injection.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.mode_injection.setWordWrap(True)
+        self.mode_injection.mousePressEvent = self._set_injection_mode
+
         # Text antialiasing
         smooth_font = QtGui.QFont()
         smooth_font.setStyleStrategy(QtGui.QFont.PreferAntialias | QtGui.QFont.PreferQuality)
         self.mode_mode.setFont(smooth_font)
         self.mode_run.setFont(smooth_font)
         self.mode_analyze.setFont(smooth_font)
+        self.mode_tools.setFont(smooth_font)
         self.mode_learn.setFont(smooth_font)
+        self.mode_donnan.setFont(smooth_font)
+        self.mode_injection.setFont(smooth_font)
 
         # Initialize dynamic properties
         self.mode_run.setProperty("active", "false")
         self.mode_analyze.setProperty("active", "false")
         self.mode_learn.setProperty("active", "false")
+        self.mode_donnan.setProperty("active", "false")
+        self.mode_injection.setProperty("active", "false")
 
         # Add to Layout
         modelayout.addWidget(self.logolabel)
         modelayout.addWidget(self.mode_mode)
         modelayout.addWidget(self.mode_run)
         modelayout.addWidget(self.mode_analyze)
+        modelayout.addWidget(self.mode_tools)
         if Constants.show_visQ_in_R_builds:
             modelayout.addWidget(self.mode_learn)
+        modelayout.addWidget(self.mode_donnan)
+        modelayout.addWidget(self.mode_injection)
         modelayout.addStretch()
         modewidget.setLayout(modelayout)
         self.modemenu = QtWidgets.QScrollArea()
@@ -274,6 +304,26 @@ class UIMain:
         self.learn_ui.setWidget(parent.VisQAIWin)
         self.learn_ui.setMinimumSize(QtCore.QSize(1000, 122))
 
+        self.donnan_calc_module = DonnanCalculatorModule()  # Instantiate the module
+        self.donnan_ui = QtWidgets.QScrollArea()
+        self.donnan_ui.setObjectName("donnan_ui")
+        self.donnan_ui.setFrameShape(QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+        self.donnan_ui.setLineWidth(0)
+        self.donnan_ui.setMidLineWidth(0)
+        self.donnan_ui.setWidgetResizable(True)
+        self.donnan_ui.setWidget(self.donnan_calc_module)
+        self.donnan_ui.setMinimumSize(QtCore.QSize(1000, 122))
+
+        # injection mode view frame: placeholder
+        self.injection_calc_module = InjectionForceCalculatorModule()  # Instantiate the module
+        self.injection_ui = QtWidgets.QScrollArea()
+        self.injection_ui.setObjectName("injection_ui")
+        self.injection_ui.setFrameShape(QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+        self.injection_ui.setLineWidth(0)
+        self.injection_ui.setMidLineWidth(0)
+        self.injection_ui.setWidgetResizable(True)
+        self.injection_ui.setWidget(self.injection_calc_module)
+        self.injection_ui.setMinimumSize(QtCore.QSize(1000, 122))
         # log view frame: Logger
         self.logview = QtWidgets.QScrollArea()
         self.logview.setObjectName("logview")
@@ -797,6 +847,216 @@ class UIMain:
         self.animate_mode_highlight(self.mode_learn)
         self.splitter.replaceWidget(0, self.learn_ui)
         self.parent.viewTutorialPage(8)
+
+        return True if obj is None else None
+
+    def _set_donnan_mode(self, obj: Optional[Any] = None) -> Optional[bool]:
+        """
+        Switches the application to 'Donnan-Gibbs Calculator' mode.
+
+        Validates the current application state, prompts the user for unsaved changes
+        in other modes, verifies user permissions, and updates the UI layout and animations.
+
+        Args:
+            obj (Optional[Any]): The event object triggering the mode change (e.g., QMouseEvent).
+                If None, it indicates the function was called programmatically rather than
+                via a UI interaction.
+
+        Returns:
+            Optional[bool]:
+                - True if the mode was successfully changed or was already active (programmatic call).
+                - False if the mode change was aborted (programmatic call).
+                - None if triggered via a UI event.
+        """
+        current_widget = self.splitter.widget(0)
+
+        # Already in Run mode
+        if current_widget == self.donnan_ui and not self._force_splitter_mode_set:
+            Log.d("Donnan-Gibbs Calculator already active. Skipping mode change request.")
+            return True if obj is None else None
+
+        # VisQ.AI is currently processing
+        if self.parent.VisQAIWin.isBusy():
+            PopUp.warning(
+                self.parent,
+                "Learning In-Progress...",
+                "Mode change is not allowed while learning.",
+            )
+            return False if obj is None else None
+
+        # Unsaved changes in Analyze mode
+        if current_widget == self.analyze and self.parent.AnalyzeProc.hasUnsavedChanges():
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
+                self.parent.AnalyzeProc.clear()  # User accepted data loss
+            else:
+                Log.e(
+                    'Please "Analyze" to save or "Close" to lose your changes before switching '
+                    "modes."
+                )
+                return False if obj is None else None
+
+        # Unsaved changes in VisQ.AI mode
+        if current_widget == self.learn_ui and self.parent.VisQAIWin.hasUnsavedChanges():
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
+                self.parent.VisQAIWin.clear()  # User accepted data loss
+            else:
+                Log.e("Please save your unsaved changes in VisQ.AI™ before switching modes.")
+                return False if obj is None else None
+
+        # Active run in progress
+        if (
+            current_widget == self.runview
+            and not self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
+        ):
+            Log.e("Please stop the current run before switching modes.")
+            return False if obj is None else None
+
+        # Check User Permissions
+        action_role = UserRoles.ANALYZE
+        check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+
+        if check_result is None:  # User check required, but no user signed in
+            Log.w(
+                f"Not signed in: User with role {action_role.name} is required to perform this action."
+            )
+            Log.i("Please sign in to continue.")
+            self.parent.ControlsWin.set_user_profile()  # Prompt for sign-in
+            check_result = UserProfiles().check(
+                self.parent.ControlsWin.userrole, action_role
+            )  # Check again
+
+        if not check_result:  # Explicitly denied
+            Log.w(
+                f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+            )
+            Log.e(
+                "Please sign in to access the Donnan-Gibbs Calculator."
+                if check_result is None
+                else "You are not authorized to access the Donnan-Gibbs Calculator."
+            )
+            return False if obj is None else None
+
+        self.parent._enable_ui(False)
+        self.parent.VisQAIWin.enable(False)
+        self.animate_mode_highlight(self.mode_donnan)
+        self.splitter.replaceWidget(0, self.donnan_ui)
+
+        # No tutorial pages specified for this mode
+
+        return True if obj is None else None
+
+    def _set_injection_mode(self, obj: Optional[Any] = None) -> Optional[bool]:
+        """
+        Switches the application to 'Injection Force Calculator' mode.
+
+        Validates the current application state, prompts the user for unsaved changes
+        in other modes, verifies user permissions, and updates the UI layout and animations.
+
+        Args:
+            obj (Optional[Any]): The event object triggering the mode change (e.g., QMouseEvent).
+                If None, it indicates the function was called programmatically rather than
+                via a UI interaction.
+
+        Returns:
+            Optional[bool]:
+                - True if the mode was successfully changed or was already active (programmatic call).
+                - False if the mode change was aborted (programmatic call).
+                - None if triggered via a UI event.
+        """
+        current_widget = self.splitter.widget(0)
+
+        # Already in Run mode
+        if current_widget == self.injection_ui and not self._force_splitter_mode_set:
+            Log.d("Injection Force Calculator already active. Skipping mode change request.")
+            return True if obj is None else None
+
+        # VisQ.AI is currently processing
+        if self.parent.VisQAIWin.isBusy():
+            PopUp.warning(
+                self.parent,
+                "Learning In-Progress...",
+                "Mode change is not allowed while learning.",
+            )
+            return False if obj is None else None
+
+        # Unsaved changes in Analyze mode
+        if current_widget == self.analyze and self.parent.AnalyzeProc.hasUnsavedChanges():
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
+                self.parent.AnalyzeProc.clear()  # User accepted data loss
+            else:
+                Log.e(
+                    'Please "Analyze" to save or "Close" to lose your changes before switching '
+                    "modes."
+                )
+                return False if obj is None else None
+
+        # Unsaved changes in VisQ.AI mode
+        if current_widget == self.learn_ui and self.parent.VisQAIWin.hasUnsavedChanges():
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
+                self.parent.VisQAIWin.clear()  # User accepted data loss
+            else:
+                Log.e("Please save your unsaved changes in VisQ.AI™ before switching modes.")
+                return False if obj is None else None
+
+        # Active run in progress
+        if (
+            current_widget == self.runview
+            and not self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
+        ):
+            Log.e("Please stop the current run before switching modes.")
+            return False if obj is None else None
+
+        # Check User Permissions
+        action_role = UserRoles.ANALYZE
+        check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+
+        if check_result is None:  # User check required, but no user signed in
+            Log.w(
+                f"Not signed in: User with role {action_role.name} is required to perform this action."
+            )
+            Log.i("Please sign in to continue.")
+            self.parent.ControlsWin.set_user_profile()  # Prompt for sign-in
+            check_result = UserProfiles().check(
+                self.parent.ControlsWin.userrole, action_role
+            )  # Check again
+
+        if not check_result:  # Explicitly denied
+            Log.w(
+                f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+            )
+            Log.e(
+                "Please sign in to access the Injection Force Calculator."
+                if check_result is None
+                else "You are not authorized to access the Injection Force Calculator."
+            )
+            return False if obj is None else None
+
+        self.parent._enable_ui(False)
+        self.parent.VisQAIWin.enable(False)
+        self.animate_mode_highlight(self.mode_injection)
+        self.splitter.replaceWidget(0, self.injection_ui)
+
+        # No tutorial pages specified for this mode
 
         return True if obj is None else None
 

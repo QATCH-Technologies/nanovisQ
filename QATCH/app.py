@@ -74,7 +74,9 @@ class QATCH:
                 Constants.app_date,
             )  # arbitrary string, required for Windows Toolbar to display QATCH icon
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-            ctypes.windll.kernel32.SetConsoleTitleW("QATCH Q-1 Real-Time GUI - command line")
+            ctypes.windll.kernel32.SetConsoleTitleW(
+                "QATCH Q-1 Real-Time GUI - command line"
+            )
         self._args = self._init_logger()
         self._app = QApplication(argv)
 
@@ -84,7 +86,10 @@ class QATCH:
         if USE_PYI_SPLASH:
             # Update the text on the splash screen
             build_info = "\n".join(
-                [f"                                          {s}" for s in build_info.split("\n")]
+                [
+                    f"                                          {s}"
+                    for s in build_info.split("\n")
+                ]
             )
             pyi_splash.update_text(build_info)
         else:
@@ -147,7 +152,9 @@ class QATCH:
         # lazy load imports
         from QATCH.ui import mainWindow
 
-        if Architecture.is_python_version(MinimalPython.major, minor=MinimalPython.minor):
+        if Architecture.is_python_version(
+            MinimalPython.major, minor=MinimalPython.minor
+        ):
             Log.i(TAG, "Application started")
 
             self.win = mainWindow.MainWindow(samples=self._args.get_user_samples())
@@ -203,6 +210,8 @@ if __name__ == "__main__":
         QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
     if hasattr(QtCore.Qt, "AA_UseHighDpiPixmaps"):
         QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+    if hasattr(QtCore.Qt, "AA_ShareOpenGLContexts"):
+        QApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts, True)
     freeze_support()
 
     QATCH().run()
