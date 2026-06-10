@@ -634,7 +634,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             self._classifier = QModelV6YOLO_Live(
                 model_path=self.model_path, buffer_window_size=None
             )
-            Log.i(self.TAG, "YOLO Live Process Started and Model Loaded. (Infinite Buffer)")
+            Log.i(self.TAG, "YOLO Live Process Started and Model Loaded.")
 
             if enable_vis:
                 import matplotlib.pyplot as plt

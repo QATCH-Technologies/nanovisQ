@@ -4,8 +4,6 @@ mainWindow.py
 The primary container for the QATCH Q-1 application, responsible for initializing and managing the main user interface.
 This module defines the main window of the application, which includes the menu bar, user profile management,
 and the central widget that contains the various UI components. It also handles user interactions such as toggling views,
-This module defines the main window of the application, which includes the menu bar, user profile management,
-and the central widget that contains the various UI components. It also handles user interactions such as toggling views,
 managing user profiles, and responding to menu actions, etc.
 
 Author(s):
@@ -19,8 +17,9 @@ Version:
     x.x.x?
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 import hashlib
+import logging
 import multiprocessing
 import os
 import shutil
@@ -28,21 +27,28 @@ import stat
 import subprocess
 import sys
 import threading
-from time import localtime, strftime, time, monotonic
-from typing import Optional, Any, Callable
+from collections import deque
+from time import localtime, mktime, strftime, strptime, time, monotonic
+from typing import List, Optional, Any, Callable
 from xml.dom import minidom
 import numpy as np
+import pandas as pd
 import pyqtgraph as pg
+import os
+import shutil
 import pyzipper
+import requests
 from dateutil import parser
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph import AxisItem, GraphicsLayoutWidget
+from serial import serialutil
 from pathlib import Path
 from QATCH.ui.workers.worker_snapshot import WorkerSnapshot
 from QATCH.ui.objects.ui_main import _MainWindow
 from QATCH.ui.objects.ui_login import LoginWindow
 from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
+from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileManager import FileManager
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
@@ -67,6 +73,11 @@ from QATCH.ui.objects.ui_controls import ControlsWindow
 from QATCH.ui.objects.ui_plots import PlotsWindow
 from QATCH.ui.objects.ui_logger import LoggerWindow
 from QATCH.ui.objects.ui_info import InfoWindow
+from QATCH.processors.InterpTemps import (
+    ActionType,
+    InterpTempsProcess,
+    QueueCommandFormat,
+)
 from QATCH.ui.popUp import PopUp, QueryComboBox
 from QATCH.ui.workers.rename_output_files_worker import RenameOutputFilesWorker
 from QATCH.ui.workers.extract_worker import ExtractWorker
@@ -199,6 +210,103 @@ class RoundedProgressBar(QtWidgets.QWidget):
             painter.drawRoundedRect(r, radius, radius)
 
         painter.end()
+
+
+class _PlotDimAnimator(QtCore.QObject):
+    """Fades a QGraphicsItem's opacity using a cubic ease-in-out transition.
+
+    This animator provides a smooth visual ramp for dimming or undimming plot
+    elements, preventing abrupt visual jarring during state changes. It
+    operates at approximately 60 FPS using a ``QTimer``.
+
+    Attributes:
+        DEFAULT_DURATION_MS (int): Default fade time (300ms).
+        FRAME_INTERVAL_MS (int): Timer interval for ~60 FPS updates (16ms).
+    """
+
+    DEFAULT_DURATION_MS = 300
+    FRAME_INTERVAL_MS = 16
+
+    def __init__(self, item: QtWidgets.QGraphicsItem, parent: QtCore.QObject = None):
+        """Initializes the animator with a target item and timer.
+
+        Args:
+            item: The ``QGraphicsItem`` to animate (e.g., a ``QGraphicsRectItem``).
+            parent: The Qt parent object for lifecycle management.
+        """
+        super().__init__(parent)
+        self._item = item
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(self.FRAME_INTERVAL_MS)
+        self._timer.timeout.connect(self._step)
+        self._start_opacity = 0.0
+        self._target_opacity = 0.0
+        self._duration_ms = self.DEFAULT_DURATION_MS
+        self._elapsed_ms = 0
+
+    def fade_to(self, target_opacity: float, duration_ms: int = None) -> None:
+        """Starts or redirects a fade toward a new opacity level.
+
+        This method is re-entrant; if a fade is currently in progress, it will
+        smoothly transition from the current actual opacity toward the new
+        target.
+
+        Args:
+            target_opacity: The desired final opacity (0.0 to 1.0).
+            duration_ms: The length of the animation in milliseconds.
+                If None, defaults to ``DEFAULT_DURATION_MS``.
+        """
+        if duration_ms is None:
+            duration_ms = self.DEFAULT_DURATION_MS
+        try:
+            self._start_opacity = float(self._item.opacity())
+        except (RuntimeError, AttributeError):
+            self._start_opacity = float(target_opacity)
+        self._target_opacity = float(target_opacity)
+        self._duration_ms = max(0, int(duration_ms))
+        self._elapsed_ms = 0
+
+        # Snap to target if duration is zero or delta is imperceptible.
+        if self._duration_ms == 0 or abs(self._target_opacity - self._start_opacity) < 1e-4:
+            try:
+                self._item.setOpacity(self._target_opacity)
+            except RuntimeError:
+                pass
+            self._timer.stop()
+            return
+
+        self._timer.start()
+
+    def stop(self) -> None:
+        """Halts the animation immediately.
+
+        The item's opacity will remain at whatever value it held the moment
+        this was called.
+        """
+        self._timer.stop()
+
+    def _step(self) -> None:
+        """Calculates and applies the next opacity step based on elapsed time.
+
+        Side Effects:
+            Updates the opacity of ``self._item``. Stops the timer if the
+            duration is reached or if the item is no longer accessible.
+        """
+        self._elapsed_ms += self._timer.interval()
+        t = min(1.0, self._elapsed_ms / float(self._duration_ms))
+        # Ease-in-out cubic.
+        if t < 0.5:
+            eased = 4.0 * t * t * t
+        else:
+            eased = 1.0 - pow(-2.0 * t + 2.0, 3) / 2.0
+        opacity = self._start_opacity + (self._target_opacity - self._start_opacity) * eased
+        try:
+            self._item.setOpacity(opacity)
+        except RuntimeError:
+            self._timer.stop()
+            return
+        if t >= 1.0:
+            self._timer.stop()
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -480,10 +588,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
+
         # Messaging attribute for early stop messages.
         self._fill_display_msg: Optional[str] = None
 
-        self._fill_display_msg: Optional[str] = None
         # --- fill-event marker state ---
         # Per-channel list of cleanup callables; each removes one persistent marker.
         self._fill_event_markers: list[list] = [[], [], [], []]
@@ -1740,7 +1848,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Progress container
             container = QtWidgets.QWidget()
-            container.setFixedWidth(340)
+            container.setFixedWidth(375)
 
             container.setStyleSheet(
                 "QWidget {"
@@ -2004,12 +2112,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if not hasattr(self, "_dim_overlays"):
             self._dim_overlays = {}
 
+        # Guard against plot_item itself being a dead Qt wrapper
         try:
+            gi = plot_item.graphicsItem()
             vb = plot_item.getViewBox()
         except (RuntimeError, AttributeError):
             return
 
-        if vb is None:
+        if gi is None or vb is None:
             return
 
         key = id(plot_item)
@@ -2154,6 +2264,7 @@ class MainWindow(QtWidgets.QMainWindow):
             is resized.
         """
         # Guard: Prevent welcome text from reappearing if the calibration overlay is active.
+        # This stops clear/re-annotate paths from reintroducing stale copy.
         if getattr(self, "_calib_overlay_ready", False):
             return
 
@@ -2162,10 +2273,12 @@ class MainWindow(QtWidgets.QMainWindow):
         target = self._plt2_arr[1] or self._plt2_arr[0]
         if not target:
             return
+        # Determine responsive font sizes
         font_size = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
         text_color = (45, 55, 72, 230)
         font_family = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
+        # Initialize text items with specific HTML formatting
         self._text1 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text1.setHtml(
             f"<div style='font-family: {font_family}; text-align: center;'>"
@@ -2191,6 +2304,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         view_box = target.getViewBox()
         graphics_item = target.graphicsItem()
+
+        # Parent to graphicsItem (PlotItem level) so text overlays the plot space properly.
+        # Set ZValue to 998 (above the generic dim rect, below the calib overlay).
         for text_item in (self._text1, self._text2, self._text3):
             shadow = QtWidgets.QGraphicsDropShadowEffect()
             shadow.setBlurRadius(10)
@@ -2684,6 +2800,7 @@ class MainWindow(QtWidgets.QMainWindow):
             current_count = getattr(self, "multiplex_plots", None)
             current_source = getattr(self, "_last_configured_source", None)
             new_source = self._get_source()
+            # TODO: This is just a placeholder, more work required to draw plots
             if current_count != new_count:
                 left_pane = self.PlotsWin.ui2.left_pane
                 current_tabs = len(left_pane.btn_group.buttons())
@@ -2748,6 +2865,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     amplitude=True, rf_diss=True, temperature=True, animate=False
                 )
             finally:
+                # Re-enable updates. This fires one consolidated repaint reflecting
+                # the final dim state—avoiding any in-between frame flickering.
                 for w in _all_tiles:
                     w.setUpdatesEnabled(True)
 
@@ -3188,11 +3307,32 @@ class MainWindow(QtWidgets.QMainWindow):
         """
 
         class DateAxis(AxisItem):
+            """Internal axis item for formatting timestamps into human-readable strings.
+
+            Inherits from pyqtgraph.AxisItem to override the tick label generation,
+            providing context-aware time formats.
+            """
+
             def __init__(self, *args, **kwargs):
+                """Initializes the DateAxis with standard AxisItem arguments."""
                 super(DateAxis, self).__init__(*args, **kwargs)
 
             def tickStrings(self, values, scale, spacing):
+                """Converts epoch timestamps into formatted time strings.
+
+                Args:
+                    values (list[float]): The raw numerical values of the ticks.
+                    scale (float): Scale factor applied to the values.
+                    spacing (float): The spacing between ticks.
+
+                Returns:
+                    list[str]: Formatted strings. If the time is within the first hour
+                        of the day (UTC), it returns 'MM:SS'. Otherwise, it returns
+                        'HH:MM:SS'. Returns an empty string on error.
+                """
                 try:
+                    # If less than 1 hour: display as "MM:SS" format.
+                    # If equal or over 1 hour: display as "HH:MM:SS".
                     z = []
                     for value in values:
                         dt = datetime.fromtimestamp(float(value), timezone.utc)
@@ -3403,6 +3543,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._apply_glass_plot_style(self._plt4)
 
+        # Set size policy for show/hide for temperature plot.
         not_resize = self._plt4.sizePolicy()
         not_resize.setHorizontalStretch(1)
         self._plt4.setSizePolicy(not_resize)
@@ -3825,6 +3966,7 @@ class MainWindow(QtWidgets.QMainWindow):
         css_style = Constants._CSS_YELLOW
         overlay_bar_color = "#2E9BDA"
         overlay_label_color = "#333333"
+
         # Evaluate Calibration State Machine
         if phase == 0:
             if temperature_err:
@@ -4054,7 +4196,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if not self.tecWorker._tec_locked:
             return
-        self.tecWorker._tec_temp = data_temperature[0]
+        self.tecWorker._tec_temp = data_temperature[-1]
         self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
         tec_temperature = self.tecWorker._tec_temp
         tec_set_point = self.tecWorker._tec_setpoint or 0.25
@@ -4366,13 +4508,13 @@ class MainWindow(QtWidgets.QMainWindow):
             rf_val = 0.0
 
         if rf_val >= 1e6:
-            unit_rf = "ΔMHz"
+            unit_rf = "&Delta;MHz"
             scale_rf = 1e-6
         elif rf_val >= 1e3:
-            unit_rf = "ΔkHz"
+            unit_rf = "&Delta;kHz"
             scale_rf = 1e-3
         else:
-            unit_rf = "ΔHz"
+            unit_rf = "&Delta;Hz"
             scale_rf = 1.0
 
         for p in self._plt2_arr:
@@ -4412,7 +4554,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
                 color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
 
-                unit_diss = "Δ"
+                unit_diss = "&Delta;"
 
                 # Top-Left Label (Over Frequency Axis) with LINE BREAKS
                 if not hasattr(pi, "_left_title_label"):
