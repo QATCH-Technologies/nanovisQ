@@ -15,6 +15,7 @@ from typing import BinaryIO, cast
 
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import secure_open
+from QATCH.core.run_metadata import RunMetadata
 
 TAG = "[ScanWorker]"
 
