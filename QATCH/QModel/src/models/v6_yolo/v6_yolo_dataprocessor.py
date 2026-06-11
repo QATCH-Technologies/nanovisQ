@@ -12,13 +12,14 @@ Dependencies:
 - pandas, numpy, matplotlib
 - scipy.signal (medfilt)
 
-Author:
+Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
+
 Date:
-    2026-04-29
+    2026-06-11
 
 Version:
-    6.0.2
+    6.2.0
 """
 
 import os

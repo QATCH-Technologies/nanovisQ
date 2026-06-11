@@ -1,6 +1,7 @@
-# module: v6_yolo.py
+"""
+v6_yolo.py
 
-"""This module implements the QModel V6 YOLO pipeline for data analysis.
+This module implements the QModel V6 YOLO pipeline for data analysis.
 
 It orchestrates a "Reverse Cascading Detection" strategy, utilizing multiple YOLO object detectors to
 identify points of interest (POIs) in viscosity data. The pipeline handles data preprocessing,
@@ -16,18 +17,18 @@ Dependencies:
 - pandas, numpy, matplotlib
 - QATCH internal modules (Logger, DataProcessor, FillClassifier)
 
-Author:
+Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
+
 Date:
-    2026-04-29
+    2026-06-11
 
 Version:
-    6.1.2
+    6.2.0
 """
 
 import datetime
 import os
-import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -78,6 +79,27 @@ except ImportError:
         msg="'ultralytics' not found. YOLO inference will fail.",
     )
 
+# Configuration-prior decode layer (optional). When unavailable the
+# decode_config path in QModelV6YOLO.predict degrades to a no-op and the
+# pipeline behaves exactly as before.
+try:
+    from QATCH.QModel.src.models.v6_yolo.v6_yolo_spacing_prior import QModelV6YOLO_SpacingPrior
+    from QATCH.QModel.src.models.v6_yolo.v6_yolo_decode import (
+        Candidate,
+        dp_decode,
+        score_configuration,
+    )
+
+    _DECODE_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    try:
+        from v6_yolo_spacing_prior import QModelV6YOLO_SpacingPrior
+        from v6_yolo_decode import Candidate, dp_decode, score_configuration
+
+        _DECODE_AVAILABLE = True
+    except (ImportError, ModuleNotFoundError):
+        _DECODE_AVAILABLE = False
+
 
 # --- Configuration Constants ---
 class QModelV6Config:
@@ -104,6 +126,18 @@ class QModelV6Config:
         "2ch": 2,
         "3ch": 3,
     }
+
+    # Weight of the spacing log-likelihood relative to detection confidence.
+    DECODE_LAMBDA: float = 0.25
+    # Weight on summed (clipped) detection confidence.
+    DECODE_CONF_WEIGHT: float = 0.25
+    # Multiplicative slack on the learned hard gap bounds.
+    DECODE_FEAS_SLACK: float = 1.5
+    # Per-POI cap (top-K by confidence) on the decode lattice width.
+    DECODE_MAX_CANDIDATES: int = 10
+    # Hysteresis the decoded configuration is only accepted if its score beats the cascade
+    # configuration's score.
+    DECODE_MIN_MARGIN: float = 2.0
 
     # Progress Signal Steps
     PROG_LOAD_DATA: int = 10
@@ -346,6 +380,68 @@ class QModelV6YOLO_Detector:
 
         return final_results
 
+    def predict_candidates(
+        self, df: pd.DataFrame, target_class_map: Optional[Dict[int, int]] = None
+    ) -> Dict[int, List[Dict[str, Any]]]:
+        """
+        Runs inference and returns ALL candidate detections per class, not just
+        the single highest-confidence box.
+
+        This is the candidate-harvesting counterpart to `predict_single`. It is
+        used by the configuration-prior decode layer, which chooses the jointly
+        coherent configuration across stages rather than greedily taking the
+        most confident box per stage. Image generation, time mapping and the
+        confidence threshold are identical to `predict_single`, so the
+        candidate set here is a superset that always contains `predict_single`'s
+        pick (the max-confidence one).
+
+        Args:
+            df (pd.DataFrame): The dataframe slice to analyze. Slices smaller
+                than `MIN_SLICE_LENGTH` yield an empty result.
+            target_class_map (Optional[Dict[int, int]]): Mapping from the YOLO
+                model's internal class IDs to application POI IDs. If provided,
+                output is keyed by POI ID; otherwise by raw YOLO class ID.
+
+        Returns:
+            Dict[int, List[Dict[str, Any]]]: Mapping of class/POI id to a list
+            of candidate dicts, each {"time": float, "conf": float}, sorted by
+            descending confidence. Classes with no detections are omitted.
+        """
+        if df is None or len(df) < QModelV6Config.MIN_SLICE_LENGTH:
+            return {}
+        img_base = QModelV6YOLO_DataProcessor.generate_channel_det(
+            df, img_w=QModelV6Config.IMG_WIDTH, img_h=QModelV6Config.IMG_HEIGHT
+        )
+        results = self.model(img_base, verbose=False, conf=QModelV6Config.CONF_THRESHOLD)
+        col_time = "Relative_time"
+        if col_time not in df.columns:
+            col_time = "time" if "time" in df.columns else df.columns[0]
+
+        time_vals = df[col_time].to_numpy(dtype=float)
+        x_min, x_max = time_vals.min(), time_vals.max()
+
+        all_dets: Dict[int, List[Dict[str, Any]]] = {}
+        for res in results:
+            for box in res.boxes:
+                cls_id = int(box.cls[0].item())
+                conf = box.conf.item()
+                x_norm = box.xywhn[0][0].item()
+                t = x_norm * (x_max - x_min) + x_min
+                all_dets.setdefault(cls_id, []).append({"time": t, "conf": conf})
+
+        # Sort each class's candidates by descending confidence.
+        for cls_id in all_dets:
+            all_dets[cls_id].sort(key=lambda d: d["conf"], reverse=True)
+
+        if not target_class_map:
+            return all_dets
+
+        mapped: Dict[int, List[Dict[str, Any]]] = {}
+        for yolo_id, poi_id in target_class_map.items():
+            if yolo_id in all_dets:
+                mapped[poi_id] = all_dets[yolo_id]
+        return mapped
+
 
 class QModelV6YOLO:
     """
@@ -361,6 +457,15 @@ class QModelV6YOLO:
 
     # Maps internal integer Class IDs to application-standard POI strings
     POI_MAP = {1: "POI1", 2: "POI2", 3: "POI3", 4: "POI4", 5: "POI5", 6: "POI6"}
+
+    # Decoder name space (spacing_prior.POI_ORDER) excludes the legacy id-3
+    # shim, so production ids map onto a dense 5-POI chain:
+    #   id 1 -> POI1, id 2 -> POI2, id 4 -> POI3, id 5 -> POI4, id 6 -> POI5.
+    # NOTE: these names intentionally differ from POI_MAP's output names; the
+    # decode layer works internally in chain space and results are mapped back
+    # to production ids before formatting.
+    DECODE_ID_TO_NAME = {1: "POI1", 2: "POI2", 4: "POI3", 5: "POI4", 6: "POI5"}
+    DECODE_NAME_TO_ID = {v: k for k, v in DECODE_ID_TO_NAME.items()}
 
     def __init__(self, model_assets: Dict[str, Any]):
         """
@@ -381,6 +486,7 @@ class QModelV6YOLO:
         """
         self.model_assets = model_assets
         self._fill_classifier = None
+        self._spacing_prior = None
         self._detectors: Dict[str, Any] = {
             "init": None,
             "ch1": None,
@@ -427,6 +533,192 @@ class QModelV6YOLO:
                     Log.e(self.TAG, f"Error while loading detector '{name}': {e}")
                     return None
         return self._detectors.get(name)
+
+    def _load_spacing_prior(self) -> Any:
+        """
+        Lazy loads the learned SpacingPrior used by the configuration decode.
+
+        The path is taken from `model_assets["spacing_prior"]` (a JSON file
+        produced by fit_prior.py). Returns None — and the decode path becomes
+        a no-op — if the decode modules or the prior file are unavailable, so
+        enabling `decode_config` can never break a deployment that lacks the
+        asset.
+
+        Returns:
+            Any: The loaded `SpacingPrior` instance, or None.
+        """
+        if not _DECODE_AVAILABLE:
+            return None
+        if self._spacing_prior is None:
+            prior_path = self.model_assets.get("spacing_prior")
+            if prior_path and os.path.exists(prior_path):
+                try:
+                    self._spacing_prior = QModelV6YOLO_SpacingPrior.load(prior_path)
+                except Exception as e:
+                    Log.e(self.TAG, f"Error while loading spacing prior: {e}")
+                    return None
+            else:
+                Log.w(self.TAG, "Spacing prior asset missing; decode_config disabled.")
+        return self._spacing_prior
+
+    def _decode_with_prior(
+        self,
+        final_results: Dict[int, Dict[str, Any]],
+        harvested: Dict[int, List[Dict[str, Any]]],
+        num_channels: int,
+        raw_df: pd.DataFrame,
+    ) -> Dict[str, Any]:
+        """
+        Runs the joint configuration decode over harvested candidates and
+        overwrites the cascade's greedy placements with the decoded ones.
+
+        The decode works in chain space (DECODE_ID_TO_NAME). Present POIs are
+        gated by `num_channels` exactly as the cascade gates its stages, so the
+        decoder can never introduce a POI the fill classifier said is absent.
+        The cascade's greedy picks are injected into the candidate pools
+        defensively, so the decoder's solution space always contains current
+        production behaviour: with `require_feasible` fallback inside
+        dp_decode, the decode is never worse than greedy.
+
+        Args:
+            final_results: Cascade results keyed by production POI id; mutated
+                in place with decoded placements.
+            harvested: Candidate store keyed by production POI id, values are
+                lists of {"time", "conf", "index"} dicts.
+            num_channels: Channel count from the fill classifier (or enforced).
+            raw_df: Original DataFrame, for time -> raw index resolution.
+
+        Returns:
+            Dict[str, Any]: Diagnostics for the `_decode` output key:
+                used / reason, feasible, fallback, total_score,
+                spacing_loglik, present, changed (chain-space names whose
+                placement moved vs. the cascade), and greedy_times.
+        """
+        if not _DECODE_AVAILABLE:
+            return {"used": False, "reason": "decode modules unavailable"}
+        prior = self._load_spacing_prior()
+        if prior is None:
+            return {"used": False, "reason": "spacing prior unavailable"}
+
+        present = ["POI1", "POI2"]
+        if num_channels >= 1:
+            present.append("POI3")
+        if num_channels >= 2:
+            present.append("POI4")
+        if num_channels >= 3:
+            present.append("POI5")
+
+        cands: Dict[str, List[Candidate]] = {}
+        for poi_id, name in self.DECODE_ID_TO_NAME.items():
+            pool = [
+                Candidate(time=float(d["time"]), conf=float(d["conf"]))
+                for d in harvested.get(poi_id, [])
+            ]
+            greedy_pick = final_results.get(poi_id)
+            if greedy_pick is not None and not any(
+                abs(c.time - float(greedy_pick["time"])) < 1e-9 for c in pool
+            ):
+                pool.append(
+                    Candidate(time=float(greedy_pick["time"]), conf=float(greedy_pick["conf"]))
+                )
+            if pool:
+                cands[name] = pool
+
+        if not any(name in cands for name in present):
+            return {"used": False, "reason": "no candidates harvested"}
+
+        greedy_times = {name: max(cs, key=lambda c: c.conf).time for name, cs in cands.items()}
+
+        # Snapshot the cascade's (pre-decode) placements in chain space so a
+        # single predict() call carries both A/B arms: callers (e.g. the
+        # decode benchmark) can compare production-greedy vs decoded without
+        # a second YOLO pass.
+        cascade_snapshot = {
+            name: {
+                "time": float(final_results[poi_id]["time"]),
+                "index": int(final_results[poi_id]["index"]),
+                "conf": float(final_results[poi_id]["conf"]),
+            }
+            for poi_id, name in self.DECODE_ID_TO_NAME.items()
+            if poi_id in final_results
+        }
+
+        try:
+            result = dp_decode(
+                cands,
+                present,
+                prior,
+                lam=QModelV6Config.DECODE_LAMBDA,
+                conf_weight=QModelV6Config.DECODE_CONF_WEIGHT,
+                feas_slack=QModelV6Config.DECODE_FEAS_SLACK,
+                max_candidates=QModelV6Config.DECODE_MAX_CANDIDATES,
+            )
+        except Exception as e:
+            Log.e(self.TAG, f"Configuration decode failed: {e}")
+            return {"used": False, "reason": f"decode error: {e}"}
+
+        # ---- accept-margin (hysteresis). Score the cascade's own
+        # configuration under the decode objective; only move off it when the
+        # decoded configuration wins by DECODE_MIN_MARGIN. Skipped when the
+        # decode places POIs the cascade missed (scores over different POI
+        # sets are not comparable, and recovering a missed POI is always
+        # worth taking).
+        kept_cascade = False
+        cascade_chosen = {
+            name: Candidate(time=float(rec["time"]), conf=float(rec["conf"]))
+            for name, rec in cascade_snapshot.items()
+            if name in present
+        }
+        margin = QModelV6Config.DECODE_MIN_MARGIN
+        if margin > 0 and result.chosen and set(result.chosen.keys()) == set(cascade_chosen.keys()):
+            cascade_score = score_configuration(
+                cascade_chosen,
+                prior,
+                lam=QModelV6Config.DECODE_LAMBDA,
+                conf_weight=QModelV6Config.DECODE_CONF_WEIGHT,
+            )
+            if result.total_score < cascade_score + margin:
+                kept_cascade = True
+
+        changed: List[str] = []
+        if kept_cascade:
+            return {
+                "used": True,
+                "feasible": result.feasible,
+                "fallback": result.fallback_used,
+                "total_score": result.total_score,
+                "spacing_loglik": result.spacing_loglik,
+                "present": present,
+                "changed": [],
+                "kept_cascade": True,
+                "greedy_times": greedy_times,
+                "cascade": cascade_snapshot,
+            }
+        for name, cand in result.chosen.items():
+            poi_id = self.DECODE_NAME_TO_ID[name]
+            prev = final_results.get(poi_id)
+            if prev is None or abs(float(prev["time"]) - cand.time) > 1e-9:
+                changed.append(name)
+            final_results[poi_id] = {
+                "index": self._get_raw_index(raw_df, cand.time),
+                "conf": cand.conf,
+                "time": cand.time,
+            }
+        if changed:
+            Log.d(self.TAG, f"Config decode moved {len(changed)} POI(s): {changed}")
+
+        return {
+            "used": True,
+            "feasible": result.feasible,
+            "fallback": result.fallback_used,
+            "total_score": result.total_score,
+            "spacing_loglik": result.spacing_loglik,
+            "present": present,
+            "changed": changed,
+            "kept_cascade": False,
+            "greedy_times": greedy_times,
+            "cascade": cascade_snapshot,
+        }
 
     def _get_default_predictions(self) -> Dict[str, Dict[str, List]]:
         """
@@ -603,6 +895,8 @@ class QModelV6YOLO:
         num_channels: int | None = None,
         avg_res_freq: Optional[float] = None,
         avg_diss: Optional[float] = None,
+        harvest_candidates: bool = False,
+        decode_config: bool = False,
     ) -> Tuple[Dict[str, Dict[str, List]], int]:
         """
         Executes the QModel V6 YOLO prediction pipeline on the provided data.
@@ -634,6 +928,26 @@ class QModelV6YOLO:
                 longer present in the DataFrame.
             avg_diss (Optional[float]): Pre-computed baseline mean of `Dissipation` from
                 the pre-fill window. See `avg_res_freq` for details.
+            harvest_candidates (bool, optional): If True, additionally harvest ALL
+                candidate detections per stage (not just the greedy best) from the
+                same in-distribution slice each detector sees, and attach them to
+                the output dict under the reserved key "_candidates" as
+                {POI_NAME: [{"time","conf","index"}, ...]}. This does NOT change
+                cuts or predictions — the cascade proceeds on the greedy pick
+                exactly as in production; harvesting only observes the runners-up
+                for the downstream configuration-prior decode. Defaults to False.
+            decode_config (bool, optional): If True (implies harvesting), runs the
+                joint configuration decode (dp_decode + SpacingPrior) over the
+                harvested candidates after the cascade completes, and REPLACES the
+                greedy placements with the globally-coherent configuration. The
+                decoder is gated by `num_channels` (it cannot add absent POIs) and
+                falls back to the greedy picks when no feasible joint path exists,
+                so it is never worse than current behaviour. Also widens the
+                harvest slices (see in-line comments) so an early greedy cut
+                cannot exclude true downstream candidates. Diagnostics attach to
+                the output under the reserved key "_decode". Requires
+                `model_assets["spacing_prior"]` to point at a fitted prior JSON;
+                no-ops with a warning otherwise. Defaults to False.
 
         Returns:
             Tuple[Dict[str, Dict[str, List]], int]: A tuple containing:
@@ -693,6 +1007,65 @@ class QModelV6YOLO:
                 "Relative_time" if "Relative_time" in current_df.columns else current_df.columns[0]
             )
             cut_history = []
+            # decode_config consumes the harvest, so it implies harvesting.
+            harvest_candidates = harvest_candidates or decode_config
+            # Candidate harvest store: poi_id -> list of {"time","conf","index"}.
+            # Populated only when harvest_candidates=True. Harvesting does NOT
+            # change cuts or predictions: the cascade still proceeds on
+            # predict_single's greedy pick exactly as in production.
+            harvested: Dict[int, List[Dict[str, Any]]] = {}
+            # The harvest runs on a PARALLEL slice chain (`harvest_df`) that is
+            # cut at the LATEST harvested candidate of each stage instead of
+            # the greedy pick. Rationale: if the greedy pick is too early, the
+            # production cut excises the true downstream event before its
+            # detector ever sees it — a candidate that is never generated can
+            # never be recovered by the decoder, silently capping oracle
+            # recall. Cutting at the latest candidate keeps the harvest slice
+            # a superset of the production slice (slightly wider than the
+            # training distribution in the worst case) while guaranteeing the
+            # true event region survives whenever ANY candidate covers it.
+            harvest_df = master_df.copy() if harvest_candidates else None
+
+            def harvest_stage(detector, slice_df, class_map):
+                """Harvest all candidates for one stage from `slice_df`.
+                Returns the latest harvested candidate time (used to advance
+                the conservative harvest cut chain), or None."""
+                if not harvest_candidates or detector is None or slice_df is None:
+                    return None
+                latest: Optional[float] = None
+                try:
+                    cands = detector.predict_candidates(slice_df, target_class_map=class_map)
+                except Exception as exc:
+                    Log.w(self.TAG, f"Candidate harvest failed: {exc}")
+                    return None
+                for poi_id, lst in cands.items():
+                    out_lst = []
+                    for d in lst:
+                        out_lst.append(
+                            {
+                                "time": d["time"],
+                                "conf": d["conf"],
+                                "index": self._get_raw_index(raw_df, d["time"]),
+                            }
+                        )
+                        if latest is None or d["time"] > latest:
+                            latest = d["time"]
+                    # If a stage is revisited (e.g. POI6 coarse + fine), keep the
+                    # union; later refinement appends rather than overwrites.
+                    harvested.setdefault(poi_id, []).extend(out_lst)
+                return latest
+
+            def advance_harvest_cut(greedy_cut, latest_cand):
+                """Advance the harvest slice chain past this stage. The cut is
+                the LATEST of the production cut and the latest harvested
+                candidate, so the harvest slice never loses signal that any
+                candidate still claims."""
+                nonlocal harvest_df
+                if harvest_df is None:
+                    return
+                cuts = [t for t in (greedy_cut, latest_cand) if t is not None]
+                if cuts:
+                    harvest_df = harvest_df[harvest_df[col_time] < max(cuts)]
 
             def process_detection(res_dict, poi_id):
                 if poi_id in res_dict:
@@ -714,10 +1087,12 @@ class QModelV6YOLO:
                 det_ch3 = self._load_detector_by_name("ch3")
                 if det_ch3:
                     res = det_ch3.predict_single(current_df, target_class_map={0: 6})
+                    h_latest = harvest_stage(det_ch3, harvest_df, {0: 6})
                     cut_time = process_detection(res, 6)
                     if cut_time:
                         current_df = current_df[current_df[col_time] < cut_time]
                         cut_history.append(("CH3_Cut", cut_time))
+                    advance_harvest_cut(cut_time, h_latest)
 
             if num_channels >= 2:
                 if progress_signal:
@@ -726,10 +1101,12 @@ class QModelV6YOLO:
                 det_ch2 = self._load_detector_by_name("ch2")
                 if det_ch2:
                     res = det_ch2.predict_single(current_df, target_class_map={0: 5})
+                    h_latest = harvest_stage(det_ch2, harvest_df, {0: 5})
                     cut_time = process_detection(res, 5)
                     if cut_time:
                         current_df = current_df[current_df[col_time] < cut_time]
                         cut_history.append(("CH2_Cut", cut_time))
+                    advance_harvest_cut(cut_time, h_latest)
 
             if num_channels >= 1:
                 if progress_signal:
@@ -738,10 +1115,12 @@ class QModelV6YOLO:
                 det_ch1 = self._load_detector_by_name("ch1")
                 if det_ch1:
                     res = det_ch1.predict_single(current_df, target_class_map={0: 4})
+                    h_latest = harvest_stage(det_ch1, harvest_df, {0: 4})
                     cut_time = process_detection(res, 4)
                     if cut_time:
                         current_df = current_df[current_df[col_time] < cut_time]
                         cut_history.append(("CH1_Cut", cut_time))
+                    advance_harvest_cut(cut_time, h_latest)
 
             if progress_signal:
                 progress_signal.emit(85, "Detecting Initialization Points...")
@@ -749,6 +1128,7 @@ class QModelV6YOLO:
             det_init = self._load_detector_by_name("init")
             if det_init:
                 res = det_init.predict_single(current_df, target_class_map={0: 1, 1: 2})
+                harvest_stage(det_init, harvest_df, {0: 1, 1: 2})
                 process_detection(res, 1)
                 process_detection(res, 2)
 
@@ -760,12 +1140,25 @@ class QModelV6YOLO:
                     anchor_time = final_results[5]["time"]
                     fine_slice = master_df[master_df[col_time] >= anchor_time]
                     res_fine = det_fine.predict_single(fine_slice, target_class_map={0: 6})
+                    harvest_stage(det_fine, fine_slice, {0: 6})
 
                     if 6 in res_fine:
                         process_detection(res_fine, 6)
 
             if 3 in final_results:
                 del final_results[3]
+
+            # ---- Configuration-prior decode: replace the cascade's greedy
+            # placements with the jointly-coherent configuration. Mutates
+            # final_results in place; falls back to greedy internally, so the
+            # production output contract and worst-case behaviour are intact.
+            decode_meta: Optional[Dict[str, Any]] = None
+            if decode_config:
+                if progress_signal:
+                    progress_signal.emit(95, "Decoding Configuration...")
+                decode_meta = self._decode_with_prior(
+                    final_results, harvested, num_channels, raw_df
+                )
 
             if progress_signal:
                 progress_signal.emit(100, "Complete!")
@@ -776,7 +1169,36 @@ class QModelV6YOLO:
                 except Exception as e:
                     Log.w(self.TAG, f"Visualization failed: {e}")
 
-            return self._format_output(final_results), num_channels
+            output = self._format_output(final_results)
+            if harvest_candidates:
+                # Attach candidates under a reserved, namespaced key so the
+                # return type and all existing POI keys are unchanged. Callers
+                # that don't request harvesting never see this. Mapped to POI
+                # names via POI_MAP; the legacy id-3 shim is excluded.
+                cand_out: Dict[str, List[Dict[str, Any]]] = {}
+                for poi_id, lst in harvested.items():
+                    if poi_id == 3:
+                        continue
+                    name = self.POI_MAP.get(poi_id, f"POI{poi_id}")
+                    # de-dup and keep sorted by confidence desc
+                    seen = set()
+                    uniq = []
+                    for d in sorted(lst, key=lambda x: x["conf"], reverse=True):
+                        key = (round(d["time"], 6), round(d["conf"], 6))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        uniq.append(d)
+                    cand_out[name] = uniq
+                output["_candidates"] = cand_out
+
+            if decode_meta is not None:
+                # Reserved, namespaced key (mirrors "_candidates"): existing
+                # POI keys and the return type are unchanged; callers that
+                # don't request decoding never see this.
+                output["_decode"] = decode_meta
+
+            return output, num_channels
 
         except Exception as e:
             Log.e(self.TAG, f"Error during prediction: {e}")
