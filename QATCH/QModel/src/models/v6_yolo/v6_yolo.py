@@ -1063,9 +1063,10 @@ class QModelV6YOLO:
                 nonlocal harvest_df
                 if harvest_df is None:
                     return
-                cuts = [t for t in (greedy_cut, latest_cand) if t is not None]
-                if cuts:
-                    harvest_df = harvest_df[harvest_df[col_time] < max(cuts)]
+                if greedy_cut is None:
+                    return
+                cut = max(t for t in (greedy_cut, latest_cand) if t is not None)
+                harvest_df = harvest_df[harvest_df[col_time] < cut]
 
             def process_detection(res_dict, poi_id):
                 if poi_id in res_dict:

@@ -553,7 +553,27 @@ def dp_decode(
         )
 
     if chosen1 is None and require_feasible:
-        relaxed = _dp_pass(cand, placeable, prior, lam, conf_weight, 1e9, False, span_for_frac=0.0)
+        if use_frac:
+            relaxed = _span_conditioned_decode(
+                cand,
+                placeable,
+                prior,
+                lam,
+                conf_weight,
+                feas_slack,
+                False,
+            )
+        else:
+            relaxed = _dp_pass(
+                cand,
+                placeable,
+                prior,
+                lam,
+                conf_weight,
+                1e9,
+                False,
+                span_for_frac=0.0,
+            )
         if relaxed is None or len(relaxed) < len(placeable):
             # Even strict ordering has no complete path -> production-safe
             # floor: per-POI greedy, never worse than current behaviour.

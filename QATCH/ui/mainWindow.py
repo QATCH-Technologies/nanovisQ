@@ -28,7 +28,8 @@ import subprocess
 import sys
 import threading
 from collections import deque
-from time import localtime, mktime, strftime, strptime, time, monotonic
+import matplotlib.pyplot as plt
+from time import localtime, strftime, time, monotonic
 from typing import List, Optional, Any, Callable
 from xml.dom import minidom
 import numpy as np

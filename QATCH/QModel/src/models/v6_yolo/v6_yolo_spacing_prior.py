@@ -272,12 +272,14 @@ class QModelV6YOLO_SpacingPrior:
             If ``span_sec`` is not positive, the seconds-based likelihood is
             used for both components of the blend.
         """
+        if not np.isfinite(gap_sec) or gap_sec <= 0:
+            return -1e9
         z_sec = (np.log(gap_sec) - gs.log_mu_sec) / gs.log_sd_sec
         ll_sec = -0.5 * z_sec * z_sec - np.log(gs.log_sd_sec)
         # fraction log-normal
-        if span_sec and span_sec > 0:
+        if span_sec and span_sec > 0 and np.isfinite(span_sec):
             frac = gap_sec / span_sec
-            if frac <= 0:
+            if not np.isfinite(frac) or frac <= 0:
                 ll_frac = -1e9
             else:
                 z_f = (np.log(frac) - gs.log_mu_frac) / gs.log_sd_frac
