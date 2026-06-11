@@ -1092,7 +1092,7 @@ class UILogin:
         If authentication fails, it triggers error animations and displays a
         'Password invalid' message.
         """
-        username = self.user_username.text().strip()
+        username = self.user_username.text().strip().upper()
 
         if not username:
             self._shake_widget(self.user_username)
