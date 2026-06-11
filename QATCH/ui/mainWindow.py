@@ -5400,22 +5400,31 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._port_changed()
 
         # Remove FLUX controller from list of PIDs connected (if exists)
-        if "80" in dev_pids:
-            dev_pids.remove("80")
+        # if "80" in dev_pids:
+        #     dev_pids.remove("80")
 
         restore_idx = self.ControlsWin.ui1.cBox_MultiMode.currentIndex()
         self.ControlsWin.ui1.cBox_MultiMode.clear()
         multi_channel_count = 4 * 1
+        channel_options = [1, 2, 3, 4]
         if "A" in dev_pids:
             multi_channel_count = 4 * 6
+            channel_options.extend([8, 12, 16, 20, 24])
         multi_channel_items = [
-            f"{i + 1} Channel" + ("s" if i > 0 else "")
-            for i in range(multi_channel_count)
+            f"{i} Channel" + ("s" if i > 0 else "")
+            for i in channel_options
         ]
         self.ControlsWin.ui1.cBox_MultiMode.addItems(multi_channel_items)
         if self.ControlsWin.ui1.chBox_MultiAuto.isChecked():
-            idx = max(0, min(len(dev_pids), multi_channel_count) - 1)
-            Log.d(f"Auto-Detect Channel Count: {idx + 1}")
+            idx = max(0, min(len(dev_pids), len(channel_options)) - 1)
+            if idx < len(channel_options):
+                if idx > 3:
+                    idx = len(channel_options) - 1  # take last one, we're in FLUX land
+                auto_detect_channels = channel_options[idx]
+            else:
+                Log.w("Channel index is not a valid channel option. Defaulting to 1.")
+                auto_detect_channels = 1
+            Log.d(f"Auto-Detect Channel Count: {auto_detect_channels}")
         else:
             if self.ControlsWin.ui1.cBox_MultiMode.count() > restore_idx:
                 idx = restore_idx
@@ -5424,10 +5433,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 idx = self.ControlsWin.ui1.cBox_MultiMode.count() - 1
         self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(idx)
         for i in range(self.ControlsWin.ui1.cBox_MultiMode.count()):
+            try:
+                num = int(self.ControlsWin.ui1.cBox_MultiMode.model().item(i).text().split()[0])
+            except ValueError:
+                num = -1
             if (
-                i
+                num
                 < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1)
-                - 1
+                - 1  # NOTE: This logic does not account for the FLUX CONTROLLER (0x80)
             ):
                 enable = True
             else:

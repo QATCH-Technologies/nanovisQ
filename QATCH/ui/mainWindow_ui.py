@@ -41,6 +41,7 @@ from PyQt5.QtWidgets import (
 from pyqtgraph import GraphicsLayoutWidget
 
 from QATCH.common.architecture import Architecture, OSType
+from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants, OperationType
@@ -1170,6 +1171,13 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.cal_initialized = False
         self.parent = MainWindow1
 
+        self.cal_multiport_timer = QtCore.QTimer()
+        self.cal_multiport_timer.setSingleShot(False)
+        self.cal_multiport_timer.timeout.connect(self._cal_multiport_checker)
+        self.cal_multiport_timer.setInterval(1000)  # every second
+        self.cal_multiport_portnum = 0
+        self.cal_multiport_results = []
+
         MainWindow1.setObjectName("MainWindow1")
         # MainWindow1.setGeometry(50, 50, 975, 70)
         # MainWindow1.setFixedSize(980, 150)
@@ -1909,7 +1917,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                         Log.w(
                             "Prior Flux controller thread still busy; skipping new Next Port request."
                         )
-                        self.tool_NextPortRow.setEnabled(True)
+                        self.action_NextPortRow.setEnabled(True)
                         return
             Log.d("Starting FLUX controller thread.")
             self.fluxThread = QtCore.QThread()
@@ -1952,6 +1960,72 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         except Exception as e:
             Log.e(f"next_port_result ERROR: {e}")
 
+    def _get_multiport_results(self):
+        results = []
+        for i in range(4):
+            path = Constants.cvs_peakfrequencies_path
+            path = FileStorage.DEV_populate_path(path, i)
+            results.append(os.path.isfile(path))
+        self.cal_multiport_results.append(results)
+        return results
+
+    def _cal_multiport_checker(self):
+        try:
+            if not self.pButton_Start.isEnabled():
+                Log.w("Timer check ping: calibration is running")
+                return
+
+            if not self.action_NextPortRow.isEnabled():
+                Log.w("Timer check ping: port selector is switching")
+                return
+            
+            if self.tool_NextPortRow.isError():
+                Log.e("Timer check ping: Error changing ports... cannot continue!")
+                self.cal_multiport_timer.stop()
+                return
+            
+            is_pending = (True 
+                if self.cal_multiport_portnum <= self.cBox_MultiMode.currentIndex() - 3
+                else False
+            )
+
+            if self.tool_NextPortRow.value() == self.cal_multiport_portnum:
+                # Get result of port calibration from prior sweep
+                Log.e("Result:", self._get_multiport_results())
+
+                if is_pending:
+                    Log.e(f"Timer check ping: Selecting port {self.tool_NextPortRow.value() + 1}...")
+                    self.tool_NextPortRow.click()  # next
+                    return
+            
+            if not is_pending:              
+                # TODO: Write plate configuration to JSON file
+                Log.w("Overall result:", self.cal_multiport_results)
+
+                Log.e("Timer check ping: Finished multiport initialize!")
+                self.cal_multiport_timer.stop()
+            else:
+                self.cal_multiport_portnum += 1
+                Log.e(f"Timer check ping: Initializing port {self.cal_multiport_portnum}...")
+                self.action_initialize()
+
+        except Exception as e:
+            Log.e("ABORT: Error during multiport initialization")
+            self.cal_multiport_timer.stop()
+            raise e
+        
+        finally:
+            if not self.cal_multiport_timer.isActive():
+                Log.e("Timer finished: Re-homing port selector.")
+                # When multiport calibration timer stops,
+                # force immediate re-home to Port 1, regardless
+                # of how many channels were scanned, by setting
+                # the icon error flag and stepping to next port
+                self.tool_NextPortRow.setIconError()
+                self.tool_NextPortRow.click()  # re-home
+                # Clear cache copy of cal results on stop
+                self.cal_multiport_results = []
+
     def action_initialize(self):
         """Method to handle initialization UI actions."""
         if self.pButton_Start.isEnabled():
@@ -1962,6 +2036,11 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                 self.run_controls.setEnabled(False)
             self.pButton_Start.clicked.emit()
             self.cal_initialized = True
+
+            # Handle multiport calibration start
+            if self.cBox_MultiMode.currentIndex() > 3 and not self.cal_multiport_timer.isActive():
+                self.cal_multiport_timer.start()
+                self.cal_multiport_portnum = 1
 
     def action_start(self):
         """Method to handle start UI actions."""
@@ -1999,6 +2078,10 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # at least one device connected
         self.tool_TempControl.setEnabled(self.cBox_Port.count() > 1)
+
+        if self.cal_multiport_timer.isActive():
+            Log.e("Aborting active multiport initialization action.")
+            self.cal_multiport_timer.stop()
 
     def action_tempcontrol(self):
         self.tempController.setEnabled(self.tool_TempControl.isChecked())
@@ -2959,6 +3042,10 @@ class NumberIconButton(QtWidgets.QToolButton):
         # Used to get the current port step by the caller
         return self._value
 
+    def isError(self):
+        # Used to get the error state by the caller
+        return self._error
+    
     def setIconError(self):
         self._error = True
         self.updateIcon()  # redraw with error colors, clears on next "advance"
@@ -3077,6 +3164,22 @@ class FLUXControl(QtCore.QThread):
 
             probe = str(next_port_num)
 
+            # MUX map the cam wheel for re-ordered ports (due to shorter wires in OT-2)
+            if step == 0:
+                step = 0  # rehome, then step 1 (which is really 5)
+            if step == 1:
+                step = 5  # happens after homing, below
+            elif step == 2:
+                step = 6
+            elif step == 3:
+                step = 3
+            elif step == 4:
+                step = 4
+            elif step == 5:
+                step = 1
+            elif step == 6:
+                step = 2
+
             # NOTE: The stepper is interrupted in FW by pending serial
             #       so the STEP command must be last in the order sent
             flux_cmds = f"TEC {tec}\nPROBE {probe}\nSTEP {step}\n"
@@ -3098,6 +3201,25 @@ class FLUXControl(QtCore.QThread):
                 waiting = FLUX_serial.in_waiting
                 if waiting > 0:
                     flux_reply += FLUX_serial.read(waiting).decode(errors="replace")
+
+            if step == 0:
+                # Read and show the TEC temp status from the device
+                FLUX_serial.write("STEP 5\n".encode())
+                timeoutAt = time() + Constants.stepper_timeout_sec
+                # flux_reply = ""  # do not clear
+                # timeout needed if old FW
+                while time() < timeoutAt:
+                    # await second DONE reply, count of 2
+                    if flux_reply.count("Stepper: DONE!") > 1:
+                        break
+                    while (
+                        FLUX_serial.in_waiting == 0 and time() < timeoutAt
+                    ):  # timeout needed if old FW:
+                        QtCore.QThread.msleep(5)
+                    waiting = FLUX_serial.in_waiting
+                    if waiting > 0:
+                        flux_reply += FLUX_serial.read(waiting).decode(errors="replace")
+
 
             if time() < timeoutAt:
                 if (

@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6b70_POGO_SW"
-#define RELEASE_DATE "2026-04-24"
+#define CODE_VERSION "v2.6b70_FLUX"
+#define RELEASE_DATE "2026-05-28"
 
 /************************** LIBRARIES **************************/
 
@@ -578,8 +578,8 @@ long stepperOffset = -110;          // position of Port 1 relative to L1 switch
 #if STEPPER_MATCH(STEPPER_ROTARY)
 // Circular Rotary Stepper settings
 const bool stepperHomingDir = false; // forwards
-long stepSize = 135;                 // assumes equal step sizes
-long stepperOffset = 60;             // position of Port 1 relative to L1 switch
+long stepSize = 133;                 // assumes equal step sizes
+long stepperOffset = 52;             // position of Port 1 relative to L1 switch
 #endif
 long stepperPositions[6] = {0, stepSize, 2 * stepSize, 3 * stepSize, 4 * stepSize, 5 * stepSize};
 void stepper_home(); // prototype
