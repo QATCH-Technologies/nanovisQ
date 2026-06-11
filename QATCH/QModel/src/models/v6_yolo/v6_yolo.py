@@ -99,6 +99,10 @@ except (ImportError, ModuleNotFoundError):
         _DECODE_AVAILABLE = True
     except (ImportError, ModuleNotFoundError):
         _DECODE_AVAILABLE = False
+        Log.e(
+            tag="[QModelV6YOLO]",
+            msg="Decode modules not found. Configuration decode disabled; falling back to cascade-only behavior.",
+        )
 
 
 # --- Configuration Constants ---
