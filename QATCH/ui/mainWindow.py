@@ -4170,7 +4170,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 if pred_int == -1 and not self._drop_epoch_sent:
                     self.worker._forecaster_in.put(
                         DropEpochSignal(float(self.worker.get_t1_buffer(0)[-1]))
-
                     )
                     self._drop_epoch_sent = True
                 elif pred_int == 3:
@@ -4628,7 +4627,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 ci_freq.setData(x=t1_buffer, y=self._vector_1)
                 self._dot_freq[i].setData([{"pos": (t1_buffer[-1], self._vector_1[-1])}])
 
-
             # Dissipation (reference-subtracted)
             self._vector_2 = (
                 np.asarray(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
@@ -4643,7 +4641,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 ci_diss.setData(x=t2_buffer, y=self._vector_2)
                 self._dot_diss[i].setData([{"pos": (t2_buffer[-1], self._vector_2[-1])}])
-
 
             # Apply limits if measuring
             if is_measurement:
@@ -4858,8 +4855,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if ci_diss:
             ci_diss.setData(x=slice_time_dissipation, y=slice_dissipation)
-            self._dot_diss[i].setData([{"pos": (slice_time_dissipation[-1], slice_dissipation[-1])}])
-
+            self._dot_diss[i].setData(
+                [{"pos": (slice_time_dissipation[-1], slice_dissipation[-1])}]
+            )
 
         # Handle X-Axis Padding & Sync
         if slice_time_resonance_frequency.size > 0:
@@ -4962,8 +4960,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._update_post_drop_label(i, plot_resonance_frequency, plot_dissipation)
             else:
                 self._update_pre_drop_label(i, plot_resonance_frequency)
-        except Exception:
-            Log.e("Error handling plot status label text!")
+        except Exception as e:
+            Log.e(f"Error handling plot status label text: {e}")
 
     def _place_fill_event_marker(
         self,

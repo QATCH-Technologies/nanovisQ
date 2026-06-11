@@ -3170,6 +3170,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Map out the required weights files for the YOLO26 model suite
         model_assets = {
+            "spacing_prior": os.path.join(base_path, "spacing_prior.json"),
             "fill_classifier": os.path.join(
                 base_path, "classifiers", "fill_classifier", "type_cls.pt"
             ),
