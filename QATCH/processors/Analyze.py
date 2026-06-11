@@ -2233,6 +2233,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         else:
             return False
 
+    def isBusy(self) -> bool:
+        if hasattr(self, "analyze_work"):
+            if self.analyze_work.is_running():
+                return True
+        return False
+
     def rescanRuns(self):
         if self.hasUnsavedChanges():
             if not PopUp.question(

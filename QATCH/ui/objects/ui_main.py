@@ -497,6 +497,49 @@ class UIMain:
             log_min_height = self.logview.minimumHeight()
             self.splitter.setSizes([total_height - log_min_height, log_min_height])
 
+    def _check_mode_change_allowed(self) -> bool:
+        """
+        Checks if the mode change is allowable in the current application state.
+
+        Validates the current application state, prompts the user for unsaved changes
+        in active modes, and warns if there is an active task running preventing it.
+
+        Returns:
+            bool: True if the mode change is allowed to continue; otherwise, False
+        """
+        # Active run in progress
+        if (
+            self.splitter.widget(0) == self.runview
+            and not self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
+        ):
+            Log.e("Please stop the current run before switching modes.")
+            return False
+        
+        # Check for busy and/or unsaved changes in Analyze or VisQ.AI
+        for processor, name in [
+            (self.parent.AnalyzeProc, "Analyze"),
+            (self.parent.VisQAIWin, "VisQ.AI™"),
+        ]:
+            if processor.isBusy():
+                PopUp.warning(
+                    self.parent,
+                    f"{name} Task In-Progress...",
+                    "Mode change is not allowed while busy.",
+                )
+                return False
+            if processor.hasUnsavedChanges():
+                if PopUp.question(
+                    self.parent,
+                    Constants.app_title,
+                    f"You have unsaved changes in {name}!\n\nAre you sure you want to close this window?",
+                    False,
+                ):
+                    processor.clear()
+                else:
+                    Log.e(f"Please save or close your changes in {name} before switching modes.")
+                    return False
+        return True
+
     def _set_no_user_mode(self, obj: Optional[Any] = None) -> Optional[bool]:
         """
         Switches the application to 'No User' (Sign-In) mode.
@@ -513,44 +556,22 @@ class UIMain:
         Returns:
             Optional[bool]:
                 - True if the mode was successfully changed or already active (programmatic call).
-                - False if the mode change was aborted due to unsaved changes (programmatic call).
+                - False: the mode change was aborted due to not being allowed (programmatic call).
                 - None if triggered via a UI event.
         """
+        current_widget = self.splitter.widget(0)
+        target_widget = self.userview
+
         # Already in No User / Sign-In mode
-        if self.splitter.widget(0) == self.userview and not self._force_splitter_mode_set:
+        if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("User sign-in mode already active. Skipping mode change request.")
             if obj is None:
                 return True
             # Continue execution if triggered by UI to ensure styles are forcefully reset
 
-        # Unsaved changes in Analyze mode
-        if self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(
-                self.parent,
-                Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to close this window?",
-                False,
-            ):
-                self.parent.AnalyzeProc.clear()  # User accepted data loss
-            else:
-                Log.e(
-                    'Please "Analyze" to save or "Close" to lose your changes before switching '
-                    "modes."
-                )
-                return False if obj is None else None
-
-        # Unsaved changes in VisQ.AI mode
-        if getattr(self.parent, "VisQAIWin", None) and self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(
-                self.parent,
-                Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to close this window?",
-                False,
-            ):
-                self.parent.VisQAIWin.clear()  # User accepted data loss
-            else:
-                Log.e("Please save your unsaved changes in VisQ.AI™ before logging out.")
-                return False if obj is None else None
+        # Check if the mode change is allowed
+        if not self._check_mode_change_allowed():
+            return False if obj is None else None
 
         # Apply UI Changes for Sign-In Mode
         self.parent.ControlsWin.ui_preferences.hide()
@@ -559,7 +580,7 @@ class UIMain:
             widget.setProperty("active", "false")
             widget.style().unpolish(widget)
             widget.style().polish(widget)
-        self.splitter.replaceWidget(0, self.userview)
+        self.splitter.replaceWidget(0, target_widget)
 
         self.parent.viewTutorialPage([1, 2, 0])
 
@@ -589,63 +610,22 @@ class UIMain:
 
         Returns:
             Optional[bool]:
-                - True if the mode was successfully changed or was already active (programmatic call).
-                - False if the mode change was aborted (programmatic call).
+                - True if the mode was successfully changed or already active (programmatic call).
+                - False: the mode change was aborted due to not being allowed (programmatic call).
                 - None if triggered via a UI event.
         """
         current_widget = self.splitter.widget(0)
+        target_widget = self.runview
 
         # Already in Run mode
-        if current_widget == self.runview and not self._force_splitter_mode_set:
+        if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Run mode already active. Skipping mode change request.")
             return True if obj is None else None
 
-        # VisQ.AI is currently processing
-        if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(
-                self.parent,
-                "Learning In-Progress...",
-                "Mode change is not allowed while learning.",
-            )
+        # Check if the mode change is allowed
+        if not self._check_mode_change_allowed():
             return False if obj is None else None
-
-        # Unsaved changes in Analyze mode
-        if current_widget == self.analyze and self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(
-                self.parent,
-                Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to close this window?",
-                False,
-            ):
-                self.parent.AnalyzeProc.clear()  # User accepted data loss
-            else:
-                Log.e(
-                    'Please "Analyze" to save or "Close" to lose your changes before switching '
-                    "modes."
-                )
-                return False if obj is None else None
-
-        # Unsaved changes in VisQ.AI mode
-        if current_widget == self.learn_ui and self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(
-                self.parent,
-                Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to close this window?",
-                False,
-            ):
-                self.parent.VisQAIWin.clear()  # User accepted data loss
-            else:
-                Log.e("Please save your unsaved changes in VisQ.AI™ before switching modes.")
-                return False if obj is None else None
-
-        # Active run in progress
-        if (
-            current_widget == self.runview
-            and not self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
-        ):
-            Log.e("Please stop the current run before switching modes.")
-            return False if obj is None else None
-
+        
         # Check User Permissions
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -674,7 +654,7 @@ class UIMain:
         self.parent._enable_ui(True)
         self.parent.VisQAIWin.enable(False)
         self.animate_mode_highlight(self.mode_run)
-        self.splitter.replaceWidget(0, self.runview)
+        self.splitter.replaceWidget(0, target_widget)
         self.parent.PlotsWin.ui2.handleSplitterButton(collapse=False)
 
         if UserProfiles.count() == 0:
@@ -695,56 +675,28 @@ class UIMain:
         and updates the central view to the analysis processor.
 
         Args:
-            obj (Optional[Any]): The event object triggering the mode change.
-                If None, the call is treated as programmatic.
+            obj (Optional[Any]): The event object triggering the mode change (e.g., QMouseEvent).
+                If None, it indicates the function was called programmatically rather than
+                via a UI interaction.
 
         Returns:
             Optional[bool]:
-                - True if the mode was successfully changed or already active.
-                - False if the change was blocked by state or permissions.
+                - True if the mode was successfully changed or already active (programmatic call).
+                - False: the mode change was aborted due to not being allowed (programmatic call).
                 - None if triggered via a UI event.
         """
         current_widget = self.splitter.widget(0)
+        target_widget = self.analyze
 
         # Already in Analyze mode
-        if current_widget == self.analyze and not self._force_splitter_mode_set:
+        if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Analyze mode already active. Skipping mode change request.")
             return True if obj is None else None
 
-        # VisQ.AI is currently processing
-        if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(
-                self.parent,
-                "Learning In-Progress...",
-                "Mode change is not allowed while learning.",
-            )
+        # Check if the mode change is allowed
+        if not self._check_mode_change_allowed():
             return False if obj is None else None
-
-        # Check for unsaved changes in Analyze or VisQ.AI
-        for processor, name in [
-            (self.parent.AnalyzeProc, "Analyze"),
-            (self.parent.VisQAIWin, "VisQ.AI™"),
-        ]:
-            if processor.hasUnsavedChanges():
-                if PopUp.question(
-                    self.parent,
-                    Constants.app_title,
-                    f"You have unsaved changes in {name}!\n\nAre you sure you want to close this window?",
-                    False,
-                ):
-                    processor.clear()
-                else:
-                    Log.e(f"Please save or close your changes in {name} before switching modes.")
-                    return False if obj is None else None
-
-        # Active run in progress
-        if (
-            current_widget == self.runview
-            and not self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
-        ):
-            Log.e("Please stop the current run before switching modes.")
-            return False if obj is None else None
-
+        
         # Check User Permissions
         action_role = UserRoles.ANALYZE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -760,7 +712,7 @@ class UIMain:
         self.parent._enable_ui(False)
         self.parent.VisQAIWin.enable(False)
         self.animate_mode_highlight(self.mode_analyze)
-        self.splitter.replaceWidget(0, self.analyze)
+        self.splitter.replaceWidget(0, target_widget)
         self.parent.viewTutorialPage([5, 6])  # analyze / prior results
 
         return True if obj is None else None
@@ -774,21 +726,23 @@ class UIMain:
         internal toolkit tab index, and triggers the mode-switch animation.
 
         Args:
-            obj (Optional[Any]): The event object triggering the mode change.
-                If None, the call is treated as programmatic.
+            obj (Optional[Any]): The event object triggering the mode change (e.g., QMouseEvent).
+                If None, it indicates the function was called programmatically rather than
+                via a UI interaction.
             tab_index (int): The index of the specific AI toolkit tab to display.
                 Defaults to 0.
 
         Returns:
             Optional[bool]:
-                - True if the mode was successfully changed or already active.
-                - False if the change was blocked by state or permissions.
+                - True if the mode was successfully changed or already active (programmatic call).
+                - False: the mode change was aborted due to not being allowed (programmatic call).
                 - None if triggered via a UI event.
         """
         current_widget = self.splitter.widget(0)
+        target_widget = self.learn_ui
 
         # Already in Learn mode
-        if current_widget == self.learn_ui and not self._force_splitter_mode_set:
+        if current_widget == target_widget and not self._force_splitter_mode_set:
             if self.parent.VisQAIWin.tab_widget.currentIndex() != tab_index:
                 Log.d(f"VisQ.AI showing toolkit at index {tab_index}.")
                 self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
@@ -797,31 +751,10 @@ class UIMain:
 
             return True if obj is None else None
 
-        # Check for unsaved changes in Analyze or VisQ.AI
-        for processor, name in [
-            (self.parent.AnalyzeProc, "Analyze"),
-            (self.parent.VisQAIWin, "VisQ.AI™"),
-        ]:
-            if processor.hasUnsavedChanges():
-                if PopUp.question(
-                    self.parent,
-                    Constants.app_title,
-                    f"You have unsaved changes in {name}!\n\nAre you sure you want to close this window?",
-                    False,
-                ):
-                    processor.clear()
-                else:
-                    Log.e(f"Please save or close your changes in {name} before switching modes.")
-                    return False if obj is None else None
-
-        # Active run in progress
-        if (
-            current_widget == self.runview
-            and not self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
-        ):
-            Log.e("Please stop the current run before switching modes.")
+        # Check if the mode change is allowed
+        if not self._check_mode_change_allowed():
             return False if obj is None else None
-
+        
         # Check User Permissions
         action_role = UserRoles.OPERATE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -845,7 +778,7 @@ class UIMain:
         self.parent.VisQAIWin.check_license(getattr(self.parent, "_license_manager", None))
         self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
         self.animate_mode_highlight(self.mode_learn)
-        self.splitter.replaceWidget(0, self.learn_ui)
+        self.splitter.replaceWidget(0, target_widget)
         self.parent.viewTutorialPage(8)
 
         return True if obj is None else None
@@ -864,63 +797,22 @@ class UIMain:
 
         Returns:
             Optional[bool]:
-                - True if the mode was successfully changed or was already active (programmatic call).
-                - False if the mode change was aborted (programmatic call).
+                - True if the mode was successfully changed or already active (programmatic call).
+                - False: the mode change was aborted due to not being allowed (programmatic call).
                 - None if triggered via a UI event.
         """
         current_widget = self.splitter.widget(0)
+        target_widget = self.donnan_ui
 
         # Already in Run mode
-        if current_widget == self.donnan_ui and not self._force_splitter_mode_set:
+        if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Donnan-Gibbs Calculator already active. Skipping mode change request.")
             return True if obj is None else None
 
-        # VisQ.AI is currently processing
-        if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(
-                self.parent,
-                "Learning In-Progress...",
-                "Mode change is not allowed while learning.",
-            )
+        # Check if the mode change is allowed
+        if not self._check_mode_change_allowed():
             return False if obj is None else None
-
-        # Unsaved changes in Analyze mode
-        if current_widget == self.analyze and self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(
-                self.parent,
-                Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to close this window?",
-                False,
-            ):
-                self.parent.AnalyzeProc.clear()  # User accepted data loss
-            else:
-                Log.e(
-                    'Please "Analyze" to save or "Close" to lose your changes before switching '
-                    "modes."
-                )
-                return False if obj is None else None
-
-        # Unsaved changes in VisQ.AI mode
-        if current_widget == self.learn_ui and self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(
-                self.parent,
-                Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to close this window?",
-                False,
-            ):
-                self.parent.VisQAIWin.clear()  # User accepted data loss
-            else:
-                Log.e("Please save your unsaved changes in VisQ.AI™ before switching modes.")
-                return False if obj is None else None
-
-        # Active run in progress
-        if (
-            current_widget == self.runview
-            and not self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
-        ):
-            Log.e("Please stop the current run before switching modes.")
-            return False if obj is None else None
-
+        
         # Check User Permissions
         action_role = UserRoles.ANALYZE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -949,7 +841,7 @@ class UIMain:
         self.parent._enable_ui(False)
         self.parent.VisQAIWin.enable(False)
         self.animate_mode_highlight(self.mode_donnan)
-        self.splitter.replaceWidget(0, self.donnan_ui)
+        self.splitter.replaceWidget(0, target_widget)
 
         # No tutorial pages specified for this mode
 
@@ -969,63 +861,22 @@ class UIMain:
 
         Returns:
             Optional[bool]:
-                - True if the mode was successfully changed or was already active (programmatic call).
-                - False if the mode change was aborted (programmatic call).
+                - True if the mode was successfully changed or already active (programmatic call).
+                - False: the mode change was aborted due to not being allowed (programmatic call).
                 - None if triggered via a UI event.
         """
         current_widget = self.splitter.widget(0)
+        target_widget = self.injection_ui
 
         # Already in Run mode
-        if current_widget == self.injection_ui and not self._force_splitter_mode_set:
+        if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Injection Force Calculator already active. Skipping mode change request.")
             return True if obj is None else None
 
-        # VisQ.AI is currently processing
-        if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(
-                self.parent,
-                "Learning In-Progress...",
-                "Mode change is not allowed while learning.",
-            )
+        # Check if the mode change is allowed
+        if not self._check_mode_change_allowed():
             return False if obj is None else None
-
-        # Unsaved changes in Analyze mode
-        if current_widget == self.analyze and self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(
-                self.parent,
-                Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to close this window?",
-                False,
-            ):
-                self.parent.AnalyzeProc.clear()  # User accepted data loss
-            else:
-                Log.e(
-                    'Please "Analyze" to save or "Close" to lose your changes before switching '
-                    "modes."
-                )
-                return False if obj is None else None
-
-        # Unsaved changes in VisQ.AI mode
-        if current_widget == self.learn_ui and self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(
-                self.parent,
-                Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to close this window?",
-                False,
-            ):
-                self.parent.VisQAIWin.clear()  # User accepted data loss
-            else:
-                Log.e("Please save your unsaved changes in VisQ.AI™ before switching modes.")
-                return False if obj is None else None
-
-        # Active run in progress
-        if (
-            current_widget == self.runview
-            and not self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
-        ):
-            Log.e("Please stop the current run before switching modes.")
-            return False if obj is None else None
-
+        
         # Check User Permissions
         action_role = UserRoles.ANALYZE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -1054,7 +905,7 @@ class UIMain:
         self.parent._enable_ui(False)
         self.parent.VisQAIWin.enable(False)
         self.animate_mode_highlight(self.mode_injection)
-        self.splitter.replaceWidget(0, self.injection_ui)
+        self.splitter.replaceWidget(0, target_widget)
 
         # No tutorial pages specified for this mode
 

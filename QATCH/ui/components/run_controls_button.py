@@ -118,6 +118,7 @@ class StartStopButton(QToolButton):
 
         Clears progress, stops animations, and resets internal flags.
         """
+        self.setText("Start")
         self.progress_anim.stop()
         self.is_running = False
         self.is_complete = False
@@ -314,6 +315,7 @@ class RunControls(QWidget):
         # Right sliding status container.
         self.status_container = QFrame()
         self.status_container.setFixedWidth(0)
+        self.status_container.setFixedHeight(self.btn.height())
         self.status_container.setStyleSheet("background-color: transparent;")
 
         self.status_layout = QVBoxLayout(self.status_container)
@@ -336,6 +338,8 @@ class RunControls(QWidget):
         self.anim = QPropertyAnimation(self.status_container, b"minimumWidth")
         self.anim.setEasingCurve(QEasingCurve.InOutQuad)
         self.anim.setDuration(1000)
+
+        self.stopRequested.connect(self._stopped)
 
     def setEnabled(self, enabled):
         """Sets the enabled state of the control and its sub-widgets.
@@ -370,6 +374,7 @@ class RunControls(QWidget):
             running (bool, optional): The target running state. Defaults to True.
         """
         if self.btn.is_running == running and not self.btn.is_complete:
+            self.btn.reset()
             return
 
         if running:
@@ -413,3 +418,18 @@ class RunControls(QWidget):
             percentage = 0
         self.btn.animate_progress(percentage)
         self.status_label.setText(f"{fill_type_text}")
+
+    def _stopped(self):
+        """Updates the UI to reflect that the run has stopped.
+
+        Connected to `stopRequested` signal.
+        """
+        self.btn.is_complete = False
+        self.btn.progress = 0.0
+        self.btn.setText("Start")
+        self.anim.setStartValue(160)
+        self.anim.setEndValue(0)
+        self.anim.start()
+
+        self.btn.is_running = False
+        self.btn.update()
