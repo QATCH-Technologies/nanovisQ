@@ -78,6 +78,8 @@ class QATCH:
                 "QATCH Q-1 Real-Time GUI - command line"
             )
         self._args = self._init_logger()
+        QtCore.QCoreApplication.setOrganizationName("QATCH")
+        QtCore.QCoreApplication.setApplicationName("nanovisQ")
         self._app = QApplication(argv)
 
     def flashSplashShow(self):
@@ -210,7 +212,7 @@ if __name__ == "__main__":
         QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
     if hasattr(QtCore.Qt, "AA_UseHighDpiPixmaps"):
         QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
-    if hasattr(QtCore.Qt, "AA_ShareOpenGLContexts"):
+    if hasattr(QtCore.Qt, "AA_ShareOpenGLContexts"):  # Needed to load web modules
         QApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts, True)
     freeze_support()
 
