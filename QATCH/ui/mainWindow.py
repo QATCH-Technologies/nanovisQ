@@ -28,7 +28,8 @@ import subprocess
 import sys
 import threading
 from collections import deque
-from time import localtime, mktime, strftime, strptime, time, monotonic
+import matplotlib.pyplot as plt
+from time import localtime, strftime, time, monotonic
 from typing import List, Optional, Any, Callable
 from xml.dom import minidom
 import numpy as np
@@ -5727,8 +5728,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._update_post_drop_label(i, plot_resonance_frequency, plot_dissipation)
             else:
                 self._update_pre_drop_label(i, plot_resonance_frequency)
-        except Exception:
-            Log.e("Error handling plot status label text!")
+        except Exception as e:
+            Log.e(f"Error handling plot status label text: {e}")
 
     def _update_pre_drop_label(self, i: int, plot_resonance_frequency: pg.PlotWidget) -> None:
         """Updates the plot overlay label with dry-detection status prior to sample application.
