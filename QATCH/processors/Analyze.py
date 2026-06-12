@@ -1866,7 +1866,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def action_analyze(self):
         if self.parent.signature_required and (self.unsaved_changes or self.model_run_this_load):
-            if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
+            if self.parent.signature_received is False and self.sign_do_not_ask.isChecked():
                 Log.w(f"Signing ANALYZE with initials {self.initials} (not asking again)")
                 self.parent.signed_at = dt.datetime.now().isoformat()
                 self.parent.signature_received = True  # Do not ask again this session
@@ -9126,6 +9126,17 @@ class AnalyzerWorker(QtCore.QObject):
             fig4.savefig(export_path.replace(".csv", "_4.pdf"))
             self.update(status_label)
 
+            # Figures 1-3 are export-only (never embedded in the UI). pyplot keeps a
+            # global reference to every figure created via plt.figure(), so unless they
+            # are explicitly closed they accumulate across every Analyze press and the
+            # process RSS grows without bound. Close them now that they are saved.
+            # (fig4 is closed later, after its canvas is swapped out of the results view.)
+            for _f in (fig, fig2, fig3):
+                try:
+                    plt.close(_f)
+                except Exception:
+                    pass
+
             enabled, error, expires = UserProfiles.checkDevMode()
             if enabled == False and (error == True or expires != ""):
                 PopUp.warning(
@@ -9377,11 +9388,14 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.parent.results_split.setEnabled(True)
             # self.parent.widget_h4.setStyleSheet("background-color: #ffffff; color: #515151")
-
+            tableWidgetWithFooter = None
             try:
                 # NOTE: Creation of `data`, `rows`, `cols`, `summary_text` and `plot_text` moved to section
                 #       "Annotate average viscosity and standard deviation on plot and in output CSV" above
-
+                # Capture the outgoing results widgets before any `replaceWidget` call.
+                # `replaceWidget()` reparents the old widget but does not destroy it.
+                old_table = self.parent.results_split.widget(0)
+                old_plot = self.parent.results_split.widget(1)
                 # Add summary text to bottom of table data
                 table_layout = QtWidgets.QVBoxLayout()
                 tableWidgetWithFooter = QtWidgets.QWidget()
@@ -9401,6 +9415,8 @@ class AnalyzerWorker(QtCore.QObject):
 
             except Exception as e:
                 Log.e("Failed to show average viscosity summary.", str(e))
+                old_table = None
+                old_plot = self.parent.results_split.widget(1)
 
             # add figure to plot view of results
             sc = FigureCanvasQTAgg(fig4)
@@ -9411,6 +9427,31 @@ class AnalyzerWorker(QtCore.QObject):
             plotWidget = QtWidgets.QWidget()
             plotWidget.setLayout(mp_layout)
             self.parent.results_split.replaceWidget(1, plotWidget)
+
+            # Dispose the prior results widgets now that they are detached. Close the
+            # matplotlib figure previously embedded in the old canvas so pyplot releases
+            # it, then schedule the Qt widgets for deletion on the event loop.
+            for _old in (old_plot, old_table):
+                if _old is None or _old is plotWidget or _old is tableWidgetWithFooter:
+                    continue
+                try:
+                    old_canvas = _old.findChild(FigureCanvasQTAgg)
+                    if old_canvas is not None and getattr(old_canvas, "figure", None) is not None:
+                        plt.close(old_canvas.figure)
+                except Exception:
+                    pass
+                # If the outgoing widget is (or contains) a pyqtgraph PlotWidget, clear
+                # its items so the plotted curve arrays are released immediately.
+                try:
+                    if isinstance(_old, pg.PlotWidget):
+                        _old.clear()
+                    else:
+                        for _pw in _old.findChildren(pg.PlotWidget):
+                            _pw.clear()
+                except Exception:
+                    pass
+                _old.setParent(None)
+                _old.deleteLater()
 
             # force layout redraw now, and on any resize event
             sc.draw_idle()
