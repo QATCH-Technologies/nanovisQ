@@ -9387,15 +9387,15 @@ class AnalyzerWorker(QtCore.QObject):
             # sleep(1)
 
             self.parent.results_split.setEnabled(True)
-            # self.parent.widget_h4.setStyleSheet("background-color: #ffffff; color: #515151")
-            tableWidgetWithFooter = None
+            # self.parent.widget_h4.setStyleSheet("background-color: #ffk
+            # Capture the outgoing results widgets before any `replaceWidget` call.
+            # `replaceWidget()` reparents the old widget but does not destroy it.
+            old_table = self.parent.results_split.widget(0)
+            old_plot = self.parent.results_split.widget(1)
             try:
                 # NOTE: Creation of `data`, `rows`, `cols`, `summary_text` and `plot_text` moved to section
                 #       "Annotate average viscosity and standard deviation on plot and in output CSV" above
-                # Capture the outgoing results widgets before any `replaceWidget` call.
-                # `replaceWidget()` reparents the old widget but does not destroy it.
-                old_table = self.parent.results_split.widget(0)
-                old_plot = self.parent.results_split.widget(1)
+                
                 # Add summary text to bottom of table data
                 table_layout = QtWidgets.QVBoxLayout()
                 tableWidgetWithFooter = QtWidgets.QWidget()
@@ -9415,8 +9415,10 @@ class AnalyzerWorker(QtCore.QObject):
 
             except Exception as e:
                 Log.e("Failed to show average viscosity summary.", str(e))
-                old_table = None
-                old_plot = self.parent.results_split.widget(1)
+                # Keep previously captured references so detached widgets
+                # are still disposed below.
+                if old_plot is None:
+                    old_plot = self.parent.results_split.widget(1)
 
             # add figure to plot view of results
             sc = FigureCanvasQTAgg(fig4)
