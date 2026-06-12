@@ -543,7 +543,7 @@ class Ui_Main(object):
         ):
             action_role = UserRoles.CAPTURE
             check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
-            if check_result == None:  # user check required, but no user signed in
+            if check_result is None:  # user check required, but no user signed in
                 Log.w(
                     f"Not signed in: User with role {action_role.name} is required to perform this action."
                 )
@@ -572,7 +572,7 @@ class Ui_Main(object):
                     self.parent.viewTutorialPage([3, 4])
                 if obj is None:
                     return True
-            elif check_result == None:
+            elif check_result is None:
                 Log.w(
                     f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
                 )
@@ -655,7 +655,7 @@ class Ui_Main(object):
                 self.parent.viewTutorialPage([5, 6])  # analyze / prior results
                 if obj is None:
                     return True
-            elif check_result == None:
+            elif check_result is None:
                 Log.e("Please sign in to access Analyze mode.")
             else:
                 Log.e("You are not authorized to access Analyze mode.")
@@ -714,7 +714,7 @@ class Ui_Main(object):
             self.parent.VisQAIWin.reset()
             action_role = UserRoles.OPERATE
             check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
-            if check_result == None:  # user check required, but no user signed in
+            if check_result is None:  # user check required, but no user signed in
                 Log.w(
                     f"Not signed in: User with role {action_role.name} is required to perform this action."
                 )
@@ -746,7 +746,7 @@ class Ui_Main(object):
                 self.parent.viewTutorialPage(8)  # VisQ.AI(tm) coming soon
                 if obj is None:
                     return True
-            elif check_result == None:
+            elif check_result is None:
                 Log.e("Please sign in to access VisQ.AI<sup>TM</sup> mode.")
             else:
                 Log.e("You are not authorized to access VisQ.AI<sup>TM</sup> mode.")
@@ -806,7 +806,7 @@ class Ui_Main(object):
         ):
             action_role = UserRoles.OPERATE
             check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
-            if check_result == None:
+            if check_result is None:
                 Log.w(
                     f"Not signed in: User with role {action_role.name} is required to perform this action."
                 )
@@ -826,7 +826,7 @@ class Ui_Main(object):
                 self.splitter.replaceWidget(0, self.donnan_ui)
                 if obj is None:
                     return True
-            elif check_result == None:
+            elif check_result is None:
                 Log.e("Please sign in to access the Donnan-Gibbs Calculator.")
             else:
                 Log.e("You are not authorized to access the Donnan-Gibbs Calculator.")
@@ -886,7 +886,7 @@ class Ui_Main(object):
         ):
             action_role = UserRoles.OPERATE
             check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
-            if check_result == None:
+            if check_result is None:
                 Log.w(
                     f"Not signed in: User with role {action_role.name} is required to perform this action."
                 )
@@ -906,7 +906,7 @@ class Ui_Main(object):
                 self.splitter.replaceWidget(0, self.injection_ui)
                 if obj is None:
                     return True
-            elif check_result == None:
+            elif check_result is None:
                 Log.e("Please sign in to access the Injection Force Calculator.")
             else:
                 Log.e("You are not authorized to access the Injection Force Calculator.")
