@@ -13,7 +13,7 @@ data_files = [
     ( "QATCH\\*.pdf", "QATCH" ),
     ( "QATCH\\icons", "QATCH\\icons" ),
     ( "QATCH\\models", "QATCH\\models" ),
-    ( "QATCH\\QModel\\SavedModels", "QATCH\\QModel\\SavedModels" ),
+    ( "QATCH\\qmodel\\assets", "QATCH\\qmodel\\assets" ),
     ( "QATCH\\resources", "QATCH\\resources" ),
     ( "QATCH\\VisQAI\\assets\\app.db", "QATCH\\VisQAI\\assets" ),
     ( "QATCH\\VisQAI\\assets\\VisQAI-base.visq", "QATCH\\VisQAI\\assets" ),

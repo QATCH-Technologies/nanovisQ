@@ -1,9 +1,5 @@
 import datetime as dt
 import hashlib
-
-# from QATCH.QModel.QModel import QModelPredict
-# import joblib
-# from QATCH.QModel.q_data_pipeline import QDataPipeline
 import os
 import sys
 from io import BytesIO
@@ -32,18 +28,11 @@ from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,
     DropEffectCorrection,
 )
-from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
-from QATCH.QModel.src.models.v6_yolo.v6_yolo import QModelV6YOLO
+from QATCH.qmodel.models.static_v4_fusion.v4_fusion import QModelV4Fusion
+from QATCH.qmodel.models.v6_2_yolo.v6_yolo import QModelV6YOLO
+from QATCH.qmodel.models.v6_3_yolo.controller import QModel
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
-
-# from scipy.interpolate import UnivariateSpline # unused
-# from scipy.optimize import curve_fit # lazy load
-# from scipy.signal import argrelextrema # lazy load
-# from scipy.signal import savgol_filter # lazy load
-
-# import matplotlib.backends.backend_pdf # lazy load
-# import matplotlib.pyplot as plt # lazy load
 
 TAG = "[Analyze]"
 USE_NEW_FILL_METHOD = True
@@ -400,9 +389,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.QModel_v4_modules_loaded = False
         self.QModel_v4_predictor = None
 
-        # QModel v6 (YOLO26) Constants
-        self.QModel_v6_modules_loaded = False
-        self.QModel_v6_predictor = None
+        # QModel v6.2 Constants
+        self.qmodel_v6_2_modules_loaded = False
+        self.qmodel_v6_2_predictor = None
+
+        # QModel v6.3 Constants
+        self.qmodel_v6_3_modules_loaded = False
+        self.qmodel_v6_2_modules_loaded = None
+
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
@@ -588,7 +582,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.addWidget(self.tBtn_Load)
 
         icon_reset = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "reset.png")
         icon_reset.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_reset.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Rescan = QtWidgets.QToolButton()
@@ -601,7 +595,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.addSeparator()
 
         icon_predict = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qmodel.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qmodel.png")
         icon_predict.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_predict.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Predict = QtWidgets.QToolButton()
@@ -612,7 +606,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.addWidget(self.tBtn_Predict)
 
         icon_info = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/info.png")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "info.png")
         icon_info.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_info.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Info = QtWidgets.QToolButton()
@@ -914,9 +908,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel6_predict:
+        if Constants.qmodel_6_2_predict:
             self.cBox_Models.setCurrentIndex(2)
-        elif Constants.QModel4_predict:
+        elif Constants.qmodel_4_predict:
             self.cBox_Models.setCurrentIndex(1)
         elif Constants.ModelData_predict:
             self.cBox_Models.setCurrentIndex(0)
@@ -1563,6 +1557,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self._qmodel_fade_anim = anim 
             
             QtCore.QTimer.singleShot(800, anim.start)
+
     def _hide_qmodel_plot_overlay(self, failed: bool = False) -> None:
         """Removes the QModel dimming layer and progress overlay.
 
@@ -2133,8 +2128,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             # these flags are set above `index` as a fallback option
             Constants.ModelData_predict = True if index >= 0 else False
-            Constants.QModel4_predict = True if index >= 1 else False
-            Constants.QModel6_predict = True if index >= 2 else False
+            Constants.qmodel_4_predict = True if index >= 1 else False
+            Constants.qmodel_6_2_predict = True if index >= 2 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -3110,19 +3105,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         Configuration constraints:
             - Models are only loaded if their respective prediction flags 
-            (`QModel4_predict` / `QModel6_predict`) are active in `Constants`.
+            (`qmodel_4_predict` / `qmodel_6_2_predict`) are active in `Constants`.
             - Models are skipped if they are already successfully loaded.
             - Models are skipped if a loading task is already in-flight (tracked via futures).
         """
         # Ensure future tracking attributes exist (fallback if not set in __init__)
         if not hasattr(self, "_qmodel_v4_future"):
             self._qmodel_v4_future = None
-        if not hasattr(self, "_qmodel_v6_future"):
-            self._qmodel_v6_future = None
+        if not hasattr(self, "_qmodel_v6_2_future"):
+            self._qmodel_v6_2_future = None
+        if not hasattr(self, "_qmodel_v6_3_future"):
+            self._qmodel_v6_3_future = None
 
         # QModel V4 (Fusion) Preload
         try:
-            requires_v4 = getattr(Constants, "QModel4_predict", False)
+            requires_v4 = getattr(Constants, "qmodel_4_predict", False)
             is_v4_pending = self._qmodel_v4_future is not None
             
             if requires_v4 and not self.QModel_v4_modules_loaded and not is_v4_pending:
@@ -3131,16 +3128,27 @@ class AnalyzeProcess(QtWidgets.QWidget):
         except Exception as e:
             Log.e("ERROR", f"Failed to schedule 'QModel v4 (Fusion)' preload. Details: {e}")
 
-        # QModel V6 (YOLO26) Preload
+        # QModel v6.2 Preload
         try:
-            requires_v6 = getattr(Constants, "QModel6_predict", False)
-            is_v6_pending = self._qmodel_v6_future is not None
+            requires_v6 = getattr(Constants, "qmodel_6_2_predict", False)
+            is_v6_pending = self._qmodel_v6_2_future is not None
             
-            if requires_v6 and not self.QModel_v6_modules_loaded and not is_v6_pending:
-                self._qmodel_v6_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v6)
+            if requires_v6 and not self.qmodel_v6_2_modules_loaded and not is_v6_pending:
+                self._qmodel_v6_2_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v6_2)
                 
         except Exception as e:
-            Log.e("ERROR", f"Failed to schedule 'QModel v6 (YOLO26)' preload. Details: {e}")
+            Log.e("ERROR", f"Failed to schedule 'QModel v6.2' preload. Details: {e}")
+
+        # QModel v6.3 Preload
+        try:
+            requires_v6 = getattr(Constants, "qmodel_6_3_predict", False)
+            is_v6_pending = self._qmodel_v6_3_future is not None
+            
+            if requires_v6 and not self.qmodel_v6_3_modules_loaded and not is_v6_pending:
+                self._qmodel_v6_3_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v6_3)
+                
+        except Exception as e:
+            Log.e("ERROR", f"Failed to schedule 'QModel v6.3' preload. Details: {e}")
 
     @staticmethod
     def _load_qmodel_v4() -> 'QModelV4Fusion':
@@ -3157,8 +3165,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
-            "QModel",
-            "SavedModels",
+            "qmodel",
+            "assets",
             "qmodel_v4_fusion",
         )
         
@@ -3171,7 +3179,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
 
     @staticmethod
-    def _load_qmodel_v6() -> 'QModelV6YOLO':
+    def _load_qmodel_v6_2() -> 'QModelV6YOLO':
         """
         Instantiates and loads the V6 YOLO26 prediction model into memory.
 
@@ -3185,9 +3193,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
-            "QModel",
-            "SavedModels",
-            "qmodel_v6_yolo",
+            "qmodel",
+            "assets",
+            "qmodel_v6_2_yolo",
         )
         
         # Map out the required weights files for the YOLO26 model suite
@@ -3206,6 +3214,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
         }
         
         return QModelV6YOLO(model_assets=model_assets)
+    
+    @staticmethod
+    def _load_qmodel_v6_3() -> QModel:
+        """
+        Instantiates and loads the v6.3 prediction model into memory.
+
+        Returns:
+            QModel: A fully initialized v6.3 prediction model ready for inference.
+        """
+        return QModel()
+ 
  
     def _await_qmodels(self, timeout: float = 120.0) -> None:
         """
@@ -3239,19 +3258,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
             finally:
                 self._qmodel_v4_future = None
 
-        # Resolve QModel V6 (YOLO26)
-        v6_fut = getattr(self, "_qmodel_v6_future", None)
+        # Resolve QModel v6.2
+        v6_fut = getattr(self, "_qmodel_v6_2_future", None)
         
-        if v6_fut is not None and not getattr(self, "QModel_v6_modules_loaded", False):
+        if v6_fut is not None and not getattr(self, "qmodel_v6_2_modules_loaded", False):
             try:
                 # Block and wait for the thread pool to return the loaded V6 model
-                self.QModel_v6_predictor = v6_fut.result(timeout=timeout)
-                self.QModel_v6_modules_loaded = True
-                Log.i(TAG, "'QModel v6 (YOLO26)' modules loaded successfully.")
+                self.qmodel_v6_2_predictor = v6_fut.result(timeout=timeout)
+                self.qmodel_v6_2_modules_loaded = True
+                Log.i(TAG, "'QModel v6.2)' modules loaded successfully.")
             except Exception as e:
-                Log.e(TAG, f"Failed to load 'QModel v6 (YOLO26)' modules. Details: {e}")
+                Log.e(TAG, f"Failed to load 'QModel v6.2' modules. Details: {e}")
             finally:
-                self._qmodel_v6_future = None
+                self._qmodel_v6_2_future = None
   
     def _check_dev_mode_cached(self, force_refresh: bool = False) -> bool:
         """
@@ -3635,7 +3654,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         Step backwards in the analysis workflow by updating internal step state and UI, skipping the hidden POI3 step.
 
-        If called from the final visible step, re-enables marker movement for all POI markers and decrements the step counter an extra time to bypass the hidden POI3 step. Then advances the internal state two steps backward. If the resulting state falls before the first step, resets the workflow to the initial step and restores any QModel predictions; otherwise, clears the moved-markers flags and re-enters the workflow by calling getPoints().
+        If called from the final visible step, re-enables marker movement for all POI markers and 
+        decrements the step counter an extra time to bypass the hidden POI3 step. Then advances the internal state 
+        two steps backward. If the resulting state falls before the first step, resets the workflow to the initial step 
+        and restores any QModel predictions; otherwise, clears the moved-markers flags and re-enters the workflow by 
+        calling getPoints().
 
         Side effects:
         - Modifies self.stateStep.
@@ -3702,33 +3725,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ws = 10
         return [ws, clipped]
 
-    # def _QModel_create_new_progress_dialog(self):
-    #     if hasattr(self, "progressBarDiag"):
-    #         self.progressBarDiag.close()
-    #         del self.progressBarDiag
-    #
-    #     # Special modal progress dialog for auto-fitting points
-    #     self.progressBarDiag = QtWidgets.QProgressDialog(
-    #         "Auto-fitting points...", "Cancel", 0, 0, self
-    #     )
-    #     # Disable auto-reset and auto-close to retain `wasCanceled()` state
-    #     self.progressBarDiag.setAutoReset(False)
-    #     self.progressBarDiag.setAutoClose(False)
-    #     icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
-    #     self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
-    #     self.progressBarDiag.setWindowTitle("Busy")
-    #     self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
-    #     self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
-    #     self.progressBarDiag.setFixedSize(
-    #         int(self.progressBarDiag.width() * 1.5),
-    #         int(self.progressBarDiag.height() * 1.1),
-    #     )
-    #     self.progressBarDiag.setModal(True)
-    #     self.progressBarDiag.show()
-    #
-    #     cancelButton = self.progressBarDiag.findChild(QtWidgets.QPushButton)
-    #     cancelButton.setEnabled(False)
-
     def _QModel_v4_progress_update(self, pct: int, status: Optional[str]):
         if getattr(self, "_qmodel_overlay", None) is None:
             self._show_qmodel_plot_overlay()
@@ -3772,13 +3768,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
-            if Constants.QModel6_predict:
-                Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
+            if Constants.qmodel_6_2_predict:
+                Log.w("Auto-fitting points with QModel v6.2.")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
-                        predictor = self.QModel_v6_predictor
+                        predictor = self.qmodel_v6_2_predictor
                         # self._QModel_create_new_progress_dialog()
                         # self.progressBarDiag.setRange(0, 100)
                         predict_result, detected_channels = predictor.predict(
@@ -3806,7 +3802,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_run_this_load = True
                         self.model_result = predictions
                         self.model_candidates = candidates
-                        self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+                        self.model_engine = f"QModel v6.2 - {detected_channels}ch"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             poi_vals = self.model_result.copy()
                             if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -3818,12 +3814,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 except Exception as e:
                     import traceback
 
-                    Log.e(TAG, f"Error using 'QModel v6 (YOLO26)': {e}")
+                    Log.e(TAG, f"Error using 'QModel v6.2': {e}")
                     for line in traceback.format_tb(sys.exc_info()[2]):
                         Log.d(line.strip())
                     self.model_result = -1  # Trigger fallback handling
                     # raise e
-            if self.model_result == -1 and Constants.QModel4_predict:
+            if self.model_result == -1 and Constants.qmodel_4_predict:
                 Log.w("Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
@@ -4089,13 +4085,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel6_predict:
-                    Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
+                if Constants.qmodel_6_2_predict:
+                    Log.w("Auto-fitting points with QModel v6.2")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predictor = self.QModel_v6_predictor
+                            predictor = self.qmodel_v6_2_predictor
                             # self._QModel_create_new_progress_dialog()
                             # self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
@@ -4124,7 +4120,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+                            self.model_engine = f"QModel v6.2 - {detected_channels}ch"
                             if isinstance(self.model_result, list) and len(self.model_result) == 6:
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -4137,13 +4133,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         # --- ERROR HANDLING ---
                         import traceback
 
-                        Log.e(TAG, f"Error using 'QModel v6 (YOLO26)': {e}")
+                        Log.e(TAG, f"Error using 'QModel v6.2': {e}")
                         # Print full stack trace to debug log
                         for line in traceback.format_tb(sys.exc_info()[2]):
                             Log.d(line.strip())
                         self.model_result = -1  # Trigger fallback handling
                         # raise e # Uncomment for strict debugging
-                if self.model_result == -1 and Constants.QModel4_predict:
+                if self.model_result == -1 and Constants.qmodel_4_predict:
                     Log.w("Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
@@ -5368,14 +5364,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel6_predict and self.prior_points_in_xml:
+                if Constants.qmodel_6_2_predict and self.prior_points_in_xml:
                     self.model_result = poi_vals
-                    self.model_engine = "QModel v6 (YOLO26) skipped (using prior points)"
+                    self.model_engine = "QModel v6.2 skipped (using prior points)"
 
-                if self.model_result == -1 and Constants.QModel6_predict:
-                    Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
+                if self.model_result == -1 and Constants.qmodel_6_2_predict:
+                    Log.w("Auto-fitting points with QModel v6.2)")
                     self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v6 (YOLO26)... </span>"
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v6.2... </span>"
                     )
                     self.graphWidget.addItem(self._text2, ignoreBounds=True)
                     QtCore.QCoreApplication.processEvents()
@@ -5383,7 +5379,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predictor = self.QModel_v6_predictor
+                            predictor = self.qmodel_v6_2_predictor
                             # self._QModel_create_new_progress_dialog()
                             # self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
@@ -5415,7 +5411,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+                            self.model_engine = f"QModel v6.2 - {detected_channels}ch"
                             if isinstance(self.model_result, list) and len(self.model_result) == 6:
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -5437,7 +5433,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.e(e)
                         Log.e(
                             TAG,
-                            "Error using 'QModel v6 (YOLO26)'... Using a fallback model for auto-fitting.",
+                            "Error using 'QModel v6.2'... Using a fallback model for auto-fitting.",
                         )
                         # raise e  # debug only
                         self.model_result = -1  # try fallback model
@@ -5445,7 +5441,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 #     # skip running QModel v4 if prior points are available (it's too slow)
                 #     self.model_result = poi_vals
                 #     self.model_engine = "QModel v4 (Fusion) skipped (using prior points)"
-                if self.model_result == -1 and Constants.QModel4_predict:
+                if self.model_result == -1 and Constants.qmodel_4_predict:
                     Log.w("Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
                     self._text1.setHtml(
                         "<span style='font-size: 14pt'>Auto-fitting points with QModel v4 (Fusion)... </span>"

@@ -475,9 +475,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
             ),
         )
         self.q_version_v6.setCheckable(True)
-        if Constants.QModel6_predict:
+        if Constants.qmodel_6_2_predict:
             self.q_version_v6.setChecked(True)
-        elif Constants.QModel4_predict:
+        elif Constants.qmodel_4_predict:
             self.q_version_v4.setChecked(True)
         elif Constants.ModelData_predict:
             self.q_version_v1.setChecked(True)

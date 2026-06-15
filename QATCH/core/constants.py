@@ -393,9 +393,10 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    list_predict_models = ["ModelData", "QModel v4 (Fusion)", "QModel V6 (YOLO26)"]
-    QModel6_predict = True
-    QModel4_predict = True
+    list_predict_models = ["ModelData", "QModel v4 (Fusion)", "QModel v6.2", "QModel v6.3"]
+    qmodel_6_3_predict = True
+    qmodel_6_2_predict = True
+    qmodel_4_predict = True
     ModelData_predict = True
     TensorFlow_predict = True
     # NOTE: If multiple models are enabled, they will be run
