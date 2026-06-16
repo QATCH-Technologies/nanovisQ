@@ -10,7 +10,7 @@
 **/*.log
 
 # Ignore all files in "assets" folder
-**/assets/**
+**/assets/*
 
 # But explicitly include "VisQAI-base.visq" and "app.db" assets
 !**/assets/VisQAI-base.visq
