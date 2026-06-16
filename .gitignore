@@ -15,3 +15,4 @@
 # But explicitly include "VisQAI-base.visq" and "app.db" assets
 !**/assets/VisQAI-base.visq
 !**/assets/app.db
+!**/qmodel/assets/
