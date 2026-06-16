@@ -79,6 +79,7 @@ from QATCH.processors.InterpTemps import (
     QueueCommandFormat,
 )
 from QATCH.ui.popUp import PopUp, QueryComboBox
+from QATCH.ui.widgets.device_info_main_widget import DeviceInfoMainWidget
 from QATCH.ui.workers.rename_output_files_worker import RenameOutputFilesWorker
 from QATCH.ui.workers.extract_worker import ExtractWorker
 from QATCH.ui.workers.tec_worker import TECWorker
@@ -2880,6 +2881,26 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _configure_device_info(self):
         if not len(self._selected_port) == 0:
+
+            existing_popup = getattr(self, "_dev_info_popup", None)
+            if existing_popup is not None and existing_popup.isVisible():
+                existing_popup.close()
+                return
+            self._dev_info_popup = DeviceInfoMainWidget()
+            self._dev_info_popup.set_content_widget(self.ControlsWin.ui1.device_info_container)
+            self.ControlsWin.ui1.device_info_container.setFixedSize(self.ControlsWin.ui1.advanced_container.size())
+            self._dev_info_popup.show_anchored_to(self.ControlsWin.ui1.tool_Advanced, main_window=self)
+            self._update_configuration_banner_text()
+            QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.device_config_reset.click)
+            QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.temp_cal_reset.click)
+            QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.lid_pogo_reset.click)
+
+            # restore selected port back to device
+            restore_port_idx = self.ControlsWin.ui1.cBox_Port.findData(self._selected_port)
+            self.ControlsWin.ui1.cBox_Port.setCurrentIndex(restore_port_idx)
+            
+            return
+        
             # configure device info for selected device
             ok_name = self._configure_device_name()
             ok_pid, dif = self._configure_device_pid()
@@ -2912,6 +2933,22 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             Log.w("NOTICE: Please select a device from the port list first!!")
             Log.w("This configuration action applies to the SELECTED device.")
+
+    def _update_configuration_banner_text(self):
+        dev_handle = None
+        device_list = FileStorage.DEV_get_device_list()
+        for i, dev_name in device_list:
+            dev_info = FileStorage.DEV_info_get(i, dev_name)
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == self._selected_port:
+                    dev_handle = dev_name
+                    break
+        if dev_handle:
+            if not self.ControlsWin.ui1.ConfigBannerWidget.text().endswith(dev_handle):
+                self.ControlsWin.ui1.ConfigBannerWidget.setText(
+                    f"Configuration Editor for Device {dev_handle}"
+                )
+                self.ControlsWin.ui1.blank_device_config_icon_text()  # re-query all fields
 
     def _configure_device_name(self):
         friendly_name = self._selected_port
