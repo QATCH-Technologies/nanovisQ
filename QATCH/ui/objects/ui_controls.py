@@ -15,6 +15,7 @@ Date:
 
 import os
 import sys
+from time import monotonic, sleep
 from typing import Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import (
@@ -33,8 +34,10 @@ from QATCH.ui.widgets.user_preferences_widget import UserPreferencesWidget
 from QATCH.ui.widgets.user_profiles_manager_widget import UserProfilesManagerWidget
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.common.deviceFingerprint import DeviceFingerprint
+from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
 from QATCH.common.licenseManager import LicenseManager
+from QATCH.processors.Device import serial
 from QATCH.ui.widgets.advanced_main_widget import AdvancedMainWidget
 from QATCH.ui.components.glass_push_button import GlassPushButton
 
@@ -614,7 +617,8 @@ class GlassStatusLabel(QtWidgets.QLabel):
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
         self.setStyleSheet(
-            "QLabel { color: rgba(28, 40, 52, 210); " "padding: 2px 6px; background: transparent; }"
+            "QLabel { color: rgba(28, 40, 52, 210); "
+            "padding: 2px 6px; background: transparent; }"
         )
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
@@ -1946,10 +1950,836 @@ class UIControls:  # QtWidgets.QMainWindow
         else:
             self.centralwidget.setLayout(self.gridLayout)
 
+        # QLineEdit icons, trailing position
+        self.blankIcon = QtGui.QIcon()
+        self.savedIcon = QtGui.QIcon(
+            os.path.join(
+                Architecture.get_path(), "QATCH", "icons", "checkmark-circle.svg"
+            )
+        )
+        self.unsavedIcon = QtGui.QIcon(
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "warning.svg")
+        )
+
+        # Device Info container, widgets and layout
+        self.device_info_container = QtWidgets.QWidget()
+        self.ConfigBannerWidget = GlassWarningLabel("Configuration Editor for Device")
+        # bannerWidget.setAlignment(QtCore.Qt.AlignCenter)
+        self.deviceLayout = QtWidgets.QGridLayout()
+        self.deviceLayout.setContentsMargins(0, 0, 0, 0)
+        # Input validators
+        self.validDeviceName = QtGui.QRegularExpressionValidator(
+            QtCore.QRegularExpression(r'[^\\/:*?"\'<>|]{1,12}')
+        )  # Up to 12 characters long, excluding invalid chars
+        self.validDevicePid = QtGui.QRegularExpressionValidator(
+            QtCore.QRegularExpression(r'[0-9A-Fa-f]{1,2}')
+        )  # 2-digit HEX string (00-FF)
+        self.validTempOffset = QtGui.QRegularExpressionValidator(
+            QtCore.QRegularExpression(r'-?(?:[0-5](?:\.\d{0,2})?|6(?:\.(?:[0-2]\d?|3[0-5]?))?|6\.?|\.\d{1,2})')
+        )  # QtGui.QDoubleValidator(-6.35, 6.35, 2)
+        # self.validTempOffset.setNotation(QtGui.QDoubleValidator.StandardNotation)
+        self.validPogoPosition = QtGui.QRegularExpressionValidator(
+            QtCore.QRegularExpression(r'[0-5]?[0-9]|60')
+        )  # QtGui.QIntValidator(0, 60)
+        self.validPogoDelayMs = QtGui.QRegularExpressionValidator(
+            QtCore.QRegularExpression(r'[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-4]')
+        )  # QtGui.QIntValidator(0, 254)
+        # Row 0L: Device Name
+        self.device_name_input = QtWidgets.QLineEdit()
+        self.device_name_input.setValidator(self.validDeviceName)
+        self.device_name_action = self.device_name_input.addAction(
+            self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.device_name_input.textEdited.connect(
+            lambda text, action=self.device_name_action: 
+                self.on_text_edit(text, action)
+        )
+        # self.device_name_save = GlassPushButton("Save")
+        # self.device_name_save.setFixedHeight(20)
+        # self.device_name_reset = GlassPushButton("Reset")
+        # self.device_name_reset.setFixedHeight(20)
+        # Row 0R: Device Position ID
+        self.device_pid_input = QtWidgets.QLineEdit()
+        self.device_pid_input.setValidator(self.validDevicePid)
+        self.device_pid_action = self.device_pid_input.addAction(
+            self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.device_pid_input.textEdited.connect(
+            lambda text, action=self.device_pid_action: 
+                self.on_text_edit(text, action)
+        )
+        # self.device_pid_input.editingFinished.connect(
+        #     lambda: self.device_pid_input.setText(
+        #         self.device_pid_input.text().upper().strip()
+        #     )
+        # )
+        self.device_config_default = GlassPushButton("Default")
+        self.device_config_default.clicked.connect(self.on_device_config_default)
+        self.device_config_default.setFixedHeight(20)
+        self.device_config_save = GlassPushButton("Save")
+        self.device_config_save.clicked.connect(self.on_device_config_save)
+        self.device_config_save.setFixedHeight(20)
+        self.device_config_reset = GlassPushButton("Reset")
+        self.device_config_reset.clicked.connect(self.on_device_config_reset)
+        self.device_config_reset.setFixedHeight(20)
+        # Row 1L: Constant Temperature Calibration
+        self.temp_cal_always_input = QtWidgets.QLineEdit()
+        self.temp_cal_always_input.setValidator(self.validTempOffset)
+        self.temp_cal_always_action = self.temp_cal_always_input.addAction(
+            self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.temp_cal_always_input.textEdited.connect(
+            lambda text, action=self.temp_cal_always_action: 
+                self.on_text_edit(text, action)
+        )
+        self.temp_cal_always_input.editingFinished.connect(
+            lambda widget=self.temp_cal_always_input: 
+                self.on_edit_finish(widget)
+        )
+        # self.constant_temp_cal_save = GlassPushButton("Save")
+        # self.constant_temp_cal_save.setFixedHeight(20)
+        # self.constant_temp_cal_reset = GlassPushButton("Reset")
+        # self.constant_temp_cal_reset.setFixedHeight(20)
+        # Row 1R: Running Temperature Calibration
+        self.temp_cal_measure_input = QtWidgets.QLineEdit()
+        self.temp_cal_measure_input.setValidator(self.validTempOffset)
+        self.temp_cal_measure_action = self.temp_cal_measure_input.addAction(
+            self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.temp_cal_measure_input.textEdited.connect(
+            lambda text, action=self.temp_cal_measure_action: 
+                self.on_text_edit(text, action)
+        )
+        self.temp_cal_measure_input.editingFinished.connect(
+            lambda widget=self.temp_cal_measure_input: 
+                self.on_edit_finish(widget)
+        )
+        self.temp_cal_default = GlassPushButton("Default")
+        self.temp_cal_default.clicked.connect(self.on_temp_cal_default)
+        self.temp_cal_default.setFixedHeight(20)
+        self.temp_cal_save = GlassPushButton("Save")
+        self.temp_cal_save.clicked.connect(self.on_temp_cal_save)
+        self.temp_cal_save.setFixedHeight(20)
+        self.temp_cal_reset = GlassPushButton("Reset")
+        self.temp_cal_reset.clicked.connect(self.on_temp_cal_reset)
+        self.temp_cal_reset.setFixedHeight(20)
+        # Row 2L: Constant Temperature Calibration
+        self.lid_pogo_distance_input = QtWidgets.QLineEdit()
+        self.lid_pogo_distance_input.setValidator(self.validPogoPosition)
+        self.lid_pogo_distance_action = self.lid_pogo_distance_input.addAction(
+            self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.lid_pogo_distance_input.textEdited.connect(
+            lambda text, action=self.lid_pogo_distance_action: 
+                self.on_text_edit(text, action)
+        )
+        # self.lid_pogo_distance_save = GlassPushButton("Save")
+        # self.lid_pogo_distance_save.setFixedHeight(20)
+        # self.lid_pogo_distance_reset = GlassPushButton("Reset")
+        # self.lid_pogo_distance_reset.setFixedHeight(20)
+        # Row 2R: Running Temperature Calibration
+        self.lid_pogo_delay_input = QtWidgets.QLineEdit()
+        self.lid_pogo_delay_input.setValidator(self.validPogoDelayMs)
+        self.lid_pogo_delay_action = self.lid_pogo_delay_input.addAction(
+            self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.lid_pogo_delay_input.textEdited.connect(
+            lambda text, action=self.lid_pogo_delay_action: 
+                self.on_text_edit(text, action)
+        )
+        self.lid_pogo_default = GlassPushButton("Default")
+        self.lid_pogo_default.clicked.connect(self.on_lid_pogo_default)
+        self.lid_pogo_default.setFixedHeight(20)
+        self.lid_pogo_save = GlassPushButton("Save")
+        self.lid_pogo_save.clicked.connect(self.on_lid_pogo_save)
+        self.lid_pogo_save.setFixedHeight(20)
+        self.lid_pogo_reset = GlassPushButton("Reset")
+        self.lid_pogo_reset.clicked.connect(self.on_lid_pogo_reset)
+        self.lid_pogo_reset.setFixedHeight(20)
+
+        self.device_config_group = QtWidgets.QGroupBox("Device Configuration")
+        self.device_config_layout = QtWidgets.QGridLayout(self.device_config_group)
+        self.temp_cal_group = QtWidgets.QGroupBox("Temperature Calibration")
+        self.temp_cal_layout = QtWidgets.QGridLayout(self.temp_cal_group)
+        self.lid_pogo_cal_group = QtWidgets.QGroupBox("Lid POGO Calibration")
+        self.lid_pogo_cal_layout = QtWidgets.QGridLayout(self.lid_pogo_cal_group)
+
+        # self.deviceLayout.setColumnMinimumWidth(4, 25)
+        # self.deviceLayout.addWidget(QtWidgets.QLabel("Device Name:"), 0, 0)
+        # self.deviceLayout.addWidget(self.device_name_input, 0, 1)
+        # self.deviceLayout.addWidget(self.device_name_save, 0, 2)
+        # self.deviceLayout.addWidget(self.device_name_reset, 0, 3)
+        # self.deviceLayout.addWidget(QtWidgets.QLabel("Device Position ID:"), 0, 5)
+        # self.deviceLayout.addWidget(self.device_pid_input, 0, 6)
+        # self.deviceLayout.addWidget(self.device_pid_save, 0, 7)
+        # self.deviceLayout.addWidget(self.device_pid_reset, 0, 8)
+        # self.deviceLayout.addWidget(QtWidgets.QLabel("Constant Temp. Offset:"), 1, 0)
+        # self.deviceLayout.addWidget(self.constant_temp_cal_input, 1, 1)
+        # self.deviceLayout.addWidget(self.constant_temp_cal_save, 1, 2)
+        # self.deviceLayout.addWidget(self.constant_temp_cal_reset, 1, 3)
+        # self.deviceLayout.addWidget(QtWidgets.QLabel("Running Temp. Offset:"), 1, 5)
+        # self.deviceLayout.addWidget(self.running_temp_cal_input, 1, 6)
+        # self.deviceLayout.addWidget(self.running_temp_cal_save, 1, 7)
+        # self.deviceLayout.addWidget(self.running_temp_cal_reset, 1, 8)
+        # self.deviceLayout.addWidget(QtWidgets.QLabel("Lid POGO Distance:"), 2, 0)
+        # self.deviceLayout.addWidget(self.lid_pogo_distance_input, 2, 1)
+        # self.deviceLayout.addWidget(self.lid_pogo_distance_save, 2, 2)
+        # self.deviceLayout.addWidget(self.lid_pogo_distance_reset, 2, 3)
+        # self.deviceLayout.addWidget(QtWidgets.QLabel("Lid POGO Speed:"), 2, 5)
+        # self.deviceLayout.addWidget(self.lid_pogo_speed_input, 2, 6)
+        # self.deviceLayout.addWidget(self.lid_pogo_speed_save, 2, 7)
+        # self.deviceLayout.addWidget(self.lid_pogo_speed_reset, 2, 8)
+
+        self.device_config_layout.addWidget(QtWidgets.QLabel("Device Name:"), 0, 0)
+        self.device_config_layout.addWidget(self.device_name_input, 0, 1, 1, 2)
+        # self.device_config_layout.addWidget(self.device_name_save, 1, 1)
+        # self.device_config_layout.addWidget(self.device_name_reset, 1, 2)
+        self.device_config_layout.addWidget(QtWidgets.QLabel("Position ID:"), 1, 0)
+        self.device_config_layout.addWidget(self.device_pid_input, 1, 1, 1, 2)
+        self.device_config_layout.addWidget(self.device_config_default, 2, 0)
+        self.device_config_layout.addWidget(self.device_config_save, 2, 1)
+        self.device_config_layout.addWidget(self.device_config_reset, 2, 2)
+        self.temp_cal_layout.addWidget(QtWidgets.QLabel("\u2206T_always:"), 0, 0)
+        self.temp_cal_layout.addWidget(self.temp_cal_always_input, 0, 1, 1, 2)
+        # self.temp_cal_layout.addWidget(self.temp_cal_always_save, 1, 1)
+        # self.temp_cal_layout.addWidget(self.temp_cal_always_reset, 1, 2)
+        self.temp_cal_layout.addWidget(QtWidgets.QLabel("\u2206T_measure:"), 1, 0)
+        self.temp_cal_layout.addWidget(self.temp_cal_measure_input, 1, 1, 1, 2)
+        self.temp_cal_layout.addWidget(self.temp_cal_default, 2, 0)
+        self.temp_cal_layout.addWidget(self.temp_cal_save, 2, 1)
+        self.temp_cal_layout.addWidget(self.temp_cal_reset, 2, 2)
+        self.lid_pogo_cal_layout.addWidget(QtWidgets.QLabel("Servo Steps:"), 0, 0)
+        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_distance_input, 0, 1, 1, 2)
+        # self.lid_pogo_cal_layout.addWidget(self.lid_pogo_distance_save, 1, 1)
+        # self.lid_pogo_cal_layout.addWidget(self.lid_pogo_distance_reset, 1, 2)
+        self.lid_pogo_cal_layout.addWidget(QtWidgets.QLabel("Servo Delay:"), 1, 0)
+        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_delay_input, 1, 1, 1, 2)
+        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_default, 2, 0)
+        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_save, 2, 1)
+        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_reset, 2, 2)
+
+        self.deviceLayout.addWidget(self.device_config_group, 0, 0)
+        self.deviceLayout.addWidget(self.temp_cal_group, 0, 1)
+        self.deviceLayout.addWidget(self.lid_pogo_cal_group, 0, 2)
+
+        # Close
+        self.close_btn = GlassPushButton("Close Configuration Editor")
+        self.close_btn.clicked.connect(self.on_device_config_editor_close)
+        self.close_btn.setFixedHeight(20)
+        bannerLayout = QtWidgets.QVBoxLayout(self.device_info_container)
+        bannerLayout.addWidget(self.ConfigBannerWidget)
+        bannerLayout.addStretch()
+        bannerLayout.addLayout(self.deviceLayout)
+        bannerLayout.addStretch()
+        bannerLayout.addWidget(self.close_btn)
+
+        # Hide it initially; the popup will show it when anchored
+        self.device_info_container.hide()
+
         MainWindow1.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(MainWindow1)
         QtCore.QMetaObject.connectSlotsByName(MainWindow1)
+
+    def on_text_edit(self, text, action):
+        if len(text):
+            action.setIcon(self.unsavedIcon)
+            action.setIconText("unsaved")
+        else:
+            action.setIcon(self.blankIcon)
+            action.setIconText("blank")
+
+    def on_edit_finish(self, widget):
+        try:
+            text = widget.text()
+            if len(text):
+                rounded_05 = round(round(float(text) * 20) / 20, 2)
+                widget.setText(f"{rounded_05:2.02f}")
+        except (ValueError, TypeError):
+            Log.e("Invalid input, resetting field to blank.")
+            widget.setText("")
+
+    def on_device_config_default(self):
+        default_name = self.ConfigBannerWidget.text().split()[-1]
+        default_pid = "FF"
+
+        if self.device_name_input.text() != default_name:
+            self.device_name_input.setText(default_name)
+            self.device_name_action.setIcon(self.unsavedIcon)
+            self.device_name_action.setIconText("unsaved")
+        if self.device_pid_input.text() != default_pid:
+            self.device_pid_input.setText(default_pid)
+            self.device_pid_action.setIcon(self.unsavedIcon)
+            self.device_pid_action.setIconText("unsaved")
+
+    def on_device_config_save(self):
+        ok_name = False
+        ok_pid = False
+        if self.device_name_action.iconText() == "unsaved":
+            if self.device_name_input.hasAcceptableInput():
+                text = self.device_name_input.text()
+                Log.d("Save device name =", text)
+                ok_name = self.save_device_name_input(text)
+                if ok_name:
+                    self.device_name_action.setIcon(self.savedIcon)
+                    self.device_name_action.setIconText("saved")
+            else:
+                Log.e(f"Invalid 'Device Name' input: {self.device_name_input.text()} (out of valid range)")
+        if self.device_pid_action.iconText() == "unsaved":
+            if self.device_pid_input.hasAcceptableInput():
+                text = self.device_pid_input.text()
+                Log.d("Save device pid =", text)
+                ok_pid, dif = self.save_device_pid_input(text)
+                if ok_pid:
+                    self.device_pid_action.setIcon(self.savedIcon)
+                    self.device_pid_action.setIconText("saved")
+            else:
+                Log.e(f"Invalid 'Position ID' input: {self.device_pid_input.text()} (out of valid range)")
+        
+        mainWindow = self.parent.parent
+        if ok_pid:
+            if dif != None:
+                try:
+                    os.remove(dif)
+                except:
+                    Log.e("Failed to delete file:", dif)
+            # force parse and/or write device info (to update name and/or pid)
+            # mainWindow.fwUpdater.checkAgain()
+            # mainWindow.worker._port = mainWindow._selected_port  # used in run()
+            # mainWindow.fwUpdater.run(mainWindow)
+            QtCore.QTimer.singleShot(1000, lambda: not mainWindow._identifying and mainWindow._port_identify())
+            QtCore.QTimer.singleShot(4000, lambda: mainWindow._identifying and mainWindow._port_identify())
+        elif ok_name:  # (needed only if PID not changed too)
+            mainWindow._refresh_ports()  # update name in port list
+        # elif ok_cal: do nothing
+
+    def on_device_config_reset(self):
+        if self.device_name_action.iconText() != "saved":
+            Log.d("Reset device name")
+            self.device_name_input.clear()
+            # self.device_name_input.setEnabled(False)
+            self.device_name_input.setPlaceholderText("Querying...")
+            self.device_name_action.setIcon(self.blankIcon)
+            self.device_name_action.setIconText("blank")
+            QtCore.QTimer.singleShot(500, self.reset_device_name_input)
+        if self.device_pid_action.iconText() != "saved":
+            Log.d("Reset device pid")
+            self.device_pid_input.clear()
+            # self.device_pid_input.setEnabled(False)
+            self.device_pid_input.setPlaceholderText("Querying...")
+            self.device_pid_action.setIcon(self.blankIcon)
+            self.device_pid_action.setIconText("blank")
+            QtCore.QTimer.singleShot(1000, self.reset_device_pid_input)
+
+    def on_temp_cal_default(self):
+        default_always = "0.00"
+        default_measure = "0.00"
+        
+        if self.temp_cal_always_input.text() != default_always:
+            self.temp_cal_always_input.setText(default_always)
+            self.temp_cal_always_action.setIcon(self.unsavedIcon)
+            self.temp_cal_always_action.setIconText("unsaved")
+        if self.temp_cal_measure_input.text() != default_measure:
+            self.temp_cal_measure_input.setText(default_measure)
+            self.temp_cal_measure_action.setIcon(self.unsavedIcon)
+            self.temp_cal_measure_action.setIconText("unsaved")
+
+    def on_temp_cal_save(self):
+        if self.temp_cal_always_action.iconText() == "unsaved":
+            if self.temp_cal_always_input.hasAcceptableInput():
+                text = self.temp_cal_always_input.text()
+                Log.d("Save T_always =", text)
+                if self.save_temp_cal_always_input(text):
+                    self.temp_cal_always_action.setIcon(self.savedIcon)
+                    self.temp_cal_always_action.setIconText("saved")
+            else:
+                Log.e(f"Invalid T_always input: {self.temp_cal_always_input.text()} (out of valid range)")
+        if self.temp_cal_measure_action.iconText() == "unsaved":
+            if self.temp_cal_measure_input.hasAcceptableInput():
+                text = self.temp_cal_measure_input.text()
+                Log.d("Save T_measure =", text)
+                if self.save_temp_cal_measure_input(text):
+                    self.temp_cal_measure_action.setIcon(self.savedIcon)
+                    self.temp_cal_measure_action.setIconText("saved")
+            else:
+                Log.e(f"Invalid T_measure input: {self.temp_cal_measure_input.text()} (out of valid range)")
+
+    def on_temp_cal_reset(self):
+        if self.temp_cal_always_action.iconText() != "saved":
+            Log.d("Reset T_always")
+            self.temp_cal_always_input.clear()
+            # self.temp_cal_always_input.setEnabled(False)
+            self.temp_cal_always_input.setPlaceholderText("Querying...")
+            self.temp_cal_always_action.setIcon(self.blankIcon)
+            self.temp_cal_always_action.setIconText("blank")
+            QtCore.QTimer.singleShot(1, self.reset_temp_cal_always_input)
+        if self.temp_cal_measure_action.iconText() != "saved":
+            Log.d("Reset T_measure")
+            self.temp_cal_measure_input.clear()
+            # self.temp_cal_measure_input.setEnabled(False)
+            self.temp_cal_measure_input.setPlaceholderText("Querying...")
+            self.temp_cal_measure_action.setIcon(self.blankIcon)
+            self.temp_cal_measure_action.setIconText("blank")
+            QtCore.QTimer.singleShot(3000, self.reset_temp_cal_measure_input)
+
+    def on_lid_pogo_default(self):
+        default_distance = "30"
+        default_delay = "30"
+        
+        if self.lid_pogo_distance_input.text() != default_distance:
+            self.lid_pogo_distance_input.setText(default_distance)
+            self.lid_pogo_distance_action.setIcon(self.unsavedIcon)
+            self.lid_pogo_distance_action.setIconText("unsaved")
+        if self.lid_pogo_delay_input.text() != default_delay:
+            self.lid_pogo_delay_input.setText(default_delay)
+            self.lid_pogo_delay_action.setIcon(self.unsavedIcon)
+            self.lid_pogo_delay_action.setIconText("unsaved")
+
+    def on_lid_pogo_save(self):
+        send_lid_cal_cmd = False
+        form_error = False  # blocking if True
+        if self.lid_pogo_distance_action.iconText() == "unsaved":
+            if self.lid_pogo_distance_input.hasAcceptableInput():
+                text = self.lid_pogo_distance_input.text()
+                Log.d("Save lid pogo distance =", text)
+                self.lid_pogo_distance_action.setIcon(self.savedIcon)
+                self.lid_pogo_distance_action.setIconText("saved")
+                send_lid_cal_cmd = True
+            else:
+                Log.e(f"Invalid 'Servo Steps' input: {self.lid_pogo_distance_input.text()} (out of valid range)")
+                form_error = True
+        if self.lid_pogo_delay_action.iconText() == "unsaved":
+            if self.lid_pogo_delay_input.hasAcceptableInput():
+                text = self.lid_pogo_delay_input.text()
+                Log.d("Save lid pogo delay =", text)
+                self.lid_pogo_delay_action.setIcon(self.savedIcon)
+                self.lid_pogo_delay_action.setIconText("saved")
+                send_lid_cal_cmd = True
+            else:
+                Log.e(f"Invalid 'Servo Delay' input: {self.lid_pogo_delay_input.text()} (out of valid range)")
+                form_error = True
+        if send_lid_cal_cmd and not form_error:
+            self.save_lid_pogo_calibration()
+
+    def on_lid_pogo_reset(self):
+        get_lid_cal = False
+        if self.lid_pogo_distance_action.iconText() != "saved":
+            Log.d("Reset lid pogo distance")
+            self.lid_pogo_distance_input.clear()
+            # self.lid_pogo_distance_input.setEnabled(False)
+            self.lid_pogo_distance_input.setPlaceholderText("Querying...")
+            self.lid_pogo_distance_action.setIcon(self.blankIcon)
+            self.lid_pogo_distance_action.setIconText("blank")
+            get_lid_cal = True
+        if self.lid_pogo_delay_action.iconText() != "saved":
+            Log.d("Reset lid pogo delay")
+            self.lid_pogo_delay_input.clear()
+            # self.lid_pogo_delay_input.setEnabled(False)
+            self.lid_pogo_delay_input.setPlaceholderText("Querying...")
+            self.lid_pogo_delay_action.setIcon(self.blankIcon)
+            self.lid_pogo_delay_action.setIconText("blank")
+            get_lid_cal = True
+        if get_lid_cal:
+            QtCore.QTimer.singleShot(1500, self.get_lid_pogo_calibration)
+
+    def save_device_name_input(self, text):
+        mainWindow = self.parent.parent
+        dev_handle = None
+        device_list = FileStorage.DEV_get_device_list()
+        for i, dev_name in device_list:
+            dev_info = FileStorage.DEV_info_get(i, dev_name)
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == mainWindow._selected_port:
+                    dev_handle = dev_name
+                    break
+        # remove any invalid characters from user input
+        # invalidChars = "\\/:*?\"'<>|"
+        for invalidChar in Constants.invalidChars:
+            text = text.replace(invalidChar, "")
+        text = text.strip().replace(" ", "_")  # word spaces -> underscores
+        # limit length of input
+        text = text[:12] if len(text) > 12 else text
+        text = text.upper()  # make user input uppercase
+        try:
+            if text == "":
+                text = dev_info["USB"]
+            Log.i("Set on device '{}': NAME = {}".format(dev_handle, text))
+            if text != self.device_name_input.text():
+                self.device_name_input.setText(text)
+            dev_file = os.path.join(
+                Constants.csv_calibration_export_path,
+                dev_handle,
+                "{}.{}".format(Constants.txt_device_info_filename, Constants.txt_extension),
+            )
+            dev_lines = []
+            with open(dev_file, "r") as file:
+                dev_lines = file.readlines()
+                dev_lines[0] = "NAME: {}\n".format(text)
+            with open(dev_file, "w") as file:
+                file.writelines(dev_lines)
+            Log.i("Program 'Name' operation was successful!")
+            return True
+        except:
+            Log.e("Failed to update name entered by user.")
+            return False
+    
+    def reset_device_name_input(self):
+        mainWindow = self.parent.parent
+
+        friendly_name = mainWindow._selected_port
+        # dev_handle = None
+        device_list = FileStorage.DEV_get_device_list()
+        for i, dev_name in device_list:
+            dev_info = FileStorage.DEV_info_get(i, dev_name)
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == mainWindow._selected_port:
+                    friendly_name = dev_info["NAME"]
+                    # dev_handle = dev_name
+                    break
+
+        self.device_name_input.setText(friendly_name)
+        self.device_name_input.setPlaceholderText(None)
+        self.device_name_action.setIcon(self.savedIcon)
+        self.device_name_action.setIconText("saved")
+
+    def save_device_pid_input(self, text):
+        mainWindow = self.parent.parent
+        dev_handle = None
+        pid_old = 0xFF  # default: unassigned
+        device_list = FileStorage.DEV_get_device_list()
+        for i, dev_name in device_list:
+            dev_info = FileStorage.DEV_info_get(i, dev_name)
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == mainWindow._selected_port:
+                    dev_handle = dev_name
+                    if "PID" in dev_info:
+                        pid_old = int(dev_info["PID"], base=16)
+                    break
+        try:
+            pid_new = int(text, base=16)
+            # valid values: 1-4, A-D, 0x00 (single),
+            #               0x80 (flux controller), 0xFF (default, single)
+            if pid_new not in [
+                0x1,
+                0x2,
+                0x3,
+                0x4,
+                0xA,
+                0xB,
+                0xC,
+                0xD,
+                0x00,
+                0x80,
+                0xFF,
+            ]:
+                Log.w("Out-of-range PID entered by user. Using default: 0xFF")
+                pid_new = 0xFF
+        except:
+            Log.w("Non-numeric PID entered by user. Using default: 0xFF")
+            pid_new = 0xFF
+        Log.i("Set on device '{}': PID = {}".format(dev_handle, pid_new))
+        pid_str = hex(pid_new)[2:].upper()
+        if pid_str != self.device_pid_input.text():
+            self.device_pid_input.setText(pid_str)
+        if pid_new != pid_old:
+            if mainWindow.setEEPROM(mainWindow._selected_port, 0, pid_new):
+                Log.i("Device EEPROM write PID success!")
+            Log.i("Program 'Position ID' operation was successful!")
+            ok = True
+        else:
+            Log.w("Program 'Position ID' operation resulted in no change!")
+            ok = False
+
+        if ok:  # pid changed
+            try:
+                # Configure serial port (assume baud to check before update)
+                _serial = serial.Serial()
+                _serial.port = mainWindow._selected_port
+                _serial.baudrate = Constants.serial_default_speed  # 115200
+                _serial.stopbits = serial.STOPBITS_ONE
+                _serial.bytesize = serial.EIGHTBITS
+                _serial.timeout = Constants.serial_timeout_ms
+                _serial.write_timeout = Constants.serial_writetimeout_ms
+                _serial.open()
+                _serial.write(b"MULTI INIT 0\n")
+                _serial.close()
+            except:
+                Log.e("Unable to refresh LCD. PID error may be stale.")
+            try:
+                dev_name = dev_handle
+                i_old = 0 if pid_old == 0xFF else pid_old
+                dev_folder_old = "{}_{}".format(i_old, dev_name) if i_old > 0 else dev_name
+                dev_info_file_old = os.path.join(
+                    Constants.csv_calibration_export_path,
+                    dev_folder_old,
+                    f"{Constants.txt_device_info_filename}.txt",
+                )
+                if os.path.exists(dev_info_file_old):
+                    Log.d(
+                        f"Queueing removal of stale DEV_INFO file for {dev_name} with PID {pid_new}..."
+                    )
+                    return ok, dev_info_file_old
+            except:
+                Log.e("Unable to check for stale DEV_INFO file removal.")
+        return ok, None
+
+    def reset_device_pid_input(self):
+        mainWindow = self.parent.parent
+
+        # friendly_name = mainWindow._selected_port
+        # dev_handle = None
+        pid_old = 0xFF  # default: unassigned
+        device_list = FileStorage.DEV_get_device_list()
+        for i, dev_name in device_list:
+            dev_info = FileStorage.DEV_info_get(i, dev_name)
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == mainWindow._selected_port:
+                    # friendly_name = dev_info["NAME"]
+                    # dev_handle = dev_name
+                    if "PID" in dev_info:
+                        pid_old = int(dev_info["PID"], base=16)
+                    break
+
+        # confirm PID in DEV_INFO matches COM Port listed text
+        try:
+            idx = mainWindow.ControlsWin.ui1.cBox_Port.findData(mainWindow._selected_port)
+            if idx >= 0:
+                device_text = mainWindow.ControlsWin.ui1.cBox_Port.itemText(idx)
+                if ":" in device_text:
+                    dev_i = int(device_text.split(":")[0], base=16)
+                    if dev_i != pid_old:
+                        Log.e(f"Conflicting device info, using PID as {dev_i} instead of reported {pid_old}!")
+                        pid_old = int(dev_i, base=16)
+        except:
+            Log.e("ERROR: Unable to check if PID in COM Port list matches DEV_INFO.")
+
+        pid_str = hex(pid_old)[2:].upper()
+
+        self.device_pid_input.setText(pid_str)
+        self.device_pid_input.setPlaceholderText(None)
+        self.device_pid_action.setIcon(self.savedIcon)
+        self.device_pid_action.setIconText("saved")
+
+    def save_temp_cal_always_input(self, text):
+        mainWindow = self.parent.parent
+        dev_handle = None
+        device_list = FileStorage.DEV_get_device_list()
+        for i, dev_name in device_list:
+            dev_info = FileStorage.DEV_info_get(i, dev_name)
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == mainWindow._selected_port:
+                    dev_handle = dev_name
+                    break
+        # Save CAL1 to EEPROM
+        try:
+            cal_new = int(float(text) * 20.0)
+            if cal_new < 0:
+                cal_new = (~(-cal_new)) & 0xFF
+            if not cal_new in range(0, 0xFF):
+                Log.w("Out-of-range CAL1 entered by user. Using default: 0xFF")
+                cal_new = 0xFF
+        except:
+            Log.w("Non-numeric CAL1 entered by user. Using default: 0xFF")
+            cal_new = 0xFF
+        # if cal_new == 0xFF:
+        #     set_cal1 = "0"
+        # else:
+        #     set_cal1 = text
+        Log.i("Set on device '{}': CAL1 = {} ({}C)".format(dev_handle, cal_new, text))
+        if mainWindow.setEEPROM(mainWindow._selected_port, 1, cal_new):
+            Log.i("Device EEPROM write CAL1 success!")
+            success = True
+        else:
+            Log.e("Failed to write EEPROM address for CAL1.")
+            success = False
+        if success:
+            Log.i("Program 'TEMP CAL1' operation was successful!")
+        else:
+            Log.e("Program 'TEMP CAL1' operation was NOT successful!")
+        return success
+    
+    def reset_temp_cal_always_input(self, skip_delay=False):
+        mainWindow = self.parent.parent
+        start_time = monotonic()
+
+        tec_update_required = True
+        if mainWindow.tecWorker.last_reply():
+            if start_time - mainWindow.tecWorker.last_reply() < 10:
+                tec_update_required = False
+
+        if tec_update_required:
+            Log.i("Updating TEC parameters...")
+            mainWindow.tecWorker.set_port(mainWindow._selected_port)
+            mainWindow.tecWorker._tec_update()  # Force read to update SW cached offsets
+
+        if tec_update_required and not skip_delay:
+            # Wait up to 2 seconds, less TEC query processing delay
+            wait_msecs = int(1000 * (2 - (monotonic() - start_time)))
+            if wait_msecs > 0:
+                QtCore.QTimer.singleShot(
+                    wait_msecs,
+                    lambda: self.reset_temp_cal_always_input(skip_delay=True),
+                )
+                return
+
+        set_cal1 = mainWindow.tecWorker._tec_offset1
+
+        self.temp_cal_always_input.setText(set_cal1)
+        self.temp_cal_always_input.setPlaceholderText(None)
+        self.temp_cal_always_action.setIcon(self.savedIcon)
+        self.temp_cal_always_action.setIconText("saved")
+
+    def save_temp_cal_measure_input(self, text):
+        mainWindow = self.parent.parent
+        dev_handle = None
+        device_list = FileStorage.DEV_get_device_list()
+        for i, dev_name in device_list:
+            dev_info = FileStorage.DEV_info_get(i, dev_name)
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == mainWindow._selected_port:
+                    dev_handle = dev_name
+                    break
+        # Save CAL2 to EEPROM
+        try:
+            cal_new = int(float(text) * 20.0)
+            if cal_new < 0:
+                cal_new = (~(-cal_new)) & 0xFF
+            if not cal_new in range(0, 0xFF):
+                Log.w("Out-of-range CAL2 entered by user. Using default: 0xFF")
+                cal_new = 0xFF
+        except:
+            Log.w("Non-numeric CAL2 entered by user. Using default: 0xFF")
+            cal_new = 0xFF
+        # if cal_new == 0xFF:
+        #     set_cal2 = "0"
+        # else:
+        #     set_cal2 = text
+        Log.i("Set on device '{}': CAL2 = {} ({}C)".format(dev_handle, cal_new, text))
+        if mainWindow.setEEPROM(mainWindow._selected_port, 3, cal_new):
+            Log.i("Device EEPROM write CAL2 success!")
+            success = True
+        else:
+            Log.e("Failed to write EEPROM address for CAL2")
+            success = False
+        if success:
+            Log.i("Program 'TEMP CAL2' operation was successful!")
+        else:
+            Log.e("Program 'TEMP CAL2' operation was NOT successful!")
+        return success
+
+    def reset_temp_cal_measure_input(self):
+        mainWindow = self.parent.parent
+        start_time = monotonic()
+
+        tec_update_required = True
+        if mainWindow.tecWorker.last_reply():
+            if start_time - mainWindow.tecWorker.last_reply() < 10:
+                tec_update_required = False
+
+        if tec_update_required:
+            Log.i("Updating TEC parameters...")
+            mainWindow.tecWorker.set_port(mainWindow._selected_port)
+            mainWindow.tecWorker._tec_update()  # Force read to update SW cached offsets
+
+        # No additional delay required on cal2
+        # sleep(0)
+
+        set_cal2 = mainWindow.tecWorker._tec_offset2
+
+        self.temp_cal_measure_input.setText(set_cal2)
+        self.temp_cal_measure_input.setPlaceholderText(None)
+        self.temp_cal_measure_action.setIcon(self.savedIcon)
+        self.temp_cal_measure_action.setIconText("saved")
+
+    def save_lid_pogo_calibration(self):
+        mainWindow = self.parent.parent
+        cal_start = 100
+        cal_stop = cal_start + int(self.lid_pogo_distance_input.text())
+        cal_delay = int(self.lid_pogo_delay_input.text())
+        response = None
+        try:
+            # Configure serial port (assume baud to check before update)
+            LIDCAL_serial = serial.Serial()
+            LIDCAL_serial.port = mainWindow._selected_port
+            LIDCAL_serial.baudrate = Constants.serial_default_speed  # 115200
+            LIDCAL_serial.stopbits = serial.STOPBITS_ONE
+            LIDCAL_serial.bytesize = serial.EIGHTBITS
+            LIDCAL_serial.timeout = Constants.serial_timeout_ms
+            LIDCAL_serial.write_timeout = Constants.serial_writetimeout_ms
+            LIDCAL_serial.open()
+            LIDCAL_serial.write(f"LID CAL {cal_start},{cal_stop},{cal_delay}\n".encode())
+            LIDCAL_serial.close()
+        except:
+            Log.e("Unable to get LID CAL. No reply from device.")
+
+     
+    def get_lid_pogo_calibration(self):
+        mainWindow = self.parent.parent
+        pogo_distance = 30
+        pogo_delay = 30
+        response = None
+
+        try:
+            # Configure serial port (assume baud to check before update)
+            LIDCAL_serial = serial.Serial()
+            LIDCAL_serial.port = mainWindow._selected_port
+            LIDCAL_serial.baudrate = Constants.serial_default_speed  # 115200
+            LIDCAL_serial.stopbits = serial.STOPBITS_ONE
+            LIDCAL_serial.bytesize = serial.EIGHTBITS
+            LIDCAL_serial.timeout = Constants.serial_timeout_ms
+            LIDCAL_serial.write_timeout = Constants.serial_writetimeout_ms
+            LIDCAL_serial.open()
+            LIDCAL_serial.write(b"LID CAL\n")
+            response = LIDCAL_serial.read_until()
+            LIDCAL_serial.close()
+        except:
+            Log.e("Unable to get LID CAL. No reply from device.")
+
+        try:
+            if response:
+                lid_cal_split = response.decode().strip().split()[-1]
+                lid_cal_params = lid_cal_split.split(',')
+                pogo_distance = abs(int(lid_cal_params[1]) - int(lid_cal_params[0]))
+                pogo_delay = int(lid_cal_params[-1])
+        except:
+            Log.e("Unable to parse LID CAL reply.")
+
+        if self.lid_pogo_distance_action.iconText() == "blank":
+            self.lid_pogo_distance_input.setText(str(pogo_distance))
+            self.lid_pogo_distance_input.setPlaceholderText(None)
+            self.lid_pogo_distance_action.setIcon(self.savedIcon)
+            self.lid_pogo_distance_action.setIconText("saved")
+        if self.lid_pogo_delay_action.iconText() == "blank":
+            self.lid_pogo_delay_input.setText(str(pogo_delay))
+            self.lid_pogo_delay_input.setPlaceholderText(None)
+            self.lid_pogo_delay_action.setIcon(self.savedIcon)
+            self.lid_pogo_delay_action.setIconText("saved")
+
+    def blank_device_config_icon_text(self):
+        self.device_name_action.setIconText("blank")
+        self.device_pid_action.setIconText("blank")
+        self.temp_cal_always_action.setIconText("blank")
+        self.temp_cal_measure_action.setIconText("blank")
+        self.lid_pogo_distance_action.setIconText("blank")
+        self.lid_pogo_delay_action.setIconText("blank")
+
+    def on_device_config_editor_close(self):
+        actions = [
+            self.device_name_action,
+            self.device_pid_action,
+            self.temp_cal_always_action,
+            self.temp_cal_measure_action,
+            self.lid_pogo_distance_action,
+            self.lid_pogo_delay_action,
+        ]
+        unsaved_input = False
+        for action in actions:
+            if action.iconText() == "unsaved":
+                Log.w("You have unsaved device configuration input. Please Save or Reset unsaved input before closing.")
+                unsaved_input = True
+                break
+        if not unsaved_input:
+            self.device_info_container.parent().parent().hide()
 
     def _update_progress_text(self):
         # get innerText from HTML in infobar

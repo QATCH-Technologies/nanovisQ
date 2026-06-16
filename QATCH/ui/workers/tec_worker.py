@@ -51,6 +51,8 @@ class TECWorker(QtCore.QThread):
     _task_counter = 0
     _task_active = False
 
+    _time_last_reply = None
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
@@ -70,6 +72,13 @@ class TECWorker(QtCore.QThread):
     def set_slider_enable(self, value):
         self.slider_enable = value
 
+    def last_reply(self):
+        """Gets monotonic time of last TEMP reply message.
+        
+        NOTE: ``None`` reply means never heard.
+        """
+        return self._time_last_reply
+    
     def run(self):
         Log.i(
             TAG,
@@ -476,6 +485,9 @@ class TECWorker(QtCore.QThread):
                         ambient,
                     )  # Ambient(C)
                     tempFile.write(log_line)
+
+                # Record time of last TEMP reply message
+                self._time_last_reply = monotonic()
             else:
                 Log.e(
                     TAG,
