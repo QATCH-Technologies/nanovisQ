@@ -6,14 +6,14 @@ animation, intentionally mirroring the visual language of GlassLineEdit.
 
 Visual mapping
 --------------
-  GlassLineEdit             →   GlassPushButton
+  GlassLineEdit             ->   GlassPushButton
   ─────────────────────────────────────────────
-  focusInEvent              →   enterEvent
-  focusOutEvent             →   leaveEvent
-  _focused fill (α 100)     →   _hovered fill (α 100)
-  resting fill  (α 58)      →   resting fill  (α 58)
-  shimmer sweep on focus    →   shimmer sweep on hover
-  settled border (α 130)    →   settled border (α 130)
+  focusInEvent              ->   enterEvent
+  focusOutEvent             ->   leaveEvent
+  _focused fill (alpha 100)     ->   _hovered fill (alpha 100)
+  resting fill  (alpha 58)      ->   resting fill  (alpha 58)
+  shimmer sweep on focus    ->   shimmer sweep on hover
+  settled border (alpha 130)    ->   settled border (alpha 130)
 
 Variants
 --------
@@ -34,7 +34,7 @@ Usage
     btn_del = GlassPushButton("", variant="danger")
     btn_del.setFixedSize(28, 28)         # icon-only circle
 
-    # Switch state at runtime (e.g. delete → confirmation mode):
+    # Switch state at runtime (e.g. delete -> confirmation mode):
     btn_del.set_variant("danger_confirm")
     btn_del.set_variant("danger")        # restore
 """
@@ -153,7 +153,7 @@ class GlassPushButton(QtWidgets.QPushButton):
 
     Attributes:
         _variant (str):       Active palette name.
-        _shimmer_t (float):   Sweep progress 0.0 → 1.0, reset on each hover entry.
+        _shimmer_t (float):   Sweep progress 0.0 -> 1.0, reset on each hover entry.
         _hovered (bool):      True while the cursor is inside the widget.
         _pressed_state (bool):True while a mouse button is held down.
     """
@@ -171,7 +171,7 @@ class GlassPushButton(QtWidgets.QPushButton):
         self._hovered: bool = False
         self._pressed_state: bool = False
 
-        # 12 ms / ~0.022 step → matches GlassLineEdit tick exactly
+        # 12 ms / ~0.022 step -> matches GlassLineEdit tick exactly
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(12)
         self._timer.timeout.connect(self._tick)
@@ -309,7 +309,7 @@ class GlassPushButton(QtWidgets.QPushButton):
 
         # ── Border / shimmer ─────────────────────────────────────────
         # Algorithm mirrors GlassLineEdit paintEvent exactly:
-        # sweeping phase → spread / peak gradient; settled phase → solid accent.
+        # sweeping phase -> spread / peak gradient; settled phase -> solid accent.
         t = self._shimmer_t
         sh_accent = self._c(pal["sh_accent"])
         sh_peak = self._c(pal["sh_peak"])
@@ -336,7 +336,7 @@ class GlassPushButton(QtWidgets.QPushButton):
 
         elif self._hovered:
             # Settled: accent colour at slightly elevated alpha (mirrors
-            # GlassLineEdit's settled_color α 130 logic)
+            # GlassLineEdit's settled_color alpha 130 logic)
             settled = QtGui.QColor(sh_accent)
             settled.setAlpha(min(255, sh_accent.alpha() + 15))
             p.setPen(QtGui.QPen(settled, 1.5))
