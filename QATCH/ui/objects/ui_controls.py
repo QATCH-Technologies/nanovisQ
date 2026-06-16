@@ -38,8 +38,13 @@ from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
 from QATCH.common.licenseManager import LicenseManager
 from QATCH.processors.Device import serial
-from QATCH.ui.widgets.advanced_main_widget import AdvancedMainWidget
+from QATCH.ui.widgets.advanced_main_widget import (
+    AdvancedMainWidget,
+    GlassWarningLabel,
+)
 from QATCH.ui.components.glass_push_button import GlassPushButton
+from QATCH.ui.components.glass_toggle import GlassToggle
+from QATCH.ui.components.animated_combo_box import AnimatedComboBox
 
 # ---------------------------------------------------------------------------
 # Glass-morphism primitives
@@ -617,8 +622,7 @@ class GlassStatusLabel(QtWidgets.QLabel):
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
         self.setStyleSheet(
-            "QLabel { color: rgba(28, 40, 52, 210); "
-            "padding: 2px 6px; background: transparent; }"
+            "QLabel { color: rgba(28, 40, 52, 210); " "padding: 2px 6px; background: transparent; }"
         )
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
@@ -646,57 +650,6 @@ class GlassStatusLabel(QtWidgets.QLabel):
         p.setPen(QtGui.QPen(QtGui.QColor(120, 160, 200, 110), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 160), 1.0))
-        p.drawRoundedRect(
-            rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
-            self._RADIUS - 1.5,
-            self._RADIUS - 1.5,
-        )
-
-        p.end()
-        super().paintEvent(event)
-
-
-class GlassWarningLabel(QtWidgets.QLabel):
-    """Orange glass warning banner for the Advanced Settings dialog."""
-
-    _RADIUS: float = 4.0
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
-        self.setStyleSheet(
-            "QLabel { color: white; font-weight: bold; "
-            "padding: 2px 6px; background: transparent; }"
-        )
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        p = QtGui.QPainter(self)
-        p.setRenderHints(QtGui.QPainter.Antialiasing)
-
-        rect_f = QtCore.QRectF(self.rect())
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
-        p.setClipPath(clip)
-
-        # Warm orange glass gradient
-        grad = QtGui.QLinearGradient(0, 0, self.width(), self.height())
-        grad.setColorAt(0.0, QtGui.QColor(210, 80, 0))
-        grad.setColorAt(1.0, QtGui.QColor(255, 125, 20))
-        p.fillRect(self.rect(), QtGui.QBrush(grad))
-
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 40))
-
-        shimmer = QtGui.QLinearGradient(0, 0, 0, self.height() * 0.65)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 50))
-        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
-        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(190, 80, 0, 140), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 120), 1.0))
         p.drawRoundedRect(
             rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
             self._RADIUS - 1.5,
@@ -1347,6 +1300,104 @@ class TemperatureLabel(QtWidgets.QLabel):
 
 
 # ---------------------------------------------------------------------------
+# Helpers for glass toggles (label + switch rows, radio-group compatibility)
+# ---------------------------------------------------------------------------
+
+
+class _SectionHeader(QtWidgets.QLabel):
+    """Soft, muted section header mirroring the account dropdown's typography.
+
+    Replaces the heavy blue GlassHeaderLabel pills inside the advanced panel
+    with quiet uppercase gray text, so the panel reads as clean grouped
+    sections rather than a grid of competing colored bars.
+    """
+
+    def __init__(self, text: str = "", parent=None) -> None:
+        super().__init__(text.upper(), parent)
+        self.setStyleSheet(
+            "QLabel { color: rgba(70, 90, 110, 200); font-size: 10px; "
+            "font-weight: bold; letter-spacing: 1px; background: transparent; "
+            "border: none; padding: 0px 1px; }"
+        )
+
+
+def _hairline() -> QtWidgets.QFrame:
+    """A 1px divider matching the account dropdown's hairline separators."""
+    line = QtWidgets.QFrame()
+    line.setFrameShape(QtWidgets.QFrame.HLine)
+    line.setStyleSheet(
+        "QFrame { background: rgba(200, 210, 220, 130); border: none; max-height: 1px; }"
+    )
+    return line
+
+
+class LabeledToggle(QtWidgets.QWidget):
+    """A GlassToggle paired with a text label in a horizontal row.
+
+    Exposes the subset of the QCheckBox API used by the rest of the app
+    (``isChecked``, ``setChecked``, ``setEnabled``, ``setText``, ``toggled``)
+    so it can stand in for a checkbox without touching call sites.
+    """
+
+    def __init__(self, text: str = "", parent=None, *, label_left: bool = False) -> None:
+        super().__init__(parent)
+        self.toggle = GlassToggle(self)
+        self.label = QtWidgets.QLabel(text, self)
+        self.label.setStyleSheet(
+            "background: transparent; border: none; color: rgba(30, 40, 55, 215);"
+        )
+        self.label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
+        if label_left:
+            lay.addWidget(self.label)
+            lay.addWidget(self.toggle)
+            lay.addStretch()
+        else:
+            lay.addWidget(self.toggle)
+            lay.addWidget(self.label)
+            lay.addStretch()
+
+        # Re-expose the toggle's signal as our own.
+        self.toggled = self.toggle.toggled
+
+    # -- QCheckBox-compatible surface --------------------------------------
+    def isChecked(self) -> bool:
+        return self.toggle.isChecked()
+
+    def setChecked(self, checked: bool) -> None:
+        self.toggle.setChecked(checked)
+
+    def setText(self, text: str) -> None:
+        self.label.setText(text)
+
+    def text(self) -> str:
+        return self.label.text()
+
+    def setEnabled(self, enabled: bool) -> None:
+        super().setEnabled(enabled)
+        self.toggle.setEnabled(enabled)
+        self.label.setEnabled(enabled)
+
+
+class _ToggleButtonGroupShim:
+    """Minimal stand-in for the old QButtonGroup over the auto-lock radios.
+
+    The single auto-lock GlassToggle represents Automatic(on)/Manual(off).
+    This shim preserves the only QButtonGroup method the app used:
+    ``checkedId()`` returning 1 for Automatic and 0 for Manual.
+    """
+
+    def __init__(self, toggle: GlassToggle) -> None:
+        self._toggle = toggle
+
+    def checkedId(self) -> int:
+        return 1 if self._toggle.isChecked() else 0
+
+
+# ---------------------------------------------------------------------------
 # Main class
 # ---------------------------------------------------------------------------
 
@@ -1379,8 +1430,13 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls = QtWidgets.QGridLayout()
         self.Layout_controls.setObjectName("Layout_controls")
 
+        # Shared chevron icon for the glass (animated) combo boxes.
+        self._combo_chevron = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
+        )
+
         # frequency/quartz combobox -------------------------------------------
-        self.cBox_Speed = QtWidgets.QComboBox()
+        self.cBox_Speed = AnimatedComboBox(icon_path=self._combo_chevron)
         self.cBox_Speed.setEditable(False)
         self.cBox_Speed.setObjectName("cBox_Speed")
         if USE_FULLSCREEN:
@@ -1388,7 +1444,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.cBox_Speed, 4, 1, 1, 1)
 
         # stop button ---------------------------------------------------------
-        self.pButton_Stop = QtWidgets.QPushButton()
+        self.pButton_Stop = GlassPushButton(variant="danger")
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/stop_icon.ico")
         self.pButton_Stop.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Stop.setMinimumSize(QtCore.QSize(0, 0))
@@ -1398,7 +1454,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.pButton_Stop, 3, 6, 1, 1)
 
         # COM port combobox ---------------------------------------------------
-        self.cBox_Port = QtWidgets.QComboBox()
+        self.cBox_Port = AnimatedComboBox(icon_path=self._combo_chevron)
         self.cBox_Port.setEditable(False)
         self.cBox_Port.setObjectName("cBox_Port")
         if USE_FULLSCREEN:
@@ -1406,11 +1462,10 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.cBox_Port, 2, 1, 1, 1)
 
         # Identify button ---------------------------------------------------------
-        self.pButton_ID = QtWidgets.QPushButton()
+        self.pButton_ID = GlassPushButton(variant="neutral")
         self.pButton_ID.setToolTip("Identify selected Serial COM Port")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "search-circle.svg")
         self.pButton_ID.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
-        self.pButton_ID.setStyleSheet(_GLASS_BUTTON_QSS.format(padding="3px"))
         self.pButton_ID.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         if USE_FULLSCREEN:
             self.pButton_ID.setMinimumSize(QtCore.QSize(60, 50))
@@ -1420,13 +1475,10 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.pButton_ID, 2, 2, 1, 1)
 
         # Refresh button ---------------------------------------------------------
-        self.pButton_Refresh = QtWidgets.QPushButton()
+        self.pButton_Refresh = GlassPushButton(variant="neutral")
         self.pButton_Refresh.setToolTip("Refresh Serial COM Port list")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-circle.svg")
         self.pButton_Refresh.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
-        self.pButton_Refresh.setStyleSheet(
-            _GLASS_BUTTON_QSS.format(padding="3px") + "QPushButton { margin-right: 9px; }"
-        )
         self.pButton_Refresh.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         if USE_FULLSCREEN:
             self.pButton_Refresh.setMinimumSize(QtCore.QSize(70, 50))
@@ -1436,21 +1488,21 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.pButton_Refresh, 2, 3, 1, 1)
 
         # Operation mode - source ---------------------------------------------
-        self.cBox_Source = QtWidgets.QComboBox()
+        self.cBox_Source = AnimatedComboBox(icon_path=self._combo_chevron)
         self.cBox_Source.setObjectName("cBox_Source")
         if USE_FULLSCREEN:
             self.cBox_Source.setFixedHeight(50)
         self.Layout_controls.addWidget(self.cBox_Source, 2, 0, 1, 1)
 
-        # Frequency hopping checkbox ------------------------------------------
-        self.chBox_freqHop = QtWidgets.QCheckBox()
+        # Frequency hopping toggle --------------------------------------------
+        self.chBox_freqHop = LabeledToggle("Mode Hop")
         self.chBox_freqHop.setEnabled(True)
         self.chBox_freqHop.setChecked(False)
         self.chBox_freqHop.setObjectName("chBox_freqHop")
         self.Layout_controls.addWidget(self.chBox_freqHop, 4, 2, 1, 2)
 
-        # Noise correction checkbox -------------------------------------------
-        self.chBox_correctNoise = QtWidgets.QCheckBox()
+        # Noise correction toggle ---------------------------------------------
+        self.chBox_correctNoise = LabeledToggle("Show amplitude curve")
         self.chBox_correctNoise.setEnabled(True)
         self.chBox_correctNoise.setChecked(True)
         self.chBox_correctNoise.setObjectName("chBox_correctNoise")
@@ -1462,32 +1514,43 @@ class UIControls:  # QtWidgets.QMainWindow
             self.l9.setFixedHeight(50)
         self.Layout_controls.addWidget(self.l9, 1, 4, 1, 1)
 
-        # Cartridge Controls --------------------------------------------------
-        self.rButton_Automatic = QtWidgets.QRadioButton("Automatic")
-        self.rButton_Automatic.setToolTip("""
-            <b><u>Automatic:</u></b><br/>
-            - Locks before init/run<br/>
-            - Useful if/when user forgets
+        # Cartridge Controls (single glass toggle: Manual <-> Automatic) -----
+        self.toggle_Cartridge = GlassToggle()
+        self.toggle_Cartridge.setToolTip("""
+            <b><u>Auto-Lock Mode:</u></b><br/>
+            <b>Automatic</b> (on): locks before init/run; useful if the user forgets.<br/>
+            <b>Manual</b> (off): you control lock position; must lock before init/run.
             """)
-        self.rButton_Automatic.setChecked(True)  # default
-        self.rButton_Manual = QtWidgets.QRadioButton("Manual")
-        self.rButton_Manual.setToolTip("""
-            <b><u>Manual:</u></b><br/>
-            - You control lock position<br/>
-            - Must lock before init/run
-            """)
-        self.rCartridgeMode = QtWidgets.QButtonGroup()
-        self.rCartridgeMode.addButton(self.rButton_Automatic, 1)
-        self.rCartridgeMode.addButton(self.rButton_Manual, 0)
-        self.layMode = QtWidgets.QVBoxLayout()
-        self.layMode.addWidget(self.rButton_Automatic)
-        self.layMode.addWidget(self.rButton_Manual)
+        self.toggle_Cartridge.setChecked(True)  # default: Automatic
+
+        self.lbl_lock_manual = QtWidgets.QLabel("Manual")
+        self.lbl_lock_auto = QtWidgets.QLabel("Automatic")
+        for _lbl in (self.lbl_lock_manual, self.lbl_lock_auto):
+            _lbl.setStyleSheet(
+                "background: transparent; border: none; color: rgba(30, 40, 55, 215);"
+            )
+            _lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+
+        self.layMode = QtWidgets.QHBoxLayout()
+        self.layMode.setContentsMargins(0, 0, 0, 0)
+        self.layMode.setSpacing(8)
+        self.layMode.addWidget(self.lbl_lock_manual)
+        self.layMode.addWidget(self.toggle_Cartridge)
+        self.layMode.addWidget(self.lbl_lock_auto)
+        self.layMode.addStretch()
         self.grpMode = QtWidgets.QGroupBox("Auto-Lock Mode:")
         self.grpMode.setLayout(self.layMode)
         self.Layout_controls.addWidget(self.grpMode, 2, 4, 3, 1)
 
+        # Backward-compatibility shims so existing call sites keep working:
+        #   rCartridgeMode.checkedId() -> 1 (Automatic) / 0 (Manual)
+        #   rButton_Automatic / rButton_Manual -> .setEnabled() proxies
+        self.rCartridgeMode = _ToggleButtonGroupShim(self.toggle_Cartridge)
+        self.rButton_Automatic = self.toggle_Cartridge
+        self.rButton_Manual = self.toggle_Cartridge
+
         # start button --------------------------------------------------------
-        self.pButton_Start = QtWidgets.QPushButton()
+        self.pButton_Start = GlassPushButton(variant="primary")
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/start_icon.ico")
         self.pButton_Start.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Start.setMinimumSize(QtCore.QSize(0, 0))
@@ -1509,7 +1572,7 @@ class UIControls:  # QtWidgets.QMainWindow
         )
 
         # clear plots button --------------------------------------------------
-        self.pButton_Clear = QtWidgets.QPushButton()
+        self.pButton_Clear = GlassPushButton(variant="default")
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/clear_icon.ico")
         self.pButton_Clear.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Clear.setMinimumSize(QtCore.QSize(0, 0))
@@ -1519,16 +1582,21 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.pButton_Clear, 2, 5, 1, 1)
 
         # reference button ----------------------------------------------------
-        self.pButton_Reference = QtWidgets.QPushButton()
+        self.pButton_Reference = GlassPushButton(variant="default")
         self.pButton_Reference.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Reference.setObjectName("pButton_Reference")
         self.pButton_Reference.setCheckable(True)
+        # GlassPushButton has no painted checked-state, so reflect it via the
+        # variant: primary (blue) while active, default when not.
+        self.pButton_Reference.toggled.connect(
+            lambda on: self.pButton_Reference.set_variant("primary" if on else "default")
+        )
         if USE_FULLSCREEN:
             self.pButton_Reference.setFixedHeight(50)
         self.Layout_controls.addWidget(self.pButton_Reference, 3, 5, 1, 1)
 
         # restore factory defaults --------------------------------------------
-        self.pButton_ResetApp = QtWidgets.QPushButton()
+        self.pButton_ResetApp = GlassPushButton(variant="danger")
         self.pButton_ResetApp.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_ResetApp.setObjectName("pButton_ResetApp")
         if USE_FULLSCREEN:
@@ -1684,7 +1752,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.lmp.setFixedHeight(50)
         self.Layout_controls.addWidget(self.lmp, 3, 0, 1, 1)
 
-        self.cBox_MultiMode = QtWidgets.QComboBox()
+        self.cBox_MultiMode = AnimatedComboBox(icon_path=self._combo_chevron)
         self.cBox_MultiMode.setObjectName("cBox_MultiMode")
         self.cBox_MultiMode.addItems(["1 Channel", "2 Channels", "3 Channels", "4 Channels"])
         self.cBox_MultiMode.setCurrentIndex(0)
@@ -1692,9 +1760,8 @@ class UIControls:  # QtWidgets.QMainWindow
             self.cBox_MultiMode.setFixedHeight(50)
 
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
-        self.pButton_PlateConfig = QtWidgets.QPushButton(
-            QtGui.QIcon(os.path.join(icon_path, "gear.svg")), ""
-        )
+        self.pButton_PlateConfig = GlassPushButton(variant="neutral")
+        self.pButton_PlateConfig.setIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
         self.pButton_PlateConfig.setToolTip("Plate Configuration...")
         self.pButton_PlateConfig.clicked.connect(self.doPlateConfig)
         self.hBox_MultiConfig = QtWidgets.QHBoxLayout()
@@ -1702,7 +1769,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.hBox_MultiConfig.addWidget(self.pButton_PlateConfig, 1)
         self.Layout_controls.addLayout(self.hBox_MultiConfig, 4, 0, 1, 1)
 
-        self.chBox_MultiAuto = QtWidgets.QCheckBox()
+        self.chBox_MultiAuto = LabeledToggle("Auto-detect channel count")
         self.chBox_MultiAuto.setEnabled(True)
         self.chBox_MultiAuto.setChecked(True)
         self.chBox_MultiAuto.setObjectName("chBox_MultiAuto")
@@ -1937,25 +2004,23 @@ class UIControls:  # QtWidgets.QMainWindow
             self.Layout_controls.removeWidget(self.l3)
             self.Layout_controls.removeWidget(self.infostatus)
 
-            self.advanced_container = QtWidgets.QWidget()
-            self.advanced_container.setWhatsThis("These settings are for Advanced Users ONLY!")
-            warningWidget = GlassWarningLabel(f"WARNING: {self.advanced_container.whatsThis()}")
-
-            warningLayout = QtWidgets.QVBoxLayout(self.advanced_container)
-            warningLayout.addWidget(warningWidget)
-            warningLayout.addLayout(self.gridLayout)
-
-            # Hide it initially; the popup will show it when anchored
-            self.advanced_container.hide()
+            # The advanced container, warning banner, and popup are owned by
+            # AdvancedMainWidget. Build a clean, sectioned layout (mirroring the
+            # account dropdown) from the existing widgets and hand that to the
+            # container. Built eagerly (hidden) so other code can rely on
+            # advanced_container existing.
+            self._advanced_controls_layout = self._build_advanced_layout()
+            self.advanced_container = AdvancedMainWidget.build_container(
+                self._advanced_controls_layout
+            )
+            self._advanced_content_container = self.advanced_container
         else:
             self.centralwidget.setLayout(self.gridLayout)
 
         # QLineEdit icons, trailing position
         self.blankIcon = QtGui.QIcon()
         self.savedIcon = QtGui.QIcon(
-            os.path.join(
-                Architecture.get_path(), "QATCH", "icons", "checkmark-circle.svg"
-            )
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "checkmark-circle.svg")
         )
         self.unsavedIcon = QtGui.QIcon(
             os.path.join(Architecture.get_path(), "QATCH", "icons", "warning.svg")
@@ -1972,17 +2037,19 @@ class UIControls:  # QtWidgets.QMainWindow
             QtCore.QRegularExpression(r'[^\\/:*?"\'<>|]{1,12}')
         )  # Up to 12 characters long, excluding invalid chars
         self.validDevicePid = QtGui.QRegularExpressionValidator(
-            QtCore.QRegularExpression(r'[0-9A-Fa-f]{1,2}')
+            QtCore.QRegularExpression(r"[0-9A-Fa-f]{1,2}")
         )  # 2-digit HEX string (00-FF)
         self.validTempOffset = QtGui.QRegularExpressionValidator(
-            QtCore.QRegularExpression(r'-?(?:[0-5](?:\.\d{0,2})?|6(?:\.(?:[0-2]\d?|3[0-5]?))?|6\.?|\.\d{1,2})')
+            QtCore.QRegularExpression(
+                r"-?(?:[0-5](?:\.\d{0,2})?|6(?:\.(?:[0-2]\d?|3[0-5]?))?|6\.?|\.\d{1,2})"
+            )
         )  # QtGui.QDoubleValidator(-6.35, 6.35, 2)
         # self.validTempOffset.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.validPogoPosition = QtGui.QRegularExpressionValidator(
-            QtCore.QRegularExpression(r'[0-5]?[0-9]|60')
+            QtCore.QRegularExpression(r"[0-5]?[0-9]|60")
         )  # QtGui.QIntValidator(0, 60)
         self.validPogoDelayMs = QtGui.QRegularExpressionValidator(
-            QtCore.QRegularExpression(r'[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-4]')
+            QtCore.QRegularExpression(r"[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-4]")
         )  # QtGui.QIntValidator(0, 254)
         # Row 0L: Device Name
         self.device_name_input = QtWidgets.QLineEdit()
@@ -1991,8 +2058,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.device_name_input.textEdited.connect(
-            lambda text, action=self.device_name_action: 
-                self.on_text_edit(text, action)
+            lambda text, action=self.device_name_action: self.on_text_edit(text, action)
         )
         # self.device_name_save = GlassPushButton("Save")
         # self.device_name_save.setFixedHeight(20)
@@ -2005,8 +2071,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.device_pid_input.textEdited.connect(
-            lambda text, action=self.device_pid_action: 
-                self.on_text_edit(text, action)
+            lambda text, action=self.device_pid_action: self.on_text_edit(text, action)
         )
         # self.device_pid_input.editingFinished.connect(
         #     lambda: self.device_pid_input.setText(
@@ -2029,12 +2094,10 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.temp_cal_always_input.textEdited.connect(
-            lambda text, action=self.temp_cal_always_action: 
-                self.on_text_edit(text, action)
+            lambda text, action=self.temp_cal_always_action: self.on_text_edit(text, action)
         )
         self.temp_cal_always_input.editingFinished.connect(
-            lambda widget=self.temp_cal_always_input: 
-                self.on_edit_finish(widget)
+            lambda widget=self.temp_cal_always_input: self.on_edit_finish(widget)
         )
         # self.constant_temp_cal_save = GlassPushButton("Save")
         # self.constant_temp_cal_save.setFixedHeight(20)
@@ -2047,12 +2110,10 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.temp_cal_measure_input.textEdited.connect(
-            lambda text, action=self.temp_cal_measure_action: 
-                self.on_text_edit(text, action)
+            lambda text, action=self.temp_cal_measure_action: self.on_text_edit(text, action)
         )
         self.temp_cal_measure_input.editingFinished.connect(
-            lambda widget=self.temp_cal_measure_input: 
-                self.on_edit_finish(widget)
+            lambda widget=self.temp_cal_measure_input: self.on_edit_finish(widget)
         )
         self.temp_cal_default = GlassPushButton("Default")
         self.temp_cal_default.clicked.connect(self.on_temp_cal_default)
@@ -2070,8 +2131,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.lid_pogo_distance_input.textEdited.connect(
-            lambda text, action=self.lid_pogo_distance_action: 
-                self.on_text_edit(text, action)
+            lambda text, action=self.lid_pogo_distance_action: self.on_text_edit(text, action)
         )
         # self.lid_pogo_distance_save = GlassPushButton("Save")
         # self.lid_pogo_distance_save.setFixedHeight(20)
@@ -2084,8 +2144,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.lid_pogo_delay_input.textEdited.connect(
-            lambda text, action=self.lid_pogo_delay_action: 
-                self.on_text_edit(text, action)
+            lambda text, action=self.lid_pogo_delay_action: self.on_text_edit(text, action)
         )
         self.lid_pogo_default = GlassPushButton("Default")
         self.lid_pogo_default.clicked.connect(self.on_lid_pogo_default)
@@ -2224,7 +2283,9 @@ class UIControls:  # QtWidgets.QMainWindow
                     self.device_name_action.setIcon(self.savedIcon)
                     self.device_name_action.setIconText("saved")
             else:
-                Log.e(f"Invalid 'Device Name' input: {self.device_name_input.text()} (out of valid range)")
+                Log.e(
+                    f"Invalid 'Device Name' input: {self.device_name_input.text()} (out of valid range)"
+                )
         if self.device_pid_action.iconText() == "unsaved":
             if self.device_pid_input.hasAcceptableInput():
                 text = self.device_pid_input.text()
@@ -2234,8 +2295,10 @@ class UIControls:  # QtWidgets.QMainWindow
                     self.device_pid_action.setIcon(self.savedIcon)
                     self.device_pid_action.setIconText("saved")
             else:
-                Log.e(f"Invalid 'Position ID' input: {self.device_pid_input.text()} (out of valid range)")
-        
+                Log.e(
+                    f"Invalid 'Position ID' input: {self.device_pid_input.text()} (out of valid range)"
+                )
+
         mainWindow = self.parent.parent
         if ok_pid:
             if dif != None:
@@ -2247,8 +2310,12 @@ class UIControls:  # QtWidgets.QMainWindow
             # mainWindow.fwUpdater.checkAgain()
             # mainWindow.worker._port = mainWindow._selected_port  # used in run()
             # mainWindow.fwUpdater.run(mainWindow)
-            QtCore.QTimer.singleShot(1000, lambda: not mainWindow._identifying and mainWindow._port_identify())
-            QtCore.QTimer.singleShot(4000, lambda: mainWindow._identifying and mainWindow._port_identify())
+            QtCore.QTimer.singleShot(
+                1000, lambda: not mainWindow._identifying and mainWindow._port_identify()
+            )
+            QtCore.QTimer.singleShot(
+                4000, lambda: mainWindow._identifying and mainWindow._port_identify()
+            )
         elif ok_name:  # (needed only if PID not changed too)
             mainWindow._refresh_ports()  # update name in port list
         # elif ok_cal: do nothing
@@ -2274,7 +2341,7 @@ class UIControls:  # QtWidgets.QMainWindow
     def on_temp_cal_default(self):
         default_always = "0.00"
         default_measure = "0.00"
-        
+
         if self.temp_cal_always_input.text() != default_always:
             self.temp_cal_always_input.setText(default_always)
             self.temp_cal_always_action.setIcon(self.unsavedIcon)
@@ -2293,7 +2360,9 @@ class UIControls:  # QtWidgets.QMainWindow
                     self.temp_cal_always_action.setIcon(self.savedIcon)
                     self.temp_cal_always_action.setIconText("saved")
             else:
-                Log.e(f"Invalid T_always input: {self.temp_cal_always_input.text()} (out of valid range)")
+                Log.e(
+                    f"Invalid T_always input: {self.temp_cal_always_input.text()} (out of valid range)"
+                )
         if self.temp_cal_measure_action.iconText() == "unsaved":
             if self.temp_cal_measure_input.hasAcceptableInput():
                 text = self.temp_cal_measure_input.text()
@@ -2302,7 +2371,9 @@ class UIControls:  # QtWidgets.QMainWindow
                     self.temp_cal_measure_action.setIcon(self.savedIcon)
                     self.temp_cal_measure_action.setIconText("saved")
             else:
-                Log.e(f"Invalid T_measure input: {self.temp_cal_measure_input.text()} (out of valid range)")
+                Log.e(
+                    f"Invalid T_measure input: {self.temp_cal_measure_input.text()} (out of valid range)"
+                )
 
     def on_temp_cal_reset(self):
         if self.temp_cal_always_action.iconText() != "saved":
@@ -2325,7 +2396,7 @@ class UIControls:  # QtWidgets.QMainWindow
     def on_lid_pogo_default(self):
         default_distance = "30"
         default_delay = "30"
-        
+
         if self.lid_pogo_distance_input.text() != default_distance:
             self.lid_pogo_distance_input.setText(default_distance)
             self.lid_pogo_distance_action.setIcon(self.unsavedIcon)
@@ -2346,7 +2417,9 @@ class UIControls:  # QtWidgets.QMainWindow
                 self.lid_pogo_distance_action.setIconText("saved")
                 send_lid_cal_cmd = True
             else:
-                Log.e(f"Invalid 'Servo Steps' input: {self.lid_pogo_distance_input.text()} (out of valid range)")
+                Log.e(
+                    f"Invalid 'Servo Steps' input: {self.lid_pogo_distance_input.text()} (out of valid range)"
+                )
                 form_error = True
         if self.lid_pogo_delay_action.iconText() == "unsaved":
             if self.lid_pogo_delay_input.hasAcceptableInput():
@@ -2356,7 +2429,9 @@ class UIControls:  # QtWidgets.QMainWindow
                 self.lid_pogo_delay_action.setIconText("saved")
                 send_lid_cal_cmd = True
             else:
-                Log.e(f"Invalid 'Servo Delay' input: {self.lid_pogo_delay_input.text()} (out of valid range)")
+                Log.e(
+                    f"Invalid 'Servo Delay' input: {self.lid_pogo_delay_input.text()} (out of valid range)"
+                )
                 form_error = True
         if send_lid_cal_cmd and not form_error:
             self.save_lid_pogo_calibration()
@@ -2422,7 +2497,7 @@ class UIControls:  # QtWidgets.QMainWindow
         except:
             Log.e("Failed to update name entered by user.")
             return False
-    
+
     def reset_device_name_input(self):
         mainWindow = self.parent.parent
 
@@ -2548,7 +2623,9 @@ class UIControls:  # QtWidgets.QMainWindow
                 if ":" in device_text:
                     dev_i = int(device_text.split(":")[0], base=16)
                     if dev_i != pid_old:
-                        Log.e(f"Conflicting device info, using PID as {dev_i} instead of reported {pid_old}!")
+                        Log.e(
+                            f"Conflicting device info, using PID as {dev_i} instead of reported {pid_old}!"
+                        )
                         pid_old = int(dev_i, base=16)
         except:
             Log.e("ERROR: Unable to check if PID in COM Port list matches DEV_INFO.")
@@ -2597,7 +2674,7 @@ class UIControls:  # QtWidgets.QMainWindow
         else:
             Log.e("Program 'TEMP CAL1' operation was NOT successful!")
         return success
-    
+
     def reset_temp_cal_always_input(self, skip_delay=False):
         mainWindow = self.parent.parent
         start_time = monotonic()
@@ -2712,7 +2789,6 @@ class UIControls:  # QtWidgets.QMainWindow
         except:
             Log.e("Unable to get LID CAL. No reply from device.")
 
-     
     def get_lid_pogo_calibration(self):
         mainWindow = self.parent.parent
         pogo_distance = 30
@@ -2738,7 +2814,7 @@ class UIControls:  # QtWidgets.QMainWindow
         try:
             if response:
                 lid_cal_split = response.decode().strip().split()[-1]
-                lid_cal_params = lid_cal_split.split(',')
+                lid_cal_params = lid_cal_split.split(",")
                 pogo_distance = abs(int(lid_cal_params[1]) - int(lid_cal_params[0]))
                 pogo_delay = int(lid_cal_params[-1])
         except:
@@ -2775,7 +2851,9 @@ class UIControls:  # QtWidgets.QMainWindow
         unsaved_input = False
         for action in actions:
             if action.iconText() == "unsaved":
-                Log.w("You have unsaved device configuration input. Please Save or Reset unsaved input before closing.")
+                Log.w(
+                    "You have unsaved device configuration input. Please Save or Reset unsaved input before closing."
+                )
                 unsaved_input = True
                 break
         if not unsaved_input:
@@ -2819,8 +2897,9 @@ class UIControls:  # QtWidgets.QMainWindow
         )
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
         MainWindow.setWindowIcon(QtGui.QIcon(os.path.join(icon_path, "qatch-icon.png")))
-        self.advanced_container.setWindowIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
-        self.advanced_container.setWindowTitle(_translate("MainWindow2", "Advanced Settings"))
+        # NOTE: the advanced container is now created/owned by AdvancedMainWidget
+        # when the popup opens; it is frameless and embedded, so the former
+        # window icon/title on it never displayed and have been removed.
         self.pButton_Stop.setText(_translate("MainWindow", " STOP"))
         self.pButton_Start.setText(_translate("MainWindow", "START"))
         self.pButton_Clear.setText(_translate("MainWindow", "Clear Plots"))
@@ -3066,15 +3145,109 @@ class UIControls:  # QtWidgets.QMainWindow
             else:
                 Log.w('To stop Temp Control: Press "Stop" first, then click "Temp Control" button.')
 
+    def _build_advanced_layout(self) -> QtWidgets.QLayout:
+        """Assemble the advanced-panel widgets into a clean, sectioned layout.
+
+        Mirrors the account dropdown's visual language: soft muted section
+        headers (not blue pills), hairline dividers, and generous, consistent
+        spacing. Reuses the existing widget instances so all signal wiring and
+        external references remain valid; only their parent layout changes.
+        """
+
+        def section(title, *rows, stretch_last=False):
+            """A titled vertical group: header, hairline, then content rows."""
+            col = QtWidgets.QVBoxLayout()
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setSpacing(6)
+            col.addWidget(_SectionHeader(title))
+            col.addWidget(_hairline())
+            for row in rows:
+                if isinstance(row, QtWidgets.QLayout):
+                    col.addLayout(row)
+                else:
+                    col.addWidget(row)
+            if not stretch_last:
+                col.addStretch()
+            return col
+
+        def hrow(*widgets, spacing=6):
+            row = QtWidgets.QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(spacing)
+            for w in widgets:
+                if isinstance(w, QtWidgets.QLayout):
+                    row.addLayout(w)
+                else:
+                    row.addWidget(w)
+            return row
+
+        # Detach the cartridge toggle from its old QGroupBox so we can restyle.
+        self.grpMode.setParent(None)
+
+        # ---- Left column: connection + signal settings ----
+        op_section = section("Operation Mode", self.cBox_Source)
+
+        port_row = hrow(self.cBox_Port, self.pButton_ID, self.pButton_Refresh)
+        port_section = section("Serial COM Port", port_row)
+
+        res_row = hrow(self.cBox_Speed, self.chBox_freqHop)
+        res_section = section("Resonance Frequency / Quartz Sensor", res_row)
+
+        # Rebuild the multiplex row fresh (don't re-parent the old sub-layout).
+        multi_row = hrow(self.cBox_MultiMode, self.pButton_PlateConfig)
+        multi_section = section("Multiplex Mode", multi_row, self.chBox_MultiAuto)
+
+        left_col = QtWidgets.QVBoxLayout()
+        left_col.setSpacing(14)
+        left_col.addLayout(op_section)
+        left_col.addLayout(port_section)
+        left_col.addLayout(res_section)
+        left_col.addLayout(multi_section)
+        left_col.addWidget(self.chBox_correctNoise)
+        left_col.addStretch()
+
+        # ---- Middle column: cartridge auto-lock (fresh row) ----
+        lock_row = hrow(self.lbl_lock_manual, self.toggle_Cartridge, self.lbl_lock_auto, spacing=8)
+        lock_section = section("Cartridge Auto-Lock", lock_row, stretch_last=False)
+
+        # ---- Right column: control buttons ----
+        btns = QtWidgets.QVBoxLayout()
+        btns.setSpacing(8)
+        btns.addWidget(self.pButton_Start)
+        btns.addWidget(self.pButton_Stop)
+        btns.addWidget(self.pButton_Clear)
+        btns.addWidget(self.pButton_Reference)
+        btns.addWidget(self.pButton_ResetApp)
+        ctrl_section = section("Control Buttons", btns, stretch_last=False)
+
+        # ---- Assemble columns ----
+        columns = QtWidgets.QHBoxLayout()
+        columns.setSpacing(22)
+        columns.addLayout(left_col, 3)
+        columns.addLayout(lock_section, 1)
+        columns.addLayout(ctrl_section, 1)
+
+        # ---- Outer: infobar status on top, then the columns ----
+        outer = QtWidgets.QVBoxLayout()
+        outer.setContentsMargins(2, 2, 2, 2)
+        outer.setSpacing(12)
+        outer.addWidget(self.infobar_label)
+        outer.addLayout(columns)
+
+        return outer
+
     def action_advanced(self, obj=None):
-        existing_popup = getattr(self, "_advanced_popup", None)
-        if existing_popup is not None and existing_popup.isVisible():
-            existing_popup.close()
-            return
-        self._advanced_popup = AdvancedMainWidget()
-        self._advanced_popup.set_content_widget(self.advanced_container)
         main_window = getattr(self, "parent", None)
-        self._advanced_popup.show_anchored_to(self.tool_Advanced, main_window=main_window)
+        popup = AdvancedMainWidget.toggle(
+            owner=self,
+            anchor=self.tool_Advanced,
+            controls_layout=self._advanced_controls_layout,
+            main_window=main_window,
+        )
+        if popup is None:
+            return  # toggled closed
+        # Keep a handle to the container the popup built (size queries, etc.).
+        self.advanced_container = popup.content_container
         self.pButton_PlateConfig.setFixedWidth(self.pButton_PlateConfig.height())
 
     # -- Account dropdown -----------------------------------------------------
