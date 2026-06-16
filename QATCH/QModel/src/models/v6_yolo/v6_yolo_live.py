@@ -27,11 +27,11 @@ from typing import Dict, NamedTuple, Optional, Tuple
 import pandas as pd
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
-from QATCH.QModel.src.models.v6_yolo.v6_yolo import (
+from QATCH.qmodel.src.models.v6_yolo.v6_yolo import (
     QModelV6Config,
     QModelV6YOLO_FillClassifier,
 )
-from QATCH.QModel.src.models.v6_yolo.v6_yolo_dataprocessor import (
+from QATCH.qmodel.src.models.v6_yolo.v6_yolo_dataprocessor import (
     QModelV6YOLO_DataProcessor,
 )
 

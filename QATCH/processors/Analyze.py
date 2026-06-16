@@ -35,8 +35,8 @@ from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,
     DropEffectCorrection,
 )
-from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
-from QATCH.QModel.src.models.v6_yolo.v6_yolo import QModelV6YOLO
+from QATCH.qmodel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
+from QATCH.qmodel.src.models.v6_yolo.v6_yolo import QModelV6YOLO
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 
@@ -1491,7 +1491,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         overlay = getattr(self, "_qmodel_overlay", None)
         if overlay is None:
             return
-            
+
         proxy, dim_rect, progress_bar, status_label = overlay
         error_detected = is_error or "error" in status.lower() or "failed" in status.lower()
         is_finished = pct >= 100 or error_detected
@@ -1499,7 +1499,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if pct > 0 and progress_bar.maximum() == 0:
             progress_bar.setRange(0, 10000)
         target_value = 10000 if is_finished else int(min(pct, 99) * 100)
-        
+
         if not hasattr(progress_bar, "_chase_timer"):
             progress_bar._target_value = 0
             progress_bar._current_float = float(progress_bar.value())
@@ -1550,10 +1550,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             anim.valueChanged.connect(update_opacity)
             anim.finished.connect(lambda: self._hide_qmodel_plot_overlay(failed=error_detected))
             anim.finished.connect(lambda: setattr(self, "_qmodel_is_fading", False))
-            
-            self._qmodel_fade_anim = anim 
-            
+
+            self._qmodel_fade_anim = anim
+
             QtCore.QTimer.singleShot(800, anim.start)
+
     def _hide_qmodel_plot_overlay(self, failed: bool = False) -> None:
         """Removes the QModel dimming layer and progress overlay.
 
@@ -3684,7 +3685,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             clipped = True
             ws = 10
         return [ws, clipped]
-    
+
     def _QModel_v4_progress_update(self, pct: int, status: Optional[str]):
         if getattr(self, "_qmodel_overlay", None) is None:
             self._show_qmodel_plot_overlay()
@@ -6117,7 +6118,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """Logs the full traceback of the currently handled exception.
 
         Args:
-            debug: If True, logs each line at the DEBUG level (Log.d). 
+            debug: If True, logs each line at the DEBUG level (Log.d).
                 If False, logs at the ERROR level (Log.e).
         """
         log_func: Callable[[str], None] = Log.d if debug else Log.e
@@ -6128,14 +6129,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _wait_for_progress_bar(self) -> None:
         """Spins the Qt event loop until the background scan completes or times out.
 
-        This method prevents the UI from freezing during a background scan by 
-        manually processing pending events. It includes a safety timeout to 
-        prevent infinite loops. Once finished, it connects the progress bar's 
+        This method prevents the UI from freezing during a background scan by
+        manually processing pending events. It includes a safety timeout to
+        prevent infinite loops. Once finished, it connects the progress bar's
         value change signal to the internal updater.
         """
         timeout_limit = 300
         iterations = 0
-        
+
         Log.d("Waiting on progress bar to finish background scan...")
 
         while self.progress_value_scanning and iterations < timeout_limit:
@@ -6150,15 +6151,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         Log.d(f"Progress bar wait completed after {iterations} iterations. Proceeding...")
 
     def _render_analysis_plots(
-        self, 
-        curves: Dict[str, Any], 
-        poi_vals: List[int], 
-        start_stop: Tuple[int, int]
+        self, curves: Dict[str, Any], poi_vals: List[int], start_stop: Tuple[int, int]
     ) -> None:
         """Coordinates the rendering of signal data and analysis markers.
 
         This top-level coordinator manages the visual pipeline by setting up
-        graph axes, drawing the primary signal curves, and overlaying channel/POI markers. 
+        graph axes, drawing the primary signal curves, and overlaying channel/POI markers.
         It delegates specific rendering tasks to specialized sub-helper methods.
 
         Args:
@@ -6166,7 +6164,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 - 'xs': The shared x-axis (time) array.
                 - Individual signal keys (e.g., 'df', 'dg') containing y-axis arrays.
             poi_vals: A list of indices representing the detected POI.
-            start_stop: A tuple of (start_index, stop_index) defining the active 
+            start_stop: A tuple of (start_index, stop_index) defining the active
                 analysis window.
         """
         self._setup_graph_axes(curves)
@@ -6176,12 +6174,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _setup_graph_axes(self, curves: Dict[str, Any]) -> None:
         """Configures titles, labels, ranges, grids, and legends for all four axes.
 
-        This method clears existing plots, initializes the progress UI, sets specific 
-        titles and colors for four distinct graph widgets, and establishes the 
+        This method clears existing plots, initializes the progress UI, sets specific
+        titles and colors for four distinct graph widgets, and establishes the
         coordinate ranges based on the provided curve data.
 
         Args:
-            curves: A dictionary containing the data to be plotted. 
+            curves: A dictionary containing the data to be plotted.
                 Expected keys include:
                 - 'xs': The x-axis data (typically time).
                 - 'ys': Primary y-axis data.
@@ -6237,8 +6235,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _plot_signal_curves(self, curves: Dict[str, np.ndarray]) -> None:
         """Adds fit lines, scatter dots, and star highlights to all graph widgets.
 
-        This method populates the main graph and the three specialized sub-graphs 
-        (Resonance, Difference, Dissipation) with raw data points, fitted curves, 
+        This method populates the main graph and the three specialized sub-graphs
+        (Resonance, Difference, Dissipation) with raw data points, fitted curves,
         and interactive star markers representing POI.
 
         Args:
@@ -6319,24 +6317,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax2.addItem(self.gstars2)
         ax3.addItem(self.gstars3)
 
-    def _add_poi_markers(
-        self, 
-        xs: np.ndarray, 
-        poi_vals: List[int], 
-        start_stop: List[int]
-    ) -> None:
+    def _add_poi_markers(self, xs: np.ndarray, poi_vals: List[int], start_stop: List[int]) -> None:
         """Places movable InfiniteLine POI markers on the main graph.
 
-        This method initializes vertical markers (POI) on the 
-        graphWidget. If `poi_vals` is provided, it undergoes validation to ensure 
-        indices are within the bounds of the `xs` array. Validated `poi_vals` 
+        This method initializes vertical markers (POI) on the
+        graphWidget. If `poi_vals` is provided, it undergoes validation to ensure
+        indices are within the bounds of the `xs` array. Validated `poi_vals`
         will take precedence over the `start_stop` values.
 
         Args:
             xs: The x-axis data array used to determine marker coordinate bounds.
-            poi_vals: A list of integer indices representing predefined POIs. 
+            poi_vals: A list of integer indices representing predefined POIs.
                 Indices that are out of bounds (except -1) are reset to -1 and logged.
-            start_stop: A fallback list of integer indices used if `poi_vals` 
+            start_stop: A fallback list of integer indices used if `poi_vals`
                 is not provided or to define the initial marker set.
         """
         ax = self.graphWidget
@@ -6366,21 +6359,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.poi_markers.append(marker)
 
     def _save_analysis_state(
-        self, 
-        curves: Optional[Dict[str, Any]], 
-        relative_time: Union[np.ndarray, List[float]], 
-        resonance_frequency: Union[np.ndarray, List[float]], 
-        dissipation: Union[np.ndarray, List[float]]
+        self,
+        curves: Optional[Dict[str, Any]],
+        relative_time: Union[np.ndarray, List[float]],
+        resonance_frequency: Union[np.ndarray, List[float]],
+        dissipation: Union[np.ndarray, List[float]],
     ) -> None:
         """Persists computed signal arrays and raw sensor data to instance attributes.
 
-        This method acts as the primary data synchronization point, moving processed 
-        results from local function scope into the class instance attributes. This 
-        allows downstream analysis steps, exports, or UI updates to access the 
+        This method acts as the primary data synchronization point, moving processed
+        results from local function scope into the class instance attributes. This
+        allows downstream analysis steps, exports, or UI updates to access the
         most recent calculation results.
 
         Args:
-            curves: A dictionary containing processed signal arrays and metadata. 
+            curves: A dictionary containing processed signal arrays and metadata.
                 If None or empty, the save operation is aborted.
                 Expected keys include:
                 - 'xs', 'ys', 'ys_freq', 'ys_diff': Raw/Processed signal data.
@@ -6411,7 +6404,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """Determines the next UI state based on model results and POI completeness.
 
         This method acts as a workflow controller. It evaluates whether the
-        automated model successfully identified all six POIs. 
+        automated model successfully identified all six POIs.
         If successful, it advances the application to the summary step
         (Step 6); otherwise, it prompts the user for manual intervention.
 
@@ -8315,7 +8308,7 @@ class AnalyzerWorker(QtCore.QObject):
             ax6.plot(log_velocity_20p, log_position_20p, ".", color="red")
             ax6.plot(log_velocity_46, log_position_46, ":", color="orange")
             ax6.plot(log_velocity_46, best_fit_pts, "-", color="blue")
-            ax6.plot(best_fill_idx, best_fill_pts, "s", color="black") # initial fill (avg)
+            ax6.plot(best_fill_idx, best_fill_pts, "s", color="black")  # initial fill (avg)
             try:
                 for i in range(-len(distances), 0):
                     ax6.plot(log_velocity_46[i], log_position_46[i], "d", color="black")
@@ -8452,7 +8445,9 @@ class AnalyzerWorker(QtCore.QObject):
 
             fig4 = plt.figure(figsize=(12, 6))
             fig4.set_layout_engine(None)  # full control, no auto-layout adjustments
-            fig4.subplots_adjust(left=0.10, right=0.99, top=0.92, bottom=0.22, wspace=0.0, hspace=0.0)
+            fig4.subplots_adjust(
+                left=0.10, right=0.99, top=0.92, bottom=0.22, wspace=0.0, hspace=0.0
+            )
             ax7 = fig4.add_subplot(111)
 
             high_shear_5x = 0
@@ -8987,11 +8982,7 @@ class AnalyzerWorker(QtCore.QObject):
                             / ((mp * mv * 6) * (2 / 3 + 1 / 3 / n))
                         )
                         mid_shear = (
-                            6
-                            * mv
-                            / Constants.channel_thickness
-                            * (2 / 3 + 1 / 3 / n)
-                            * 1e-3
+                            6 * mv / Constants.channel_thickness * (2 / 3 + 1 / 3 / n) * 1e-3
                         )
                         # Use to show the old positions:
                         # ax7.scatter(
@@ -9814,19 +9805,19 @@ class AnalyzerWorker(QtCore.QObject):
 
         if None in [ax, text]:
             return None
-        
+
         if candidates is None:
             candidates = [
-                {"pos": (0.50, 0.95), "ha": "center", "va": "top",    "priority": 0},
+                {"pos": (0.50, 0.95), "ha": "center", "va": "top", "priority": 0},
                 {"pos": (0.50, 0.05), "ha": "center", "va": "bottom", "priority": 1},
-                {"pos": (0.95, 0.95), "ha": "right",  "va": "top",    "priority": 2},
-                {"pos": (0.05, 0.05), "ha": "left",   "va": "bottom", "priority": 3},
-                {"pos": (0.95, 0.05), "ha": "right",  "va": "bottom", "priority": 4},
-                {"pos": (0.05, 0.95), "ha": "left",   "va": "top",    "priority": 5},
+                {"pos": (0.95, 0.95), "ha": "right", "va": "top", "priority": 2},
+                {"pos": (0.05, 0.05), "ha": "left", "va": "bottom", "priority": 3},
+                {"pos": (0.95, 0.05), "ha": "right", "va": "bottom", "priority": 4},
+                {"pos": (0.05, 0.95), "ha": "left", "va": "top", "priority": 5},
             ]
 
         # Sort candidates by priority (ascending)
-        candidates = sorted(candidates, key=lambda x: x['priority'])
+        candidates = sorted(candidates, key=lambda x: x["priority"])
 
         if pad is None:
             pad = 10
@@ -9881,10 +9872,10 @@ class AnalyzerWorker(QtCore.QObject):
             x0, y0, x1, y1 = bbox
 
             inside = (
-                (pts[:, 0] >= x0 - pad) &
-                (pts[:, 0] <= x1 + pad) &
-                (pts[:, 1] >= y0 - pad) &
-                (pts[:, 1] <= y1 + pad)
+                (pts[:, 0] >= x0 - pad)
+                & (pts[:, 0] <= x1 + pad)
+                & (pts[:, 1] >= y0 - pad)
+                & (pts[:, 1] <= y1 + pad)
             )
             return int(np.sum(inside))
 
@@ -9905,13 +9896,16 @@ class AnalyzerWorker(QtCore.QObject):
             priority = c.get("priority", 0)
 
             t = ax.text(
-                x, y, text,
+                x,
+                y,
+                text,
                 transform=ax.transAxes,
-                ha=ha, va=va,
+                ha=ha,
+                va=va,
                 color=color,
                 fontsize=fontsize,
                 bbox=dict(facecolor="white", alpha=0.7, edgecolor="none") if bbox else None,
-                zorder=10
+                zorder=10,
             )
 
             # force render so bbox is correct
@@ -9984,7 +9978,8 @@ class AnalyzerWorker(QtCore.QObject):
         except Exception as e:
             Log.e("ERROR:", e)
         return np.round(output, 2)
-    
+
+
 class ResizeFilter(QtCore.QObject):
     def __init__(self, worker, parent=None):
         super().__init__(parent)
@@ -10009,7 +10004,6 @@ class ResizeFilter(QtCore.QObject):
             # resize event finished, hysteresis elapsed: redraw!
             self.worker.place_text_avoiding_data()
             self._draw_pending = False
-        
 
 
 class RunScanWorker(QtCore.QThread):

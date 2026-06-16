@@ -12,7 +12,7 @@ from QATCH.core.ring_buffer import RingBuffer
 from QATCH.processors.Calibration import CalibrationProcess
 from QATCH.processors.Parser import ParserProcess
 from QATCH.processors.Serial import SerialProcess
-from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import QModelV6YOLO_LiveProcess
+from QATCH.qmodel.src.models.v6_yolo.v6_yolo_live import QModelV6YOLO_LiveProcess
 
 TAG = ""  # "[Worker]"
 

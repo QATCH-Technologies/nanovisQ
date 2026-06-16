@@ -121,16 +121,16 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addSeparator()
         from QATCH.models.ModelData import __release__ as ModelData_release
         from QATCH.models.ModelData import __version__ as ModelData_version
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+        from QATCH.qmodel.src.models.static_v4_fusion.__init__ import (
             __release__ as QModel4_release,
         )
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+        from QATCH.qmodel.src.models.static_v4_fusion.__init__ import (
             __version__ as QModel4_version,
         )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+        from QATCH.qmodel.src.models.v6_yolo.__init__ import (
             __release__ as QModel6_release,
         )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+        from QATCH.qmodel.src.models.v6_yolo.__init__ import (
             __version__ as QModel6_version,
         )
 

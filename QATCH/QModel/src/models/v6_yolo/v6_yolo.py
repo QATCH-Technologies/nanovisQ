@@ -41,9 +41,7 @@ try:
     from QATCH.common.logger import (
         Logger as Log,  # pyright: ignore[reportPrivateImportUsage]
     )
-    from QATCH.QModel.src.models.v6_yolo.v6_yolo_dataprocessor import (
-        QModelV6YOLO_DataProcessor,
-    )
+
 
 except (ImportError, ModuleNotFoundError):
 
@@ -65,10 +63,12 @@ except (ImportError, ModuleNotFoundError):
             print(f"{tag} [ERROR] {msg}")
 
     Log.i(tag="[HEADLESS OPERATION]", msg="Running...")
-    try:
-        from v6_yolo.v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
-    except ImportError:
-        from v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
+try:
+    from QATCH.qmodel.src.models.v6_yolo.v6_yolo_dataprocessor import (
+        QModelV6YOLO_DataProcessor,
+    )
+except ImportError:
+    from v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
 
 try:
     # New project requirement as of 2026-01-12
@@ -83,8 +83,8 @@ except ImportError:
 # decode_config path in QModelV6YOLO.predict degrades to a no-op and the
 # pipeline behaves exactly as before.
 try:
-    from QATCH.QModel.src.models.v6_yolo.v6_yolo_spacing_prior import QModelV6YOLO_SpacingPrior
-    from QATCH.QModel.src.models.v6_yolo.v6_yolo_decode import (
+    from QATCH.qmodel.src.models.v6_yolo.v6_yolo_spacing_prior import QModelV6YOLO_SpacingPrior
+    from QATCH.qmodel.src.models.v6_yolo.v6_yolo_decode import (
         Candidate,
         dp_decode,
         score_configuration,

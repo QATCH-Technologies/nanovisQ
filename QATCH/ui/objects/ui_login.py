@@ -609,8 +609,9 @@ class UILogin:
         self.user_username.textChanged.connect(lambda _: self.user_username.set_error(False))
         # NOTE: Until "username" is used for something other than "initials",
         #       normalize all user input to uppercase as they type characters
-        self.user_username.textEdited.connect(lambda _: self.user_username.setText(
-            self.user_username.text().upper()))
+        self.user_username.textEdited.connect(
+            lambda _: self.user_username.setText(self.user_username.text().upper())
+        )
         si.addWidget(self.user_username)
         self.user_password = GlassLineEdit()
         self.user_password.setObjectName("user_password")

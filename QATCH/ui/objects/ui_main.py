@@ -240,6 +240,7 @@ class UIMain:
         modelayout.addWidget(self.mode_donnan)
         modelayout.addWidget(self.mode_injection)
         modelayout.addStretch()
+
         modewidget.setLayout(modelayout)
         self.modemenu = QtWidgets.QScrollArea()
         self.modemenu.setObjectName("modeMenuScrollArea")
@@ -332,7 +333,14 @@ class UIMain:
         self.logview.setMidLineWidth(0)
         self.logview.setWidgetResizable(True)
         self.logview.setWidget(parent.LogWin.ui4.centralwidget)
-        self.logview.setMinimumSize(QtCore.QSize(1000, 166))
+        # Min height relaxed to 0 so the pane can slide/drag closed.
+        self.logview.setMinimumSize(QtCore.QSize(1000, 0))
+        # Transparent background to match the glass effect of other windows.
+        self.logview.setStyleSheet(
+            "QScrollArea#logview, QScrollArea#logview > QWidget > QWidget"
+            " { background: transparent; }"
+        )
+        self.logview.viewport().setAutoFillBackground(False)
 
         layout_h.addWidget(self.modemenu, 1)
         layout_v = QtWidgets.QVBoxLayout()
@@ -347,45 +355,85 @@ class UIMain:
             self.splitter.addWidget(self.userview)
         else:
             self.splitter.addWidget(self.runview)
-        self.splitter.addWidget(self.logview)
-        self.splitter.setSizes([1000, 1])
+        # Logger removed from the splitter; it is now a full-width bottom row.
+        # The splitter holds only the active view, so the main row's height is
+        # governed by the view/plots content.
         layout_v.addWidget(self.splitter)
-        current_year = datetime.date.today().year
-        footer_text = (
-            f"<center>&copy; {current_year} QATCH Technologies. All rights reserved.</center>"
-        )
+        layout_h.addLayout(layout_v, 255)
 
+        # ----- Controls/footer bar: footer text (left) + subtle toggle (right) -----
+        icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+        self._log_chevron_down = QtGui.QIcon(os.path.join(icons_dir, "down-chevron.svg"))
+        self._log_chevron_up = QtGui.QIcon(os.path.join(icons_dir, "up-chevron.svg"))
+
+        self.log_toggle_bar = QtWidgets.QWidget()
+        self.log_toggle_bar.setObjectName("logToggleBar")
+        self.log_toggle_bar.setFixedHeight(20)
+        toggle_layout = QtWidgets.QHBoxLayout(self.log_toggle_bar)
+        toggle_layout.setContentsMargins(8, 0, 6, 0)
+        toggle_layout.setSpacing(6)
+
+        # Footer copyright text — small, non-italic, clearly static.
+        current_year = datetime.date.today().year
+        footer_text = f"\u00a9 {current_year} QATCH Technologies. All rights reserved."
         self.copy_foot = QtWidgets.QLabel(footer_text)
-        self.copy_foot.setObjectName("footerLabel")  # Useful for QSS targeting
-        self.copy_foot.setContentsMargins(0, 0, 0, 0)
-        self.copy_foot.setFixedHeight(20)
+        self.copy_foot.setObjectName("footerLabel")
+        self.copy_foot.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+        self.copy_foot.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.copy_foot.setCursor(QtCore.Qt.ArrowCursor)
+        self.copy_foot.setStyleSheet("""
+            QLabel#footerLabel {
+                background: transparent;
+                border: none;
+                color: rgba(70, 80, 95, 140);
+                font-size: 9px;
+                font-weight: normal;
+            }
+        """)
         footer_font = QtGui.QFont()
         footer_font.setStyleStrategy(QtGui.QFont.PreferAntialias | QtGui.QFont.PreferQuality)
         self.copy_foot.setFont(footer_font)
+        toggle_layout.addWidget(self.copy_foot)
 
-        layout_v.addWidget(self.copy_foot)
-        layout_h.addLayout(layout_v, 255)
+        toggle_layout.addStretch()
 
-        # add collapse/expand icon arrows
-        self.splitter.setHandleWidth(10)
-        handle = self.splitter.handle(1)
-        layout_s = QtWidgets.QHBoxLayout()
-        layout_s.setContentsMargins(0, 0, 0, 0)
-        layout_s.addStretch()
-        self.btnCollapse = QtWidgets.QToolButton(handle)
-        self.btnCollapse.setArrowType(QtCore.Qt.DownArrow)
-        self.btnCollapse.clicked.connect(lambda: self._handle_splitter_button(True))
-        layout_s.addWidget(self.btnCollapse)
-        self.btnExpand = QtWidgets.QToolButton(handle)
-        self.btnExpand.setArrowType(QtCore.Qt.UpArrow)
-        self.btnExpand.clicked.connect(lambda: self._handle_splitter_button(False))
-        layout_s.addWidget(self.btnExpand)
-        layout_s.addStretch()
-        handle.setLayout(layout_s)
-        self.btnExpand.setVisible(False)
+        # Subtle, flat toggle tucked into the right edge of the controls bar.
+        self.btnLogToggle = QtWidgets.QToolButton(self.log_toggle_bar)
+        self.btnLogToggle.setObjectName("logToggleBtn")
+        self.btnLogToggle.setFixedSize(22, 18)
+        self.btnLogToggle.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btnLogToggle.setIcon(self._log_chevron_down)  # expanded -> shows collapse action
+        self.btnLogToggle.setIconSize(QtCore.QSize(11, 11))
+        self.btnLogToggle.setToolTip("Hide console")
+        self.btnLogToggle.setStyleSheet("""
+            QToolButton#logToggleBtn {
+                background: transparent;
+                border: none;
+                border-radius: 4px;
+            }
+            QToolButton#logToggleBtn:hover {
+                background: rgba(120, 130, 145, 45);
+            }
+            QToolButton#logToggleBtn:pressed {
+                background: rgba(120, 130, 145, 80);
+            }
+        """)
+        self.btnLogToggle.clicked.connect(self._toggle_logger)
+        toggle_layout.addWidget(self.btnLogToggle)
 
-        # self.handleSplitterButton(False)
-        self.splitter.splitterMoved.connect(self._handle_splitter_moved)
+        # ----- Full-width logger container (transparent, drag-resizable) -----
+        self.log_container = QtWidgets.QWidget()
+        self.log_container.setObjectName("logContainer")
+        # Transparent so the glass effect of inner widgets shows through.
+        self.log_container.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.log_container.setStyleSheet("QWidget#logContainer { background: transparent; }")
+        log_container_layout = QtWidgets.QVBoxLayout(self.log_container)
+        log_container_layout.setContentsMargins(0, 0, 0, 0)
+        log_container_layout.setSpacing(0)
+        log_container_layout.addWidget(self.logview)
+
+        self._log_expanded_height = 200
+        self._log_collapsed = False
 
         # self.splitter.replaceWidget(0, self.userview)
         self._force_splitter_mode_set = True
@@ -411,7 +459,47 @@ class UIMain:
             not_resize.setVerticalStretch(i + 2)
             e.setSizePolicy(not_resize)
 
-        self.centralwidget.setLayout(layout_h)
+        # Main area (modemenu + views) wrapped so it can sit in the outer splitter.
+        main_area = QtWidgets.QWidget()
+        main_area.setObjectName("mainArea")
+        main_area.setLayout(layout_h)
+
+        # Outer vertical splitter: draggable handle lets the user resize the log.
+        self.log_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.log_splitter.setObjectName("logSplitter")
+        self.log_splitter.setHandleWidth(6)
+        self.log_splitter.setStyleSheet("""
+            QSplitter#logSplitter::handle {
+                background: transparent;
+            }
+            QSplitter#logSplitter::handle:hover {
+                background: rgba(120, 130, 145, 60);
+            }
+        """)
+        self.log_splitter.addWidget(main_area)
+        self.log_splitter.addWidget(self.log_container)
+        self.log_splitter.setStretchFactor(0, 1)  # main area takes extra space
+        self.log_splitter.setStretchFactor(1, 0)  # logger keeps its set size
+        # Allow the logger pane to collapse fully (to 0) when toggled/dragged,
+        # but keep the main area from vanishing.
+        self.log_splitter.setCollapsible(0, False)
+        self.log_splitter.setCollapsible(1, True)
+        self.log_splitter.setSizes([1000, self._log_expanded_height])
+        # Track manual drags so the toggle restores to the user's chosen height.
+        self.log_splitter.splitterMoved.connect(self._on_log_splitter_moved)
+
+        # Animate the splitter sizes for the smooth open/close slide.
+        self._log_anim = QtCore.QVariantAnimation(self.centralwidget)
+        self._log_anim.setDuration(260)
+        self._log_anim.setEasingCurve(QtCore.QEasingCurve.InOutCubic)
+        self._log_anim.valueChanged.connect(self._on_log_anim_frame)
+
+        outer_v = QtWidgets.QVBoxLayout()
+        outer_v.setContentsMargins(0, 0, 0, 0)
+        outer_v.setSpacing(4)
+        outer_v.addWidget(self.log_splitter, 1)  # main area over draggable logger
+        outer_v.addWidget(self.log_toggle_bar)  # full-width toggle + footer bar
+        self.centralwidget.setLayout(outer_v)
         main_window.setCentralWidget(self.centralwidget)
 
         self._retranslate_ui(main_window)
@@ -457,45 +545,64 @@ class UIMain:
             widget.style().unpolish(widget)
             widget.style().polish(widget)
 
-    def _handle_splitter_moved(self, pos: int, index: int) -> None:
+    def _toggle_logger(self) -> None:
         """
-        Updates visibility of splitter toggle buttons based on manual handle movement.
+        Smoothly slide the logger open or closed by animating the splitter sizes.
 
-        This slot connects to the splitterMoved signal. It checks if the bottom
-        widget (Log View) has been manually collapsed to zero height and toggles
-        the Collapse/Expand buttons accordingly.
-
-        Args:
-            pos (int): The new position of the splitter handle.
-            index (int): The index of the splitter handle being moved.
+        Collapsing animates the log pane to 0 height; expanding animates it back
+        to the last user-chosen (or default) height. The chevron icon and tooltip
+        swap to reflect the next action.
         """
-        # Check if the last widget in the splitter (logview) has a height of 0
-        collapsed = self.splitter.sizes()[-1] == 0
-        self.btnCollapse.setVisible(not collapsed)
-        self.btnExpand.setVisible(collapsed)
+        self._log_anim.stop()
+        sizes = self.log_splitter.sizes()
+        total = sum(sizes)
+        start = sizes[1] if len(sizes) > 1 else 0
 
-    def _handle_splitter_button(self, collapse: bool = True) -> None:
-        """
-        Programmatically toggles the splitter state between collapsed and expanded.
-
-        Adjusts the splitter sizes and toggles the visibility of the control
-        buttons. When expanding, it respects the minimum height requirements
-        of the log view.
-
-        Args:
-            collapse (bool): If True, collapses the log view. If False, expands it
-                to its minimum required height. Defaults to True.
-        """
-        if collapse:
-            self.btnCollapse.setVisible(False)
-            self.btnExpand.setVisible(True)
-            self.splitter.setSizes([1, 0])
+        if self._log_collapsed:
+            # Expand to the remembered height (clamped to available space).
+            end = min(self._log_expanded_height, max(total - 60, 60))
+            self.btnLogToggle.setIcon(self._log_chevron_down)
+            self.btnLogToggle.setToolTip("Hide console")
         else:
-            self.btnCollapse.setVisible(True)
-            self.btnExpand.setVisible(False)
-            total_height = self.splitter.height()
-            log_min_height = self.logview.minimumHeight()
-            self.splitter.setSizes([total_height - log_min_height, log_min_height])
+            # Remember the current height, then collapse.
+            if start > 0:
+                self._log_expanded_height = start
+            end = 0
+            self.btnLogToggle.setIcon(self._log_chevron_up)
+            self.btnLogToggle.setToolTip("Show console")
+
+        self._log_collapsed = not self._log_collapsed
+        self._log_anim.setStartValue(start)
+        self._log_anim.setEndValue(end)
+        self._log_anim.start()
+
+    def _on_log_anim_frame(self, value) -> None:
+        """Apply an animation frame to the splitter sizes."""
+        total = sum(self.log_splitter.sizes())
+        log_h = int(value)
+        self.log_splitter.setSizes([max(total - log_h, 0), log_h])
+
+    def _on_log_splitter_moved(self, pos: int, index: int) -> None:
+        """
+        Track manual drags of the splitter handle.
+
+        Keeps the toggle state and remembered height in sync so a manual resize
+        is preserved across collapse/expand and the chevron points correctly.
+        """
+        if self._log_anim.state() == QtCore.QAbstractAnimation.Running:
+            return  # ignore programmatic moves during animation
+        log_h = self.log_splitter.sizes()[1]
+        if log_h <= 0:
+            if not self._log_collapsed:
+                self._log_collapsed = True
+                self.btnLogToggle.setIcon(self._log_chevron_up)
+                self.btnLogToggle.setToolTip("Show console")
+        else:
+            self._log_expanded_height = log_h
+            if self._log_collapsed:
+                self._log_collapsed = False
+                self.btnLogToggle.setIcon(self._log_chevron_down)
+                self.btnLogToggle.setToolTip("Hide console")
 
     def _check_mode_change_allowed(self) -> bool:
         """
@@ -514,7 +621,7 @@ class UIMain:
         ):
             Log.e("Please stop the current run before switching modes.")
             return False
-        
+
         # Check for busy and/or unsaved changes in Analyze or VisQ.AI
         for processor, name in [
             (self.parent.AnalyzeProc, "Analyze"),
@@ -625,7 +732,7 @@ class UIMain:
         # Check if the mode change is allowed
         if not self._check_mode_change_allowed():
             return False if obj is None else None
-        
+
         # Check User Permissions
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -696,7 +803,7 @@ class UIMain:
         # Check if the mode change is allowed
         if not self._check_mode_change_allowed():
             return False if obj is None else None
-        
+
         # Check User Permissions
         action_role = UserRoles.ANALYZE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -754,7 +861,7 @@ class UIMain:
         # Check if the mode change is allowed
         if not self._check_mode_change_allowed():
             return False if obj is None else None
-        
+
         # Check User Permissions
         action_role = UserRoles.OPERATE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -812,7 +919,7 @@ class UIMain:
         # Check if the mode change is allowed
         if not self._check_mode_change_allowed():
             return False if obj is None else None
-        
+
         # Check User Permissions
         action_role = UserRoles.ANALYZE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -876,7 +983,7 @@ class UIMain:
         # Check if the mode change is allowed
         if not self._check_mode_change_allowed():
             return False if obj is None else None
-        
+
         # Check User Permissions
         action_role = UserRoles.ANALYZE
         check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)

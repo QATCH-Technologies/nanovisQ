@@ -31,52 +31,120 @@ _LOGGER_GLASS_QSS = """
         border-radius: 8px;
     }
 
-    /* ---- Animated ComboBox & Search Bar ---- */
-    QComboBox, QLineEdit#SearchBar {
-        background: rgba(255, 255, 255, 100);
-        border: 1px solid rgba(255, 255, 255, 150);
-        border-radius: 14px; /* Perfect pill shape for 28px height */
-        padding: 0px 14px;
-        color: rgba(51, 51, 51, 255);
+    /* ---- Animated ComboBox ----
+       Scoped to AnimatedComboBox via #LevelFilter so the native arrow
+       region and the custom QLabel arrow don't fight over the same zone. */
+    QComboBox#LevelFilter {
+        background: rgba(255, 255, 255, 160);
+        border: 1px solid rgba(120, 130, 145, 160);   /* clear, visible outline */
+        border-radius: 14px;          /* pill for 28px height */
+        padding-left: 14px;
+        padding-right: 30px;          /* reserve room for the spinning arrow */
+        color: rgb(51, 51, 51);
         font-weight: bold;
     }
-    QComboBox:hover, QLineEdit#SearchBar:hover {
-        background: rgba(255, 255, 255, 150);
+    QComboBox#LevelFilter:hover {
+        background: rgba(255, 255, 255, 200);
+        border: 1px solid rgba(90, 100, 115, 200);
     }
-    QComboBox:pressed, QLineEdit#SearchBar:focus {
-        background: rgba(255, 255, 255, 180);
-        border: 1px solid rgba(10, 163, 230, 100); /* Blue tint on focus */
+    QComboBox#LevelFilter:on,
+    QComboBox#LevelFilter:focus {
+        background: rgba(255, 255, 255, 220);
+        border: 1px solid rgba(10, 163, 230, 200);
     }
-    QComboBox::drop-down {
+    /* The custom QLabel arrow lives here, so kill the native drop-down box
+       entirely instead of letting it draw a second arrow underneath. */
+    QComboBox#LevelFilter::drop-down {
         border: none;
-        width: 32px; 
+        background: transparent;
+        width: 0px;
     }
-    
-    /* Drop-down menu list styling */
-    QComboBox QAbstractItemView {
-        background-color: rgb(245, 247, 250); 
-        border: 1px solid rgba(200, 200, 200, 180);
-        border-radius: 8px;
-        color: rgba(51, 51, 51, 255);
-        selection-background-color: rgba(10, 163, 230, 40);
-        selection-color: #0AA3E6;
-        outline: none; 
+    QComboBox#LevelFilter::down-arrow {
+        image: none;
+        width: 0px;
+        height: 0px;
     }
 
-    /* ---- Icon-Only Buttons (Clear & Search Nav) ---- */
-    QPushButton#ClearBtn, QPushButton#SearchPrevBtn, QPushButton#SearchNextBtn {
-        background: transparent;
-        border: none;
-        border-radius: 4px;
+    /* Drop-down menu list styling */
+    QComboBox#LevelFilter QAbstractItemView {
+        background-color: rgb(245, 247, 250);
+        border: 1px solid rgba(200, 200, 200, 180);
+        border-radius: 8px;
+        color: rgb(51, 51, 51);
         padding: 4px;
-        color: rgba(51, 51, 51, 200);
+        selection-background-color: rgba(10, 163, 230, 40);
+        selection-color: #0AA3E6;
+        outline: none;
+    }
+    QComboBox#LevelFilter QAbstractItemView::item {
+        min-height: 24px;
+        border-radius: 6px;
+        padding-left: 8px;
+    }
+
+    /* ---- Search Bar ---- */
+    QLineEdit#SearchBar {
+        background: rgba(255, 255, 255, 160);
+        border: 1px solid rgba(120, 130, 145, 160);   /* clear, visible outline */
+        border-radius: 14px;
+        padding: 0px 8px;
+        color: rgb(51, 51, 51);
         font-weight: bold;
     }
-    QPushButton#ClearBtn:hover, QPushButton#SearchPrevBtn:hover, QPushButton#SearchNextBtn:hover {
-        background: rgba(255, 255, 255, 120);
+    QLineEdit#SearchBar:hover {
+        background: rgba(255, 255, 255, 200);
+        border: 1px solid rgba(90, 100, 115, 200);
     }
-    QPushButton#ClearBtn:pressed, QPushButton#SearchPrevBtn:pressed, QPushButton#SearchNextBtn:pressed {
+    QLineEdit#SearchBar:focus {
+        background: rgba(255, 255, 255, 220);
+        border: 1px solid rgba(10, 163, 230, 200);
+    }
+
+    /* ---- Toolbar / log separator ---- */
+    QFrame#ToolbarSeparator {
+        border: none;
+        background: rgba(120, 130, 145, 110);
+        max-height: 1px;
+        min-height: 1px;
+    }
+
+    /* ---- Match counter label ---- */
+    QLabel#MatchCounter {
+        color: rgba(80, 90, 105, 220);
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 11px;
+        padding: 0px 2px;
+    }
+    QLabel#MatchCounter[state="nomatch"] {
+        color: #C62828;
+    }
+
+    /* ---- Clear (text-only, no outline) ---- */
+    QPushButton#ClearBtn {
+        background: transparent;
+        border: none;
+        padding: 0px 12px;
+        color: rgba(51, 51, 51, 230);
+        font-weight: bold;
+    }
+    QPushButton#ClearBtn:hover {
+        color: rgba(51, 51, 51, 150);   /* slightly lighter on hover */
+    }
+    QPushButton#ClearBtn:pressed {
+        color: rgba(51, 51, 51, 110);
+    }
+
+    /* ---- Icon-Only Buttons (Search Nav) ---- */
+    QPushButton#SearchPrevBtn, QPushButton#SearchNextBtn {
+        background: transparent;
+        border: none;
+        border-radius: 14px;
+    }
+    QPushButton#SearchPrevBtn:hover, QPushButton#SearchNextBtn:hover {
         background: rgba(255, 255, 255, 180);
+    }
+    QPushButton#SearchPrevBtn:pressed, QPushButton#SearchNextBtn:pressed {
+        background: rgba(255, 255, 255, 220);
     }
 
     /* ---- Log text area ---- */
@@ -178,8 +246,13 @@ class UILogger:
 class QTextEditLogger(QtCore.QObject):
     appendLogText = QtCore.pyqtSignal(str, int)
 
+    # Highlight color for the currently-selected search match.
+    _MATCH_FMT_COLOR = QtGui.QColor(10, 163, 230, 90)
+
     def __init__(self, parent):
         super().__init__()
+
+        icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
         # ---- Main Container & Layout ----
         self.container = QtWidgets.QWidget(parent)
@@ -187,69 +260,114 @@ class QTextEditLogger(QtCore.QObject):
         self.container.setStyleSheet(_LOGGER_GLASS_QSS)
 
         main_layout = QtWidgets.QVBoxLayout(self.container)
-        main_layout.setContentsMargins(4, 4, 4, 4)
-        main_layout.setSpacing(4)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(6)
 
         # ---- Control Bar ----
         control_layout = QtWidgets.QHBoxLayout()
-        control_layout.setContentsMargins(4, 2, 4, 0)
+        control_layout.setContentsMargins(2, 0, 2, 0)
         control_layout.setSpacing(8)
 
-        # 1. Transparent Icon-Only Clear Button (Left)
-        self.btn_clear = QtWidgets.QPushButton(parent=self.container)
-        self.btn_clear.setObjectName("ClearBtn")
-        self.btn_clear.setFixedSize(24, 24)
-        self.btn_clear.setToolTip("Clear Console")
-        self.btn_clear.setCursor(QtCore.Qt.PointingHandCursor)
-
-        clear_icon_path = os.path.join(
-            Architecture.get_path(), "QATCH", "icons", "clear-console.svg"
-        )
-        self.btn_clear.setIcon(QtGui.QIcon(clear_icon_path))
-        self.btn_clear.setIconSize(QtCore.QSize(14, 14))
-        self.btn_clear.clicked.connect(self.clear_console)
-        control_layout.addWidget(self.btn_clear)
-
-        # 2. Filter Dropdown
-        arrow_icon_path = os.path.join(
-            Architecture.get_path(), "QATCH", "icons", "down-chevron.png"
-        )
+        # 1. Filter Dropdown (left)
+        arrow_icon_path = os.path.join(icons_dir, "down-chevron.svg")
         self.level_filter = AnimatedComboBox(icon_path=arrow_icon_path, parent=self.container)
+        self.level_filter.setObjectName("LevelFilter")
         self.level_filter.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
         self.level_filter.setCurrentText("DEBUG")
         self.level_filter.setFixedSize(120, 28)
         self.level_filter.currentTextChanged.connect(self.apply_filter)
         self.current_filter_level = 10
         control_layout.addWidget(self.level_filter)
+
         control_layout.addStretch()
 
-        # Search Field
+        # 2. Search field with leading search icon + trailing clear icon
         self.search_input = QtWidgets.QLineEdit(parent=self.container)
         self.search_input.setObjectName("SearchBar")
         self.search_input.setPlaceholderText("Find in logs...")
-        self.search_input.setFixedSize(180, 28)
-        self.search_input.returnPressed.connect(self.find_next)  # Enter key triggers next
+        self.search_input.setFixedSize(220, 28)
+        self.search_input.returnPressed.connect(self.find_next)
+        self.search_input.textChanged.connect(self.on_search_changed)
+
+        # Leading search glyph (decorative, left side of the field)
+        search_icon = QtGui.QIcon(os.path.join(icons_dir, "search.svg"))
+        self.search_input.addAction(search_icon, QtWidgets.QLineEdit.LeadingPosition)
+
+        # Trailing clear-text action (right side of the field)
+        # Two icon variants so we can lighten on hover. QAction has no CSS
+        # hover, so we swap the icon + cursor via an event filter below.
+        self._clear_icon_normal = QtGui.QIcon(os.path.join(icons_dir, "clear.svg"))
+        self._clear_icon_hover = self._make_lighter_icon(
+            os.path.join(icons_dir, "clear.svg"), opacity=0.55
+        )
+        self.clear_text_action = self.search_input.addAction(
+            self._clear_icon_normal,
+            QtWidgets.QLineEdit.TrailingPosition,
+        )
+        self.clear_text_action.setToolTip("Clear search text")
+        self.clear_text_action.triggered.connect(self.clear_search_text)
+        self.clear_text_action.setVisible(False)  # only show when there's text
+
+        # Hover handling for the trailing clear icon (pointer + lighten).
+        self._clear_hovering = False
+        self.search_input.setMouseTracking(True)
+        self.search_input.installEventFilter(self)
         control_layout.addWidget(self.search_input)
 
-        # Search Navigation
-        self.btn_find_prev = QtWidgets.QPushButton("↑", parent=self.container)
+        # 3. Match counter ("3 / 12") — defaults to "No results"
+        self.match_counter = QtWidgets.QLabel("No results", parent=self.container)
+        self.match_counter.setObjectName("MatchCounter")
+        self.match_counter.setMinimumWidth(64)
+        self.match_counter.setAlignment(QtCore.Qt.AlignCenter)
+        control_layout.addWidget(self.match_counter)
+
+        # 4. Search navigation (chevron icons)
+        up_chevron = QtGui.QIcon(os.path.join(icons_dir, "up-chevron.svg"))
+        down_chevron = QtGui.QIcon(os.path.join(icons_dir, "down-chevron.svg"))
+
+        self.btn_find_prev = QtWidgets.QPushButton(parent=self.container)
         self.btn_find_prev.setObjectName("SearchPrevBtn")
-        self.btn_find_prev.setFixedSize(24, 24)
+        self.btn_find_prev.setFixedSize(28, 28)
+        self.btn_find_prev.setIcon(up_chevron)
+        self.btn_find_prev.setIconSize(QtCore.QSize(12, 12))
         self.btn_find_prev.setToolTip("Find Previous (Shift+Enter)")
         self.btn_find_prev.setCursor(QtCore.Qt.PointingHandCursor)
         self.btn_find_prev.clicked.connect(self.find_prev)
         control_layout.addWidget(self.btn_find_prev)
 
-        # Search Navigation
-        self.btn_find_next = QtWidgets.QPushButton("↓", parent=self.container)
+        self.btn_find_next = QtWidgets.QPushButton(parent=self.container)
         self.btn_find_next.setObjectName("SearchNextBtn")
-        self.btn_find_next.setFixedSize(24, 24)
+        self.btn_find_next.setFixedSize(28, 28)
+        self.btn_find_next.setIcon(down_chevron)
+        self.btn_find_next.setIconSize(QtCore.QSize(12, 12))
         self.btn_find_next.setToolTip("Find Next (Enter)")
         self.btn_find_next.setCursor(QtCore.Qt.PointingHandCursor)
         self.btn_find_next.clicked.connect(self.find_next)
         control_layout.addWidget(self.btn_find_next)
 
+        # 5. Separator + Clear pill (far right)
+        sep = QtWidgets.QFrame(self.container)
+        sep.setFrameShape(QtWidgets.QFrame.VLine)
+        sep.setStyleSheet("color: rgba(150, 150, 150, 90);")
+        sep.setFixedHeight(20)
+        control_layout.addWidget(sep)
+
+        self.btn_clear = QtWidgets.QPushButton("Clear", parent=self.container)
+        self.btn_clear.setObjectName("ClearBtn")
+        self.btn_clear.setFixedHeight(28)
+        self.btn_clear.setToolTip("Clear all console output")
+        self.btn_clear.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_clear.clicked.connect(self.clear_console)
+        control_layout.addWidget(self.btn_clear)
+
         main_layout.addLayout(control_layout)
+
+        # ---- Toolbar / log separator ----
+        self.toolbar_separator = QtWidgets.QFrame(self.container)
+        self.toolbar_separator.setObjectName("ToolbarSeparator")
+        self.toolbar_separator.setFrameShape(QtWidgets.QFrame.HLine)
+        self.toolbar_separator.setFixedHeight(1)
+        main_layout.addWidget(self.toolbar_separator)
 
         # ---- Unified Log Text Area ----
         self.logText = QtWidgets.QTextEdit()
@@ -263,11 +381,9 @@ class QTextEditLogger(QtCore.QObject):
         parent_layout.addWidget(self.container)
 
         # ---- Global Shortcuts ----
-        # Ctrl+F to focus search
         self.shortcut_find = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+F"), self.container)
         self.shortcut_find.activated.connect(self.focus_search)
 
-        # Shift+Enter while in search box to find previous
         self.shortcut_find_prev = QtWidgets.QShortcut(
             QtGui.QKeySequence("Shift+Return"), self.search_input
         )
@@ -277,37 +393,169 @@ class QTextEditLogger(QtCore.QObject):
         self.last_record_msg = None
         self.log_cache = []
 
+        self._update_match_ui(0, 0)
+
+    # ------------------------------------------------------------------
+    # Search
+    # ------------------------------------------------------------------
     def focus_search(self):
         """Focus the search bar and select existing text for quick retyping."""
         self.search_input.setFocus()
         self.search_input.selectAll()
 
+    def clear_search_text(self):
+        """Clear only the search field (the trailing 'x' icon)."""
+        self.search_input.clear()
+        self.search_input.setFocus()
+
+    @staticmethod
+    def _make_lighter_icon(svg_path, opacity=0.55):
+        """Render an SVG/PNG icon at reduced opacity for a hover state."""
+        src = QtGui.QPixmap(svg_path)
+        if src.isNull():
+            return QtGui.QIcon(svg_path)
+        faded = QtGui.QPixmap(src.size())
+        faded.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(faded)
+        painter.setOpacity(opacity)
+        painter.drawPixmap(0, 0, src)
+        painter.end()
+        return QtGui.QIcon(faded)
+
+    def _clear_icon_rect(self):
+        """Approximate hit-rect of the trailing clear action inside the field."""
+        if not self.clear_text_action.isVisible():
+            return QtCore.QRect()
+        w = self.search_input.width()
+        h = self.search_input.height()
+        side = h  # trailing action occupies a roughly square zone on the right
+        return QtCore.QRect(w - side - 2, 0, side, h)
+
+    def eventFilter(self, obj, event):
+        """Pointer cursor + lighter icon when hovering the trailing clear 'x'."""
+        if obj is self.search_input:
+            et = event.type()
+            if et == QtCore.QEvent.MouseMove:
+                over = self._clear_icon_rect().contains(event.pos())
+                if over != self._clear_hovering:
+                    self._clear_hovering = over
+                    self.clear_text_action.setIcon(
+                        self._clear_icon_hover if over else self._clear_icon_normal
+                    )
+                    self.search_input.setCursor(
+                        QtCore.Qt.PointingHandCursor if over else QtCore.Qt.IBeamCursor
+                    )
+            elif et == QtCore.QEvent.Leave:
+                if self._clear_hovering:
+                    self._clear_hovering = False
+                    self.clear_text_action.setIcon(self._clear_icon_normal)
+                    self.search_input.setCursor(QtCore.Qt.IBeamCursor)
+        return super().eventFilter(obj, event)
+
+    def _count_matches(self, term):
+        """Return total occurrences of `term` in the current document."""
+        if not term:
+            return 0
+        doc = self.logText.document()
+        count = 0
+        cursor = QtGui.QTextCursor(doc)
+        while True:
+            cursor = doc.find(term, cursor)
+            if cursor.isNull():
+                break
+            count += 1
+        return count
+
+    def _current_match_index(self, term):
+        """1-based index of the match the cursor currently sits on, else 0."""
+        if not term:
+            return 0
+        doc = self.logText.document()
+        sel = self.logText.textCursor()
+        if not sel.hasSelection():
+            return 0
+        sel_end = sel.selectionEnd()
+        idx = 0
+        cursor = QtGui.QTextCursor(doc)
+        while True:
+            cursor = doc.find(term, cursor)
+            if cursor.isNull():
+                break
+            idx += 1
+            if cursor.selectionEnd() == sel_end:
+                return idx
+        return 0
+
+    def _update_match_ui(self, current, total):
+        """Refresh the 'N / M' label and nav-button enabled state."""
+        term = self.search_input.text()
+        if not term:
+            self.match_counter.setText("No results")
+            self.match_counter.setProperty("state", "")
+        elif total == 0:
+            self.match_counter.setText("No results")
+            self.match_counter.setProperty("state", "nomatch")
+        else:
+            shown = current if current else 1
+            self.match_counter.setText(f"{shown} / {total}")
+            self.match_counter.setProperty("state", "")
+
+        # repolish so the [state] selector re-applies
+        self.match_counter.style().unpolish(self.match_counter)
+        self.match_counter.style().polish(self.match_counter)
+
+        has_matches = bool(term) and total > 0
+        self.btn_find_next.setEnabled(has_matches)
+        self.btn_find_prev.setEnabled(has_matches)
+
+        # Trailing clear icon only when there's text to clear
+        self.clear_text_action.setVisible(bool(term))
+
+    def on_search_changed(self, text):
+        """Recompute totals as the user types, without jumping the view."""
+        total = self._count_matches(text)
+        self._update_match_ui(0, total)
+
     def find_next(self):
         """Search forward. Wraps around to start if it hits the bottom."""
-        search_term = self.search_input.text()
-        if not search_term:
+        term = self.search_input.text()
+        if not term:
+            self._update_match_ui(0, 0)
             return
 
-        found = self.logText.find(search_term)
+        found = self.logText.find(term)
         if not found:
             self.logText.moveCursor(QtGui.QTextCursor.Start)
-            self.logText.find(search_term)
+            found = self.logText.find(term)
+
+        total = self._count_matches(term)
+        current = self._current_match_index(term) if found else 0
+        self._update_match_ui(current, total)
 
     def find_prev(self):
         """Search backward. Wraps around to end if it hits the top."""
-        search_term = self.search_input.text()
-        if not search_term:
+        term = self.search_input.text()
+        if not term:
+            self._update_match_ui(0, 0)
             return
 
         options = QtGui.QTextDocument.FindBackward
-        found = self.logText.find(search_term, options)
+        found = self.logText.find(term, options)
         if not found:
             self.logText.moveCursor(QtGui.QTextCursor.End)
-            self.logText.find(search_term, options)
+            found = self.logText.find(term, options)
 
+        total = self._count_matches(term)
+        current = self._current_match_index(term) if found else 0
+        self._update_match_ui(current, total)
+
+    # ------------------------------------------------------------------
+    # Console state
+    # ------------------------------------------------------------------
     def clear_console(self):
         self.logText.clear()
         self.log_cache.clear()
+        self._update_match_ui(0, 0)
 
     def apply_filter(self, level_text):
         levels = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40}
@@ -319,6 +567,8 @@ class QTextEditLogger(QtCore.QObject):
                 self.logText.insertHtml(html)
 
         self.logText.moveCursor(QtGui.QTextCursor.End)
+        # Filtered set changed -> match totals changed.
+        self.on_search_changed(self.search_input.text())
 
     def appendToConsole(self, html, level_no):
         self.log_cache.append((html, level_no))
@@ -332,6 +582,11 @@ class QTextEditLogger(QtCore.QObject):
 
             if is_at_bottom:
                 vsb.setValue(vsb.maximum())
+
+            # Keep the live total honest as new lines stream in.
+            term = self.search_input.text()
+            if term:
+                self._update_match_ui(self._current_match_index(term), self._count_matches(term))
 
     def write(self, message):
         if message == self.last_record_msg:
