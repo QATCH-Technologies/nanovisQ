@@ -450,8 +450,12 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # is ever shown without its geometry first being set, Qt briefly paints
         # it as a small top-level window (the "dialog flash"). Fitting here, at
         # construction, means the geometry is already correct before any show.
+        # The glass panel is also kept hidden until the reveal tick so no
+        # unsettled frame of it can paint.
+        self._revealed = False
         self.hide()
         self._scrim_alpha = 0
+        self.glass_frame.hide()
         self._refit_to_parent()
 
     def _apply_shadow(self, widget, blur_radius=15, alpha=40, offset=(0, 4)):
@@ -680,19 +684,17 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
     def toggle_fullscreen(self):
         """Toggle between inset glass panel and full-bleed window.
 
-        Smoothness strategy: animate a STATIC PIXMAP of the panel, not the live
-        widget. Animating the real glass_frame's geometry still lets the
-        QTableView redistribute its Stretch/ResizeToContents columns on every
-        frame — that live column reflow is the "contents resizing weirdly"
-        artifact. Instead we grab the frame to a pixmap once, hide the real
-        frame, and animate a QLabel holding that frozen image from the start
-        rect to the target rect (scaled to fill). Nothing inside reflows during
-        the motion. At the end we resize the real frame once and reveal it, so
-        the table relayouts a single time at its final width.
+        Smoothness strategy: animate the REAL glass_frame geometry every frame
+        (via base_layout margins) and let the table's flexible columns STRETCH
+        continuously so they redistribute fluidly as the width changes, instead
+        of jumping. Earlier approaches failed two ways: a scaled pixmap zoomed
+        (aspect-ratio stretch distorted every child), and Fixed/ResizeToContents
+        columns snapped because they don't interpolate. Setting all flexible
+        columns to Stretch for the duration makes the reflow itself the smooth
+        animation; the natural column modes are restored once at the end.
         """
         if hasattr(self, "anim") and self.anim.state() == QtCore.QAbstractAnimation.Running:
             self.anim.stop()
-        # Tear down any leftover proxy from an interrupted toggle.
         self._destroy_fs_proxy()
 
         self._is_fullscreen = not getattr(self, "_is_fullscreen", False)
@@ -712,72 +714,74 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         w = self.width()
         h = self.height()
         pct = getattr(self, "_default_margin_pct", 0.175)
-        start_rect = self.glass_frame.geometry()
+
+        start_mx = self.base_layout.contentsMargins().left()
+        start_my = self.base_layout.contentsMargins().top()
 
         if self._is_fullscreen:
-            target_rect = QtCore.QRect(0, 0, w, h)
-            self._panel_alpha = 255
+            target_mx, target_my = 0, 0
+            start_alpha, target_alpha = getattr(self, "_panel_alpha", 215), 255
+            start_radius, target_radius = 12, 0
+            start_border, target_border = 1.5, 0.0
         else:
-            mx = int(w * pct)
-            my = int(h * pct)
-            target_rect = QtCore.QRect(mx, my, w - 2 * mx, h - 2 * my)
-            self._panel_alpha = 215
+            target_mx = int(w * pct)
+            target_my = int(h * pct)
+            start_alpha, target_alpha = getattr(self, "_panel_alpha", 255), 215
+            start_radius, target_radius = 0, 12
+            start_border, target_border = 0.0, 1.5
 
-        # 1. Freeze the current panel to a pixmap.
-        frozen = self.glass_frame.grab()
+        # Lock the table into its FINAL column modes for the whole motion so
+        # the modes never change (no end-snap). Only the single Stretch column
+        # flexes, interpolating smoothly as the frame width animates.
+        self._set_columns_fluid()
 
-        # 2. Pre-apply the FINAL stylesheet + final geometry to the real frame
-        #    while it is hidden, so when we reveal it at the end it is already
-        #    correct (one relayout, off-screen, invisible to the user).
-        if self._is_fullscreen:
-            self.glass_frame.setStyleSheet("""
-                QFrame#userview {
-                    background: rgba(255, 255, 255, 255);
-                    border: 0px solid rgba(255, 255, 255, 230);
-                    border-radius: 0px;
-                }
+        self.anim = QtCore.QVariantAnimation(self)
+        self.anim.setDuration(280)
+        self.anim.setEasingCurve(QtCore.QEasingCurve.InOutCubic)
+        self.anim.setStartValue(0.0)
+        self.anim.setEndValue(1.0)
+
+        def _step(t):
+            mx = int(start_mx + (target_mx - start_mx) * t)
+            my = int(start_my + (target_my - start_my) * t)
+            a = int(start_alpha + (target_alpha - start_alpha) * t)
+            r = int(start_radius + (target_radius - start_radius) * t)
+            b = start_border + (target_border - start_border) * t
+            self._panel_alpha = a
+            self.base_layout.setContentsMargins(mx, my, mx, my)
+            self.glass_frame.setStyleSheet(f"""
+                QFrame#userview {{
+                    background: rgba(255, 255, 255, {a});
+                    border: {b:.1f}px solid rgba(255, 255, 255, 230);
+                    border-radius: {r}px;
+                }}
             """)
-        else:
-            self.glass_frame.setStyleSheet("""
-                QFrame#userview {
-                    background: rgba(255, 255, 255, 215);
-                    border: 1.5px solid rgba(255, 255, 255, 230);
-                    border-radius: 12px;
-                }
-            """)
-        # Hide the live frame during the motion so only the pixmap shows.
-        self.glass_frame.hide()
+            self._update_dots_position(mx, my)
 
-        # 3. Proxy label that displays the frozen pixmap, scaled to its rect.
-        self._fs_proxy = QtWidgets.QLabel(self)
-        self._fs_proxy.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-        self._fs_proxy.setScaledContents(True)  # uniform stretch → smooth zoom
-        self._fs_proxy.setPixmap(frozen)
-        self._fs_proxy.setGeometry(start_rect)
-        self._fs_proxy.show()
-        self._fs_proxy.raise_()
-        # Keep the corner buttons above the proxy.
-        self.btn_close.raise_()
-        self.btn_fullscreen.raise_()
-
-        # 4. Animate the proxy's geometry (pure image scale — no reflow).
-        self.anim = QtCore.QPropertyAnimation(self._fs_proxy, b"geometry", self)
-        self.anim.setDuration(260)
-        self.anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self.anim.setStartValue(start_rect)
-        self.anim.setEndValue(target_rect)
-        self.anim.valueChanged.connect(lambda rect: self._update_dots_position(rect.x(), rect.y()))
+        self.anim.valueChanged.connect(_step)
 
         def _finish():
-            # Reveal the already-correct live frame, then drop the proxy.
-            self._refit_to_parent()  # sets real frame geometry/margins once
-            self.glass_frame.show()
-            self.glass_frame.raise_()
-            self._update_dots_position(target_rect.x(), target_rect.y())
-            self._destroy_fs_proxy()
+            self._panel_alpha = target_alpha
+            self.base_layout.setContentsMargins(target_mx, target_my, target_mx, target_my)
+            self._set_panel_alpha(target_alpha)
+            self._restore_column_modes()  # back to natural widths at final size
+            self._update_dots_position(target_mx, target_my)
 
         self.anim.finished.connect(_finish)
         self.anim.start()
+
+    def _set_columns_fluid(self):
+        """Apply the FINAL column resize modes for the duration of the motion.
+
+        The key to a snap-free animation is that the column modes never change
+        between the motion and the settled state: the fixed/content columns hold
+        steady while a single Stretch column absorbs the width delta, so it
+        interpolates smoothly as the table resizes. Using uniform Stretch during
+        the motion and then restoring different per-column modes at the end
+        caused the visible width jump (the "snap"). Reusing the final modes here
+        means the animated state and end state are identical — no jump.
+        """
+        self._restore_column_modes()
 
     def _destroy_fs_proxy(self):
         """Remove the fullscreen-transition pixmap proxy if one exists."""
@@ -852,27 +856,40 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self._update_dots_position(current_m, current_m)
 
     def setVisible(self, visible):
-        """Fit to parent and suppress painting until layout settles — kills the
-        'tiny dialog' flash on open.
+        """Fit to parent and keep the panel hidden until layout settles — kills
+        the 'tiny blank dialog' flash on open.
 
         UIControls calls .show()/.setVisible(True) on this overlay. At that
         instant the child layout has not resolved to the parent-fitted size yet,
-        so Qt paints one transient frame of the panel/table at a small size,
-        which reads as a little dialog popping up. We disable widget updates,
-        become visible, fit to the parent, and only re-enable painting on the
-        next event-loop tick once geometry + layout are fully settled. The first
-        frame the user actually sees is therefore the final, full-size layout.
+        so Qt paints one transient frame of the glass panel at a small/unsettled
+        size, which reads as a little dialog popping up and flashing. To prevent
+        that we: keep the glass_frame itself hidden, become visible (scrim only,
+        fully transparent), fit to the parent and force the layout to compute,
+        then on the next tick reveal the now-correctly-sized panel and start the
+        fade. The first frame the user sees of the panel is its final size.
         """
         if visible and not self.isVisible():
             self._scrim_alpha = 0
-            self.setUpdatesEnabled(False)
+            self._panel_alpha = 0  # panel starts invisible; fades in
+            # Hide the panel so no unsettled frame paints.
+            self.glass_frame.hide()
             self._refit_to_parent()
             super().setVisible(True)
             self._refit_to_parent()
+            # Force the layout to resolve to the fitted geometry synchronously
+            # so the panel's first painted frame is already final-size.
+            if self.layout() is not None:
+                self.layout().activate()
 
             def _reveal():
                 self._refit_to_parent()
-                self.setUpdatesEnabled(True)
+                if self.layout() is not None:
+                    self.layout().activate()
+                self._revealed = True
+                self.glass_frame.show()
+                self.glass_frame.raise_()
+                self.btn_close.raise_()
+                self.btn_fullscreen.raise_()
                 self.update()
                 self._animate_open()
 
@@ -927,34 +944,43 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         """)
 
     def _animate_open(self):
-        """Fade the scrim in over 200 ms. The glass panel appears immediately at full
-        opacity — no per-frame setStyleSheet call, so the animation is pure fillRect
-        speed and stays perfectly smooth."""
+        """Fade the scrim AND the glass panel in together over 200 ms.
+
+        The panel starts fully transparent (set in setVisible) and fades to its
+        target alpha in lockstep with the scrim, so the entrance is a smooth
+        cross-fade rather than an instant pop or a flash of an unsettled frame.
+        """
         if (
             hasattr(self, "_close_anim")
             and self._close_anim.state() == QtCore.QAbstractAnimation.Running
         ):
             self._close_anim.stop()
 
-        # Snap panel to full opacity instantly (no stylesheet animation per frame)
         target_alpha = 255 if getattr(self, "_is_fullscreen", False) else 215
-        self._panel_alpha = target_alpha
-        self._set_panel_alpha(target_alpha)
-
         self._scrim_alpha = 0
+        self._panel_alpha = 0
+        self._set_panel_alpha(0)
         self.update()
 
         self._open_anim = QtCore.QVariantAnimation(self)
         self._open_anim.setDuration(200)
         self._open_anim.setEasingCurve(QtCore.QEasingCurve.OutQuad)
-        self._open_anim.setStartValue(0)
-        self._open_anim.setEndValue(65)
+        self._open_anim.setStartValue(0.0)
+        self._open_anim.setEndValue(1.0)
 
-        def _step(v):
-            self._scrim_alpha = int(v)
-            self.update()  # triggers paintEvent → single fillRect, very cheap
+        def _step(t):
+            self._scrim_alpha = int(65 * t)
+            self._set_panel_alpha(int(target_alpha * t))
+            self.update()
 
         self._open_anim.valueChanged.connect(_step)
+
+        def _settle():
+            self._scrim_alpha = 65
+            self._set_panel_alpha(target_alpha)
+            self.update()
+
+        self._open_anim.finished.connect(_settle)
         self._open_anim.start()
 
     def _animate_close(self):
