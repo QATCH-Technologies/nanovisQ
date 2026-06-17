@@ -14,9 +14,9 @@ warnings.filterwarnings("ignore")
 
 try:
     from QATCH.common.logger import Logger as Log
-    from QATCH.qmodel.src.models.static_v4_fusion.v4_fusion_dataprocessor import FusionDataprocessor
+    from QATCH.QModel.src.models.static_v4_fusion.v4_fusion_dataprocessor import FusionDataprocessor
     from QATCH.models.ModelData import ModelData
-    from QATCH.qmodel.src.models.static_v4_fusion.v4_fusion_partial_fill import PartialFillDetector
+    from QATCH.QModel.src.models.static_v4_fusion.v4_fusion_partial_fill import PartialFillDetector
 except (ImportError, ModuleNotFoundError):
     from v4_fusion_dataprocessor import FusionDataprocessor
     from ModelData import ModelData
