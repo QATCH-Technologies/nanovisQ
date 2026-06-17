@@ -2668,7 +2668,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if not self._identifying:
             Log.i(TAG, f"Identifying port {friendly_port_name}...")
-            self.ControlsWin.ui1.pButton_ID.setStyleSheet("background: yellow;")
+            self.ControlsWin.ui1.pButton_ID.set_active(True)
             self._identifying = True
             if True:  # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
                 # selected_port.count('.') == 3:
@@ -2692,7 +2692,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fwUpdater.open(selected_port)
         else:
             Log.i(TAG, f"Identifying port {friendly_port_name}... done!")
-            self.ControlsWin.ui1.pButton_ID.setStyleSheet("background: white;")
+            self.ControlsWin.ui1.pButton_ID.set_active(False)
             self._identifying = False
             # close port to stop LED blink
             self.fwUpdater.close()
@@ -7626,7 +7626,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.close_no_confirm = True
                 QtCore.QTimer.singleShot(1000, self.ControlsWin.close)
 
-                # Update latest build information for nightly
+                # Update latest build information for nightlyk
                 if Constants.UpdateEngine == UpdateEngines.Nightly:
                     if hasattr(self, "latest_build"):
                         from QATCH.nightly.artifacts import GH_Artifacts

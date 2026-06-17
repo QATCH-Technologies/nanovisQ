@@ -69,6 +69,19 @@ _PALETTES: dict[str, dict] = {
         sh_peak=(255, 255, 255, 240),
         text_role="dark",
     ),
+    # White: near-opaque white glass — for icon buttons that should read as
+    # white rather than the translucent gray of "neutral".
+    "white": dict(
+        fills=(
+            (255, 255, 255, 235),  # normal
+            (255, 255, 255, 255),  # hover
+            (240, 244, 248, 255),  # pressed
+        ),
+        border=(180, 192, 205, 200),
+        sh_accent=(185, 218, 248, 140),
+        sh_peak=(255, 255, 255, 255),
+        text_role="dark",
+    ),
     # Primary: blue gradient fill, white shimmer.
     "primary": dict(
         fills=None,  # drawn as a vertical gradient
@@ -82,6 +95,18 @@ _PALETTES: dict[str, dict] = {
         sh_peak=(255, 255, 255, 240),
         text_role="light",
     ),
+    # Primary-soft: muted translucent blue glass (subtler CTA, dark text).
+    "primary_soft": dict(
+        fills=(
+            (45, 165, 250, 38),  # normal
+            (45, 165, 250, 70),  # hover
+            (45, 165, 250, 110),  # pressed
+        ),
+        border=(45, 165, 250, 95),
+        sh_accent=(120, 185, 240, 130),
+        sh_peak=(220, 240, 255, 220),
+        text_role="primary",
+    ),
     # Danger (labelled Delete button — restores here after confirmation).
     "danger": dict(
         fills=(
@@ -93,6 +118,18 @@ _PALETTES: dict[str, dict] = {
         sh_accent=(220, 53, 69, 160),
         sh_peak=(255, 160, 160, 240),
         text_role="danger",  # #B02A37
+    ),
+    # Danger-soft: very gentle red wash for non-destructive-looking actions.
+    "danger_soft": dict(
+        fills=(
+            (210, 70, 70, 16),  # normal — barely tinted
+            (210, 70, 70, 42),  # hover
+            (210, 70, 70, 72),  # pressed
+        ),
+        border=(210, 70, 70, 55),
+        sh_accent=(210, 100, 100, 110),
+        sh_peak=(255, 200, 200, 200),
+        text_role="danger",
     ),
     # Danger-confirm (delete button while awaiting confirmation — solid red).
     "danger_confirm": dict(
@@ -136,6 +173,7 @@ _TEXT_COLORS: dict[str, QtGui.QColor] = {
     "light": QtGui.QColor(255, 255, 255),
     "dark": QtGui.QColor(51, 51, 51),  # #333
     "danger": QtGui.QColor(176, 42, 55),  # #B02A37
+    "primary": QtGui.QColor(20, 110, 180),  # muted brand blue for soft CTA
 }
 
 
@@ -210,6 +248,23 @@ class GlassPushButton(QtWidgets.QPushButton):
         self._variant = variant
         self._apply_text_color(variant)
         self.update()
+
+    def set_active(self, on: bool, active_variant: str = "warning") -> None:
+        """Flag a transient 'active' state (e.g. identifying) via a variant swap.
+
+        This is the supported way to highlight a button at runtime — using
+        ``setStyleSheet`` instead would override the construction-time padding
+        rule and cause the button to resize. The original variant is restored
+        when ``on`` is False.
+        """
+        if on:
+            if not hasattr(self, "_restore_variant"):
+                self._restore_variant = self._variant
+            self.set_variant(active_variant)
+        else:
+            self.set_variant(getattr(self, "_restore_variant", self._variant))
+            if hasattr(self, "_restore_variant"):
+                del self._restore_variant
 
     # ------------------------------------------------------------------
     # Internal helpers

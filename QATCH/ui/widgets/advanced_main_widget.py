@@ -1,21 +1,63 @@
+import os
+
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 
+from QATCH.common.architecture import Architecture
 
-class GlassWarningLabel(QtWidgets.QLabel):
-    """Orange glass warning banner for the Advanced Settings dialog."""
 
-    _RADIUS: float = 4.0
+class GlassWarningLabel(QtWidgets.QWidget):
+    """Calm informational banner for the Advanced Settings dialog.
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    Renders as a soft blue-gray glass strip with an optional leading icon and
+    informational (not alarming) text. Replaces the old loud orange warning.
+    Keeps a QLabel-like ``setText`` so existing call sites still work.
+    """
+
+    _RADIUS: float = 6.0
+
+    def __init__(self, text: str = "", icon_path: str = "", parent=None) -> None:
+        super().__init__(parent)
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
-        self.setStyleSheet(
-            "QLabel { color: white; font-weight: bold; "
-            "padding: 2px 6px; background: transparent; }"
+
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(10, 6, 10, 6)
+        row.setSpacing(8)
+
+        # Leading icon slot — populated when an icon path is provided.
+        self.icon_lbl = QtWidgets.QLabel(self)
+        self.icon_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self.icon_lbl.setStyleSheet("background: transparent; border: none;")
+        self.icon_lbl.setFixedSize(16, 16)
+        self.icon_lbl.setScaledContents(True)
+        if icon_path:
+            self.set_icon(icon_path)
+        else:
+            self.icon_lbl.hide()  # TODO: provide warning/info SVG icon
+        row.addWidget(self.icon_lbl, 0, QtCore.Qt.AlignVCenter)
+
+        self.text_lbl = QtWidgets.QLabel(text, self)
+        self.text_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self.text_lbl.setStyleSheet(
+            "QLabel { color: rgba(45, 75, 105, 220); font-size: 11px; "
+            "font-weight: normal; background: transparent; border: none; }"
         )
+        self.text_lbl.setWordWrap(True)
+        row.addWidget(self.text_lbl, 1, QtCore.Qt.AlignVCenter)
+
+    def set_icon(self, icon_path: str) -> None:
+        pix = QtGui.QPixmap(icon_path)
+        if not pix.isNull():
+            self.icon_lbl.setPixmap(pix)
+            self.icon_lbl.show()
+
+    def setText(self, text: str) -> None:
+        self.text_lbl.setText(text)
+
+    def text(self) -> str:
+        return self.text_lbl.text()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         p = QtGui.QPainter(self)
@@ -26,32 +68,76 @@ class GlassWarningLabel(QtWidgets.QLabel):
         clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
         p.setClipPath(clip)
 
-        # Warm orange glass gradient
-        grad = QtGui.QLinearGradient(0, 0, self.width(), self.height())
-        grad.setColorAt(0.0, QtGui.QColor(210, 80, 0))
-        grad.setColorAt(1.0, QtGui.QColor(255, 125, 20))
+        # Soft, neutral blue-gray info glass.
+        grad = QtGui.QLinearGradient(0, 0, 0, self.height())
+        grad.setColorAt(0.0, QtGui.QColor(120, 165, 210, 40))
+        grad.setColorAt(1.0, QtGui.QColor(95, 140, 190, 30))
         p.fillRect(self.rect(), QtGui.QBrush(grad))
 
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 40))
-
-        shimmer = QtGui.QLinearGradient(0, 0, 0, self.height() * 0.65)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 50))
+        # Top shimmer
+        shimmer = QtGui.QLinearGradient(0, 0, 0, self.height() * 0.6)
+        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 40))
         shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
         p.fillRect(self.rect(), QtGui.QBrush(shimmer))
 
+        # Hairline border
         p.setClipping(False)
         p.setBrush(QtCore.Qt.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(190, 80, 0, 140), 1.0))
+        p.setPen(QtGui.QPen(QtGui.QColor(120, 160, 200, 110), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 120), 1.0))
-        p.drawRoundedRect(
-            rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
-            self._RADIUS - 1.5,
-            self._RADIUS - 1.5,
-        )
 
         p.end()
-        super().paintEvent(event)
+
+
+class _InfoIcon(QtWidgets.QLabel):
+    """Info icon (SVG) that brightens on hover and shows a tooltip.
+
+    Loads ``info.svg`` from the icons dir. The icon is rendered at reduced
+    opacity at rest and full opacity on hover, giving a subtle hover effect
+    without needing a second asset.
+    """
+
+    _D: int = 16  # display size
+
+    def __init__(self, icon_path: str, tooltip: str = "", parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(self._D, self._D)
+        self.setCursor(QtCore.Qt.WhatsThisCursor)
+        self.setAttribute(QtCore.Qt.WA_Hover, True)
+        self.setStyleSheet("background: transparent; border: none;")
+        self.setToolTip(tooltip)
+
+        src = QtGui.QPixmap(icon_path)
+        if not src.isNull():
+            src = src.scaled(
+                self._D,
+                self._D,
+                QtCore.Qt.KeepAspectRatio,
+                QtCore.Qt.SmoothTransformation,
+            )
+        self._pix_rest = self._with_opacity(src, 0.55)
+        self._pix_hover = self._with_opacity(src, 1.0)
+        self.setPixmap(self._pix_rest)
+
+    @staticmethod
+    def _with_opacity(src: QtGui.QPixmap, opacity: float) -> QtGui.QPixmap:
+        if src.isNull():
+            return src
+        out = QtGui.QPixmap(src.size())
+        out.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(out)
+        p.setOpacity(opacity)
+        p.drawPixmap(0, 0, src)
+        p.end()
+        return out
+
+    def enterEvent(self, event) -> None:
+        if not self._pix_hover.isNull():
+            self.setPixmap(self._pix_hover)
+
+    def leaveEvent(self, event) -> None:
+        if not self._pix_rest.isNull():
+            self.setPixmap(self._pix_rest)
 
 
 class _GlassAdvancedInnerPanel(QtWidgets.QWidget):
@@ -111,7 +197,10 @@ class AdvancedMainWidget(QtWidgets.QWidget):
     _SHADOW_MARGIN_R = 22
     _SHADOW_MARGIN_B = 26
 
-    _WARNING_TEXT = "These settings are for Advanced Users ONLY!"
+    _INFO_TEXT = (
+        "These are advanced settings. Changes here affect device operation \u2014 "
+        "adjust them only if you know what they do."
+    )
 
     def __init__(self, parent=None) -> None:
         super().__init__(
@@ -153,20 +242,53 @@ class AdvancedMainWidget(QtWidgets.QWidget):
     # ------------------------------------------------------------------
     @staticmethod
     def build_container(controls_layout: QtWidgets.QLayout) -> QtWidgets.QWidget:
-        """Create the advanced container (warning banner + controls), hidden.
+        """Create the advanced container (title header + controls), hidden.
 
-        This is a free-standing builder so the container can exist before any
-        popup is shown. ``controls_layout`` holds the actual control widgets,
-        which are created and wired by the caller; only the container, banner,
-        and wrapping layout are owned here.
+        The header is a title row in the top-left: a gear icon, the
+        "Advanced Options" title, and an info icon that reveals the advanced
+        usage message on hover. ``controls_layout`` holds the actual control
+        widgets (created/wired by the caller); only the container, header, and
+        wrapping layout are owned here.
         """
-        container = QtWidgets.QWidget()
-        container.setWhatsThis(AdvancedMainWidget._WARNING_TEXT)
+        icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
-        warning = GlassWarningLabel(f"WARNING: {AdvancedMainWidget._WARNING_TEXT}")
+        container = QtWidgets.QWidget()
+        container.setWhatsThis(AdvancedMainWidget._INFO_TEXT)
+
+        # ---- Title header (top-left): gear + title + info-on-hover ----
+        header = QtWidgets.QHBoxLayout()
+        header.setContentsMargins(2, 0, 2, 0)
+        header.setSpacing(8)
+
+        gear = QtWidgets.QLabel()
+        gear.setFixedSize(18, 18)
+        gear.setScaledContents(True)
+        gear.setStyleSheet("background: transparent; border: none;")
+        _gear_pix = QtGui.QPixmap(os.path.join(icons_dir, "gear.svg"))
+        if not _gear_pix.isNull():
+            gear.setPixmap(_gear_pix)
+        header.addWidget(gear, 0, QtCore.Qt.AlignVCenter)
+
+        title = QtWidgets.QLabel("Advanced Options")
+        title.setStyleSheet(
+            "QLabel { color: rgba(28, 40, 52, 235); font-size: 14px; "
+            "font-weight: bold; background: transparent; border: none; }"
+        )
+        header.addWidget(title, 0, QtCore.Qt.AlignVCenter)
+
+        # Info icon (SVG) with a hover brighten effect; shows the advanced
+        # usage message on hover. TODO: ensure info.svg exists in icons dir.
+        info = _InfoIcon(
+            os.path.join(icons_dir, "warning-circle.svg"),
+            tooltip=AdvancedMainWidget._INFO_TEXT,
+        )
+        header.addWidget(info, 0, QtCore.Qt.AlignVCenter)
+
+        header.addStretch()
 
         wrap = QtWidgets.QVBoxLayout(container)
-        wrap.addWidget(warning)
+        wrap.setSpacing(10)
+        wrap.addLayout(header)
         wrap.addLayout(controls_layout)
 
         container.hide()  # shown when anchored

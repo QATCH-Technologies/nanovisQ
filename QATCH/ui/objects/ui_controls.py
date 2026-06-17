@@ -622,7 +622,8 @@ class GlassStatusLabel(QtWidgets.QLabel):
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
         self.setStyleSheet(
-            "QLabel { color: rgba(28, 40, 52, 210); " "padding: 2px 6px; background: transparent; }"
+            "QLabel { color: rgba(28, 40, 52, 210); "
+            "padding: 2px 6px; background: transparent; }"
         )
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
@@ -1444,13 +1445,17 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.cBox_Speed, 4, 1, 1, 1)
 
         # stop button ---------------------------------------------------------
-        self.pButton_Stop = GlassPushButton(variant="danger")
+        # Shared control-button sizing (thick enough for icon + label).
+        _CTRL_BTN_H = 40
+        _CTRL_ICON = QtCore.QSize(20, 20)
+        self.pButton_Stop = GlassPushButton(variant="danger_soft")
+        # TODO: replace with new SVG icon (placeholder uses existing .ico)
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/stop_icon.ico")
         self.pButton_Stop.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
+        self.pButton_Stop.setIconSize(_CTRL_ICON)
         self.pButton_Stop.setMinimumSize(QtCore.QSize(0, 0))
+        self.pButton_Stop.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Stop.setObjectName("pButton_Stop")
-        if USE_FULLSCREEN:
-            self.pButton_Stop.setFixedHeight(50)
         self.Layout_controls.addWidget(self.pButton_Stop, 3, 6, 1, 1)
 
         # COM port combobox ---------------------------------------------------
@@ -1461,29 +1466,28 @@ class UIControls:  # QtWidgets.QMainWindow
             self.cBox_Port.setFixedHeight(50)
         self.Layout_controls.addWidget(self.cBox_Port, 2, 1, 1, 1)
 
-        # Identify button ---------------------------------------------------------
-        self.pButton_ID = GlassPushButton(variant="neutral")
+        # Identify button (circular icon) ------------------------------------
+        _CIRCLE_D = 34  # diameter for circular icon buttons
+        self.pButton_ID = GlassPushButton(variant="white")
         self.pButton_ID.setToolTip("Identify selected Serial COM Port")
+        # TODO: replace with new SVG icon
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "search-circle.svg")
         self.pButton_ID.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
+        self.pButton_ID.setIconSize(QtCore.QSize(18, 18))
         self.pButton_ID.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        if USE_FULLSCREEN:
-            self.pButton_ID.setMinimumSize(QtCore.QSize(60, 50))
-        else:
-            self.pButton_ID.setMinimumSize(QtCore.QSize(0, 0))
+        self.pButton_ID.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_ID.setObjectName("pButton_ID")
         self.Layout_controls.addWidget(self.pButton_ID, 2, 2, 1, 1)
 
-        # Refresh button ---------------------------------------------------------
-        self.pButton_Refresh = GlassPushButton(variant="neutral")
+        # Refresh button (circular icon) -------------------------------------
+        self.pButton_Refresh = GlassPushButton(variant="white")
         self.pButton_Refresh.setToolTip("Refresh Serial COM Port list")
+        # TODO: replace with new SVG icon
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-circle.svg")
         self.pButton_Refresh.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
+        self.pButton_Refresh.setIconSize(QtCore.QSize(18, 18))
         self.pButton_Refresh.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-        if USE_FULLSCREEN:
-            self.pButton_Refresh.setMinimumSize(QtCore.QSize(70, 50))
-        else:
-            self.pButton_Refresh.setMinimumSize(QtCore.QSize(0, 0))
+        self.pButton_Refresh.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_Refresh.setObjectName("pButton_Refresh")
         self.Layout_controls.addWidget(self.pButton_Refresh, 2, 3, 1, 1)
 
@@ -1550,13 +1554,14 @@ class UIControls:  # QtWidgets.QMainWindow
         self.rButton_Manual = self.toggle_Cartridge
 
         # start button --------------------------------------------------------
-        self.pButton_Start = GlassPushButton(variant="primary")
+        self.pButton_Start = GlassPushButton(variant="primary_soft")
+        # TODO: replace with new SVG icon (placeholder uses existing .ico)
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/start_icon.ico")
         self.pButton_Start.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
+        self.pButton_Start.setIconSize(_CTRL_ICON)
         self.pButton_Start.setMinimumSize(QtCore.QSize(0, 0))
+        self.pButton_Start.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Start.setObjectName("pButton_Start")
-        if USE_FULLSCREEN:
-            self.pButton_Start.setFixedHeight(50)
         self.Layout_controls.addWidget(self.pButton_Start, 2, 6, 1, 1)
 
         # Add signal for Run Controls UI to handle START from Advanced menu ---
@@ -1573,34 +1578,37 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # clear plots button --------------------------------------------------
         self.pButton_Clear = GlassPushButton(variant="default")
+        # TODO: replace with new SVG icon (placeholder uses existing .ico)
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/clear_icon.ico")
         self.pButton_Clear.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
+        self.pButton_Clear.setIconSize(_CTRL_ICON)
         self.pButton_Clear.setMinimumSize(QtCore.QSize(0, 0))
+        self.pButton_Clear.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Clear.setObjectName("pButton_Clear")
-        if USE_FULLSCREEN:
-            self.pButton_Clear.setFixedHeight(50)
         self.Layout_controls.addWidget(self.pButton_Clear, 2, 5, 1, 1)
 
         # reference button ----------------------------------------------------
         self.pButton_Reference = GlassPushButton(variant="default")
+        # TODO: add new SVG icon for Set/Reset Reference
+        self.pButton_Reference.setIconSize(_CTRL_ICON)
         self.pButton_Reference.setMinimumSize(QtCore.QSize(0, 0))
+        self.pButton_Reference.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Reference.setObjectName("pButton_Reference")
         self.pButton_Reference.setCheckable(True)
         # GlassPushButton has no painted checked-state, so reflect it via the
         # variant: primary (blue) while active, default when not.
         self.pButton_Reference.toggled.connect(
-            lambda on: self.pButton_Reference.set_variant("primary" if on else "default")
+            lambda on: self.pButton_Reference.set_variant("primary_soft" if on else "default")
         )
-        if USE_FULLSCREEN:
-            self.pButton_Reference.setFixedHeight(50)
         self.Layout_controls.addWidget(self.pButton_Reference, 3, 5, 1, 1)
 
         # restore factory defaults --------------------------------------------
-        self.pButton_ResetApp = GlassPushButton(variant="danger")
+        self.pButton_ResetApp = GlassPushButton(variant="danger_soft")
+        # TODO: add new SVG icon for Factory Defaults
+        self.pButton_ResetApp.setIconSize(_CTRL_ICON)
         self.pButton_ResetApp.setMinimumSize(QtCore.QSize(0, 0))
+        self.pButton_ResetApp.setFixedHeight(_CTRL_BTN_H)
         self.pButton_ResetApp.setObjectName("pButton_ResetApp")
-        if USE_FULLSCREEN:
-            self.pButton_ResetApp.setFixedHeight(50)
         self.Layout_controls.addWidget(self.pButton_ResetApp, 4, 5, 1, 1)
 
         # samples SpinBox -----------------------------------------------------
@@ -1760,9 +1768,13 @@ class UIControls:  # QtWidgets.QMainWindow
             self.cBox_MultiMode.setFixedHeight(50)
 
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
-        self.pButton_PlateConfig = GlassPushButton(variant="neutral")
+        self.pButton_PlateConfig = GlassPushButton(variant="white")
+        # TODO: replace with new SVG icon
         self.pButton_PlateConfig.setIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
+        self.pButton_PlateConfig.setIconSize(QtCore.QSize(18, 18))
         self.pButton_PlateConfig.setToolTip("Plate Configuration...")
+        self.pButton_PlateConfig.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.pButton_PlateConfig.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_PlateConfig.clicked.connect(self.doPlateConfig)
         self.hBox_MultiConfig = QtWidgets.QHBoxLayout()
         self.hBox_MultiConfig.addWidget(self.cBox_MultiMode, 3)
@@ -2020,7 +2032,9 @@ class UIControls:  # QtWidgets.QMainWindow
         # QLineEdit icons, trailing position
         self.blankIcon = QtGui.QIcon()
         self.savedIcon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(), "QATCH", "icons", "checkmark-circle.svg")
+            os.path.join(
+                Architecture.get_path(), "QATCH", "icons", "checkmark-circle.svg"
+            )
         )
         self.unsavedIcon = QtGui.QIcon(
             os.path.join(Architecture.get_path(), "QATCH", "icons", "warning.svg")
@@ -2037,19 +2051,17 @@ class UIControls:  # QtWidgets.QMainWindow
             QtCore.QRegularExpression(r'[^\\/:*?"\'<>|]{1,12}')
         )  # Up to 12 characters long, excluding invalid chars
         self.validDevicePid = QtGui.QRegularExpressionValidator(
-            QtCore.QRegularExpression(r"[0-9A-Fa-f]{1,2}")
+            QtCore.QRegularExpression(r'[0-9A-Fa-f]{1,2}')
         )  # 2-digit HEX string (00-FF)
         self.validTempOffset = QtGui.QRegularExpressionValidator(
-            QtCore.QRegularExpression(
-                r"-?(?:[0-5](?:\.\d{0,2})?|6(?:\.(?:[0-2]\d?|3[0-5]?))?|6\.?|\.\d{1,2})"
-            )
+            QtCore.QRegularExpression(r'-?(?:[0-5](?:\.\d{0,2})?|6(?:\.(?:[0-2]\d?|3[0-5]?))?|6\.?|\.\d{1,2})')
         )  # QtGui.QDoubleValidator(-6.35, 6.35, 2)
         # self.validTempOffset.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.validPogoPosition = QtGui.QRegularExpressionValidator(
-            QtCore.QRegularExpression(r"[0-5]?[0-9]|60")
+            QtCore.QRegularExpression(r'[0-5]?[0-9]|60')
         )  # QtGui.QIntValidator(0, 60)
         self.validPogoDelayMs = QtGui.QRegularExpressionValidator(
-            QtCore.QRegularExpression(r"[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-4]")
+            QtCore.QRegularExpression(r'[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-4]')
         )  # QtGui.QIntValidator(0, 254)
         # Row 0L: Device Name
         self.device_name_input = QtWidgets.QLineEdit()
@@ -2058,7 +2070,8 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.device_name_input.textEdited.connect(
-            lambda text, action=self.device_name_action: self.on_text_edit(text, action)
+            lambda text, action=self.device_name_action: 
+                self.on_text_edit(text, action)
         )
         # self.device_name_save = GlassPushButton("Save")
         # self.device_name_save.setFixedHeight(20)
@@ -2071,7 +2084,8 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.device_pid_input.textEdited.connect(
-            lambda text, action=self.device_pid_action: self.on_text_edit(text, action)
+            lambda text, action=self.device_pid_action: 
+                self.on_text_edit(text, action)
         )
         # self.device_pid_input.editingFinished.connect(
         #     lambda: self.device_pid_input.setText(
@@ -2094,10 +2108,12 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.temp_cal_always_input.textEdited.connect(
-            lambda text, action=self.temp_cal_always_action: self.on_text_edit(text, action)
+            lambda text, action=self.temp_cal_always_action: 
+                self.on_text_edit(text, action)
         )
         self.temp_cal_always_input.editingFinished.connect(
-            lambda widget=self.temp_cal_always_input: self.on_edit_finish(widget)
+            lambda widget=self.temp_cal_always_input: 
+                self.on_edit_finish(widget)
         )
         # self.constant_temp_cal_save = GlassPushButton("Save")
         # self.constant_temp_cal_save.setFixedHeight(20)
@@ -2110,10 +2126,12 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.temp_cal_measure_input.textEdited.connect(
-            lambda text, action=self.temp_cal_measure_action: self.on_text_edit(text, action)
+            lambda text, action=self.temp_cal_measure_action: 
+                self.on_text_edit(text, action)
         )
         self.temp_cal_measure_input.editingFinished.connect(
-            lambda widget=self.temp_cal_measure_input: self.on_edit_finish(widget)
+            lambda widget=self.temp_cal_measure_input: 
+                self.on_edit_finish(widget)
         )
         self.temp_cal_default = GlassPushButton("Default")
         self.temp_cal_default.clicked.connect(self.on_temp_cal_default)
@@ -2131,7 +2149,8 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.lid_pogo_distance_input.textEdited.connect(
-            lambda text, action=self.lid_pogo_distance_action: self.on_text_edit(text, action)
+            lambda text, action=self.lid_pogo_distance_action: 
+                self.on_text_edit(text, action)
         )
         # self.lid_pogo_distance_save = GlassPushButton("Save")
         # self.lid_pogo_distance_save.setFixedHeight(20)
@@ -2144,7 +2163,8 @@ class UIControls:  # QtWidgets.QMainWindow
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.lid_pogo_delay_input.textEdited.connect(
-            lambda text, action=self.lid_pogo_delay_action: self.on_text_edit(text, action)
+            lambda text, action=self.lid_pogo_delay_action: 
+                self.on_text_edit(text, action)
         )
         self.lid_pogo_default = GlassPushButton("Default")
         self.lid_pogo_default.clicked.connect(self.on_lid_pogo_default)
@@ -2283,9 +2303,7 @@ class UIControls:  # QtWidgets.QMainWindow
                     self.device_name_action.setIcon(self.savedIcon)
                     self.device_name_action.setIconText("saved")
             else:
-                Log.e(
-                    f"Invalid 'Device Name' input: {self.device_name_input.text()} (out of valid range)"
-                )
+                Log.e(f"Invalid 'Device Name' input: {self.device_name_input.text()} (out of valid range)")
         if self.device_pid_action.iconText() == "unsaved":
             if self.device_pid_input.hasAcceptableInput():
                 text = self.device_pid_input.text()
@@ -2295,10 +2313,8 @@ class UIControls:  # QtWidgets.QMainWindow
                     self.device_pid_action.setIcon(self.savedIcon)
                     self.device_pid_action.setIconText("saved")
             else:
-                Log.e(
-                    f"Invalid 'Position ID' input: {self.device_pid_input.text()} (out of valid range)"
-                )
-
+                Log.e(f"Invalid 'Position ID' input: {self.device_pid_input.text()} (out of valid range)")
+        
         mainWindow = self.parent.parent
         if ok_pid:
             if dif != None:
@@ -2310,12 +2326,8 @@ class UIControls:  # QtWidgets.QMainWindow
             # mainWindow.fwUpdater.checkAgain()
             # mainWindow.worker._port = mainWindow._selected_port  # used in run()
             # mainWindow.fwUpdater.run(mainWindow)
-            QtCore.QTimer.singleShot(
-                1000, lambda: not mainWindow._identifying and mainWindow._port_identify()
-            )
-            QtCore.QTimer.singleShot(
-                4000, lambda: mainWindow._identifying and mainWindow._port_identify()
-            )
+            QtCore.QTimer.singleShot(1000, lambda: not mainWindow._identifying and mainWindow._port_identify())
+            QtCore.QTimer.singleShot(4000, lambda: mainWindow._identifying and mainWindow._port_identify())
         elif ok_name:  # (needed only if PID not changed too)
             mainWindow._refresh_ports()  # update name in port list
         # elif ok_cal: do nothing
@@ -2341,7 +2353,7 @@ class UIControls:  # QtWidgets.QMainWindow
     def on_temp_cal_default(self):
         default_always = "0.00"
         default_measure = "0.00"
-
+        
         if self.temp_cal_always_input.text() != default_always:
             self.temp_cal_always_input.setText(default_always)
             self.temp_cal_always_action.setIcon(self.unsavedIcon)
@@ -2360,9 +2372,7 @@ class UIControls:  # QtWidgets.QMainWindow
                     self.temp_cal_always_action.setIcon(self.savedIcon)
                     self.temp_cal_always_action.setIconText("saved")
             else:
-                Log.e(
-                    f"Invalid T_always input: {self.temp_cal_always_input.text()} (out of valid range)"
-                )
+                Log.e(f"Invalid T_always input: {self.temp_cal_always_input.text()} (out of valid range)")
         if self.temp_cal_measure_action.iconText() == "unsaved":
             if self.temp_cal_measure_input.hasAcceptableInput():
                 text = self.temp_cal_measure_input.text()
@@ -2371,9 +2381,7 @@ class UIControls:  # QtWidgets.QMainWindow
                     self.temp_cal_measure_action.setIcon(self.savedIcon)
                     self.temp_cal_measure_action.setIconText("saved")
             else:
-                Log.e(
-                    f"Invalid T_measure input: {self.temp_cal_measure_input.text()} (out of valid range)"
-                )
+                Log.e(f"Invalid T_measure input: {self.temp_cal_measure_input.text()} (out of valid range)")
 
     def on_temp_cal_reset(self):
         if self.temp_cal_always_action.iconText() != "saved":
@@ -2396,7 +2404,7 @@ class UIControls:  # QtWidgets.QMainWindow
     def on_lid_pogo_default(self):
         default_distance = "30"
         default_delay = "30"
-
+        
         if self.lid_pogo_distance_input.text() != default_distance:
             self.lid_pogo_distance_input.setText(default_distance)
             self.lid_pogo_distance_action.setIcon(self.unsavedIcon)
@@ -2417,9 +2425,7 @@ class UIControls:  # QtWidgets.QMainWindow
                 self.lid_pogo_distance_action.setIconText("saved")
                 send_lid_cal_cmd = True
             else:
-                Log.e(
-                    f"Invalid 'Servo Steps' input: {self.lid_pogo_distance_input.text()} (out of valid range)"
-                )
+                Log.e(f"Invalid 'Servo Steps' input: {self.lid_pogo_distance_input.text()} (out of valid range)")
                 form_error = True
         if self.lid_pogo_delay_action.iconText() == "unsaved":
             if self.lid_pogo_delay_input.hasAcceptableInput():
@@ -2429,9 +2435,7 @@ class UIControls:  # QtWidgets.QMainWindow
                 self.lid_pogo_delay_action.setIconText("saved")
                 send_lid_cal_cmd = True
             else:
-                Log.e(
-                    f"Invalid 'Servo Delay' input: {self.lid_pogo_delay_input.text()} (out of valid range)"
-                )
+                Log.e(f"Invalid 'Servo Delay' input: {self.lid_pogo_delay_input.text()} (out of valid range)")
                 form_error = True
         if send_lid_cal_cmd and not form_error:
             self.save_lid_pogo_calibration()
@@ -2497,7 +2501,7 @@ class UIControls:  # QtWidgets.QMainWindow
         except:
             Log.e("Failed to update name entered by user.")
             return False
-
+    
     def reset_device_name_input(self):
         mainWindow = self.parent.parent
 
@@ -2623,9 +2627,7 @@ class UIControls:  # QtWidgets.QMainWindow
                 if ":" in device_text:
                     dev_i = int(device_text.split(":")[0], base=16)
                     if dev_i != pid_old:
-                        Log.e(
-                            f"Conflicting device info, using PID as {dev_i} instead of reported {pid_old}!"
-                        )
+                        Log.e(f"Conflicting device info, using PID as {dev_i} instead of reported {pid_old}!")
                         pid_old = int(dev_i, base=16)
         except:
             Log.e("ERROR: Unable to check if PID in COM Port list matches DEV_INFO.")
@@ -2674,7 +2676,7 @@ class UIControls:  # QtWidgets.QMainWindow
         else:
             Log.e("Program 'TEMP CAL1' operation was NOT successful!")
         return success
-
+    
     def reset_temp_cal_always_input(self, skip_delay=False):
         mainWindow = self.parent.parent
         start_time = monotonic()
@@ -2789,6 +2791,7 @@ class UIControls:  # QtWidgets.QMainWindow
         except:
             Log.e("Unable to get LID CAL. No reply from device.")
 
+     
     def get_lid_pogo_calibration(self):
         mainWindow = self.parent.parent
         pogo_distance = 30
@@ -2814,7 +2817,7 @@ class UIControls:  # QtWidgets.QMainWindow
         try:
             if response:
                 lid_cal_split = response.decode().strip().split()[-1]
-                lid_cal_params = lid_cal_split.split(",")
+                lid_cal_params = lid_cal_split.split(',')
                 pogo_distance = abs(int(lid_cal_params[1]) - int(lid_cal_params[0]))
                 pogo_delay = int(lid_cal_params[-1])
         except:
@@ -2851,9 +2854,7 @@ class UIControls:  # QtWidgets.QMainWindow
         unsaved_input = False
         for action in actions:
             if action.iconText() == "unsaved":
-                Log.w(
-                    "You have unsaved device configuration input. Please Save or Reset unsaved input before closing."
-                )
+                Log.w("You have unsaved device configuration input. Please Save or Reset unsaved input before closing.")
                 unsaved_input = True
                 break
         if not unsaved_input:
@@ -3206,11 +3207,11 @@ class UIControls:  # QtWidgets.QMainWindow
         left_col.addWidget(self.chBox_correctNoise)
         left_col.addStretch()
 
-        # ---- Middle column: cartridge auto-lock (fresh row) ----
-        lock_row = hrow(self.lbl_lock_manual, self.toggle_Cartridge, self.lbl_lock_auto, spacing=8)
-        lock_section = section("Cartridge Auto-Lock", lock_row, stretch_last=False)
+        # ---- Right column: cartridge auto-lock + control buttons ----
+        lock_row = hrow(
+            self.lbl_lock_manual, self.toggle_Cartridge, self.lbl_lock_auto, spacing=8
+        )
 
-        # ---- Right column: control buttons ----
         btns = QtWidgets.QVBoxLayout()
         btns.setSpacing(8)
         btns.addWidget(self.pButton_Start)
@@ -3218,21 +3219,44 @@ class UIControls:  # QtWidgets.QMainWindow
         btns.addWidget(self.pButton_Clear)
         btns.addWidget(self.pButton_Reference)
         btns.addWidget(self.pButton_ResetApp)
-        ctrl_section = section("Control Buttons", btns, stretch_last=False)
+
+        right_col = QtWidgets.QVBoxLayout()
+        right_col.setSpacing(14)
+        right_col.addLayout(section("Cartridge Auto-Lock", lock_row, stretch_last=False))
+        right_col.addLayout(section("Control Buttons", btns, stretch_last=False))
+        right_col.addStretch()
 
         # ---- Assemble columns ----
         columns = QtWidgets.QHBoxLayout()
         columns.setSpacing(22)
         columns.addLayout(left_col, 3)
-        columns.addLayout(lock_section, 1)
-        columns.addLayout(ctrl_section, 1)
+        columns.addLayout(right_col, 2)
 
-        # ---- Outer: infobar status on top, then the columns ----
+        # ---- Outer: status row on top, then the columns ----
+        # ---- Outer: columns, then a quiet status readout at the BOTTOM ----
+        # Instead of a blocked-out bar at the top, the infobar becomes a low-key
+        # readout line at the foot of the panel (icon-free, borderless, muted).
+        self.infobar_readout = QtWidgets.QLabel()
+        self.infobar_readout.setObjectName("infobarReadout")
+        self.infobar_readout.setStyleSheet(
+            "QLabel#infobarReadout { color: rgba(70, 90, 110, 190); font-size: 10px; "
+            "background: transparent; border: none; padding: 0px 2px; }"
+        )
+        self.infobar_readout.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft)
+        # Mirror live status text from the existing infobar line edit.
+        self.infobar.textChanged.connect(
+            lambda t: self.infobar_readout.setText(f"Status:  {t}" if t else "Status:  Ready")
+        )
+        self.infobar_readout.setText(
+            f"Status:  {self.infobar.text()}" if self.infobar.text() else "Status:  Ready"
+        )
+
         outer = QtWidgets.QVBoxLayout()
         outer.setContentsMargins(2, 2, 2, 2)
-        outer.setSpacing(12)
-        outer.addWidget(self.infobar_label)
+        outer.setSpacing(10)
         outer.addLayout(columns)
+        outer.addWidget(_hairline())
+        outer.addWidget(self.infobar_readout)
 
         return outer
 
@@ -3248,7 +3272,6 @@ class UIControls:  # QtWidgets.QMainWindow
             return  # toggled closed
         # Keep a handle to the container the popup built (size queries, etc.).
         self.advanced_container = popup.content_container
-        self.pButton_PlateConfig.setFixedWidth(self.pButton_PlateConfig.height())
 
     # -- Account dropdown -----------------------------------------------------
 
