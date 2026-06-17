@@ -2888,8 +2888,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             self._dev_info_popup = DeviceInfoMainWidget()
             self._dev_info_popup.set_content_widget(self.ControlsWin.ui1.device_info_container)
-            self.ControlsWin.ui1.device_info_container.setFixedSize(self.ControlsWin.ui1.advanced_container.size())
-            self._dev_info_popup.show_anchored_to(self.ControlsWin.ui1.tool_Advanced, main_window=self)
+            self.ControlsWin.ui1.device_info_container.setFixedSize(
+                self.ControlsWin.ui1.advanced_container.size()
+            )
+            self._dev_info_popup.show_anchored_to(
+                self.ControlsWin.ui1.tool_Advanced, main_window=self
+            )
             self._update_configuration_banner_text()
             QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.device_config_reset.click)
             QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.temp_cal_reset.click)
@@ -2898,9 +2902,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # restore selected port back to device
             restore_port_idx = self.ControlsWin.ui1.cBox_Port.findData(self._selected_port)
             self.ControlsWin.ui1.cBox_Port.setCurrentIndex(restore_port_idx)
-            
+
             return
-        
+
             # configure device info for selected device
             ok_name = self._configure_device_name()
             ok_pid, dif = self._configure_device_pid()

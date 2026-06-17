@@ -1,5 +1,5 @@
 """
-Logging module for the QATCH Nanovis system.
+logger.py
 
 This module provides the Logger class for configuring and managing
 logging handlers, file rotation, and console output, as well as the
@@ -15,10 +15,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-10-16
+    2025-06-17
 
 Version:
-    ?
+    2.0.0
 """
 
 import logging
@@ -83,42 +83,35 @@ class Logger:
         _loguru.remove()
         FileManager.create_dir(Constants.log_export_path)
         log_path = f"{Constants.log_export_path}/{Constants.log_filename}"
-
-        # Upgraded file format: Includes Process, Thread, File, Line, and Function
         _loguru.add(
             log_path,
             level="DEBUG",
             rotation=Constants.log_max_bytes,
             retention=0,  # backupCount=0 in the original
             encoding="utf-8",
-            enqueue=True,  # thread/process safe writes
-            backtrace=True,
-            diagnose=True,  # Enhanced stack trace debugging
+            enqueue=True,  # keep ONLY for cross-process-safe file writes
+            backtrace=False,  # was True; avoid extra-frame capture per record
+            diagnose=False,  # was True; variable-level introspection is expensive
             format=(
                 "{time:YYYY-MM-DD HH:mm:ss.SSS} | {process} | {thread.name: <10} | "
                 "{level: <8} | {name}:{function}:{line} - {message}"
             ),
         )
-
-        # --- Console sink: INFO and up ---
         if sys.stdout is None:
             sys.stdout = open(os.devnull, "w")
             sys.stderr = open(os.devnull, "w")
 
-        # Per-level colors. loguru ships sensible defaults, but we tune
-        # them for readability on a dark console (DEBUG dim, INFO green,
-        # WARNING/ERROR/CRITICAL escalating warm tones).
         _loguru.level("DEBUG", color="<dim>")
         _loguru.level("INFO", color="<green>")
         _loguru.level("WARNING", color="<yellow><bold>")
         _loguru.level("ERROR", color="<red><bold>")
         _loguru.level("CRITICAL", color="<RED><white><bold>")
 
-        # Upgraded console format: Pipe-delimited alignment with caller location context
         _loguru.add(
             sys.stdout,
             level="INFO",
             colorize=True,
+            enqueue=False,  # main-process console; no async queue needed
             format=(
                 "<cyan>{time:YYYY-MM-DD HH:mm:ss}</cyan> | "
                 "<level>{level: <8}</level> | "
@@ -127,7 +120,6 @@ class Logger:
             ),
         )
 
-        # Capture stdlib logging (absl/TensorFlow/etc.) into loguru.
         try:
             from absl import logging as absl_logging
 
@@ -136,8 +128,20 @@ class Logger:
         except ImportError:
             pass
 
-        logging.basicConfig(handlers=[_LogHandler()], level=logging.DEBUG, force=True)
-        for noisy in ("absl", "tensorflow"):
+        # NOTE: Bridge stdlib logging into loguru, but only WARNING and above.
+        # Anything below that from third-party libs (matplotlib font manager,
+        # urllib3, PIL, etc.) is noise we never want only our own Log.*
+        # calls, which go through loguru directly, should appear at DEBUG.
+        logging.basicConfig(handlers=[_LogHandler()], level=logging.WARNING, force=True)
+        for noisy in (
+            "absl",
+            "tensorflow",
+            "matplotlib",
+            "matplotlib.font_manager",
+            "PIL",
+            "urllib3",
+            "asyncio",
+        ):
             lg = logging.getLogger(noisy)
             lg.handlers.clear()
             lg.setLevel(logging.ERROR)
@@ -194,8 +198,6 @@ class Logger:
         global _CONFIGURED
         top_level_logger = logging.getLogger("QATCH")
         Logger.i("SYSTEM", "Closed logging handlers")
-        # remove() with no args tears down all loguru sinks (flushing the
-        # enqueued file sink on the way out).
         _loguru.remove()
         top_level_logger.handlers.clear()
         _CONFIGURED = False
@@ -207,11 +209,7 @@ class Logger:
         loguru markup so literals aren't parsed as color tags, and ensures
         the correct calling frame depth is captured.
         """
-        # Intelligently construct text block based on provided tag/msg args
         text = f"[{tag}] {msg}".strip() if msg is not None else str(tag)
-
-        # Treat the message as a literal, not a format/markup string.
-        # Depth=2 ensures it points to the caller of `Logger.d/i/w/e`
         _loguru.opt(depth=2).log(level, "{}", text)
 
     @staticmethod

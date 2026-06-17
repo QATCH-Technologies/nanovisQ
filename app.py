@@ -26,7 +26,7 @@ try:
     import pyi_splash
 
     # this is just a sanity check to confirm the splash module
-    USE_PYI_SPLASH = False  # pyi_splash.is_alive()
+    USE_PYI_SPLASH = False  # pyi_splash.is_alive() jj
     # restore to default level, it's active
     logging.getLogger("pyi_splash").setLevel(logging.WARNING)
 except:

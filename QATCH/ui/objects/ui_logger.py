@@ -9,7 +9,7 @@ Author(s)
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-05-05
+    2026-06-17
 """
 
 import os
@@ -221,7 +221,7 @@ class UILogger:
         _loguru.add(
             logTextBox,
             format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{line} | {message}",
-            enqueue=True,
+            enqueue=False,  # Qt queued signal handles thread-safety; no loguru queue
             colorize=False,
         )
 
@@ -249,12 +249,17 @@ class QTextEditLogger(QtCore.QObject):
     # Highlight color for the currently-selected search match.
     _MATCH_FMT_COLOR = QtGui.QColor(10, 163, 230, 90)
 
+    # UI batching / memory bounds.
+    _FLUSH_INTERVAL_MS = 150  # how often pending records are rendered
+    _MAX_BLOCKS = 5000  # max QTextEdit blocks retained on screen
+    _MAX_CACHE = 20000  # max records retained for filtering/search
+
     def __init__(self, parent):
         super().__init__()
 
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
-        # ---- Main Container & Layout ----
+        # Main Container & Layout
         self.container = QtWidgets.QWidget(parent)
         self.container.setObjectName("ConsoleContainer")
         self.container.setStyleSheet(_LOGGER_GLASS_QSS)
@@ -263,12 +268,12 @@ class QTextEditLogger(QtCore.QObject):
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(6)
 
-        # ---- Control Bar ----
+        # Control Bar
         control_layout = QtWidgets.QHBoxLayout()
         control_layout.setContentsMargins(2, 0, 2, 0)
         control_layout.setSpacing(8)
 
-        # 1. Filter Dropdown (left)
+        # Filter Dropdown
         arrow_icon_path = os.path.join(icons_dir, "down-chevron.svg")
         self.level_filter = AnimatedComboBox(icon_path=arrow_icon_path, parent=self.container)
         self.level_filter.setObjectName("LevelFilter")
@@ -281,7 +286,7 @@ class QTextEditLogger(QtCore.QObject):
 
         control_layout.addStretch()
 
-        # 2. Search field with leading search icon + trailing clear icon
+        # Search field with leading search icon + trailing clear icon
         self.search_input = QtWidgets.QLineEdit(parent=self.container)
         self.search_input.setObjectName("SearchBar")
         self.search_input.setPlaceholderText("Find in logs...")
@@ -293,9 +298,7 @@ class QTextEditLogger(QtCore.QObject):
         search_icon = QtGui.QIcon(os.path.join(icons_dir, "search.svg"))
         self.search_input.addAction(search_icon, QtWidgets.QLineEdit.LeadingPosition)
 
-        # Trailing clear-text action (right side of the field)
-        # Two icon variants so we can lighten on hover. QAction has no CSS
-        # hover, so we swap the icon + cursor via an event filter below.
+        # Trailing clear-text action
         self._clear_icon_normal = QtGui.QIcon(os.path.join(icons_dir, "clear.svg"))
         self._clear_icon_hover = self._make_lighter_icon(
             os.path.join(icons_dir, "clear.svg"), opacity=0.55
@@ -308,20 +311,20 @@ class QTextEditLogger(QtCore.QObject):
         self.clear_text_action.triggered.connect(self.clear_search_text)
         self.clear_text_action.setVisible(False)  # only show when there's text
 
-        # Hover handling for the trailing clear icon (pointer + lighten).
+        # Hover handling
         self._clear_hovering = False
         self.search_input.setMouseTracking(True)
         self.search_input.installEventFilter(self)
         control_layout.addWidget(self.search_input)
 
-        # 3. Match counter ("3 / 12") — defaults to "No results"
+        # Match counter ("3 / 12")
         self.match_counter = QtWidgets.QLabel("No results", parent=self.container)
         self.match_counter.setObjectName("MatchCounter")
         self.match_counter.setMinimumWidth(64)
         self.match_counter.setAlignment(QtCore.Qt.AlignCenter)
         control_layout.addWidget(self.match_counter)
 
-        # 4. Search navigation (chevron icons)
+        # Search navigation
         up_chevron = QtGui.QIcon(os.path.join(icons_dir, "up-chevron.svg"))
         down_chevron = QtGui.QIcon(os.path.join(icons_dir, "down-chevron.svg"))
 
@@ -345,7 +348,6 @@ class QTextEditLogger(QtCore.QObject):
         self.btn_find_next.clicked.connect(self.find_next)
         control_layout.addWidget(self.btn_find_next)
 
-        # 5. Separator + Clear pill (far right)
         sep = QtWidgets.QFrame(self.container)
         sep.setFrameShape(QtWidgets.QFrame.VLine)
         sep.setStyleSheet("color: rgba(150, 150, 150, 90);")
@@ -362,25 +364,27 @@ class QTextEditLogger(QtCore.QObject):
 
         main_layout.addLayout(control_layout)
 
-        # ---- Toolbar / log separator ----
+        # Toolbar
         self.toolbar_separator = QtWidgets.QFrame(self.container)
         self.toolbar_separator.setObjectName("ToolbarSeparator")
         self.toolbar_separator.setFrameShape(QtWidgets.QFrame.HLine)
         self.toolbar_separator.setFixedHeight(1)
         main_layout.addWidget(self.toolbar_separator)
 
-        # ---- Unified Log Text Area ----
+        #  Unified Log Text Area
         self.logText = QtWidgets.QTextEdit()
         self.logText.setReadOnly(True)
         self.logText.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.logText.setLineWrapMode(QtWidgets.QTextEdit.WidgetWidth)
+        # Cap the document so insertHtml/relayout cost stays bounded during
+        # long, log-heavy runs (e.g. Analyze). Oldest blocks drop off the top.
+        self.logText.document().setMaximumBlockCount(self._MAX_BLOCKS)
         main_layout.addWidget(self.logText)
 
         parent_layout = QtWidgets.QVBoxLayout(parent)
         parent_layout.setContentsMargins(0, 0, 0, 0)
         parent_layout.addWidget(self.container)
 
-        # ---- Global Shortcuts ----
         self.shortcut_find = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+F"), self.container)
         self.shortcut_find.activated.connect(self.focus_search)
 
@@ -393,24 +397,27 @@ class QTextEditLogger(QtCore.QObject):
         self.last_record_msg = None
         self.log_cache = []
 
+        # Batched UI updates: log records accumulate here and are flushed to
+        # the QTextEdit on a timer rather than one insertHtml per record. This
+        # keeps the GUI thread responsive when logging floods (e.g. Analyze).
+        self._pending = []
+        self._flush_timer = QtCore.QTimer(self)
+        self._flush_timer.setInterval(self._FLUSH_INTERVAL_MS)
+        self._flush_timer.timeout.connect(self._flush_pending)
+        self._flush_timer.start()
+
         self._update_match_ui(0, 0)
 
-    # ------------------------------------------------------------------
-    # Search
-    # ------------------------------------------------------------------
     def focus_search(self):
-        """Focus the search bar and select existing text for quick retyping."""
         self.search_input.setFocus()
         self.search_input.selectAll()
 
     def clear_search_text(self):
-        """Clear only the search field (the trailing 'x' icon)."""
         self.search_input.clear()
         self.search_input.setFocus()
 
     @staticmethod
     def _make_lighter_icon(svg_path, opacity=0.55):
-        """Render an SVG/PNG icon at reduced opacity for a hover state."""
         src = QtGui.QPixmap(svg_path)
         if src.isNull():
             return QtGui.QIcon(svg_path)
@@ -423,7 +430,6 @@ class QTextEditLogger(QtCore.QObject):
         return QtGui.QIcon(faded)
 
     def _clear_icon_rect(self):
-        """Approximate hit-rect of the trailing clear action inside the field."""
         if not self.clear_text_action.isVisible():
             return QtCore.QRect()
         w = self.search_input.width()
@@ -432,7 +438,6 @@ class QTextEditLogger(QtCore.QObject):
         return QtCore.QRect(w - side - 2, 0, side, h)
 
     def eventFilter(self, obj, event):
-        """Pointer cursor + lighter icon when hovering the trailing clear 'x'."""
         if obj is self.search_input:
             et = event.type()
             if et == QtCore.QEvent.MouseMove:
@@ -453,7 +458,6 @@ class QTextEditLogger(QtCore.QObject):
         return super().eventFilter(obj, event)
 
     def _count_matches(self, term):
-        """Return total occurrences of `term` in the current document."""
         if not term:
             return 0
         doc = self.logText.document()
@@ -467,7 +471,6 @@ class QTextEditLogger(QtCore.QObject):
         return count
 
     def _current_match_index(self, term):
-        """1-based index of the match the cursor currently sits on, else 0."""
         if not term:
             return 0
         doc = self.logText.document()
@@ -487,7 +490,6 @@ class QTextEditLogger(QtCore.QObject):
         return 0
 
     def _update_match_ui(self, current, total):
-        """Refresh the 'N / M' label and nav-button enabled state."""
         term = self.search_input.text()
         if not term:
             self.match_counter.setText("No results")
@@ -500,24 +502,19 @@ class QTextEditLogger(QtCore.QObject):
             self.match_counter.setText(f"{shown} / {total}")
             self.match_counter.setProperty("state", "")
 
-        # repolish so the [state] selector re-applies
         self.match_counter.style().unpolish(self.match_counter)
         self.match_counter.style().polish(self.match_counter)
 
         has_matches = bool(term) and total > 0
         self.btn_find_next.setEnabled(has_matches)
         self.btn_find_prev.setEnabled(has_matches)
-
-        # Trailing clear icon only when there's text to clear
         self.clear_text_action.setVisible(bool(term))
 
     def on_search_changed(self, text):
-        """Recompute totals as the user types, without jumping the view."""
         total = self._count_matches(text)
         self._update_match_ui(0, total)
 
     def find_next(self):
-        """Search forward. Wraps around to start if it hits the bottom."""
         term = self.search_input.text()
         if not term:
             self._update_match_ui(0, 0)
@@ -533,7 +530,6 @@ class QTextEditLogger(QtCore.QObject):
         self._update_match_ui(current, total)
 
     def find_prev(self):
-        """Search backward. Wraps around to end if it hits the top."""
         term = self.search_input.text()
         if not term:
             self._update_match_ui(0, 0)
@@ -549,10 +545,8 @@ class QTextEditLogger(QtCore.QObject):
         current = self._current_match_index(term) if found else 0
         self._update_match_ui(current, total)
 
-    # ------------------------------------------------------------------
-    # Console state
-    # ------------------------------------------------------------------
     def clear_console(self):
+        self._pending.clear()
         self.logText.clear()
         self.log_cache.clear()
         self._update_match_ui(0, 0)
@@ -560,6 +554,7 @@ class QTextEditLogger(QtCore.QObject):
     def apply_filter(self, level_text):
         levels = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40}
         self.current_filter_level = levels.get(level_text, 10)
+        self._flush_pending()
 
         self.logText.clear()
         for html, lvl in self.log_cache:
@@ -567,32 +562,43 @@ class QTextEditLogger(QtCore.QObject):
                 self.logText.insertHtml(html)
 
         self.logText.moveCursor(QtGui.QTextCursor.End)
-        # Filtered set changed -> match totals changed.
         self.on_search_changed(self.search_input.text())
 
     def appendToConsole(self, html, level_no):
-        self.log_cache.append((html, level_no))
+        self._pending.append((html, level_no))
 
-        if level_no >= self.current_filter_level:
-            vsb = self.logText.verticalScrollBar()
-            is_at_bottom = vsb.value() >= (vsb.maximum() - 5)
+    def _flush_pending(self):
+        """Render all buffered records in a single insertHtml pass."""
+        if not self._pending:
+            return
 
-            self.logText.moveCursor(QtGui.QTextCursor.End)
-            self.logText.insertHtml(html)
+        batch = self._pending
+        self._pending = []
 
-            if is_at_bottom:
-                vsb.setValue(vsb.maximum())
+        # Append to the searchable/filterable cache, bounded to _MAX_CACHE.
+        self.log_cache.extend(batch)
+        if len(self.log_cache) > self._MAX_CACHE:
+            del self.log_cache[: len(self.log_cache) - self._MAX_CACHE]
 
-            # Keep the live total honest as new lines stream in.
-            term = self.search_input.text()
-            if term:
-                self._update_match_ui(self._current_match_index(term), self._count_matches(term))
+        visible_html = "".join(html for html, lvl in batch if lvl >= self.current_filter_level)
+        if not visible_html:
+            return
+
+        vsb = self.logText.verticalScrollBar()
+        is_at_bottom = vsb.value() >= (vsb.maximum() - 5)
+
+        self.logText.moveCursor(QtGui.QTextCursor.End)
+        self.logText.insertHtml(visible_html)
+
+        if is_at_bottom:
+            vsb.setValue(vsb.maximum())
+
+        # Keep the live match total honest as new lines stream in.
+        term = self.search_input.text()
+        if term:
+            self._update_match_ui(self._current_match_index(term), self._count_matches(term))
 
     def write(self, message):
-        if message == self.last_record_msg:
-            return
-        self.last_record_msg = message
-
         record = message.record
         level_no = record["level"].no
         level_name = record["level"].name
