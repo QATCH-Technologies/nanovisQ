@@ -44,7 +44,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 try:
-    from QATCH.qmodel.src.models.v6_yolo.v6_yolo_spacing_prior import (
+    from QATCH.QModel.src.models.v6_yolo.v6_yolo_spacing_prior import (
         QModelV6YOLO_SpacingPrior,
         POI_ORDER,
     )

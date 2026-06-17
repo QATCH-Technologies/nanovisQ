@@ -93,7 +93,7 @@ except:
     QDataPipeline_found = False
 try:
     if not QDataPipeline_found:
-        from QATCH.qmodel.src.models.static_v2.q_data_pipeline import QDataPipeline
+        from QATCH.QModel.src.models.static_v2.q_data_pipeline import QDataPipeline
     QDataPipeline_found = True
 except:
     QDataPipeline_found = False
