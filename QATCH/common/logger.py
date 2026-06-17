@@ -208,7 +208,7 @@ class Logger:
         the correct calling frame depth is captured.
         """
         # Intelligently construct text block based on provided tag/msg args
-        text = f"[{tag}] {msg}".strip() if msg else str(tag)
+        text = f"[{tag}] {msg}".strip() if msg is not None else str(tag)
 
         # Treat the message as a literal, not a format/markup string.
         # Depth=2 ensures it points to the caller of `Logger.d/i/w/e`
