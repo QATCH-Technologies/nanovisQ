@@ -2264,60 +2264,66 @@ class MainWindow(QtWidgets.QMainWindow):
             - Binds a resize callback to maintain relative positioning when the window
             is resized.
         """
-        # Guard: Prevent welcome text from reappearing if the calibration overlay is active.
-        # This stops clear/re-annotate paths from reintroducing stale copy.
         if getattr(self, "_calib_overlay_ready", False):
             return
 
         # Tear down any existing welcome items to prevent layout duplicates
         self._remove_welcome_text()
+
         target = self._plt2_arr[1] or self._plt2_arr[0]
         if not target:
             return
+
         # Determine responsive font sizes
-        font_size = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
-        text_color = (45, 55, 72, 230)
+        font_size_pt = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
         font_family = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
-        # Initialize text items with specific HTML formatting
-        self._text1 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
+        text_color_val = (100, 105, 115, 240)
+        icon_color_val = (140, 145, 155, 240)
+
+        # Main Title
+        self._text1 = pg.TextItem("", anchor=(0.5, 0.5))
         self._text1.setHtml(
-            f"<div style='font-family: {font_family}; text-align: center;'>"
-            "<span style='font-size: 15pt; font-weight: 600; letter-spacing: 0.5px;'>"
-            "Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI</span></div>"
+            f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; margin: 0;'>"
+            f"<span style='font-size: 16pt; font-weight: 600; letter-spacing: 0.5px;'>"
+            f"Welcome to nanovisQ&trade;</span></p>"
         )
 
-        self._text2 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
+        # Instructions
+        self._text2 = pg.TextItem("", anchor=(0.5, 0.5))
         self._text2.setHtml(
-            f"<div style='font-family: {font_family}; text-align: center;'>"
-            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
-            "Don't forget to initialize (in air) your quartz device "
-            "<b style='color: #2b6cb0;'><i>before</i></b> starting.</span></div>"
+            f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; line-height: 1.5; margin: 0;'>"
+            f"<span style='font-size: {font_size_pt}pt; font-weight: 400;'>"
+            f"Initialize quartz device in air <b style='color: #2b6cb0;'>before</b> starting.<br>"
+            f"Apply sample drop <b style='color: #2b6cb0;'>after</b> hitting Start."
+            f"</span></p>"
         )
 
-        self._text3 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
+        # Info Icon
+        self._text3 = pg.TextItem("", anchor=(0.5, 0.5))
         self._text3.setHtml(
-            f"<div style='font-family: {font_family}; text-align: center;'>"
-            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
-            "Wait to apply the drop to your quartz device until "
-            "<b style='color: #2b6cb0;'><i>after</i></b> hitting \"Start\".</span></div>"
+            f"<p align='center' style='font-family: {font_family}; color: rgba{icon_color_val}; margin: 0;'>"
+            f"<span style='font-size: 60pt;'>&#9432;</span></p>"
         )
 
         view_box = target.getViewBox()
         graphics_item = target.graphicsItem()
 
+        # Group items for bulk property assignment
+        welcome_items = (self._text1, self._text2, self._text3)
+
         # Parent to graphicsItem (PlotItem level) so text overlays the plot space properly.
-        # Set ZValue to 998 (above the generic dim rect, below the calib overlay).
-        for text_item in (self._text1, self._text2, self._text3):
+        for item in welcome_items:
             shadow = QtWidgets.QGraphicsDropShadowEffect()
             shadow.setBlurRadius(10)
             shadow.setXOffset(0)
             shadow.setYOffset(1)
             shadow.setColor(QtGui.QColor(255, 255, 255, 220))
-            text_item.setGraphicsEffect(shadow)
-            text_item.setParentItem(graphics_item)
-            text_item.setZValue(998)
+            item.setGraphicsEffect(shadow)
+            item.setParentItem(graphics_item)
+            item.setZValue(998)
 
+        # Visibility logic
         no_users = UserProfiles.count() == 0
         self._text1.setVisible(no_users)
 
@@ -2332,13 +2338,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     """Helper to map a normalized data-space Y (0=bottom, 1=top) to pixel Y"""
                     return rect.y() + (rect.height() * (1.0 - normalized_y))
 
+                # Shift layout based on whether the main title is visible
                 if no_users:
-                    self._text1.setPos(center_x, map_y(0.65))
-                    self._text2.setPos(center_x, map_y(0.35))
-                    self._text3.setPos(center_x, map_y(0.25))
+                    self._text3.setPos(center_x, map_y(0.70))  # Icon
+                    self._text1.setPos(center_x, map_y(0.55))  # Title
+                    self._text2.setPos(center_x, map_y(0.35))  # Instructions
                 else:
-                    self._text2.setPos(center_x, map_y(0.55))
-                    self._text3.setPos(center_x, map_y(0.45))
+                    self._text3.setPos(center_x, map_y(0.60))  # Icon
+                    self._text2.setPos(center_x, map_y(0.45))  # Instructions
             except Exception:
                 pass
 
