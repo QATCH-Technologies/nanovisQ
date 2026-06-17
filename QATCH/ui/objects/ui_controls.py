@@ -1453,13 +1453,14 @@ class UIControls:  # QtWidgets.QMainWindow
         # Shared control-button sizing (thick enough for icon + label).
         _CTRL_BTN_H = 40
         _CTRL_ICON = QtCore.QSize(20, 20)
-        self.pButton_Stop = GlassPushButton(variant="default")
+        self.pButton_Stop = GlassPushButton(variant="neutral")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "stop-filled.svg")
         self.pButton_Stop.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Stop.setIconSize(_CTRL_ICON)
         self.pButton_Stop.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Stop.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Stop.setObjectName("pButton_Stop")
+        self.pButton_Stop.set_icon_left(True)
         self.Layout_controls.addWidget(self.pButton_Stop, 3, 6, 1, 1)
 
         # COM port combobox ---------------------------------------------------
@@ -1472,7 +1473,7 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # Identify button
         _CIRCLE_D = 34  # diameter for circular icon buttons
-        self.pButton_ID = GlassPushButton(variant="white")
+        self.pButton_ID = GlassPushButton(variant="default")
         self.pButton_ID.setToolTip("Identify selected Serial COM Port")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "search.svg")
         self.pButton_ID.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
@@ -1483,7 +1484,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.pButton_ID, 2, 2, 1, 1)
 
         # Refresh button
-        self.pButton_Refresh = GlassPushButton(variant="white")
+        self.pButton_Refresh = GlassPushButton(variant="default")
         self.pButton_Refresh.setToolTip("Refresh Serial COM Port list")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg")
         self.pButton_Refresh.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
@@ -1492,6 +1493,18 @@ class UIControls:  # QtWidgets.QMainWindow
         self.pButton_Refresh.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_Refresh.setObjectName("pButton_Refresh")
         self.Layout_controls.addWidget(self.pButton_Refresh, 2, 3, 1, 1)
+
+        # Configure button — replaces the in-dropdown "Configure..." item.
+        # Wired to the main window's device-info handler in mainWindow.py.
+        self.pButton_Configure = GlassPushButton(variant="default")
+        self.pButton_Configure.setToolTip("Configure device / position info")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
+        self.pButton_Configure.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
+        self.pButton_Configure.setIconSize(QtCore.QSize(18, 18))
+        self.pButton_Configure.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.pButton_Configure.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
+        self.pButton_Configure.setObjectName("pButton_Configure")
+        self.Layout_controls.addWidget(self.pButton_Configure, 2, 4, 1, 1)
 
         # Operation mode - source ---------------------------------------------
         self.cBox_Source = AnimatedComboBox(icon_path=self._combo_chevron)
@@ -1556,13 +1569,14 @@ class UIControls:  # QtWidgets.QMainWindow
         self.rButton_Manual = self.toggle_Cartridge
 
         # start button --------------------------------------------------------
-        self.pButton_Start = GlassPushButton(variant="default")
+        self.pButton_Start = GlassPushButton(variant="neutral")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "play-filled.svg")
         self.pButton_Start.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Start.setIconSize(_CTRL_ICON)
         self.pButton_Start.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Start.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Start.setObjectName("pButton_Start")
+        self.pButton_Start.set_icon_left(True)
         self.Layout_controls.addWidget(self.pButton_Start, 2, 6, 1, 1)
 
         # Add signal for Run Controls UI to handle START from Advanced menu ---
@@ -1578,39 +1592,47 @@ class UIControls:  # QtWidgets.QMainWindow
         )
 
         # clear plots button --------------------------------------------------
-        self.pButton_Clear = GlassPushButton(variant="default")
+        self.pButton_Clear = GlassPushButton(variant="neutral")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "clear-plot.svg")
         self.pButton_Clear.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Clear.setIconSize(_CTRL_ICON)
         self.pButton_Clear.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Clear.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Clear.setObjectName("pButton_Clear")
+        self.pButton_Clear.set_icon_left(True)
         self.Layout_controls.addWidget(self.pButton_Clear, 2, 5, 1, 1)
 
-        # reference button ----------------------------------------------------
-        self.pButton_Reference = GlassPushButton(variant="default")
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "reference-mode.svg")
-        self.pButton_Reference.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
-        self.pButton_Reference.setIconSize(_CTRL_ICON)
-        self.pButton_Reference.setMinimumSize(QtCore.QSize(0, 0))
-        self.pButton_Reference.setFixedHeight(_CTRL_BTN_H)
-        self.pButton_Reference.setObjectName("pButton_Reference")
-        self.pButton_Reference.setCheckable(True)
-        # GlassPushButton has no painted checked-state, so reflect it via the
-        # variant: primary (blue) while active, default when not.
-        self.pButton_Reference.toggled.connect(
-            lambda on: self.pButton_Reference.set_variant("primary_soft" if on else "default")
+        # Plot mode toggle (Absolute <-> Reference) -------------------------
+        # Replaces the old Set/Reset Reference push button. Toggle ON = Reference
+        # mode, OFF = Absolute mode. pButton_Reference is kept as an alias so the
+        # existing mainWindow wiring (setEnabled / setChecked / clicked) is
+        # preserved without changes.
+        self.toggle_PlotMode = GlassToggle()
+        self.toggle_PlotMode.setToolTip(
+            "<b>Plot Mode</b><br/>Off: Absolute &nbsp;|&nbsp; On: Reference"
         )
-        self.Layout_controls.addWidget(self.pButton_Reference, 3, 5, 1, 1)
+        self.toggle_PlotMode.setChecked(False)  # default: Absolute
+
+        self.lbl_plot_absolute = QtWidgets.QLabel("Absolute")
+        self.lbl_plot_reference = QtWidgets.QLabel("Reference")
+        for _lbl in (self.lbl_plot_absolute, self.lbl_plot_reference):
+            _lbl.setStyleSheet(
+                "background: transparent; border: none; color: rgba(30, 40, 55, 215);"
+            )
+            _lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+
+        # Alias: existing code refers to pButton_Reference for enable/check/click.
+        self.pButton_Reference = self.toggle_PlotMode
 
         # restore factory defaults --------------------------------------------
-        self.pButton_ResetApp = GlassPushButton(variant="default")
+        self.pButton_ResetApp = GlassPushButton(variant="neutral")
         self.pButton_ResetApp.setIconSize(_CTRL_ICON)
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "factory-reset.svg")
         self.pButton_ResetApp.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_ResetApp.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_ResetApp.setFixedHeight(_CTRL_BTN_H)
         self.pButton_ResetApp.setObjectName("pButton_ResetApp")
+        self.pButton_ResetApp.set_icon_left(True)
         self.Layout_controls.addWidget(self.pButton_ResetApp, 4, 5, 1, 1)
 
         # samples SpinBox -----------------------------------------------------
@@ -1770,8 +1792,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.cBox_MultiMode.setFixedHeight(50)
 
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
-        self.pButton_PlateConfig = GlassPushButton(variant="white")
-        # TODO: replace with new SVG icon
+        self.pButton_PlateConfig = GlassPushButton(variant="default")
         self.pButton_PlateConfig.setIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
         self.pButton_PlateConfig.setIconSize(QtCore.QSize(18, 18))
         self.pButton_PlateConfig.setToolTip("Plate Configuration...")
@@ -1782,6 +1803,11 @@ class UIControls:  # QtWidgets.QMainWindow
         self.hBox_MultiConfig.addWidget(self.cBox_MultiMode, 3)
         self.hBox_MultiConfig.addWidget(self.pButton_PlateConfig, 1)
         self.Layout_controls.addLayout(self.hBox_MultiConfig, 4, 0, 1, 1)
+
+        # Disable Plate Configuration when only a single channel is selected or
+        # available — a 1-channel setup has no plate layout to configure.
+        self.cBox_MultiMode.currentIndexChanged.connect(self._update_plate_config_enabled)
+        self._update_plate_config_enabled()
 
         self.chBox_MultiAuto = LabeledToggle("Auto-detect channel count")
         self.chBox_MultiAuto.setEnabled(True)
@@ -2040,70 +2066,117 @@ class UIControls:  # QtWidgets.QMainWindow
             os.path.join(Architecture.get_path(), "QATCH", "icons", "warning.svg")
         )
 
-        # Device Info container, widgets and layout
+        # --- Device Info container, widgets and layout ---
         self.device_info_container = QtWidgets.QWidget()
+        self.device_info_container.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.device_info_container.setStyleSheet("background: transparent;")
+
+        # --- Header: Back Button & Banner ---
+        self.back_btn = QtWidgets.QPushButton()
+        self.back_btn.setIcon(QtGui.QIcon("left-arrow.svg"))
+        self.back_btn.setIconSize(QtCore.QSize(20, 20))
+        self.back_btn.setFixedSize(36, 36)
+        self.back_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.back_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 40);
+                border: 1px solid rgba(255, 255, 255, 100);
+                border-radius: 18px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 80);
+                border: 1px solid rgba(255, 255, 255, 150);
+            }
+            QPushButton:pressed {
+                background: rgba(255, 255, 255, 30);
+            }
+        """)
+        # Assuming the back button performs the same action as closing the editor
+        self.back_btn.clicked.connect(self.on_device_config_editor_close)
+
         self.ConfigBannerWidget = GlassWarningLabel("Configuration Editor for Device")
-        # bannerWidget.setAlignment(QtCore.Qt.AlignCenter)
-        self.deviceLayout = QtWidgets.QGridLayout()
-        self.deviceLayout.setContentsMargins(0, 0, 0, 0)
-        # Input validators
+
+        # Create a header layout that perfectly centers the banner
+        # by balancing the back button with a dummy widget on the right.
+        header_layout = QtWidgets.QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        dummy_spacer = QtWidgets.QWidget()
+        dummy_spacer.setFixedSize(36, 36)
+
+        header_layout.addWidget(self.back_btn)
+        header_layout.addStretch()
+        header_layout.addWidget(self.ConfigBannerWidget)
+        header_layout.addStretch()
+        header_layout.addWidget(dummy_spacer)
+
+        # --- Input validators ---
         self.validDeviceName = QtGui.QRegularExpressionValidator(
             QtCore.QRegularExpression(r'[^\\/:*?"\'<>|]{1,12}')
-        )  # Up to 12 characters long, excluding invalid chars
+        )
         self.validDevicePid = QtGui.QRegularExpressionValidator(
             QtCore.QRegularExpression(r"[0-9A-Fa-f]{1,2}")
-        )  # 2-digit HEX string (00-FF)
+        )
         self.validTempOffset = QtGui.QRegularExpressionValidator(
             QtCore.QRegularExpression(
                 r"-?(?:[0-5](?:\.\d{0,2})?|6(?:\.(?:[0-2]\d?|3[0-5]?))?|6\.?|\.\d{1,2})"
             )
-        )  # QtGui.QDoubleValidator(-6.35, 6.35, 2)
-        # self.validTempOffset.setNotation(QtGui.QDoubleValidator.StandardNotation)
+        )
         self.validPogoPosition = QtGui.QRegularExpressionValidator(
             QtCore.QRegularExpression(r"[0-5]?[0-9]|60")
-        )  # QtGui.QIntValidator(0, 60)
+        )
         self.validPogoDelayMs = QtGui.QRegularExpressionValidator(
             QtCore.QRegularExpression(r"[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-4]")
-        )  # QtGui.QIntValidator(0, 254)
+        )
+
+        # Unified translucent style for text inputs
+        glass_input_style = """
+            QLineEdit {
+                background: rgba(255, 255, 255, 60);
+                border: 1px solid rgba(255, 255, 255, 120);
+                border-radius: 6px;
+                padding: 4px 8px;
+                color: rgba(30, 40, 55, 220);
+                min-width: 150px;
+            }
+            QLineEdit:focus {
+                background: rgba(255, 255, 255, 180);
+                border: 1px solid rgba(0, 120, 215, 150);
+            }
+        """
+
         # Row 0L: Device Name
         self.device_name_input = QtWidgets.QLineEdit()
         self.device_name_input.setValidator(self.validDeviceName)
+        self.device_name_input.setStyleSheet(glass_input_style)
         self.device_name_action = self.device_name_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.device_name_input.textEdited.connect(
             lambda text, action=self.device_name_action: self.on_text_edit(text, action)
         )
-        # self.device_name_save = GlassPushButton("Save")
-        # self.device_name_save.setFixedHeight(20)
-        # self.device_name_reset = GlassPushButton("Reset")
-        # self.device_name_reset.setFixedHeight(20)
+
         # Row 0R: Device Position ID
         self.device_pid_input = QtWidgets.QLineEdit()
         self.device_pid_input.setValidator(self.validDevicePid)
+        self.device_pid_input.setStyleSheet(glass_input_style)
         self.device_pid_action = self.device_pid_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.device_pid_input.textEdited.connect(
             lambda text, action=self.device_pid_action: self.on_text_edit(text, action)
         )
-        # self.device_pid_input.editingFinished.connect(
-        #     lambda: self.device_pid_input.setText(
-        #         self.device_pid_input.text().upper().strip()
-        #     )
-        # )
+
         self.device_config_default = GlassPushButton("Default")
         self.device_config_default.clicked.connect(self.on_device_config_default)
-        self.device_config_default.setFixedHeight(20)
         self.device_config_save = GlassPushButton("Save")
         self.device_config_save.clicked.connect(self.on_device_config_save)
-        self.device_config_save.setFixedHeight(20)
         self.device_config_reset = GlassPushButton("Reset")
         self.device_config_reset.clicked.connect(self.on_device_config_reset)
-        self.device_config_reset.setFixedHeight(20)
+
         # Row 1L: Constant Temperature Calibration
         self.temp_cal_always_input = QtWidgets.QLineEdit()
         self.temp_cal_always_input.setValidator(self.validTempOffset)
+        self.temp_cal_always_input.setStyleSheet(glass_input_style)
         self.temp_cal_always_action = self.temp_cal_always_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
@@ -2113,13 +2186,11 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_always_input.editingFinished.connect(
             lambda widget=self.temp_cal_always_input: self.on_edit_finish(widget)
         )
-        # self.constant_temp_cal_save = GlassPushButton("Save")
-        # self.constant_temp_cal_save.setFixedHeight(20)
-        # self.constant_temp_cal_reset = GlassPushButton("Reset")
-        # self.constant_temp_cal_reset.setFixedHeight(20)
+
         # Row 1R: Running Temperature Calibration
         self.temp_cal_measure_input = QtWidgets.QLineEdit()
         self.temp_cal_measure_input.setValidator(self.validTempOffset)
+        self.temp_cal_measure_input.setStyleSheet(glass_input_style)
         self.temp_cal_measure_action = self.temp_cal_measure_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
@@ -2129,122 +2200,145 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_measure_input.editingFinished.connect(
             lambda widget=self.temp_cal_measure_input: self.on_edit_finish(widget)
         )
+
         self.temp_cal_default = GlassPushButton("Default")
         self.temp_cal_default.clicked.connect(self.on_temp_cal_default)
-        self.temp_cal_default.setFixedHeight(20)
         self.temp_cal_save = GlassPushButton("Save")
         self.temp_cal_save.clicked.connect(self.on_temp_cal_save)
-        self.temp_cal_save.setFixedHeight(20)
         self.temp_cal_reset = GlassPushButton("Reset")
         self.temp_cal_reset.clicked.connect(self.on_temp_cal_reset)
-        self.temp_cal_reset.setFixedHeight(20)
-        # Row 2L: Constant Temperature Calibration
+
+        # Row 2L: Lid Pogo Distance
         self.lid_pogo_distance_input = QtWidgets.QLineEdit()
         self.lid_pogo_distance_input.setValidator(self.validPogoPosition)
+        self.lid_pogo_distance_input.setStyleSheet(glass_input_style)
         self.lid_pogo_distance_action = self.lid_pogo_distance_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.lid_pogo_distance_input.textEdited.connect(
             lambda text, action=self.lid_pogo_distance_action: self.on_text_edit(text, action)
         )
-        # self.lid_pogo_distance_save = GlassPushButton("Save")
-        # self.lid_pogo_distance_save.setFixedHeight(20)
-        # self.lid_pogo_distance_reset = GlassPushButton("Reset")
-        # self.lid_pogo_distance_reset.setFixedHeight(20)
-        # Row 2R: Running Temperature Calibration
+
+        # Row 2R: Lid Pogo Delay
         self.lid_pogo_delay_input = QtWidgets.QLineEdit()
         self.lid_pogo_delay_input.setValidator(self.validPogoDelayMs)
+        self.lid_pogo_delay_input.setStyleSheet(glass_input_style)
         self.lid_pogo_delay_action = self.lid_pogo_delay_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.lid_pogo_delay_input.textEdited.connect(
             lambda text, action=self.lid_pogo_delay_action: self.on_text_edit(text, action)
         )
+
         self.lid_pogo_default = GlassPushButton("Default")
         self.lid_pogo_default.clicked.connect(self.on_lid_pogo_default)
-        self.lid_pogo_default.setFixedHeight(20)
         self.lid_pogo_save = GlassPushButton("Save")
         self.lid_pogo_save.clicked.connect(self.on_lid_pogo_save)
-        self.lid_pogo_save.setFixedHeight(20)
         self.lid_pogo_reset = GlassPushButton("Reset")
         self.lid_pogo_reset.clicked.connect(self.on_lid_pogo_reset)
-        self.lid_pogo_reset.setFixedHeight(20)
 
-        self.device_config_group = QtWidgets.QGroupBox("Device Configuration")
-        self.device_config_layout = QtWidgets.QGridLayout(self.device_config_group)
-        self.temp_cal_group = QtWidgets.QGroupBox("Temperature Calibration")
-        self.temp_cal_layout = QtWidgets.QGridLayout(self.temp_cal_group)
-        self.lid_pogo_cal_group = QtWidgets.QGroupBox("Lid POGO Calibration")
-        self.lid_pogo_cal_layout = QtWidgets.QGridLayout(self.lid_pogo_cal_group)
+        # --- Custom Translucent Cards ---
+        def create_glass_card(title_text):
+            card = QtWidgets.QFrame()
+            card.setStyleSheet("""
+                QFrame {
+                    background: rgba(255, 255, 255, 30);
+                    border: 1px solid rgba(255, 255, 255, 90);
+                    border-radius: 12px;
+                }
+                QLabel { 
+                    border: none; 
+                    background: transparent; 
+                    color: rgba(40, 50, 65, 210);
+                }
+            """)
+            layout = QtWidgets.QVBoxLayout(card)
+            layout.setContentsMargins(16, 16, 16, 16)
+            layout.setSpacing(12)
 
-        # self.deviceLayout.setColumnMinimumWidth(4, 25)
-        # self.deviceLayout.addWidget(QtWidgets.QLabel("Device Name:"), 0, 0)
-        # self.deviceLayout.addWidget(self.device_name_input, 0, 1)
-        # self.deviceLayout.addWidget(self.device_name_save, 0, 2)
-        # self.deviceLayout.addWidget(self.device_name_reset, 0, 3)
-        # self.deviceLayout.addWidget(QtWidgets.QLabel("Device Position ID:"), 0, 5)
-        # self.deviceLayout.addWidget(self.device_pid_input, 0, 6)
-        # self.deviceLayout.addWidget(self.device_pid_save, 0, 7)
-        # self.deviceLayout.addWidget(self.device_pid_reset, 0, 8)
-        # self.deviceLayout.addWidget(QtWidgets.QLabel("Constant Temp. Offset:"), 1, 0)
-        # self.deviceLayout.addWidget(self.constant_temp_cal_input, 1, 1)
-        # self.deviceLayout.addWidget(self.constant_temp_cal_save, 1, 2)
-        # self.deviceLayout.addWidget(self.constant_temp_cal_reset, 1, 3)
-        # self.deviceLayout.addWidget(QtWidgets.QLabel("Running Temp. Offset:"), 1, 5)
-        # self.deviceLayout.addWidget(self.running_temp_cal_input, 1, 6)
-        # self.deviceLayout.addWidget(self.running_temp_cal_save, 1, 7)
-        # self.deviceLayout.addWidget(self.running_temp_cal_reset, 1, 8)
-        # self.deviceLayout.addWidget(QtWidgets.QLabel("Lid POGO Distance:"), 2, 0)
-        # self.deviceLayout.addWidget(self.lid_pogo_distance_input, 2, 1)
-        # self.deviceLayout.addWidget(self.lid_pogo_distance_save, 2, 2)
-        # self.deviceLayout.addWidget(self.lid_pogo_distance_reset, 2, 3)
-        # self.deviceLayout.addWidget(QtWidgets.QLabel("Lid POGO Speed:"), 2, 5)
-        # self.deviceLayout.addWidget(self.lid_pogo_speed_input, 2, 6)
-        # self.deviceLayout.addWidget(self.lid_pogo_speed_save, 2, 7)
-        # self.deviceLayout.addWidget(self.lid_pogo_speed_reset, 2, 8)
+            title = QtWidgets.QLabel(title_text.upper())
+            title.setStyleSheet("font-weight: bold; font-size: 10pt; letter-spacing: 1px;")
+            layout.addWidget(title)
 
-        self.device_config_layout.addWidget(QtWidgets.QLabel("Device Name:"), 0, 0)
-        self.device_config_layout.addWidget(self.device_name_input, 0, 1, 1, 2)
-        # self.device_config_layout.addWidget(self.device_name_save, 1, 1)
-        # self.device_config_layout.addWidget(self.device_name_reset, 1, 2)
-        self.device_config_layout.addWidget(QtWidgets.QLabel("Position ID:"), 1, 0)
-        self.device_config_layout.addWidget(self.device_pid_input, 1, 1, 1, 2)
-        self.device_config_layout.addWidget(self.device_config_default, 2, 0)
-        self.device_config_layout.addWidget(self.device_config_save, 2, 1)
-        self.device_config_layout.addWidget(self.device_config_reset, 2, 2)
-        self.temp_cal_layout.addWidget(QtWidgets.QLabel("\u2206T_always:"), 0, 0)
-        self.temp_cal_layout.addWidget(self.temp_cal_always_input, 0, 1, 1, 2)
-        # self.temp_cal_layout.addWidget(self.temp_cal_always_save, 1, 1)
-        # self.temp_cal_layout.addWidget(self.temp_cal_always_reset, 1, 2)
-        self.temp_cal_layout.addWidget(QtWidgets.QLabel("\u2206T_measure:"), 1, 0)
-        self.temp_cal_layout.addWidget(self.temp_cal_measure_input, 1, 1, 1, 2)
-        self.temp_cal_layout.addWidget(self.temp_cal_default, 2, 0)
-        self.temp_cal_layout.addWidget(self.temp_cal_save, 2, 1)
-        self.temp_cal_layout.addWidget(self.temp_cal_reset, 2, 2)
-        self.lid_pogo_cal_layout.addWidget(QtWidgets.QLabel("Servo Steps:"), 0, 0)
-        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_distance_input, 0, 1, 1, 2)
-        # self.lid_pogo_cal_layout.addWidget(self.lid_pogo_distance_save, 1, 1)
-        # self.lid_pogo_cal_layout.addWidget(self.lid_pogo_distance_reset, 1, 2)
-        self.lid_pogo_cal_layout.addWidget(QtWidgets.QLabel("Servo Delay:"), 1, 0)
-        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_delay_input, 1, 1, 1, 2)
-        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_default, 2, 0)
-        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_save, 2, 1)
-        self.lid_pogo_cal_layout.addWidget(self.lid_pogo_reset, 2, 2)
+            form_layout = QtWidgets.QGridLayout()
+            form_layout.setContentsMargins(0, 0, 0, 0)
+            form_layout.setSpacing(12)
+            layout.addLayout(form_layout)
 
-        self.deviceLayout.addWidget(self.device_config_group, 0, 0)
-        self.deviceLayout.addWidget(self.temp_cal_group, 0, 1)
-        self.deviceLayout.addWidget(self.lid_pogo_cal_group, 0, 2)
+            btn_layout = QtWidgets.QHBoxLayout()
+            btn_layout.setContentsMargins(0, 8, 0, 0)
+            btn_layout.setSpacing(8)
+            layout.addLayout(btn_layout)
 
-        # Close
+            return card, form_layout, btn_layout
+
+        # 1. Device Config Card
+        self.device_config_card, dev_form, dev_btns = create_glass_card("Device Configuration")
+        dev_form.addWidget(QtWidgets.QLabel("Device Name:"), 0, 0)
+        dev_form.addWidget(self.device_name_input, 0, 1)
+        dev_form.addWidget(QtWidgets.QLabel("Position ID:"), 1, 0)
+        dev_form.addWidget(self.device_pid_input, 1, 1)
+        dev_form.setColumnStretch(2, 1)  # Prevent inputs from expanding horizontally
+
+        dev_btns.addWidget(self.device_config_default)
+        dev_btns.addWidget(self.device_config_save)
+        dev_btns.addWidget(self.device_config_reset)
+        dev_btns.addStretch()
+
+        # 2. Temp Cal Card
+        self.temp_cal_card, temp_form, temp_btns = create_glass_card("Temperature Calibration")
+        temp_form.addWidget(QtWidgets.QLabel("\u2206T_always:"), 0, 0)
+        temp_form.addWidget(self.temp_cal_always_input, 0, 1)
+        temp_form.addWidget(QtWidgets.QLabel("\u2206T_measure:"), 1, 0)
+        temp_form.addWidget(self.temp_cal_measure_input, 1, 1)
+        temp_form.setColumnStretch(2, 1)
+
+        temp_btns.addWidget(self.temp_cal_default)
+        temp_btns.addWidget(self.temp_cal_save)
+        temp_btns.addWidget(self.temp_cal_reset)
+        temp_btns.addStretch()
+
+        # 3. Lid Pogo Card
+        self.lid_pogo_cal_card, pogo_form, pogo_btns = create_glass_card("Lid POGO Calibration")
+        pogo_form.addWidget(QtWidgets.QLabel("Servo Steps:"), 0, 0)
+        pogo_form.addWidget(self.lid_pogo_distance_input, 0, 1)
+        pogo_form.addWidget(QtWidgets.QLabel("Servo Delay:"), 1, 0)
+        pogo_form.addWidget(self.lid_pogo_delay_input, 1, 1)
+        pogo_form.setColumnStretch(2, 1)
+
+        pogo_btns.addWidget(self.lid_pogo_default)
+        pogo_btns.addWidget(self.lid_pogo_save)
+        pogo_btns.addWidget(self.lid_pogo_reset)
+        pogo_btns.addStretch()
+
+        # --- Main Vertical Layout Assembly ---
+        self.deviceLayout = QtWidgets.QVBoxLayout()
+        self.deviceLayout.setSpacing(16)
+        self.deviceLayout.addWidget(self.device_config_card)
+        self.deviceLayout.addWidget(self.temp_cal_card)
+        self.deviceLayout.addWidget(self.lid_pogo_cal_card)
+
+        # Bottom Close Button (Optional, keeping it if you still want it alongside back)
         self.close_btn = GlassPushButton("Close Configuration Editor")
         self.close_btn.clicked.connect(self.on_device_config_editor_close)
-        self.close_btn.setFixedHeight(20)
+        self.close_btn.setFixedHeight(28)
+
+        # Final Banner Layout combining everything
         bannerLayout = QtWidgets.QVBoxLayout(self.device_info_container)
-        bannerLayout.addWidget(self.ConfigBannerWidget)
+        bannerLayout.setContentsMargins(24, 24, 24, 24)
+        bannerLayout.setSpacing(24)
+
+        bannerLayout.addLayout(header_layout)  # Added Header here
         bannerLayout.addStretch()
-        bannerLayout.addLayout(self.deviceLayout)
+        bannerLayout.addLayout(self.deviceLayout)  # Row layout goes here
         bannerLayout.addStretch()
-        bannerLayout.addWidget(self.close_btn)
+
+        # Center the close button slightly distinct from the layout stretch
+        close_btn_layout = QtWidgets.QHBoxLayout()
+        close_btn_layout.addStretch()
+        close_btn_layout.addWidget(self.close_btn)
+        close_btn_layout.addStretch()
+        bannerLayout.addLayout(close_btn_layout)
 
         # Hide it initially; the popup will show it when anchored
         self.device_info_container.hide()
@@ -2917,7 +3011,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.pButton_Stop.setText(_translate("MainWindow", " STOP"))
         self.pButton_Start.setText(_translate("MainWindow", "START"))
         self.pButton_Clear.setText(_translate("MainWindow", "Clear Plots"))
-        self.pButton_Reference.setText(_translate("MainWindow", "Set/Reset Reference"))
+        # pButton_Reference is now the Absolute/Reference GlassToggle (no text).
         self.pButton_ResetApp.setText(_translate("MainWindow", "Factory Defaults"))
         self.sBox_Samples.setSuffix(_translate("MainWindow", " / 5 min"))
         self.sBox_Samples.setPrefix(_translate("MainWindow", ""))
@@ -3034,7 +3128,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.run_controls.update_progress(0, 5, "Idle")
             self.run_controls.setEnabled(False)
 
-        self.tool_TempControl.setEnabled(self.cBox_Port.count() > 1)
+        self.tool_TempControl.setEnabled(self.cBox_Port.count() > 0)
         num_devices = getattr(self, "multiplex_plots", 1)
         for i in range(num_devices):
             self.parent.parent.PlotsWin.ui2.left_pane.set_device_state(i, "idle")
@@ -3201,7 +3295,15 @@ class UIControls:  # QtWidgets.QMainWindow
         # ---- Left column: connection + signal settings ----
         op_section = section("Operation Mode", self.cBox_Source)
 
-        port_row = hrow(self.cBox_Port, self.pButton_ID, self.pButton_Refresh)
+        # Port row: shrunken dropdown + inline ID / Refresh / Configure buttons.
+        self.cBox_Port.setMinimumWidth(0)
+        self.cBox_Port.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        port_row = hrow(
+            self.cBox_Port,
+            self.pButton_ID,
+            self.pButton_Refresh,
+            self.pButton_Configure,
+        )
         port_section = section("Serial COM Port", port_row)
 
         res_row = hrow(self.cBox_Speed, self.chBox_freqHop)
@@ -3220,20 +3322,28 @@ class UIControls:  # QtWidgets.QMainWindow
         left_col.addWidget(self.chBox_correctNoise)
         left_col.addStretch()
 
-        # ---- Right column: cartridge auto-lock + control buttons ----
+        # ---- Right column: cartridge auto-lock, plot mode, control buttons ----
         lock_row = hrow(self.lbl_lock_manual, self.toggle_Cartridge, self.lbl_lock_auto, spacing=8)
+
+        # Plotting mode toggle (Absolute <-> Reference), its own subsection.
+        plot_mode_row = hrow(
+            self.lbl_plot_absolute,
+            self.toggle_PlotMode,
+            self.lbl_plot_reference,
+            spacing=8,
+        )
 
         btns = QtWidgets.QVBoxLayout()
         btns.setSpacing(8)
         btns.addWidget(self.pButton_Start)
         btns.addWidget(self.pButton_Stop)
         btns.addWidget(self.pButton_Clear)
-        btns.addWidget(self.pButton_Reference)
         btns.addWidget(self.pButton_ResetApp)
 
         right_col = QtWidgets.QVBoxLayout()
         right_col.setSpacing(14)
         right_col.addLayout(section("Cartridge Auto-Lock", lock_row, stretch_last=False))
+        right_col.addLayout(section("Plot Mode", plot_mode_row, stretch_last=False))
         right_col.addLayout(section("Control Buttons", btns, stretch_last=False))
         right_col.addStretch()
 
@@ -3254,13 +3364,16 @@ class UIControls:  # QtWidgets.QMainWindow
             "background: transparent; border: none; padding: 0px 2px; }"
         )
         self.infobar_readout.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft)
+
+        def _mirror_status(t):
+            # Strip the legacy "Infobar" prefix/markup; the readout is labelled
+            # "Status:" now, so the old prefix is redundant noise.
+            clean = self._strip_infobar_prefix(t)
+            self.infobar_readout.setText(f"Status:  {clean}" if clean else "Status:  Ready")
+
         # Mirror live status text from the existing infobar line edit.
-        self.infobar.textChanged.connect(
-            lambda t: self.infobar_readout.setText(f"Status:  {t}" if t else "Status:  Ready")
-        )
-        self.infobar_readout.setText(
-            f"Status:  {self.infobar.text()}" if self.infobar.text() else "Status:  Ready"
-        )
+        self.infobar.textChanged.connect(_mirror_status)
+        _mirror_status(self.infobar.text())
 
         outer = QtWidgets.QVBoxLayout()
         outer.setContentsMargins(2, 2, 2, 2)
@@ -3425,12 +3538,46 @@ class UIControls:  # QtWidgets.QMainWindow
         """
         pass
 
+    @staticmethod
+    def _strip_infobar_prefix(text: str) -> str:
+        """Remove the legacy 'Infobar' prefix and HTML markup from status text.
+
+        Status messages historically embedded a blue '<font>Infobar</font>'
+        prefix. The readout is now labelled 'Status:', so strip both the markup
+        and a leading 'Infobar' token, returning clean plain text.
+        """
+        if not text:
+            return ""
+        import re  # noqa: PLC0415
+
+        # Drop HTML tags, collapse whitespace.
+        plain = re.sub(r"<[^>]+>", "", text)
+        plain = re.sub(r"\s+", " ", plain).strip()
+        # Remove a leading "Infobar" token if present.
+        plain = re.sub(r"^infobar[:\s-]*", "", plain, flags=re.IGNORECASE).strip()
+        return plain
+
+    def _update_plate_config_enabled(self, *args):
+        """Enable Plate Config only when more than one channel is in play.
+
+        The button is disabled when the Multiplex Mode is '1 Channel' (index 0)
+        or when only a single channel option exists in the dropdown — there is
+        no multi-well plate to configure in those cases.
+        """
+        if not hasattr(self, "pButton_PlateConfig"):
+            return
+        only_one_option = self.cBox_MultiMode.count() <= 1
+        single_channel = self.cBox_MultiMode.currentIndex() <= 0
+        self.pButton_PlateConfig.setEnabled(not (only_one_option or single_channel))
+
     def doPlateConfig(self):
         if hasattr(self, "wellPlateUI"):
             if self.wellPlateUI.isVisible():
                 self.wellPlateUI.close()
 
-        num_ports = self.cBox_Port.count() - 1
+        # The "Configure..." sentinel was removed from this dropdown (it is now
+        # a dedicated button), so the device count is the full item count.
+        num_ports = self.cBox_Port.count()
         if num_ports == 5:
             num_ports = 4
         i = self.cBox_Port.currentText()

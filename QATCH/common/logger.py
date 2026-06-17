@@ -209,7 +209,7 @@ class Logger:
         loguru markup so literals aren't parsed as color tags, and ensures
         the correct calling frame depth is captured.
         """
-        text = f"[{tag}] {msg}".strip() if msg is not None else str(tag)
+        text = f"{tag} {msg}".strip() if msg is not None else str(tag)
         _loguru.opt(depth=2).log(level, "{}", text)
 
     @staticmethod

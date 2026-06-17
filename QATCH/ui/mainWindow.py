@@ -61,7 +61,7 @@ from QATCH.core.constants import Constants, OperationType, UpdateEngines, UserRo
 from QATCH.core.worker import Worker
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
-# from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
+# from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.Device import serial  # real device hardware
@@ -575,7 +575,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_dry_msg: str = "Preparing sensor..."
         self._last_dry_status: bool = False
         self.dry_detect = []
-        n_devices = self.ControlsWin.ui1.cBox_Port.count() - 1
+        n_devices = self.ControlsWin.ui1.cBox_Port.count()
         for _ in range(n_devices):
             self.dry_detect.append(
                 DryingDetection(
@@ -1070,7 +1070,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # If ports are empty or None type, determine the number of devices connected.  If multiple devices (>2)
                 # are connected, warn the user.  Otherwise, pressume there are no deives connected and warn the user again and
                 # return to caller.
-                if self.ControlsWin.ui1.cBox_Port.count() > 2:
+                if self.ControlsWin.ui1.cBox_Port.count() > 1:
                     Log.e(
                         tag=TAG,
                         msg="Multiple devices detected. Please select a device and try again.",
@@ -1109,7 +1109,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.multiplex_plots > 1:
             selected_port = []
             for port_id in active_port_list:
-                if port_id < self.ControlsWin.ui1.cBox_Port.count() - 1:
+                if port_id < self.ControlsWin.ui1.cBox_Port.count():
                     # TODO: Figure out what value needs to be appended to the active ports list.
                     # Format is PORT_SERIALDEVICE from Last_Used.txt
                     selected_port.append(self.ControlsWin.ui1.cBox_Port.itemData(port_id))
@@ -1582,7 +1582,7 @@ class MainWindow(QtWidgets.QMainWindow):
         enable_temp = enabled
         if enable_temp:
             # at least one device connected
-            enable_temp = self.ControlsWin.ui1.cBox_Port.count() > 1
+            enable_temp = self.ControlsWin.ui1.cBox_Port.count() > 0
 
         if not enabled:
             # Lock icon to show number when button is disabled (not hourglass)
@@ -2398,6 +2398,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.pButton_ResetApp.clicked.connect(self.factory_defaults)
         self.ControlsWin.ui1.pButton_ID.clicked.connect(self._port_identify)
         self.ControlsWin.ui1.pButton_Refresh.clicked.connect(self._port_list_refresh)
+        # Configure button replaces the old in-dropdown "Configure..." item.
+        self.ControlsWin.ui1.pButton_Configure.clicked.connect(
+            lambda _checked=False: self._configure_device_info()
+        )
         self.ControlsWin.ui1.sBox_Samples.valueChanged.connect(self._update_sample_size)
         self.ControlsWin.ui1.slTemp.valueChanged.connect(self._update_tec_temp)
         self.ControlsWin.ui1.slTemp.sliderReleased.connect(self._update_tec_temp)
@@ -2668,7 +2672,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if not self._identifying:
             Log.i(TAG, f"Identifying port {friendly_port_name}...")
-            self.ControlsWin.ui1.pButton_ID.set_active(True)
+            self.ControlsWin.ui1.pButton_ID.setStyleSheet("background: yellow;")
             self._identifying = True
             if True:  # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
                 # selected_port.count('.') == 3:
@@ -2692,7 +2696,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fwUpdater.open(selected_port)
         else:
             Log.i(TAG, f"Identifying port {friendly_port_name}... done!")
-            self.ControlsWin.ui1.pButton_ID.set_active(False)
+            self.ControlsWin.ui1.pButton_ID.setStyleSheet("background: white;")
             self._identifying = False
             # close port to stop LED blink
             self.fwUpdater.close()
@@ -5905,7 +5909,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.ControlsWin.ui1.cBox_Port.addItem(
                         controller_port[0], controller_port[1], controller_port[2]
                     )
-                self.ControlsWin.ui1.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
+                # NOTE: the "Configure..." action was moved out of this dropdown
+                # into a dedicated pButton_Configure button (wired below), so it
+                # is no longer added as a combo item here.
 
             # Show/hide "Next Port" button (as HW supports it)
             self.ControlsWin.ui1.action_NextPortRow.setVisible(flux_controller_exists)
@@ -6003,7 +6009,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 idx = self.ControlsWin.ui1.cBox_MultiMode.count() - 1
         self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(idx)
         for i in range(self.ControlsWin.ui1.cBox_MultiMode.count()):
-            if i < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1) - 1:
+            # Port count no longer includes the "Configure..." sentinel, so the
+            # available channel count is simply ports * channels-per-device.
+            if i < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1):
                 enable = True
             else:
                 enable = False
@@ -6330,7 +6338,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.multiplex_plots > 1:
                 selected_port = []
                 for i in range(self.multiplex_plots):
-                    if i < self.ControlsWin.ui1.cBox_Port.count() - 1:
+                    if i < self.ControlsWin.ui1.cBox_Port.count():
                         selected_port.append(self.ControlsWin.ui1.cBox_Port.itemData(i))
 
             self.worker._port = selected_port  # used in run()
@@ -7630,7 +7638,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.close_no_confirm = True
                 QtCore.QTimer.singleShot(1000, self.ControlsWin.close)
 
-                # Update latest build information for nightlyk
+                # Update latest build information for nightly
                 if Constants.UpdateEngine == UpdateEngines.Nightly:
                     if hasattr(self, "latest_build"):
                         from QATCH.nightly.artifacts import GH_Artifacts
