@@ -1944,7 +1944,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             if success:
                 # Write to global port variable
                 self.parent.parent.active_multi_ch = self.tool_NextPortRow.value()
-                self.parent.parent.set_multi_mode()
+                self.parent.parent.set_multi_mode()  # redraw plot labels accordingly
 
             else:
                 self.tool_NextPortRow.setIconError()  # trasient red text, resets on next update
@@ -1962,9 +1962,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
     def _get_multiport_results(self):
         results = []
-        for i in range(4):
+        for i in range(4):  # i = 0..3
             path = Constants.cvs_peakfrequencies_path
-            path = FileStorage.DEV_populate_path(path, i)
+            path = FileStorage.DEV_populate_path(path, i + 1)  # PIDs 1..4
             results.append(os.path.isfile(path))
         self.cal_multiport_results.append(results)
         return results
@@ -1972,15 +1972,15 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
     def _cal_multiport_checker(self):
         try:
             if not self.pButton_Start.isEnabled():
-                Log.w("Timer check ping: calibration is running")
+                Log.d("Timer check ping: calibration is running")
                 return
 
             if not self.action_NextPortRow.isEnabled():
-                Log.w("Timer check ping: port selector is switching")
+                Log.d("Timer check ping: port selector is switching")
                 return
             
             if self.tool_NextPortRow.isError():
-                Log.e("Timer check ping: Error changing ports... cannot continue!")
+                Log.e("Initialize Error changing ports... cannot continue!")
                 self.cal_multiport_timer.stop()
                 return
             
@@ -1991,22 +1991,34 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
             if self.tool_NextPortRow.value() == self.cal_multiport_portnum:
                 # Get result of port calibration from prior sweep
-                Log.e("Result:", self._get_multiport_results())
+                port_result = self._get_multiport_results()
+                Log.d("Result:", port_result)
+                # Update Plate Config
+                for i, success in enumerate(port_result):
+                    if success:
+                        self.wellPlateUI.toggleWellSelection(
+                            self.cal_multiport_portnum - 1, i
+                        )
+
+                self.wellPlateUI.repaint()  # redraw selected
+                QtCore.QCoreApplication.processEvents()
 
                 if is_pending:
-                    Log.e(f"Timer check ping: Selecting port {self.tool_NextPortRow.value() + 1}...")
+                    Log.i(f"Selecting port {self.tool_NextPortRow.value() + 1}...")
                     self.tool_NextPortRow.click()  # next
                     return
             
             if not is_pending:              
                 # TODO: Write plate configuration to JSON file
-                Log.w("Overall result:", self.cal_multiport_results)
+                Log.d("Overall result:", self.cal_multiport_results)
 
-                Log.e("Timer check ping: Finished multiport initialize!")
+                Log.i("Finished multiport initialize process!")
+                Log.i(f"Initialize found {self.wellPlateUI.wells_selected} usable wells.")
                 self.cal_multiport_timer.stop()
             else:
                 self.cal_multiport_portnum += 1
-                Log.e(f"Timer check ping: Initializing port {self.cal_multiport_portnum}...")
+                Log.i(f"Initializing port {self.cal_multiport_portnum}"
+                      f" of {self.cBox_MultiMode.currentIndex() - 3}...")
                 self.action_initialize()
 
         except Exception as e:
@@ -2016,13 +2028,15 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         
         finally:
             if not self.cal_multiport_timer.isActive():
-                Log.e("Timer finished: Re-homing port selector.")
+                Log.d("Timer finished: Re-homing port selector.")
                 # When multiport calibration timer stops,
                 # force immediate re-home to Port 1, regardless
                 # of how many channels were scanned, by setting
                 # the icon error flag and stepping to next port
                 self.tool_NextPortRow.setIconError()
                 self.tool_NextPortRow.click()  # re-home
+                # Reset portnum flag to zero (inactive)
+                self.cal_multiport_portnum = 0
                 # Clear cache copy of cal results on stop
                 self.cal_multiport_results = []
 
@@ -2041,6 +2055,11 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             if self.cBox_MultiMode.currentIndex() > 3 and not self.cal_multiport_timer.isActive():
                 self.cal_multiport_timer.start()
                 self.cal_multiport_portnum = 1
+
+                # Open Plate Config
+                self.doPlateConfig()  # Open plate config, loaded from JSON
+                self.wellPlateUI.selectNone()  # clear all wells
+                self.wellPlateUI.move(130, 165)  # move to top-left, below main UI toolbar
 
     def action_start(self):
         """Method to handle start UI actions."""
@@ -2155,11 +2174,14 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         else:  # 4x6 system
             well_width = 6
             well_height = 4
-        num_channels = self.cBox_MultiMode.currentIndex() + 1  # user define device count
+        try:
+            num_channels = int(self.cBox_MultiMode.currentText().split()[0])  # user define device count
+        except ValueError:
+            Log.e("Invalid number of channels selected in device configuration.")
+            num_channels = 0
         if num_ports not in [well_width, well_height] or num_ports == 1:
             PopUp.warning(
                 self.parent,
-                "Plate Configuration",
                 f"<b>Multiplex device(s) are required for plate configuration.</b><br/>"
                 + f"You must have exactly 4 device ports connected for this mode.<br/>"
                 + f"Currently connected device port count is: {num_ports} (not 4)",
