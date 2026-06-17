@@ -2265,59 +2265,66 @@ class MainWindow(QtWidgets.QMainWindow):
             is resized.
         """
         # Guard: Prevent welcome text from reappearing if the calibration overlay is active.
-        # This stops clear/re-annotate paths from reintroducing stale copy.
         if getattr(self, "_calib_overlay_ready", False):
             return
 
         # Tear down any existing welcome items to prevent layout duplicates
         self._remove_welcome_text()
+        
         target = self._plt2_arr[1] or self._plt2_arr[0]
         if not target:
             return
+
         # Determine responsive font sizes
-        font_size = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
-        text_color = (45, 55, 72, 230)
+        font_size_pt = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
         font_family = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        
+        text_color_val = (100, 105, 115, 240)
+        icon_color_val = (140, 145, 155, 240)
 
-        # Initialize text items with specific HTML formatting
-        self._text1 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
+        # 1. Main Title
+        self._text1 = pg.TextItem("", anchor=(0.5, 0.5))
         self._text1.setHtml(
-            f"<div style='font-family: {font_family}; text-align: center;'>"
-            "<span style='font-size: 15pt; font-weight: 600; letter-spacing: 0.5px;'>"
-            "Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI</span></div>"
+            f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; margin: 0;'>"
+            f"<span style='font-size: 16pt; font-weight: 600; letter-spacing: 0.5px;'>"
+            f"Welcome to nanovisQ&trade;</span></p>"
         )
 
-        self._text2 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
+        # 2. Instructions - Using <p align='center'> is the most reliable way to center multi-line text in Qt
+        self._text2 = pg.TextItem("", anchor=(0.5, 0.5))
         self._text2.setHtml(
-            f"<div style='font-family: {font_family}; text-align: center;'>"
-            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
-            "Don't forget to initialize (in air) your quartz device "
-            "<b style='color: #2b6cb0;'><i>before</i></b> starting.</span></div>"
+            f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; line-height: 1.5; margin: 0;'>"
+            f"<span style='font-size: {font_size_pt}pt; font-weight: 400;'>"
+            f"Initialize quartz device in air <b style='color: #2b6cb0;'>before</b> starting.<br>"
+            f"Apply sample drop <b style='color: #2b6cb0;'>after</b> hitting Start."
+            f"</span></p>"
         )
 
-        self._text3 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
+        # 3. Info Icon
+        self._text3 = pg.TextItem("", anchor=(0.5, 0.5))
         self._text3.setHtml(
-            f"<div style='font-family: {font_family}; text-align: center;'>"
-            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
-            "Wait to apply the drop to your quartz device until "
-            "<b style='color: #2b6cb0;'><i>after</i></b> hitting \"Start\".</span></div>"
+            f"<p align='center' style='font-family: {font_family}; color: rgba{icon_color_val}; margin: 0;'>"
+            f"<span style='font-size: 60pt;'>&#9432;</span></p>"
         )
 
         view_box = target.getViewBox()
         graphics_item = target.graphicsItem()
 
+        # Group items for bulk property assignment
+        welcome_items = (self._text1, self._text2, self._text3)
+
         # Parent to graphicsItem (PlotItem level) so text overlays the plot space properly.
-        # Set ZValue to 998 (above the generic dim rect, below the calib overlay).
-        for text_item in (self._text1, self._text2, self._text3):
+        for item in welcome_items:
             shadow = QtWidgets.QGraphicsDropShadowEffect()
             shadow.setBlurRadius(10)
             shadow.setXOffset(0)
             shadow.setYOffset(1)
             shadow.setColor(QtGui.QColor(255, 255, 255, 220))
-            text_item.setGraphicsEffect(shadow)
-            text_item.setParentItem(graphics_item)
-            text_item.setZValue(998)
+            item.setGraphicsEffect(shadow)
+            item.setParentItem(graphics_item)
+            item.setZValue(998)
 
+        # Visibility logic
         no_users = UserProfiles.count() == 0
         self._text1.setVisible(no_users)
 
@@ -2332,13 +2339,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     """Helper to map a normalized data-space Y (0=bottom, 1=top) to pixel Y"""
                     return rect.y() + (rect.height() * (1.0 - normalized_y))
 
+                # Shift layout based on whether the main title is visible
                 if no_users:
-                    self._text1.setPos(center_x, map_y(0.65))
-                    self._text2.setPos(center_x, map_y(0.35))
-                    self._text3.setPos(center_x, map_y(0.25))
+                    self._text3.setPos(center_x, map_y(0.70))  # Icon
+                    self._text1.setPos(center_x, map_y(0.55))  # Title
+                    self._text2.setPos(center_x, map_y(0.35))  # Instructions
                 else:
-                    self._text2.setPos(center_x, map_y(0.55))
-                    self._text3.setPos(center_x, map_y(0.45))
+                    self._text3.setPos(center_x, map_y(0.60))  # Icon
+                    self._text2.setPos(center_x, map_y(0.45))  # Instructions
             except Exception:
                 pass
 
@@ -2896,7 +2904,9 @@ class MainWindow(QtWidgets.QMainWindow):
             _dev_w = max(_adv_size.width(), _dev_hint.width())
             _dev_h = max(_dev_hint.height(), _adv_size.height())
             self.ControlsWin.ui1.device_info_container.setFixedSize(_dev_w, _dev_h)
-            self._dev_info_popup.show_anchored_to(self.ControlsWin.ui1.tool_Advanced, main_window=self)
+            self._dev_info_popup.show_anchored_to(
+                self.ControlsWin.ui1.tool_Advanced, main_window=self
+            )
             self._update_configuration_banner_text()
             QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.device_config_reset.click)
             QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.temp_cal_reset.click)
@@ -2905,9 +2915,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # restore selected port back to device
             restore_port_idx = self.ControlsWin.ui1.cBox_Port.findData(self._selected_port)
             self.ControlsWin.ui1.cBox_Port.setCurrentIndex(restore_port_idx)
-            
+
             return
-        
+
             # configure device info for selected device
             ok_name = self._configure_device_name()
             ok_pid, dif = self._configure_device_pid()
@@ -5908,11 +5918,30 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.ControlsWin.ui1.cBox_Port.addItem(
                         controller_port[0], controller_port[1], controller_port[2]
                     )
-                self.ControlsWin.ui1.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
+                # The last item is the device-config entry. When at least one
+                # real device port was added it offers "Configure..."; with no
+                # device connected it reads "No device connected" and is left
+                # non-actionable (its data stays empty so selecting it does
+                # nothing in _port_changed).
+                if self.ControlsWin.ui1.cBox_Port.count() > 0:
+                    self.ControlsWin.ui1.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
+                else:
+                    self.ControlsWin.ui1.cBox_Port.addItem("No device connected", "")
+                    # Grey it out so it reads as a status, not a choice.
+                    _idx = self.ControlsWin.ui1.cBox_Port.count() - 1
+                    _model = self.ControlsWin.ui1.cBox_Port.model()
+                    _item = _model.item(_idx) if hasattr(_model, "item") else None
+                    if _item is not None:
+                        _item.setEnabled(False)
 
             # Show/hide "Next Port" button (as HW supports it)
             self.ControlsWin.ui1.action_NextPortRow.setVisible(flux_controller_exists)
             self.ControlsWin.ui1.action_NextPortSep.setVisible(flux_controller_exists)
+
+            # Refresh the Configure button's connected/'No device connected'
+            # state now that the port list has been repopulated.
+            if hasattr(self.ControlsWin.ui1, "_update_configure_enabled"):
+                self.ControlsWin.ui1._update_configure_enabled()
 
             # re-home controller if FLUX is connected (on launch and Reset)
             if self.ControlsWin.ui1.action_NextPortRow.isVisible():  # use action, not tool
@@ -7651,4 +7680,4 @@ class MainWindow(QtWidgets.QMainWindow):
                 ok_only=True,
             )
 
-        # Log.d("GUI: Normal repaint events") # no longer needed
+        # Log.d("GUI: Normal repaint events") # no longer needek

@@ -969,6 +969,25 @@ class GlassAccountPopup(QtWidgets.QWidget):
         shadow.setColor(QtGui.QColor(0, 20, 40, 110))
         self._panel.setGraphicsEffect(shadow)
 
+        # -- entrance animation (matches the advanced menu) --
+        # Fade the whole popup window in (setWindowOpacity, NOT a graphics
+        # effect — an opacity effect on this panel would clash with the drop
+        # shadow above and cause the same ghosting seen in the advanced panel),
+        # paired with a brief downward slide so it eases out from the anchor.
+        self._enter_fade = QtCore.QVariantAnimation(self)
+        self._enter_fade.setDuration(200)
+        self._enter_fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        self._enter_fade.setStartValue(0.0)
+        self._enter_fade.setEndValue(1.0)
+        self._enter_fade.valueChanged.connect(
+            lambda v: self.setWindowOpacity(float(v))
+        )
+        self._enter_fade.finished.connect(lambda: self.setWindowOpacity(1.0))
+
+        self._enter_slide = QtCore.QPropertyAnimation(self, b"pos", self)
+        self._enter_slide.setDuration(220)
+        self._enter_slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+
         # -- resolve current session info (lazy import avoids circular deps) --
         # session_info() returns: [name, initials, role.name, created, modified, accessed]
         accessed: Optional[str] = None
@@ -1076,16 +1095,16 @@ class GlassAccountPopup(QtWidgets.QWidget):
 
         if show_manage:
             icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "user-circle.svg")
-            manage_btn = GlassPushButton("  Manage Users…")
+            manage_btn = GlassPushButton(" Manage Users…")
             manage_btn.setIcon(QtGui.QIcon(icon_path))
-            manage_btn.setIconSize(QtCore.QSize(14, 14))
+            manage_btn.setIconSize(QtCore.QSize(16, 16))
             manage_btn.setStyleSheet("""
                 QPushButton {
                     background: rgba(0, 118, 174, 18);
                     color: rgba(0, 118, 174, 230);
                     border: 1px solid rgba(0, 118, 174, 55);
                     border-radius: 5px;
-                    padding: 6px 10px;
+                    padding: 8px 14px 8px 12px;
                     text-align: left;
                     font-size: 12px;
                     font-weight: bold;
@@ -1105,17 +1124,17 @@ class GlassAccountPopup(QtWidgets.QWidget):
 
         if show_sign_out:
             icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "sign-out.svg")
-            sign_out_btn = GlassPushButton("  Sign Out")
+            sign_out_btn = GlassPushButton(" Sign Out")
             if os.path.exists(icon_path):
                 sign_out_btn.setIcon(QtGui.QIcon(icon_path))
-                sign_out_btn.setIconSize(QtCore.QSize(14, 14))
+                sign_out_btn.setIconSize(QtCore.QSize(16, 16))
             sign_out_btn.setStyleSheet("""
                 QPushButton {
                     background: rgba(200, 70, 40, 16);
                     color: rgba(170, 55, 30, 235);
                     border: 1px solid rgba(200, 70, 40, 60);
                     border-radius: 5px;
-                    padding: 6px 10px;
+                    padding: 8px 14px 8px 12px;
                     text-align: left;
                     font-size: 12px;
                     font-weight: bold;
@@ -1168,14 +1187,27 @@ class GlassAccountPopup(QtWidgets.QWidget):
 
         # Clamp so the visible panel stays inside the main window
         x, y = self._clamp_to_main_window(x, y, popup_w, popup_h, anchor)
-        self.move(x, y)
 
         # Track resize/move events on the main window so the popup never
         # ends up floating outside the application after a resize.
         if self._main_window is not None:
             self._main_window.installEventFilter(self)
 
+        # Entrance animation: start slightly above the final position and fade
+        # in as it slides down to (x, y) — same feel as the advanced menu.
+        final_pos = QtCore.QPoint(x, y)
+        start_pos = QtCore.QPoint(x, y - 12)
+        self.move(start_pos)
+        self.setWindowOpacity(0.0)
         self.show()
+
+        self._enter_slide.stop()
+        self._enter_slide.setStartValue(start_pos)
+        self._enter_slide.setEndValue(final_pos)
+        self._enter_slide.start()
+
+        self._enter_fade.stop()
+        self._enter_fade.start()
 
     # -- positioning helpers --------------------------------------------------
 
@@ -1418,15 +1450,19 @@ class _PerspectiveAnimator(QtCore.QObject):
         super().__init__(container)
         self._container = container
 
-        self._base_top = (
-            container.layout().contentsMargins().top() if container.layout() else 0
-        )
+        # Slide the whole popup window DOWN into place (start 12px above the
+        # final position), matching the account menu. Animating the inner
+        # top-margin instead made content rise up from the bottom, which read
+        # as a bottom-up animation.
         self._slide = QtCore.QVariantAnimation(self)
         self._slide.setDuration(220)
         self._slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self._slide.setStartValue(12)
-        self._slide.setEndValue(0)
+        self._slide.setStartValue(0.0)
+        self._slide.setEndValue(1.0)
         self._slide.valueChanged.connect(self._apply_slide)
+        self._slide_from = None
+        self._slide_to = None
+        self._slide_offset = 12  # px above final at the start
 
         self._fade = QtCore.QVariantAnimation(self)
         self._fade.setDuration(200)
@@ -1438,11 +1474,13 @@ class _PerspectiveAnimator(QtCore.QObject):
 
         container.installEventFilter(self)
 
-    def _apply_slide(self, v) -> None:
-        lay = self._container.layout()
-        if lay is not None:
-            m = lay.contentsMargins()
-            lay.setContentsMargins(m.left(), int(v) + self._base_top, m.right(), m.bottom())
+    def _apply_slide(self, t) -> None:
+        win = self._container.window()
+        if win is None or self._slide_to is None:
+            return
+        x = self._slide_to.x()
+        y = int(self._slide_from.y() + (self._slide_to.y() - self._slide_from.y()) * float(t))
+        win.move(x, y)
 
     def _apply_fade(self, v) -> None:
         win = self._container.window()
@@ -1450,18 +1488,34 @@ class _PerspectiveAnimator(QtCore.QObject):
             win.setWindowOpacity(float(v))
 
     def _finish_fade(self) -> None:
-        # Always settle fully opaque so nothing is left semi-transparent.
+        # Always settle fully opaque and at the exact final position.
         win = self._container.window()
         if win is not None:
             win.setWindowOpacity(1.0)
+            if self._slide_to is not None:
+                win.move(self._slide_to)
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self._container and event.type() == QtCore.QEvent.Show:
+            # The popup may not be moved to its final anchored position until
+            # after this Show event (set_content_widget shows the container
+            # before show_anchored_to moves the window). Defer one tick so we
+            # capture the settled final position, then play the top-down slide.
             self._fade.stop()
             self._fade.start()
-            self._slide.stop()
-            self._slide.start()
+            QtCore.QTimer.singleShot(0, self._begin_slide)
         return super().eventFilter(obj, event)
+
+    def _begin_slide(self) -> None:
+        win = self._container.window()
+        if win is None or not win.isVisible():
+            return
+        final_pos = win.pos()
+        self._slide_to = QtCore.QPoint(final_pos)
+        self._slide_from = QtCore.QPoint(final_pos.x(), final_pos.y() - self._slide_offset)
+        win.move(self._slide_from)
+        self._slide.stop()
+        self._slide.start()
 
 
 # ---------------------------------------------------------------------------
@@ -1566,6 +1620,9 @@ class UIControls:  # QtWidgets.QMainWindow
         self.pButton_Configure.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_Configure.setObjectName("pButton_Configure")
         self.Layout_controls.addWidget(self.pButton_Configure, 2, 4, 1, 1)
+        # Reflect device-connection state ('No device connected' when empty).
+        self.cBox_Port.currentIndexChanged.connect(self._update_configure_enabled)
+        self._update_configure_enabled()
 
         # Operation mode - source ---------------------------------------------
         self.cBox_Source = AnimatedComboBox(icon_path=self._combo_chevron)
@@ -3665,6 +3722,31 @@ class UIControls:  # QtWidgets.QMainWindow
         only_one_option = self.cBox_MultiMode.count() <= 1
         single_channel = self.cBox_MultiMode.currentIndex() <= 0
         self.pButton_PlateConfig.setEnabled(not (only_one_option or single_channel))
+
+    def _update_configure_enabled(self, *args):
+        """Reflect device-connection state on the Configure button.
+
+        With no device connected there is nothing to configure, so the button
+        is disabled and its tooltip reads 'No device connected' instead of the
+        normal configure prompt (it previously looked clickable but did
+        nothing). When a device is present it is re-enabled with the usual
+        tooltip.
+
+        Counts only real device ports: any legacy 'Configure...' sentinel item
+        (itemData == 'CMD_DEV_INFO') is excluded so its presence does not make
+        an empty port list look connected.
+        """
+        if not hasattr(self, "pButton_Configure"):
+            return
+        real_ports = 0
+        for i in range(self.cBox_Port.count()):
+            if self.cBox_Port.itemData(i) != "CMD_DEV_INFO":
+                real_ports += 1
+        connected = real_ports > 0
+        self.pButton_Configure.setEnabled(connected)
+        self.pButton_Configure.setToolTip(
+            "Configure device / position info" if connected else "No device connected"
+        )
 
     def doPlateConfig(self):
         if hasattr(self, "wellPlateUI"):
