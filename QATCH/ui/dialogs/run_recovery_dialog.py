@@ -319,7 +319,6 @@ class ToggleListWidget(QListWidget):
         super().mousePressEvent(event)
 
 
-
 class RunRecoveryDialog(QWidget):
     """Dialog for recovering and managing unnamed experimental runs.
 

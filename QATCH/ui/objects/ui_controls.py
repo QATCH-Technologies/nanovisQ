@@ -1453,9 +1453,8 @@ class UIControls:  # QtWidgets.QMainWindow
         # Shared control-button sizing (thick enough for icon + label).
         _CTRL_BTN_H = 40
         _CTRL_ICON = QtCore.QSize(20, 20)
-        self.pButton_Stop = GlassPushButton(variant="danger_soft")
-        # TODO: replace with new SVG icon (placeholder uses existing .ico)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/stop_icon.ico")
+        self.pButton_Stop = GlassPushButton(variant="default")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "stop-filled.svg")
         self.pButton_Stop.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Stop.setIconSize(_CTRL_ICON)
         self.pButton_Stop.setMinimumSize(QtCore.QSize(0, 0))
@@ -1471,12 +1470,11 @@ class UIControls:  # QtWidgets.QMainWindow
             self.cBox_Port.setFixedHeight(50)
         self.Layout_controls.addWidget(self.cBox_Port, 2, 1, 1, 1)
 
-        # Identify button (circular icon) ------------------------------------
+        # Identify button
         _CIRCLE_D = 34  # diameter for circular icon buttons
         self.pButton_ID = GlassPushButton(variant="white")
         self.pButton_ID.setToolTip("Identify selected Serial COM Port")
-        # TODO: replace with new SVG icon
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "search-circle.svg")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "search.svg")
         self.pButton_ID.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_ID.setIconSize(QtCore.QSize(18, 18))
         self.pButton_ID.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
@@ -1484,11 +1482,10 @@ class UIControls:  # QtWidgets.QMainWindow
         self.pButton_ID.setObjectName("pButton_ID")
         self.Layout_controls.addWidget(self.pButton_ID, 2, 2, 1, 1)
 
-        # Refresh button (circular icon) -------------------------------------
+        # Refresh button
         self.pButton_Refresh = GlassPushButton(variant="white")
         self.pButton_Refresh.setToolTip("Refresh Serial COM Port list")
-        # TODO: replace with new SVG icon
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-circle.svg")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg")
         self.pButton_Refresh.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Refresh.setIconSize(QtCore.QSize(18, 18))
         self.pButton_Refresh.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
@@ -1559,9 +1556,8 @@ class UIControls:  # QtWidgets.QMainWindow
         self.rButton_Manual = self.toggle_Cartridge
 
         # start button --------------------------------------------------------
-        self.pButton_Start = GlassPushButton(variant="primary_soft")
-        # TODO: replace with new SVG icon (placeholder uses existing .ico)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/start_icon.ico")
+        self.pButton_Start = GlassPushButton(variant="default")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "play-filled.svg")
         self.pButton_Start.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Start.setIconSize(_CTRL_ICON)
         self.pButton_Start.setMinimumSize(QtCore.QSize(0, 0))
@@ -1583,8 +1579,7 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # clear plots button --------------------------------------------------
         self.pButton_Clear = GlassPushButton(variant="default")
-        # TODO: replace with new SVG icon (placeholder uses existing .ico)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/clear_icon.ico")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "clear-plot.svg")
         self.pButton_Clear.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Clear.setIconSize(_CTRL_ICON)
         self.pButton_Clear.setMinimumSize(QtCore.QSize(0, 0))
@@ -1594,7 +1589,8 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # reference button ----------------------------------------------------
         self.pButton_Reference = GlassPushButton(variant="default")
-        # TODO: add new SVG icon for Set/Reset Reference
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "reference-mode.svg")
+        self.pButton_Reference.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Reference.setIconSize(_CTRL_ICON)
         self.pButton_Reference.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Reference.setFixedHeight(_CTRL_BTN_H)
@@ -1608,9 +1604,10 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.pButton_Reference, 3, 5, 1, 1)
 
         # restore factory defaults --------------------------------------------
-        self.pButton_ResetApp = GlassPushButton(variant="danger_soft")
-        # TODO: add new SVG icon for Factory Defaults
+        self.pButton_ResetApp = GlassPushButton(variant="default")
         self.pButton_ResetApp.setIconSize(_CTRL_ICON)
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "factory-reset.svg")
+        self.pButton_ResetApp.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_ResetApp.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_ResetApp.setFixedHeight(_CTRL_BTN_H)
         self.pButton_ResetApp.setObjectName("pButton_ResetApp")
