@@ -8897,25 +8897,8 @@ class AnalyzerWorker(QtCore.QObject):
                     "Disabling initial fill limit check due to invalid parameter specified: 'point_factor_limit'"
                 )
                 enable_bandaid_3 = False
-            if enable_bandaid_3 and high_shear_15x and not hide_initial_fill:
-                P1_value = sm_trendline[-1]
-                P2_value = high_shear_15y  # exists only if high_Shear_15x is not zero
-                lower_factor = 1 - point_factor_limit
-                upper_factor = 1 + point_factor_limit
-                min_fit_end = min(P1_value, P2_value) * lower_factor
-                max_fit_end = max(P1_value, P2_value) * upper_factor
-                Log.d(f"Point Factor Limit for Initial Fill is: {point_factor_limit:2.2f}x")
-                Log.d(
-                    f"Trendline must be within range from {min_fit_end:2.2f} to {max_fit_end:2.2f}"
-                )
-                Log.d(f"Initial Fill Trendline ends at: {sm_trendline[0]:2.2f}")
-                if (
-                    min_fit_end > sm_trendline[0] or max_fit_end < sm_trendline[0]
-                ):  # Point 2 (right) is less than Point 1 (left)
-                    Log.w(
-                        f"Dropping initial fill region due to being outside of the accepted limits (see Debug for more info)"
-                    )
-                    hide_initial_fill = True
+
+            # Checking for bandaid #3 moved ~100 lines lower to accommodate USE_NEW_FILL_METHOD
             ##################
 
             ### BANDAID #4 ###
@@ -8999,9 +8982,30 @@ class AnalyzerWorker(QtCore.QObject):
                     local_visc.append(sm_trendline[idx])
                     local_linv.append(lin_viscosity[idx])
                     local_temp.append(in_temp[idx])
+                if enable_bandaid_3 and high_shear_15x:
+                    P1_value = local_visc[-1]
+                    P2_value = high_shear_15y  # exists only if high_Shear_15x is not zero
+                    lower_factor = 1 - point_factor_limit
+                    upper_factor = 1 + point_factor_limit
+                    min_fit_end = min(P1_value, P2_value) * lower_factor
+                    max_fit_end = max(P1_value, P2_value) * upper_factor
+                    local_visc_array = np.array(local_visc)
+                    Log.d(f"Point Factor Limit for Initial Fill is: {point_factor_limit:2.2f}x")
+                    Log.d(
+                        f"Trendline must be within range from {min_fit_end:2.2f} to {max_fit_end:2.2f}"
+                    )
+                    Log.d(f"Initial Fill Trendline ranges from {local_visc_array.min():2.2f} to {local_visc_array.max():2.2f}")
+                    if (
+                        min_fit_end > local_visc_array.min() or max_fit_end < local_visc_array.max()
+                    ):  # Trendline is outside the allowable range
+                        Log.w(
+                            f"Dropping initial fill region due to being outside of the accepted limits (see Debug for more info)"
+                        )
+                        remove_initial_fill = True
+                if not remove_initial_fill:
                     ax7.scatter(
-                        in_shear_rate[idx],
-                        sm_trendline[idx],
+                        local_shear,
+                        local_visc,
                         marker="d",
                         s=15,
                         c="blue",
