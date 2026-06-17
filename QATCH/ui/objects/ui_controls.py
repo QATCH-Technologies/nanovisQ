@@ -1403,6 +1403,67 @@ class _ToggleButtonGroupShim:
         return 1 if self._toggle.isChecked() else 0
 
 
+class _PerspectiveAnimator(QtCore.QObject):
+    """Plays a gentle entrance on a perspective container each time it is shown.
+
+    IMPORTANT: this deliberately does NOT use QGraphicsOpacityEffect. Wrapping a
+    container that holds custom-painted children (glass combos, toggles,
+    buttons) in a graphics effect caches them into an offscreen pixmap, which
+    causes ghosting, duplicated section labels, and widgets vanishing on hover.
+    Instead the fade is applied to the top-level popup window via
+    setWindowOpacity (no pixmap caching), paired with a brief top-margin slide.
+    """
+
+    def __init__(self, container: QtWidgets.QWidget) -> None:
+        super().__init__(container)
+        self._container = container
+
+        self._base_top = (
+            container.layout().contentsMargins().top() if container.layout() else 0
+        )
+        self._slide = QtCore.QVariantAnimation(self)
+        self._slide.setDuration(220)
+        self._slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        self._slide.setStartValue(12)
+        self._slide.setEndValue(0)
+        self._slide.valueChanged.connect(self._apply_slide)
+
+        self._fade = QtCore.QVariantAnimation(self)
+        self._fade.setDuration(200)
+        self._fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        self._fade.setStartValue(0.0)
+        self._fade.setEndValue(1.0)
+        self._fade.valueChanged.connect(self._apply_fade)
+        self._fade.finished.connect(self._finish_fade)
+
+        container.installEventFilter(self)
+
+    def _apply_slide(self, v) -> None:
+        lay = self._container.layout()
+        if lay is not None:
+            m = lay.contentsMargins()
+            lay.setContentsMargins(m.left(), int(v) + self._base_top, m.right(), m.bottom())
+
+    def _apply_fade(self, v) -> None:
+        win = self._container.window()
+        if win is not None:
+            win.setWindowOpacity(float(v))
+
+    def _finish_fade(self) -> None:
+        # Always settle fully opaque so nothing is left semi-transparent.
+        win = self._container.window()
+        if win is not None:
+            win.setWindowOpacity(1.0)
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self._container and event.type() == QtCore.QEvent.Show:
+            self._fade.stop()
+            self._fade.start()
+            self._slide.stop()
+            self._slide.start()
+        return super().eventFilter(obj, event)
+
+
 # ---------------------------------------------------------------------------
 # Main class
 # ---------------------------------------------------------------------------
@@ -2054,6 +2115,8 @@ class UIControls:  # QtWidgets.QMainWindow
                 self._advanced_controls_layout
             )
             self._advanced_content_container = self.advanced_container
+            # Smooth fade + slide entrance for the advanced perspective.
+            self._install_perspective_animation(self.advanced_container)
         else:
             self.centralwidget.setLayout(self.gridLayout)
 
@@ -2070,6 +2133,9 @@ class UIControls:  # QtWidgets.QMainWindow
         self.device_info_container = QtWidgets.QWidget()
         self.device_info_container.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
         self.device_info_container.setStyleSheet("background: transparent;")
+        # Ensure enough room for the header + three stacked calibration cards +
+        # close button so none of them get clipped when the popup sizes itself.
+        self.device_info_container.setMinimumSize(520, 560)
 
         # --- Header: Back Button & Banner ---
         self.back_btn = QtWidgets.QPushButton()
@@ -2312,11 +2378,18 @@ class UIControls:  # QtWidgets.QMainWindow
         pogo_btns.addStretch()
 
         # --- Main Vertical Layout Assembly ---
+        # The three calibration cards stack vertically. Each card keeps its
+        # natural height (no vertical stretch between them) so all three are
+        # always fully visible rather than being squeezed by surrounding
+        # stretches. A small fixed spacing separates them.
         self.deviceLayout = QtWidgets.QVBoxLayout()
-        self.deviceLayout.setSpacing(16)
-        self.deviceLayout.addWidget(self.device_config_card)
-        self.deviceLayout.addWidget(self.temp_cal_card)
-        self.deviceLayout.addWidget(self.lid_pogo_cal_card)
+        self.deviceLayout.setSpacing(14)
+        self.deviceLayout.setContentsMargins(0, 0, 0, 0)
+        for _card in (self.device_config_card, self.temp_cal_card, self.lid_pogo_cal_card):
+            _card.setSizePolicy(
+                QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum
+            )
+            self.deviceLayout.addWidget(_card)
 
         # Bottom Close Button (Optional, keeping it if you still want it alongside back)
         self.close_btn = GlassPushButton("Close Configuration Editor")
@@ -2325,13 +2398,12 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # Final Banner Layout combining everything
         bannerLayout = QtWidgets.QVBoxLayout(self.device_info_container)
-        bannerLayout.setContentsMargins(24, 24, 24, 24)
-        bannerLayout.setSpacing(24)
+        bannerLayout.setContentsMargins(24, 20, 24, 20)
+        bannerLayout.setSpacing(18)
 
         bannerLayout.addLayout(header_layout)  # Added Header here
-        bannerLayout.addStretch()
-        bannerLayout.addLayout(self.deviceLayout)  # Row layout goes here
-        bannerLayout.addStretch()
+        bannerLayout.addLayout(self.deviceLayout)  # three cards, natural heights
+        bannerLayout.addStretch(1)  # single trailing stretch absorbs extra space
 
         # Center the close button slightly distinct from the layout stretch
         close_btn_layout = QtWidgets.QHBoxLayout()
@@ -2342,6 +2414,13 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # Hide it initially; the popup will show it when anchored
         self.device_info_container.hide()
+
+        # --- Perspective transition animation ---
+        # Give the device-info perspective a fade + gentle slide-up entrance so
+        # switching from the advanced view into the configure-device view reads
+        # as a smooth transition rather than an instant popup swap. The same
+        # helper is applied to the advanced container below.
+        self._install_perspective_animation(self.device_info_container)
 
         MainWindow1.setCentralWidget(self.centralwidget)
 
@@ -3252,6 +3331,23 @@ class UIControls:  # QtWidgets.QMainWindow
                 )
             else:
                 Log.w('To stop Temp Control: Press "Stop" first, then click "Temp Control" button.')
+
+    def _install_perspective_animation(self, container: QtWidgets.QWidget) -> None:
+        """Attach a fade + slide-up entrance animation that plays on each show.
+
+        Both the advanced and device-info perspectives use this so switching
+        between them (or opening either) animates in smoothly instead of
+        snapping. The fade uses the popup window's opacity (not a graphics
+        effect) plus a transient top content-margin slide.
+
+        UIControls is a plain class (not a QObject), so a dedicated
+        _PerspectiveAnimator QObject is installed as the container's event
+        filter to detect show events.
+        """
+        animator = _PerspectiveAnimator(container)
+        # Keep a reference so it isn't garbage-collected.
+        self._perspective_animators = getattr(self, "_perspective_animators", [])
+        self._perspective_animators.append(animator)
 
     def _build_advanced_layout(self) -> QtWidgets.QLayout:
         """Assemble the advanced-panel widgets into a clean, sectioned layout.

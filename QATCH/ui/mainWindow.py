@@ -575,7 +575,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_dry_msg: str = "Preparing sensor..."
         self._last_dry_status: bool = False
         self.dry_detect = []
-        n_devices = self.ControlsWin.ui1.cBox_Port.count()
+        n_devices = self.ControlsWin.ui1.cBox_Port.count() - 1
         for _ in range(n_devices):
             self.dry_detect.append(
                 DryingDetection(
@@ -1070,7 +1070,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # If ports are empty or None type, determine the number of devices connected.  If multiple devices (>2)
                 # are connected, warn the user.  Otherwise, pressume there are no deives connected and warn the user again and
                 # return to caller.
-                if self.ControlsWin.ui1.cBox_Port.count() > 1:
+                if self.ControlsWin.ui1.cBox_Port.count() > 2:
                     Log.e(
                         tag=TAG,
                         msg="Multiple devices detected. Please select a device and try again.",
@@ -1109,7 +1109,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.multiplex_plots > 1:
             selected_port = []
             for port_id in active_port_list:
-                if port_id < self.ControlsWin.ui1.cBox_Port.count():
+                if port_id < self.ControlsWin.ui1.cBox_Port.count() - 1:
                     # TODO: Figure out what value needs to be appended to the active ports list.
                     # Format is PORT_SERIALDEVICE from Last_Used.txt
                     selected_port.append(self.ControlsWin.ui1.cBox_Port.itemData(port_id))
@@ -1582,7 +1582,7 @@ class MainWindow(QtWidgets.QMainWindow):
         enable_temp = enabled
         if enable_temp:
             # at least one device connected
-            enable_temp = self.ControlsWin.ui1.cBox_Port.count() > 0
+            enable_temp = self.ControlsWin.ui1.cBox_Port.count() > 1
 
         if not enabled:
             # Lock icon to show number when button is disabled (not hourglass)
@@ -2264,66 +2264,60 @@ class MainWindow(QtWidgets.QMainWindow):
             - Binds a resize callback to maintain relative positioning when the window
             is resized.
         """
+        # Guard: Prevent welcome text from reappearing if the calibration overlay is active.
+        # This stops clear/re-annotate paths from reintroducing stale copy.
         if getattr(self, "_calib_overlay_ready", False):
             return
 
         # Tear down any existing welcome items to prevent layout duplicates
         self._remove_welcome_text()
-
         target = self._plt2_arr[1] or self._plt2_arr[0]
         if not target:
             return
-
         # Determine responsive font sizes
-        font_size_pt = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
+        font_size = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
+        text_color = (45, 55, 72, 230)
         font_family = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
-        text_color_val = (100, 105, 115, 240)
-        icon_color_val = (140, 145, 155, 240)
-
-        # Main Title
-        self._text1 = pg.TextItem("", anchor=(0.5, 0.5))
+        # Initialize text items with specific HTML formatting
+        self._text1 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text1.setHtml(
-            f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; margin: 0;'>"
-            f"<span style='font-size: 16pt; font-weight: 600; letter-spacing: 0.5px;'>"
-            f"Welcome to nanovisQ&trade;</span></p>"
+            f"<div style='font-family: {font_family}; text-align: center;'>"
+            "<span style='font-size: 15pt; font-weight: 600; letter-spacing: 0.5px;'>"
+            "Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI</span></div>"
         )
 
-        # Instructions
-        self._text2 = pg.TextItem("", anchor=(0.5, 0.5))
+        self._text2 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text2.setHtml(
-            f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; line-height: 1.5; margin: 0;'>"
-            f"<span style='font-size: {font_size_pt}pt; font-weight: 400;'>"
-            f"Initialize quartz device in air <b style='color: #2b6cb0;'>before</b> starting.<br>"
-            f"Apply sample drop <b style='color: #2b6cb0;'>after</b> hitting Start."
-            f"</span></p>"
+            f"<div style='font-family: {font_family}; text-align: center;'>"
+            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
+            "Don't forget to initialize (in air) your quartz device "
+            "<b style='color: #2b6cb0;'><i>before</i></b> starting.</span></div>"
         )
 
-        # Info Icon
-        self._text3 = pg.TextItem("", anchor=(0.5, 0.5))
+        self._text3 = pg.TextItem("", color=text_color, anchor=(0.5, 0.5))
         self._text3.setHtml(
-            f"<p align='center' style='font-family: {font_family}; color: rgba{icon_color_val}; margin: 0;'>"
-            f"<span style='font-size: 60pt;'>&#9432;</span></p>"
+            f"<div style='font-family: {font_family}; text-align: center;'>"
+            f"<span style='font-size: {font_size}pt; font-weight: 400;'>"
+            "Wait to apply the drop to your quartz device until "
+            "<b style='color: #2b6cb0;'><i>after</i></b> hitting \"Start\".</span></div>"
         )
 
         view_box = target.getViewBox()
         graphics_item = target.graphicsItem()
 
-        # Group items for bulk property assignment
-        welcome_items = (self._text1, self._text2, self._text3)
-
         # Parent to graphicsItem (PlotItem level) so text overlays the plot space properly.
-        for item in welcome_items:
+        # Set ZValue to 998 (above the generic dim rect, below the calib overlay).
+        for text_item in (self._text1, self._text2, self._text3):
             shadow = QtWidgets.QGraphicsDropShadowEffect()
             shadow.setBlurRadius(10)
             shadow.setXOffset(0)
             shadow.setYOffset(1)
             shadow.setColor(QtGui.QColor(255, 255, 255, 220))
-            item.setGraphicsEffect(shadow)
-            item.setParentItem(graphics_item)
-            item.setZValue(998)
+            text_item.setGraphicsEffect(shadow)
+            text_item.setParentItem(graphics_item)
+            text_item.setZValue(998)
 
-        # Visibility logic
         no_users = UserProfiles.count() == 0
         self._text1.setVisible(no_users)
 
@@ -2338,14 +2332,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     """Helper to map a normalized data-space Y (0=bottom, 1=top) to pixel Y"""
                     return rect.y() + (rect.height() * (1.0 - normalized_y))
 
-                # Shift layout based on whether the main title is visible
                 if no_users:
-                    self._text3.setPos(center_x, map_y(0.70))  # Icon
-                    self._text1.setPos(center_x, map_y(0.55))  # Title
-                    self._text2.setPos(center_x, map_y(0.35))  # Instructions
+                    self._text1.setPos(center_x, map_y(0.65))
+                    self._text2.setPos(center_x, map_y(0.35))
+                    self._text3.setPos(center_x, map_y(0.25))
                 else:
-                    self._text3.setPos(center_x, map_y(0.60))  # Icon
-                    self._text2.setPos(center_x, map_y(0.45))  # Instructions
+                    self._text2.setPos(center_x, map_y(0.55))
+                    self._text3.setPos(center_x, map_y(0.45))
             except Exception:
                 pass
 
@@ -2405,10 +2398,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.pButton_ResetApp.clicked.connect(self.factory_defaults)
         self.ControlsWin.ui1.pButton_ID.clicked.connect(self._port_identify)
         self.ControlsWin.ui1.pButton_Refresh.clicked.connect(self._port_list_refresh)
-        # Configure button replaces the old in-dropdown "Configure..." item.
-        self.ControlsWin.ui1.pButton_Configure.clicked.connect(
-            lambda _checked=False: self._configure_device_info()
-        )
         self.ControlsWin.ui1.sBox_Samples.valueChanged.connect(self._update_sample_size)
         self.ControlsWin.ui1.slTemp.valueChanged.connect(self._update_tec_temp)
         self.ControlsWin.ui1.slTemp.sliderReleased.connect(self._update_tec_temp)
@@ -2899,12 +2888,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             self._dev_info_popup = DeviceInfoMainWidget()
             self._dev_info_popup.set_content_widget(self.ControlsWin.ui1.device_info_container)
-            self.ControlsWin.ui1.device_info_container.setFixedSize(
-                self.ControlsWin.ui1.advanced_container.size()
-            )
-            self._dev_info_popup.show_anchored_to(
-                self.ControlsWin.ui1.tool_Advanced, main_window=self
-            )
+            # Match the advanced panel's WIDTH for visual continuity, but let the
+            # height follow the device-info content so all three calibration
+            # cards are fully visible (a fixed advanced-size would clip them).
+            _adv_size = self.ControlsWin.ui1.advanced_container.size()
+            _dev_hint = self.ControlsWin.ui1.device_info_container.sizeHint()
+            _dev_w = max(_adv_size.width(), _dev_hint.width())
+            _dev_h = max(_dev_hint.height(), _adv_size.height())
+            self.ControlsWin.ui1.device_info_container.setFixedSize(_dev_w, _dev_h)
+            self._dev_info_popup.show_anchored_to(self.ControlsWin.ui1.tool_Advanced, main_window=self)
             self._update_configuration_banner_text()
             QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.device_config_reset.click)
             QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.temp_cal_reset.click)
@@ -2913,9 +2905,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # restore selected port back to device
             restore_port_idx = self.ControlsWin.ui1.cBox_Port.findData(self._selected_port)
             self.ControlsWin.ui1.cBox_Port.setCurrentIndex(restore_port_idx)
-
+            
             return
-
+        
             # configure device info for selected device
             ok_name = self._configure_device_name()
             ok_pid, dif = self._configure_device_pid()
@@ -5916,9 +5908,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.ControlsWin.ui1.cBox_Port.addItem(
                         controller_port[0], controller_port[1], controller_port[2]
                     )
-                # NOTE: the "Configure..." action was moved out of this dropdown
-                # into a dedicated pButton_Configure button (wired below), so it
-                # is no longer added as a combo item here.
+                self.ControlsWin.ui1.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
 
             # Show/hide "Next Port" button (as HW supports it)
             self.ControlsWin.ui1.action_NextPortRow.setVisible(flux_controller_exists)
@@ -6016,9 +6006,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 idx = self.ControlsWin.ui1.cBox_MultiMode.count() - 1
         self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(idx)
         for i in range(self.ControlsWin.ui1.cBox_MultiMode.count()):
-            # Port count no longer includes the "Configure..." sentinel, so the
-            # available channel count is simply ports * channels-per-device.
-            if i < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1):
+            if i < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1) - 1:
                 enable = True
             else:
                 enable = False
@@ -6345,7 +6333,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.multiplex_plots > 1:
                 selected_port = []
                 for i in range(self.multiplex_plots):
-                    if i < self.ControlsWin.ui1.cBox_Port.count():
+                    if i < self.ControlsWin.ui1.cBox_Port.count() - 1:
                         selected_port.append(self.ControlsWin.ui1.cBox_Port.itemData(i))
 
             self.worker._port = selected_port  # used in run()
@@ -7663,4 +7651,4 @@ class MainWindow(QtWidgets.QMainWindow):
                 ok_only=True,
             )
 
-        # Log.d("GUI: Normal repaint events") # no longer neede
+        # Log.d("GUI: Normal repaint events") # no longer needed
