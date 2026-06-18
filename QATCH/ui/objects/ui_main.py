@@ -121,7 +121,7 @@ class UIMain:
                 self.centralwidget.setStyleSheet(style_file.read())
         except FileNotFoundError:
             Log.e(f"Could not find the stylesheet at: {qss_file_path}")
-        self.centralwidget.setContentsMargins(10, 10, 0, 10)
+        self.centralwidget.setContentsMargins(0, 0, 0, 0)
         layout_h = QtWidgets.QHBoxLayout()
         layout_h.setSpacing(10)
 

@@ -628,7 +628,7 @@ class UIPlots:
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
 
         root = QtWidgets.QVBoxLayout(self.centralwidget)
-        root.setContentsMargins(8, 8, 8, 8)
+        root.setContentsMargins(0, 8, 0, 0)
         root.setSpacing(6)
 
         # Main horizontal splitter ────────────────────────────────────

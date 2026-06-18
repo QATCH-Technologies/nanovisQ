@@ -511,6 +511,7 @@ class GlassControlsWidget(QtWidgets.QWidget):
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
         self.setAutoFillBackground(False)
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
@@ -524,24 +525,29 @@ class GlassControlsWidget(QtWidgets.QWidget):
         clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
         p.setClipPath(clip)
 
-        # Match modeMenuScrollArea: rgba(255,255,255,160) on the app gradient
+        # Frosted base — identical to GlassContainer
         p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 160))
-
-        # Faint cool tint — same underlying gradient tone as #E4EBF1
         p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 18))
 
-        # Soft top shimmer
-        shimmer = QtGui.QLinearGradient(0, 0, 0, 32)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 50))
+        # Top shimmer — three-stop, 40px (matches GlassContainer)
+        shimmer = QtGui.QLinearGradient(0, 0, 0, 40)
+        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 100))
+        shimmer.setColorAt(0.5, QtGui.QColor(255, 255, 255, 20))
         shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
         p.fillRect(self.rect(), QtGui.QBrush(shimmer))
 
-        # Border — matches the sidebar's rgba(255,255,255,220) border
+        # Bottom vignette (was missing)
+        vg = QtGui.QLinearGradient(0, self.height() - 30, 0, self.height())
+        vg.setColorAt(0.0, QtGui.QColor(200, 218, 240, 0))
+        vg.setColorAt(1.0, QtGui.QColor(200, 218, 240, 18))
+        p.fillRect(self.rect(), QtGui.QBrush(vg))
+
+        # Borders — outer bright rim + inner cool-grey inset
         p.setClipping(False)
         p.setBrush(QtCore.Qt.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 220), 1.0))
+        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(200, 210, 220, 80), 1.0))
+        p.setPen(QtGui.QPen(QtGui.QColor(190, 210, 235, 70), 1.0))
         p.drawRoundedRect(
             rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
             self._RADIUS - 1.5,
@@ -979,9 +985,7 @@ class GlassAccountPopup(QtWidgets.QWidget):
         self._enter_fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         self._enter_fade.setStartValue(0.0)
         self._enter_fade.setEndValue(1.0)
-        self._enter_fade.valueChanged.connect(
-            lambda v: self.setWindowOpacity(float(v))
-        )
+        self._enter_fade.valueChanged.connect(lambda v: self.setWindowOpacity(float(v)))
         self._enter_fade.finished.connect(lambda: self.setWindowOpacity(1.0))
 
         self._enter_slide = QtCore.QPropertyAnimation(self, b"pos", self)
@@ -2148,7 +2152,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.toolLayout.addWidget(self.run_progress_bar)
 
         if SHOW_SIMPLE_CONTROLS:
-            self.toolLayout.setContentsMargins(6, 6, 6, 0)
+            self.toolLayout.setContentsMargins(0, 0, 0, 0)
             self.centralwidget.setLayout(self.toolLayout)
 
             self.Layout_controls.removeWidget(self.infosave)
@@ -2443,9 +2447,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.deviceLayout.setSpacing(14)
         self.deviceLayout.setContentsMargins(0, 0, 0, 0)
         for _card in (self.device_config_card, self.temp_cal_card, self.lid_pogo_cal_card):
-            _card.setSizePolicy(
-                QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum
-            )
+            _card.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum)
             self.deviceLayout.addWidget(_card)
 
         # Bottom Close Button (Optional, keeping it if you still want it alongside back)
