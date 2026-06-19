@@ -93,7 +93,7 @@ class _SectionMenuRow(QtWidgets.QWidget):
         # ── Color swatch ──────────────────────────────────────────
         self._swatch = QtWidgets.QToolButton()
         self._swatch.setFixedSize(16, 16)
-        self._swatch.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self._swatch.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self._swatch.setToolTip("Change color")
         self._swatch.clicked.connect(self._pick_color)
         self._apply_swatch_style()
@@ -110,7 +110,7 @@ class _SectionMenuRow(QtWidgets.QWidget):
         self._eye.setFixedSize(22, 22)
         self._eye.setCheckable(True)
         self._eye.setChecked(True)
-        self._eye.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self._eye.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self._eye.setToolTip("Show / Hide")
         self._eye.clicked.connect(self._toggle_visibility)
         self._apply_eye_style()
@@ -233,7 +233,7 @@ class GlassContainer(QtWidgets.QWidget):
         self._sections = sections or []
 
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
         self.has_header = title is not None or show_menu
 
@@ -275,7 +275,7 @@ class GlassContainer(QtWidgets.QWidget):
         btn.setIcon(QtGui.QIcon(icon_path))
         btn.setIconSize(QtCore.QSize(13, 13))
         btn.setFixedSize(24, 24)
-        btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         btn.setToolTip(tooltip)
         btn.setStyleSheet("""
             QToolButton {
@@ -308,9 +308,11 @@ class GlassContainer(QtWidgets.QWidget):
 
     def _build_glass_menu(self, parent_widget: QtWidgets.QWidget) -> QtWidgets.QMenu:
         menu = QtWidgets.QMenu(parent_widget)
-        menu.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         menu.setWindowFlags(
-            menu.windowFlags() | QtCore.Qt.FramelessWindowHint | QtCore.Qt.NoDropShadowWindowHint
+            menu.windowFlags()
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint
         )
         menu.setStyleSheet("""
             QMenu {
@@ -376,7 +378,7 @@ class GlassContainer(QtWidgets.QWidget):
         p.fillRect(self.rect(), QtGui.QBrush(vg))
 
         p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
         # Outer bright rim
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 1.0))
@@ -481,7 +483,7 @@ class GlassTabContainer(GlassContainer):
 
         btn = QtWidgets.QPushButton(name)
         btn.setCheckable(True)
-        btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         btn.setFixedHeight(20)
         # Glassmorphic pill tabs
         btn.setStyleSheet("""
@@ -590,7 +592,7 @@ class GlassTabContainer(GlassContainer):
 def _make_plot_widget(parent: QtWidgets.QWidget) -> GraphicsLayoutWidget:
     w = GraphicsLayoutWidget(parent)
     w.setAutoFillBackground(False)
-    w.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+    w.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
     w.setBackground(None)
     w.setStyleSheet("border:0px; background: transparent;")
     w.setFrameShape(QtWidgets.QFrame.NoFrame)

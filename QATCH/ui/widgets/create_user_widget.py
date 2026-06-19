@@ -1,19 +1,18 @@
 """
 create_user_widget.py
 
-Glassmorphism overlay widget for creating a new NanovisQ user account.
+Provides an overlay widget for creating a new user account.
 
-Improvements over v1:
-  - Per-field inline error labels positioned directly below the offending input(s).
-  - Error fields animate with a horizontal jiggle (ported from UILogin._shake_widget).
-  - Role QComboBox styled to match GlassLineEdit (glass bg, pill border, custom popup).
-  - User icon (icons/user.svg) centred above the title.
-  - Circular × close button in the top-right corner of the card.
-  - Show / hide password toggle using eye-on.svg / eye-off.svg (via QAction).
-  - Submit replaced by a compact circular → button; Cancel kept as a full-width pill.
+This module contains the `CreateUserWidget` class, which covers the parent application
+with a semi-opaque scrim and centers a glass-morphism card containing a user creation form.
+It features per-field inline error reporting, animated jiggle feedback, and styling
+consistent with the application's modern UI conventions.
 
-Styling follows ui_login.py conventions (GlassLineEdit, primary button gradient,
-shake animation, transparent backgrounds).
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-06-19
 """
 
 from __future__ import annotations
@@ -29,21 +28,36 @@ from QATCH.core.constants import UserRoles
 from QATCH.ui.components.glass_line_edit import GlassLineEdit
 from QATCH.ui.components.animated_combo_box import AnimatedComboBox
 
-# ---------------------------------------------------------------------------
-# Constants matching ui_login.py
-# ---------------------------------------------------------------------------
 _INPUT_H: int = 34
-_BTN_H: int = 34
 
 
-# ---------------------------------------------------------------------------
-# CreateUserWidget
-# ---------------------------------------------------------------------------
 class CreateUserWidget(QtWidgets.QWidget):
     """Full-screen overlay widget for user account creation.
 
     Covers the parent widget with a semi-opaque scrim and centres a
     glass-morphism card containing the creation form.
+
+    Attributes:
+        existing_initials (list): A list of initials already in use by other users.
+        is_accepted (bool): Indicates whether the form was successfully validated
+            and submitted.
+        result_data (dict): A dictionary containing the newly created user's
+            validated data (name, username, email, initials, role, password).
+        base_layout (QtWidgets.QVBoxLayout): The centered outer layout.
+        glass_frame (QtWidgets.QFrame): The main glass card container.
+        main_layout (QtWidgets.QVBoxLayout): The inner layout of the glass card.
+        btn_close (QtWidgets.QPushButton): The close window button.
+        inp_first_name (GlassLineEdit): Input field for the user's first name.
+        inp_last_name (GlassLineEdit): Input field for the user's last name.
+        err_name (QtWidgets.QLabel): Inline error label for the name inputs.
+        cmb_role (AnimatedComboBox): Dropdown selection for the user's role.
+        inp_username (GlassLineEdit): Optional input field for a custom username.
+        inp_email (GlassLineEdit): Input field for the user's email address.
+        err_email (QtWidgets.QLabel): Inline error label for the email input.
+        inp_pwd1 (GlassLineEdit): Input field for the user's password.
+        inp_pwd2 (GlassLineEdit): Input field to confirm the password.
+        err_password (QtWidgets.QLabel): Inline error label for password inputs.
+        btn_create (QtWidgets.QPushButton): The submit button to create the user.
     """
 
     def __init__(
@@ -51,19 +65,22 @@ class CreateUserWidget(QtWidgets.QWidget):
         existing_initials: list,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
+        """Initializes the CreateUserWidget.
+
+        Args:
+            existing_initials (list): A list of strings representing already taken initials.
+            parent (QtWidgets.QWidget, optional): The parent widget to overlay.
+                Defaults to None.
+        """
         super().__init__(parent)
         self.existing_initials = existing_initials
         self.is_accepted: bool = False
         self.result_data: dict = {}
-
-        # Active shake animations kept alive until finished
         self._shake_anims: List[QtCore.QPropertyAnimation] = []
-        self._bg_alpha: int = 0  # Track background dimming alpha
-
-        # Overlay covers the parent completely
+        self._bg_alpha: int = 0
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
-        self.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
         if parent is not None:
             parent.installEventFilter(self)
@@ -71,19 +88,15 @@ class CreateUserWidget(QtWidgets.QWidget):
 
         self._setup_ui()
         self.raise_()
-
-        # Trigger the new, safe animation
         self._animate_open()
 
-    # ------------------------------------------------------------------
-    # UI Construction
-    # ------------------------------------------------------------------
     def _setup_ui(self) -> None:
+        """Builds and arranges the UI components of the widget."""
         # Centred outer layout
         self.base_layout = QtWidgets.QVBoxLayout(self)
-        self.base_layout.setAlignment(QtCore.Qt.AlignCenter)
+        self.base_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
-        # Glass card frame
+        # Card Frame
         self.glass_frame = QtWidgets.QFrame(self)
         self.glass_frame.setObjectName("createUserView")
         self.glass_frame.setFixedWidth(440)
@@ -107,14 +120,14 @@ class CreateUserWidget(QtWidgets.QWidget):
 
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
-        # ── Row 1: close × button ──────────────────────────────────────
+        # Close button
         close_row = QtWidgets.QHBoxLayout()
         close_row.setContentsMargins(0, 0, 0, 0)
         close_row.addStretch()
 
-        self.btn_close = QtWidgets.QPushButton("×")
+        self.btn_close = QtWidgets.QPushButton("x")
         self.btn_close.setFixedSize(28, 28)
-        self.btn_close.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_close.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_close.setStyleSheet("""
             QPushButton {
                 background: transparent;
@@ -131,27 +144,26 @@ class CreateUserWidget(QtWidgets.QWidget):
         close_row.addWidget(self.btn_close)
         self.main_layout.addLayout(close_row)
 
-        # ── Row 2: user.svg icon ───────────────────────────────────────
+        # User icon
         icon_lbl = QtWidgets.QLabel()
-        icon_lbl.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-        icon_lbl.setAlignment(QtCore.Qt.AlignCenter)
+        icon_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        icon_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         icon_path = os.path.join(icons_dir, "user-circle.svg")
         icon_pm = QtGui.QPixmap(icon_path)
-        if not icon_pm.isNull():
-            icon_pm = icon_pm.scaled(
-                48, 48, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
-            )
-            icon_lbl.setPixmap(icon_pm)
-        else:
-            icon_lbl.setText("👤")
-            icon_lbl.setStyleSheet("font-size: 30px; background: transparent;")
+        icon_pm = icon_pm.scaled(
+            48,
+            48,
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        )
+        icon_lbl.setPixmap(icon_pm)
         icon_lbl.setFixedHeight(52)
-        self.main_layout.addWidget(icon_lbl, alignment=QtCore.Qt.AlignCenter)
+        self.main_layout.addWidget(icon_lbl, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
-        # ── Row 3: title ───────────────────────────────────────────────
+        # Title
         lbl_title = QtWidgets.QLabel("Create User")
-        lbl_title.setAlignment(QtCore.Qt.AlignCenter)
-        lbl_title.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        lbl_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl_title.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         lbl_title.setStyleSheet("""
             QLabel {
                 color: rgba(50, 55, 65, 220);
@@ -163,16 +175,15 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.main_layout.addWidget(lbl_title)
         self.main_layout.addSpacing(6)
 
-        # Eye icons shared by both password fields
+        # Hide / show icons
         self._eye_on = QtGui.QIcon(os.path.join(icons_dir, "eye-on.svg"))
         self._eye_off = QtGui.QIcon(os.path.join(icons_dir, "eye-off.svg"))
         self._pwd1_visible = False
         self._pwd2_visible = False
 
-        # ── First Name / Last Name row ─────────────────────────────────
-        #    Wrapped in a QWidget so the shake animation has a single target.
+        # First/last name rows
         self.name_container = QtWidgets.QWidget()
-        self.name_container.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        self.name_container.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         name_row = QtWidgets.QHBoxLayout(self.name_container)
         name_row.setContentsMargins(0, 0, 0, 0)
         name_row.setSpacing(10)
@@ -200,7 +211,7 @@ class CreateUserWidget(QtWidgets.QWidget):
                 )
             )
 
-        # ── Role combobox ──────────────────────────────────────────────
+        # Role combobox
         self.cmb_role = AnimatedComboBox(os.path.join(icons_dir, "down-arrow.svg"))
         self.cmb_role.setFixedHeight(_INPUT_H)
         roles = [e.name for e in UserRoles][1:]
@@ -208,16 +219,16 @@ class CreateUserWidget(QtWidgets.QWidget):
             label = r + " (Capture & Analyze)" if r == UserRoles.OPERATE.name else r
             self.cmb_role.addItem(label, r)
 
-        # We no longer need to pass icons_dir to the style sheet
         self.cmb_role.setStyleSheet(self._combo_style(error=False))
         self.main_layout.addWidget(self.cmb_role)
-        # ── Username (optional) ────────────────────────────────────────
+
+        # Username
         self.inp_username = GlassLineEdit()
         self.inp_username.setFixedHeight(_INPUT_H)
         self.inp_username.setPlaceholderText("Username (Optional)")
         self.main_layout.addWidget(self.inp_username)
 
-        # ── Email ──────────────────────────────────────────────────────
+        # Email
         self.inp_email = GlassLineEdit()
         self.inp_email.setFixedHeight(_INPUT_H)
         self.inp_email.setPlaceholderText("Email")
@@ -229,7 +240,7 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.err_email = self._make_error_label()
         self.main_layout.addWidget(self.err_email)
 
-        # ── Password ───────────────────────────────────────────────────
+        # Password
         self.inp_pwd1 = GlassLineEdit()
         self.inp_pwd1.setFixedHeight(_INPUT_H)
         self.inp_pwd1.setPlaceholderText("Password")
@@ -238,10 +249,11 @@ class CreateUserWidget(QtWidgets.QWidget):
             lambda _: self._clear_field_errors([self.inp_pwd1, self.inp_pwd2], self.err_password)
         )
         self._act_eye1 = self.inp_pwd1.addAction(self._eye_on, QtWidgets.QLineEdit.TrailingPosition)
+        assert self._act_eye1 is not None
         self._act_eye1.triggered.connect(self._toggle_pwd1)
         self.main_layout.addWidget(self.inp_pwd1)
 
-        # ── Confirm Password ───────────────────────────────────────────
+        # Confirm password
         self.inp_pwd2 = GlassLineEdit()
         self.inp_pwd2.setFixedHeight(_INPUT_H)
         self.inp_pwd2.setPlaceholderText("Confirm Password")
@@ -250,7 +262,7 @@ class CreateUserWidget(QtWidgets.QWidget):
             lambda _: self._clear_field_errors([self.inp_pwd1, self.inp_pwd2], self.err_password)
         )
         self._act_eye2 = self.inp_pwd2.addAction(self._eye_on, QtWidgets.QLineEdit.TrailingPosition)
-        self._act_eye2.triggered.connect(self._toggle_pwd2)
+        self._act_eye2.triggered.connect(self._toggle_pwd2)  # type: ignore
         self.main_layout.addWidget(self.inp_pwd2)
 
         self.err_password = self._make_error_label()
@@ -258,15 +270,14 @@ class CreateUserWidget(QtWidgets.QWidget):
 
         self.main_layout.addSpacing(10)
 
-        # ── Button row ─────────────────────────────────────────────────
+        # Button row
         btn_layout = QtWidgets.QHBoxLayout()
-        btn_layout.setAlignment(QtCore.Qt.AlignCenter)  # This centers the widget
-
+        btn_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.btn_create = QtWidgets.QPushButton("")
         self.btn_create.setIcon(QtGui.QIcon(os.path.join(icons_dir, "right-arrow.svg")))
         self.btn_create.setIconSize(QtCore.QSize(20, 20))
         self.btn_create.setFixedSize(40, 40)
-        self.btn_create.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_create.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_create.setToolTip("Create User")
         self.btn_create.setStyleSheet("""
             QPushButton {
@@ -302,27 +313,31 @@ class CreateUserWidget(QtWidgets.QWidget):
             }
         """)
         self.btn_create.clicked.connect(self._validate_and_accept)
-
-        # Removed the addStretch() that was pushing it to the right
         btn_layout.addWidget(self.btn_create)
         self.main_layout.addLayout(btn_layout)
 
         self.base_layout.addWidget(self.glass_frame)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        """Paints a semi-transparent dark overlay background.
+
+        Args:
+            event (QtGui.QPaintEvent): The Qt paint event.
+        """
         p = QtGui.QPainter(self)
         p.fillRect(self.rect(), QtGui.QColor(0, 0, 0, self._bg_alpha))
         p.end()
 
-    # ------------------------------------------------------------------
-    # Style helpers
-    # ------------------------------------------------------------------
     @staticmethod
     def _make_error_label() -> QtWidgets.QLabel:
-        """Returns a compact red inline error label, hidden by default."""
+        """Constructs a compact, red inline error label.
+
+        Returns:
+            QtWidgets.QLabel: The newly created error label, hidden by default.
+        """
         lbl = QtWidgets.QLabel("")
         lbl.setWordWrap(True)
-        lbl.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         lbl.setStyleSheet("""
             QLabel {
                 color: rgba(210, 55, 55, 220);
@@ -337,7 +352,17 @@ class CreateUserWidget(QtWidgets.QWidget):
 
     @staticmethod
     def _combo_style(*, error: bool = False) -> str:
-        """Returns QSS for the role combobox, matching GlassLineEdit visuals."""
+        """Generates the QSS stylesheet for the role combobox.
+
+        Matches the `GlassLineEdit` visual style, with an optional error state.
+
+        Args:
+            error (bool, optional): Whether to generate the error (red) style.
+                Defaults to False.
+
+        Returns:
+            str: The stylesheet string.
+        """
         if error:
             bg = "rgba(255, 220, 220, 80)"
             border = "1.5px solid rgba(210, 55, 55, 180)"
@@ -373,8 +398,7 @@ class CreateUserWidget(QtWidgets.QWidget):
             }}
             QComboBox::down-arrow {{
                 image: none; /* Handled dynamically by AnimatedComboBox */
-            }}
-            
+            }}           
             /* --- Dropdown Window --- */
             QComboBox QAbstractItemView {{
                 background:               rgba(245, 249, 254, 250);
@@ -387,37 +411,35 @@ class CreateUserWidget(QtWidgets.QWidget):
                 padding:                  4px; /* Uniform padding prevents items from touching corners */
                 outline:                  none;
             }}
-            
-            QComboBox QAbstractItemView::viewport {{
+                      QComboBox QAbstractItemView::viewport {{
                 background: transparent;
                 border-radius: 10px;
-            }}
-            
+            }}           
             /* --- Shrunken Menu Items --- */
             QComboBox QAbstractItemView::item {{
                 padding:       4px 10px; /* Reduced from 7px 14px */
                 min-height:    20px;     /* Reduced from 28px */
                 border-radius: 5px;      /* Rounds the highlight so it doesn't bleed */
-            }}
-            
+            }}           
             QComboBox QAbstractItemView::item:hover {{
                 background: rgba(10, 163, 230, 45);
-            }}
-            
+            }}          
             QComboBox QAbstractItemView::item:selected {{
                 background: rgba(10, 163, 230, 80);
             }}
         """
 
-    # ------------------------------------------------------------------
-    # Error / animation helpers
-    # ------------------------------------------------------------------
     def _clear_field_errors(
         self,
         fields: list,
         error_label: QtWidgets.QLabel,
     ) -> None:
-        """Clears error styling on the given fields and hides the error label."""
+        """Clears the error styling on inputs and hides the associated error label.
+
+        Args:
+            fields (list): A list of input widgets (e.g., GlassLineEdit) to reset.
+            error_label (QtWidgets.QLabel): The inline error label to hide.
+        """
         for f in fields:
             if isinstance(f, GlassLineEdit):
                 f.set_error(False)
@@ -430,7 +452,15 @@ class CreateUserWidget(QtWidgets.QWidget):
         message: str,
         shake_target: Optional[QtWidgets.QWidget] = None,
     ) -> None:
-        """Marks fields red, shows the inline error, and jiggle-shakes the target."""
+        """Applies error styling, displays the error message, and triggers a jiggle.
+
+        Args:
+            fields (list): A list of input widgets to mark with error styling.
+            error_label (QtWidgets.QLabel): The label to display the error text.
+            message (str): The error message text.
+            shake_target (QtWidgets.QWidget, optional): The specific widget to apply
+                the shake animation to. If None, uses the first widget in `fields`.
+        """
         for f in fields:
             if isinstance(f, GlassLineEdit):
                 f.set_error(True)
@@ -439,7 +469,11 @@ class CreateUserWidget(QtWidgets.QWidget):
         self._shake_widget(shake_target or (fields[0] if fields else None))
 
     def _shake_widget(self, widget: Optional[QtWidgets.QWidget]) -> None:
-        """Horizontal jiggle animation for error feedback (from UILogin._shake_widget)."""
+        """Triggers a horizontal jiggle animation for visual error feedback.
+
+        Args:
+            widget (QtWidgets.QWidget | None): The widget to animate.
+        """
         if not widget or not widget.isVisible():
             return
 
@@ -453,34 +487,52 @@ class CreateUserWidget(QtWidgets.QWidget):
         anim.setKeyValueAt(0.7, base + QtCore.QPoint(4, 0))
         anim.setKeyValueAt(0.9, base + QtCore.QPoint(-2, 0))
         anim.setKeyValueAt(1.0, base)
-        anim.start(QtCore.QPropertyAnimation.DeleteWhenStopped)
+        anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
         self._shake_anims.append(anim)
         anim.finished.connect(
             lambda: self._shake_anims.remove(anim) if anim in self._shake_anims else None
         )
 
-    # ------------------------------------------------------------------
-    # Password visibility toggles
-    # ------------------------------------------------------------------
     def _toggle_pwd1(self) -> None:
+        """Toggles visibility and the eye icon for the primary password field."""
+        if self._act_eye1 is None:
+            return
+
         self._pwd1_visible = not self._pwd1_visible
         self.inp_pwd1.setEchoMode(
-            QtWidgets.QLineEdit.Normal if self._pwd1_visible else QtWidgets.QLineEdit.Password
+            QtWidgets.QLineEdit.EchoMode.Normal
+            if self._pwd1_visible
+            else QtWidgets.QLineEdit.EchoMode.Password
         )
         self._act_eye1.setIcon(self._eye_off if self._pwd1_visible else self._eye_on)
 
     def _toggle_pwd2(self) -> None:
+        """Toggles visibility and the eye icon for the confirm password field."""
+        if self._act_eye2 is None:
+            return
+
         self._pwd2_visible = not self._pwd2_visible
         self.inp_pwd2.setEchoMode(
-            QtWidgets.QLineEdit.Normal if self._pwd2_visible else QtWidgets.QLineEdit.Password
+            QtWidgets.QLineEdit.EchoMode.Normal
+            if self._pwd2_visible
+            else QtWidgets.QLineEdit.EchoMode.Password
         )
         self._act_eye2.setIcon(self._eye_off if self._pwd2_visible else self._eye_on)
 
-    # ------------------------------------------------------------------
-    # Initials helper
-    # ------------------------------------------------------------------
     def _generate_initials(self, first: str, last: str) -> str:
+        """Generates a unique set of initials based on the user's name.
+
+        If the direct initials are already in `existing_initials`, appends an
+        incrementing numeric counter until a unique string is found.
+
+        Args:
+            first (str): The user's first name.
+            last (str): The user's last name.
+
+        Returns:
+            str: The validated, unique initials string.
+        """
         base = f"{first[0]}{last[0]}".upper()
         initials, counter = base, 1
         while initials in self.existing_initials:
@@ -488,10 +540,13 @@ class CreateUserWidget(QtWidgets.QWidget):
             counter += 1
         return initials
 
-    # ------------------------------------------------------------------
-    # Validation & acceptance
-    # ------------------------------------------------------------------
     def _validate_and_accept(self) -> None:
+        """Validates all form inputs, saves data on success, and initiates closure.
+
+        Validates name length, email format, password strength, and password match.
+        If validation fails, the relevant fields are highlighted and shaken. If successful,
+        populates `self.result_data` and begins the closing animation.
+        """
         # Reset all error states
         self._clear_field_errors([self.inp_first_name, self.inp_last_name], self.err_name)
         self._clear_field_errors([self.inp_email], self.err_email)
@@ -505,7 +560,7 @@ class CreateUserWidget(QtWidgets.QWidget):
 
         has_error = False
 
-        # ── Name ──────────────────────────────────────────────────────
+        # Name
         bad_first = len(first) < 2
         bad_last = len(last) < 2
         if bad_first or bad_last:
@@ -518,7 +573,7 @@ class CreateUserWidget(QtWidgets.QWidget):
             self._shake_widget(self.name_container)
             has_error = True
 
-        # ── Email ──────────────────────────────────────────────────────
+        # Email
         if not email or not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
             self._show_field_error(
                 [self.inp_email],
@@ -527,7 +582,7 @@ class CreateUserWidget(QtWidgets.QWidget):
             )
             has_error = True
 
-        # ── Password ───────────────────────────────────────────────────
+        # Password
         pwd_regex = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$"
         if not re.match(pwd_regex, pwd1):
             self._show_field_error(
@@ -547,7 +602,7 @@ class CreateUserWidget(QtWidgets.QWidget):
         if has_error:
             return
 
-        # ── All good ───────────────────────────────────────────────────
+        # All good
         self.result_data = {
             "name": f"{first} {last}",
             "username": self.inp_username.text().strip(),
@@ -560,24 +615,22 @@ class CreateUserWidget(QtWidgets.QWidget):
         self._close_with_animation()
 
     def _reject(self) -> None:
+        """Marks the action as rejected and closes the widget via animation."""
         self.is_accepted = False
         self._close_with_animation()
 
-    # ------------------------------------------------------------------
-    # Intro / Outro Animations
-    # ------------------------------------------------------------------
     def _animate_open(self) -> None:
-        """Fades in the dark overlay and slides the card up into place."""
+        """Fades in the dark overlay and slides the form card up into place."""
         self.anim_in = QtCore.QVariantAnimation(self)
         self.anim_in.setDuration(300)
         self.anim_in.setStartValue(0.0)
         self.anim_in.setEndValue(1.0)
         self.anim_in.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         self.anim_in.valueChanged.connect(self._on_anim_frame)
-        self.anim_in.start(QtCore.QPropertyAnimation.DeleteWhenStopped)
+        self.anim_in.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _close_with_animation(self) -> None:
-        """Reverses the animation before safely destroying the widget."""
+        """Reverses the intro animation, fading out before destroying the widget."""
         # Disable interactions so the user can't double-click 'close' or 'create'
         self.glass_frame.setEnabled(False)
 
@@ -587,17 +640,16 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.anim_out.setEndValue(0.0)
         self.anim_out.setEasingCurve(QtCore.QEasingCurve.InQuad)
         self.anim_out.valueChanged.connect(self._on_anim_frame)
-        self.anim_out.finished.connect(self.close)
-        self.anim_out.start(QtCore.QPropertyAnimation.DeleteWhenStopped)
+        self.anim_out.finished.connect(self.close)  # type: ignore
+        self.anim_out.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _on_anim_frame(self, progress: float) -> None:
-        """Drives both the background fade and the layout margin slide."""
-        # Max alpha is 130; scale it by our 0.0 -> 1.0 progress
-        self._bg_alpha = int(130 * progress)
+        """Updates the background opacity and card position based on animation progress.
 
-        # Start the card 50px lower and slide it up to 0px
+        Args:
+            progress (float): The current interpolation value (0.0 to 1.0).
+        """
+        self._bg_alpha = int(130 * progress)
         offset = int(50 * (1.0 - progress))
         self.base_layout.setContentsMargins(0, offset, 0, 0)
-
-        # Force the paintEvent to redraw the darker background
         self.update()

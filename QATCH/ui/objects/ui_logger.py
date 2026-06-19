@@ -321,7 +321,7 @@ class QTextEditLogger(QtCore.QObject):
         self.match_counter = QtWidgets.QLabel("No results", parent=self.container)
         self.match_counter.setObjectName("MatchCounter")
         self.match_counter.setMinimumWidth(64)
-        self.match_counter.setAlignment(QtCore.Qt.AlignCenter)
+        self.match_counter.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         control_layout.addWidget(self.match_counter)
 
         # Search navigation
@@ -334,7 +334,7 @@ class QTextEditLogger(QtCore.QObject):
         self.btn_find_prev.setIcon(up_chevron)
         self.btn_find_prev.setIconSize(QtCore.QSize(12, 12))
         self.btn_find_prev.setToolTip("Find Previous (Shift+Enter)")
-        self.btn_find_prev.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_find_prev.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_find_prev.clicked.connect(self.find_prev)
         control_layout.addWidget(self.btn_find_prev)
 
@@ -344,7 +344,7 @@ class QTextEditLogger(QtCore.QObject):
         self.btn_find_next.setIcon(down_chevron)
         self.btn_find_next.setIconSize(QtCore.QSize(12, 12))
         self.btn_find_next.setToolTip("Find Next (Enter)")
-        self.btn_find_next.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_find_next.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_find_next.clicked.connect(self.find_next)
         control_layout.addWidget(self.btn_find_next)
 
@@ -358,7 +358,7 @@ class QTextEditLogger(QtCore.QObject):
         self.btn_clear.setObjectName("ClearBtn")
         self.btn_clear.setFixedHeight(28)
         self.btn_clear.setToolTip("Clear all console output")
-        self.btn_clear.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_clear.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_clear.clicked.connect(self.clear_console)
         control_layout.addWidget(self.btn_clear)
 
@@ -448,7 +448,7 @@ class QTextEditLogger(QtCore.QObject):
                         self._clear_icon_hover if over else self._clear_icon_normal
                     )
                     self.search_input.setCursor(
-                        QtCore.Qt.PointingHandCursor if over else QtCore.Qt.IBeamCursor
+                        QtCore.Qt.CursorShape.PointingHandCursor if over else QtCore.Qt.IBeamCursor
                     )
             elif et == QtCore.QEvent.Leave:
                 if self._clear_hovering:

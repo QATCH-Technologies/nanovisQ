@@ -131,7 +131,7 @@ class UIInfo:
         # Reference Settings -------------------------------------------------------------------
         self.inforef = QtWidgets.QLabel()
         self.inforef.setStyleSheet("background: #008EC0; padding: 1px;")
-        # self.inforef1.setAlignment(QtCore.Qt.AlignCenter)
+        # self.inforef1.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.inforef.setText("<font color=#ffffff > Reference Settings </font>")
         # self.inforef.setFixedHeight(15)
         # self.inforef.setFixedWidth(250)
@@ -140,7 +140,7 @@ class UIInfo:
         # Ref. Frequency -----------------------------------------------------------------------
         self.inforef1 = QtWidgets.QLabel()
         self.inforef1.setStyleSheet("background: white; padding: 1px; border: 1px solid #cccccc")
-        # self.inforef1.setAlignment(QtCore.Qt.AlignCenter)
+        # self.inforef1.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.inforef1.setText("<font color=#0000ff > Ref. Frequency </font>")
         # self.inforef1.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.inforef1, 12, 0, 1, 1)
@@ -148,7 +148,7 @@ class UIInfo:
 
         self.inforef2 = QtWidgets.QLabel()
         self.inforef2.setStyleSheet("background: white; padding: 1px; border: 1px solid #cccccc")
-        # self.inforef2.setAlignment(QtCore.Qt.AlignCenter)
+        # self.inforef2.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.inforef2.setText("<font color=#0000ff > Ref. Dissipation </font>")
         # self.inforef2.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.inforef2, 13, 0, 1, 1)
@@ -165,7 +165,7 @@ class UIInfo:
         self.l7 = QtWidgets.QLabel()
         self.l7.setStyleSheet("background: white; padding: 1px; border: 1px solid #cccccc")
         self.l7.setText("<font color=#0000ff >  Resonance Frequency </font>")
-        # self.l7.setAlignment(QtCore.Qt.AlignCenter)
+        # self.l7.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         # self.l7.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.l7, 15, 0, 1, 1)
 

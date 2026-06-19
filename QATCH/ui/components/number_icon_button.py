@@ -71,13 +71,15 @@ class NumberIconButton(QtWidgets.QToolButton):
 
         # Number (enabled)
         if not self._error:
-            self.painter.drawText(pm_number.rect(), QtCore.Qt.AlignCenter, str(number))
+            self.painter.drawText(
+                pm_number.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, str(number)
+            )
         else:
             # Change pen to red, mark an X instead of the port number
             pen = QtGui.QPen(QtGui.QColor("#FF0000"), 2)
             self.painter.setPen(pen)
 
-            self.painter.drawText(pm_number.rect(), QtCore.Qt.AlignCenter, "X")
+            self.painter.drawText(pm_number.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "X")
 
         self.painter.end()
 

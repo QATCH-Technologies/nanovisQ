@@ -11,7 +11,7 @@ class _GlassDeviceInfoInnerPanel(QtWidgets.QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         p = QtGui.QPainter(self)
@@ -36,7 +36,7 @@ class _GlassDeviceInfoInnerPanel(QtWidgets.QWidget):
 
         # Dual borders
         p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 220), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), _R, _R)
         p.setPen(QtGui.QPen(QtGui.QColor(200, 210, 220, 90), 1.0))
@@ -56,10 +56,12 @@ class DeviceInfoMainWidget(QtWidgets.QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(
             parent,
-            QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint | QtCore.Qt.NoDropShadowWindowHint,
+            QtCore.Qt.WindowType.Popup
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint,
         )
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
 
         self._main_window = None
@@ -138,9 +140,9 @@ class DeviceInfoMainWidget(QtWidgets.QWidget):
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
         # Auto-close if the main window moves or resizes
         if watched is self._main_window and event.type() in (
-            QtCore.QEvent.Resize,
-            QtCore.QEvent.Move,
-            QtCore.QEvent.WindowStateChange,
+            QtCore.QEvent.Type.Resize,
+            QtCore.QEvent.Type.Move,
+            QtCore.QEvent.Type.WindowStateChange,
         ):
             self.close()
         return super().eventFilter(watched, event)
@@ -153,7 +155,3 @@ class DeviceInfoMainWidget(QtWidgets.QWidget):
                 pass
             self._main_window = None
         super().closeEvent(event)
-
-# class DeviceInfoLayoutWidget(QtWidgets.QWidget):
-#     def __init__(self, parent=None)
-#         super()

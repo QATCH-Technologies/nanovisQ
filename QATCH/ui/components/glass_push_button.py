@@ -193,7 +193,7 @@ class GlassPushButton(QtWidgets.QPushButton):
 
         # WA_Hover ensures enterEvent / leaveEvent fire correctly on all platforms
         self.setAttribute(QtCore.Qt.WA_Hover, True)
-        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
     # ------------------------------------------------------------------
     # Public API
@@ -283,11 +283,11 @@ class GlassPushButton(QtWidgets.QPushButton):
         text rendering to Qt's standard CE_PushButtonLabel pipeline.
 
         Guard against zero-height during size animations (cancel buttons
-        start at 0×0 and expand).
+        start at 0x0 and expand).
         """
         w, h = self.width(), self.height()
         if h < 4:
-            # Widget is still animating open from 0×0 — nothing to draw yet.
+            # Widget is still animating open from 0x0 — nothing to draw yet.
             super().paintEvent(event)
             return
 
@@ -314,7 +314,7 @@ class GlassPushButton(QtWidgets.QPushButton):
             p.setBrush(QtGui.QBrush(self._c(pal["fills"][state_idx])))
 
         p.drawRoundedRect(rect, r, r)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
         # ── Border / shimmer ─────────────────────────────────────────
         # Algorithm mirrors GlassLineEdit paintEvent exactly:

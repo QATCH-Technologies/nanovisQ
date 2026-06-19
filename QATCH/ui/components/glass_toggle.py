@@ -54,7 +54,7 @@ class GlassToggle(QtWidgets.QAbstractButton):
         super().__init__(parent)
         self.setCheckable(True)
         self.setFixedSize(self._TRACK_W, self._TRACK_H)
-        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
         self._anim_t: float = 0.0
 
@@ -126,7 +126,7 @@ class GlassToggle(QtWidgets.QAbstractButton):
             self._lerp(lo_b[3], hi_b[3], t),
         )
         p.setPen(QtGui.QPen(border_color, 1.0))
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.drawRoundedRect(QtCore.QRectF(0.5, 0.5, w - 1.0, h - 1.0), r, r)
 
         # ── Thumb ────────────────────────────────────────────────────

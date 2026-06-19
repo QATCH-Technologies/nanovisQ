@@ -5,11 +5,11 @@ Glassmorphism overlay widget for resetting a NanovisQ user's password.
 
 Structure mirrors create_user_widget.py exactly: same card geometry, same
 open/close animation (scrim fade + slide-up), same inline error system, and
-the same × close / → submit button conventions.
+the same x close / → submit button conventions.
 
 Layout (top → bottom inside the card)
 --------------------------------------
-  × close button (top-right)
+  x close button (top-right)
   reset-password.svg icon
   "Reset Password" title
   User info card  ─ initials avatar · full name · role badge
@@ -95,8 +95,8 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
         # Overlay must be transparent (scrim is drawn manually in paintEvent)
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
-        self.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
         if parent is not None:
             parent.installEventFilter(self)
@@ -114,7 +114,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
         # ── Outer centred layout ───────────────────────────────────────
         self.base_layout = QtWidgets.QVBoxLayout(self)
-        self.base_layout.setAlignment(QtCore.Qt.AlignCenter)
+        self.base_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         # ── Glass card ─────────────────────────────────────────────────
         self.glass_frame = QtWidgets.QFrame(self)
@@ -138,14 +138,14 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.main_layout.setContentsMargins(28, 14, 28, 28)
         self.main_layout.setSpacing(6)
 
-        # ── Row 1: × close button ──────────────────────────────────────
+        # ── Row 1: x close button ──────────────────────────────────────
         close_row = QtWidgets.QHBoxLayout()
         close_row.setContentsMargins(0, 0, 0, 0)
         close_row.addStretch()
 
-        self.btn_close = QtWidgets.QPushButton("×")
+        self.btn_close = QtWidgets.QPushButton("x")
         self.btn_close.setFixedSize(28, 28)
-        self.btn_close.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_close.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_close.setStyleSheet("""
             QPushButton {
                 background: transparent;
@@ -164,24 +164,27 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
         # ── Row 2: header icon ─────────────────────────────────────────
         icon_lbl = QtWidgets.QLabel()
-        icon_lbl.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-        icon_lbl.setAlignment(QtCore.Qt.AlignCenter)
+        icon_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        icon_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         icon_pm = QtGui.QPixmap(os.path.join(icons_dir, "reset-password.svg"))
         if not icon_pm.isNull():
             icon_pm = icon_pm.scaled(
-                48, 48, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
+                48,
+                48,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
             )
             icon_lbl.setPixmap(icon_pm)
         else:
             icon_lbl.setText("🔑")
             icon_lbl.setStyleSheet("font-size: 30px; background: transparent;")
         icon_lbl.setFixedHeight(52)
-        self.main_layout.addWidget(icon_lbl, alignment=QtCore.Qt.AlignCenter)
+        self.main_layout.addWidget(icon_lbl, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
         # ── Row 3: title ───────────────────────────────────────────────
         lbl_title = QtWidgets.QLabel("Reset Password")
-        lbl_title.setAlignment(QtCore.Qt.AlignCenter)
-        lbl_title.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        lbl_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl_title.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         lbl_title.setStyleSheet("""
             QLabel {
                 color: rgba(50, 55, 65, 220);
@@ -246,13 +249,13 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
         # ── Row 9: submit button ───────────────────────────────────────
         btn_row = QtWidgets.QHBoxLayout()
-        btn_row.setAlignment(QtCore.Qt.AlignCenter)
+        btn_row.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         self.btn_submit = QtWidgets.QPushButton("")
         self.btn_submit.setIcon(QtGui.QIcon(os.path.join(icons_dir, "right-arrow.svg")))
         self.btn_submit.setIconSize(QtCore.QSize(20, 20))
         self.btn_submit.setFixedSize(40, 40)
-        self.btn_submit.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_submit.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_submit.setToolTip("Confirm password reset")
         self.btn_submit.setStyleSheet("""
             QPushButton {
@@ -300,7 +303,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
     def _build_user_info_card(self) -> QtWidgets.QFrame:
         """Returns a mini profile card showing the target user's identity."""
         card = QtWidgets.QFrame()
-        card.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        card.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         card.setStyleSheet("""
             QFrame {
                 background: rgba(255, 255, 255, 55);
@@ -316,8 +319,8 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         # ── Initials avatar ───────────────────────────────────────────
         avatar = QtWidgets.QLabel(self._initials)
         avatar.setFixedSize(46, 46)
-        avatar.setAlignment(QtCore.Qt.AlignCenter)
-        avatar.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        avatar.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        avatar.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         avatar.setStyleSheet("""
             QLabel {
                 background: rgba(45, 165, 250, 100);
@@ -335,7 +338,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         col.setContentsMargins(0, 0, 0, 0)
 
         name_lbl = QtWidgets.QLabel(self._name)
-        name_lbl.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        name_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         name_lbl.setStyleSheet("""
             QLabel {
                 color: rgba(35, 40, 55, 225);
@@ -371,7 +374,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
             bg, border, color = "rgba(10,163,230,0.15)", "rgba(10,163,230,0.40)", "#0AA3E6"
 
         badge = QtWidgets.QLabel(role_name)
-        badge.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        badge.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         badge.setStyleSheet(f"""
             QLabel {{
                 background: {bg};
@@ -393,7 +396,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         """
         frame = QtWidgets.QFrame()
         frame.setFixedHeight(_INPUT_H)
-        frame.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        frame.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         frame.setStyleSheet("""
             QFrame {
                 background: rgba(245, 247, 252, 30);
@@ -407,7 +410,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         lay.setSpacing(8)
 
         field_lbl = QtWidgets.QLabel(label_text)
-        field_lbl.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        field_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         field_lbl.setStyleSheet("""
             QLabel {
                 color: rgba(140, 152, 168, 140);
@@ -417,7 +420,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         """)
 
         placeholder_lbl = QtWidgets.QLabel(placeholder)
-        placeholder_lbl.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        placeholder_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         placeholder_lbl.setStyleSheet("""
             QLabel {
                 color: rgba(160, 170, 185, 100);
@@ -428,7 +431,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         """)
 
         soon_badge = QtWidgets.QLabel("coming soon")
-        soon_badge.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        soon_badge.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         soon_badge.setStyleSheet("""
             QLabel {
                 color: rgba(150, 160, 175, 160);
@@ -452,7 +455,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         """Returns a 1 px horizontal glass rule."""
         sep = QtWidgets.QWidget()
         sep.setFixedHeight(1)
-        sep.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        sep.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         sep.setStyleSheet("QWidget { background: rgba(185, 218, 248, 75); }")
         return sep
 
@@ -461,7 +464,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         """Returns a compact inline error label, hidden by default."""
         lbl = QtWidgets.QLabel("")
         lbl.setWordWrap(True)
-        lbl.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         lbl.setStyleSheet("""
             QLabel {
                 color: rgba(210, 55, 55, 220);
@@ -516,7 +519,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         anim.setKeyValueAt(0.7, base + QtCore.QPoint(4, 0))
         anim.setKeyValueAt(0.9, base + QtCore.QPoint(-2, 0))
         anim.setKeyValueAt(1.0, base)
-        anim.start(QtCore.QPropertyAnimation.DeleteWhenStopped)
+        anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
         self._shake_anims.append(anim)
         anim.finished.connect(
@@ -585,7 +588,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.anim_in.setEndValue(1.0)
         self.anim_in.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         self.anim_in.valueChanged.connect(self._on_anim_frame)
-        self.anim_in.start(QtCore.QPropertyAnimation.DeleteWhenStopped)
+        self.anim_in.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _close_with_animation(self) -> None:
         """Disables interactions then reverses the animation before destruction."""
@@ -598,7 +601,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.anim_out.setEasingCurve(QtCore.QEasingCurve.InQuad)
         self.anim_out.valueChanged.connect(self._on_anim_frame)
         self.anim_out.finished.connect(self.close)
-        self.anim_out.start(QtCore.QPropertyAnimation.DeleteWhenStopped)
+        self.anim_out.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _on_anim_frame(self, progress: float) -> None:
         """Drives both the scrim fade and the card slide-up."""
@@ -619,7 +622,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
     def eventFilter(self, obj, event) -> bool:
         """Keeps the overlay filling its parent if the parent is resized."""
-        if obj is self.parent() and event.type() == QtCore.QEvent.Resize:
+        if obj is self.parent() and event.type() == QtCore.QEvent.Type.Resize:
             self.resize(event.size())
         return super().eventFilter(obj, event)
 

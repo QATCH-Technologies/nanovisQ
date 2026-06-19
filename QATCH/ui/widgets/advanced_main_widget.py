@@ -1,5 +1,20 @@
-import os
+"""
+avanced_main_widget.py
 
+This module contains the `AdvancedMainWidget` and its supporting UI components
+(`_InfoIcon`, `_AdvancedInnerPanel`). It is designed to render an elegant,
+translucent dropdown panel that can anchor to a specific UI element and house
+advanced configuration controls.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-06-19
+"""
+
+import os
+import contextlib
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
@@ -7,113 +22,41 @@ import PyQt5.QtWidgets as QtWidgets
 from QATCH.common.architecture import Architecture
 
 
-class GlassWarningLabel(QtWidgets.QWidget):
-    """Calm informational banner for the Advanced Settings dialog.
-
-    Renders as a soft blue-gray glass strip with an optional leading icon and
-    informational (not alarming) text. Replaces the old loud orange warning.
-    Keeps a QLabel-like ``setText`` so existing call sites still work.
-    """
-
-    _RADIUS: float = 6.0
-
-    def __init__(self, text: str = "", icon_path: str = "", parent=None) -> None:
-        super().__init__(parent)
-        self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
-
-        row = QtWidgets.QHBoxLayout(self)
-        row.setContentsMargins(10, 6, 10, 6)
-        row.setSpacing(8)
-
-        # Leading icon slot — populated when an icon path is provided.
-        self.icon_lbl = QtWidgets.QLabel(self)
-        self.icon_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-        self.icon_lbl.setStyleSheet("background: transparent; border: none;")
-        self.icon_lbl.setFixedSize(16, 16)
-        self.icon_lbl.setScaledContents(True)
-        if icon_path:
-            self.set_icon(icon_path)
-        else:
-            self.icon_lbl.hide()  # TODO: provide warning/info SVG icon
-        row.addWidget(self.icon_lbl, 0, QtCore.Qt.AlignVCenter)
-
-        self.text_lbl = QtWidgets.QLabel(text, self)
-        self.text_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-        self.text_lbl.setStyleSheet(
-            "QLabel { color: rgba(45, 75, 105, 220); font-size: 11px; "
-            "font-weight: normal; background: transparent; border: none; }"
-        )
-        self.text_lbl.setWordWrap(True)
-        row.addWidget(self.text_lbl, 1, QtCore.Qt.AlignVCenter)
-
-    def set_icon(self, icon_path: str) -> None:
-        pix = QtGui.QPixmap(icon_path)
-        if not pix.isNull():
-            self.icon_lbl.setPixmap(pix)
-            self.icon_lbl.show()
-
-    def setText(self, text: str) -> None:
-        self.text_lbl.setText(text)
-
-    def text(self) -> str:
-        return self.text_lbl.text()
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        p = QtGui.QPainter(self)
-        p.setRenderHints(QtGui.QPainter.Antialiasing)
-
-        rect_f = QtCore.QRectF(self.rect())
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
-        p.setClipPath(clip)
-
-        # Soft, neutral blue-gray info glass.
-        grad = QtGui.QLinearGradient(0, 0, 0, self.height())
-        grad.setColorAt(0.0, QtGui.QColor(120, 165, 210, 40))
-        grad.setColorAt(1.0, QtGui.QColor(95, 140, 190, 30))
-        p.fillRect(self.rect(), QtGui.QBrush(grad))
-
-        # Top shimmer
-        shimmer = QtGui.QLinearGradient(0, 0, 0, self.height() * 0.6)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 40))
-        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
-        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        # Hairline border
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(120, 160, 200, 110), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-
-        p.end()
-
-
 class _InfoIcon(QtWidgets.QLabel):
     """Info icon (SVG) that brightens on hover and shows a tooltip.
 
-    Loads ``info.svg`` from the icons dir. The icon is rendered at reduced
+    Loads an SVG from the provided path. The icon is rendered at reduced
     opacity at rest and full opacity on hover, giving a subtle hover effect
     without needing a second asset.
+
+    Attributes:
+        _DISPLAY_SIZE (int): The display size (width and height) of the icon in pixels.
     """
 
-    _D: int = 16  # display size
+    _DISPLAY_SIZE: int = 16
 
     def __init__(self, icon_path: str, tooltip: str = "", parent=None) -> None:
+        """Initializes the _InfoIcon.
+
+        Args:
+            icon_path (str): The file path to the SVG or image asset.
+            tooltip (str, optional): The tooltip text to display on hover. Defaults to "".
+            parent (QtWidgets.QWidget, optional): The parent widget. Defaults to None.
+        """
         super().__init__(parent)
-        self.setFixedSize(self._D, self._D)
-        self.setCursor(QtCore.Qt.WhatsThisCursor)
-        self.setAttribute(QtCore.Qt.WA_Hover, True)
+        self.setFixedSize(self._DISPLAY_SIZE, self._DISPLAY_SIZE)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setStyleSheet("background: transparent; border: none;")
         self.setToolTip(tooltip)
 
         src = QtGui.QPixmap(icon_path)
         if not src.isNull():
             src = src.scaled(
-                self._D,
-                self._D,
-                QtCore.Qt.KeepAspectRatio,
-                QtCore.Qt.SmoothTransformation,
+                self._DISPLAY_SIZE,
+                self._DISPLAY_SIZE,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
             )
         self._pix_rest = self._with_opacity(src, 0.55)
         self._pix_hover = self._with_opacity(src, 1.0)
@@ -121,47 +64,83 @@ class _InfoIcon(QtWidgets.QLabel):
 
     @staticmethod
     def _with_opacity(src: QtGui.QPixmap, opacity: float) -> QtGui.QPixmap:
+        """Creates a copy of the given pixmap with a specific opacity applied.
+
+        Args:
+            src (QtGui.QPixmap): The source pixmap to modify.
+            opacity (float): The desired opacity level (0.0 to 1.0).
+
+        Returns:
+            QtGui.QPixmap: A new pixmap rendered with the requested opacity.
+        """
         if src.isNull():
             return src
         out = QtGui.QPixmap(src.size())
-        out.fill(QtCore.Qt.transparent)
+        out.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(out)
         p.setOpacity(opacity)
         p.drawPixmap(0, 0, src)
         p.end()
         return out
 
-    def enterEvent(self, event) -> None:
+    def enterEvent(self, event) -> None:  # noqa: N802
+        """Handles the mouse enter event to brighten the icon.
+
+        Args:
+            event (QtCore.QEvent): The triggering hover event.
+        """
         if not self._pix_hover.isNull():
             self.setPixmap(self._pix_hover)
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        """Handles the mouse leave event to dim the icon back to rest state.
+
+        Args:
+            event (QtCore.QEvent): The triggering hover leave event.
+        """
         if not self._pix_rest.isNull():
             self.setPixmap(self._pix_rest)
 
 
-class _GlassAdvancedInnerPanel(QtWidgets.QWidget):
-    """Inner glass-morphism panel for the advanced settings popup."""
+class _AdvancedInnerPanel(QtWidgets.QWidget):
+    """Inner panel for the advanced settings popup.
+
+    Handles the custom painting of the frosted white base, shimmer, and dual
+    borders to simulate a glass-like material.
+
+    Attributes:
+        _RADIUS (float): The corner radius of the panel.
+    """
 
     _RADIUS: float = 10.0
 
     def __init__(self, parent=None) -> None:
+        """Initializes the _AdvancedInnerPanel.
+
+        Args:
+            parent (QtWidgets.QWidget, optional): The parent widget. Defaults to None.
+        """
         super().__init__(parent)
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        """Paints the frosted-glass visual effect on the widget surface.
+
+        Args:
+            event (QtGui.QPaintEvent): The paint event parameters provided by Qt.
+        """
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
 
         rect_f = QtCore.QRectF(self.rect())
-        _R = self._RADIUS
+        r = self._RADIUS
 
         clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, _R, _R)
+        clip.addRoundedRect(rect_f, r, r)
         p.setClipPath(clip)
 
-        # Frosted white base
+        # Base
         p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 235))
         p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 28))
 
@@ -173,11 +152,11 @@ class _GlassAdvancedInnerPanel(QtWidgets.QWidget):
 
         # Dual borders
         p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 220), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), _R, _R)
+        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), r, r)
         p.setPen(QtGui.QPen(QtGui.QColor(200, 210, 220, 90), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(1.5, 1.5, -1.5, -1.5), _R - 1.5, _R - 1.5)
+        p.drawRoundedRect(rect_f.adjusted(1.5, 1.5, -1.5, -1.5), r - 1.5, r - 1.5)
 
         p.end()
 
@@ -188,8 +167,13 @@ class AdvancedMainWidget(QtWidgets.QWidget):
     This widget owns the entire advanced-settings surface: the frosted popup
     shell, the orange warning banner, and the container that hosts the controls.
     Callers build the individual controls (combo boxes, buttons, etc.) in their
-    own grid layout and hand that layout to :meth:`build_content`; this widget
-    wraps it with the warning banner inside the owned ``content_container``.
+    own grid layout and hand that layout to `build_content`; this widget
+    wraps it inside the owned `content_container`.
+
+    Attributes:
+        content_container (QtWidgets.QWidget | None): The lazily-built container holding
+            the dynamically injected content.
+        content_layout (QtWidgets.QVBoxLayout): The internal layout managing the panel items.
     """
 
     _SHADOW_MARGIN_L = 22
@@ -203,19 +187,21 @@ class AdvancedMainWidget(QtWidgets.QWidget):
     )
 
     def __init__(self, parent=None) -> None:
-        super().__init__(
-            parent,
-            QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint | QtCore.Qt.NoDropShadowWindowHint,
+        flags = (
+            QtCore.Qt.WindowType.Popup
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint
         )
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        super().__init__(parent, QtCore.Qt.WindowFlags(flags))  # type: ignore
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
 
         self._main_window = None
         self.content_container = None  # built lazily by build_content()
 
-        # Outer container with shadow margins
-        self._panel = _GlassAdvancedInnerPanel(self)
+        # Outer container
+        self._panel = _AdvancedInnerPanel(self)
         outer_layout = QtWidgets.QVBoxLayout(self)
         outer_layout.setContentsMargins(
             self._SHADOW_MARGIN_L,
@@ -233,29 +219,33 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         shadow.setColor(QtGui.QColor(0, 20, 40, 110))
         self._panel.setGraphicsEffect(shadow)
 
-        # Inner layout for dynamic content
+        # Inner layout
         self.content_layout = QtWidgets.QVBoxLayout(self._panel)
         self.content_layout.setContentsMargins(14, 14, 14, 14)
 
-    # ------------------------------------------------------------------
-    # Content assembly
-    # ------------------------------------------------------------------
     @staticmethod
     def build_container(controls_layout: QtWidgets.QLayout) -> QtWidgets.QWidget:
-        """Create the advanced container (title header + controls), hidden.
+        """Creates the advanced container (title header + controls).
 
         The header is a title row in the top-left: a gear icon, the
         "Advanced Options" title, and an info icon that reveals the advanced
-        usage message on hover. ``controls_layout`` holds the actual control
-        widgets (created/wired by the caller); only the container, header, and
-        wrapping layout are owned here.
+        usage message on hover. `controls_layout` holds the actual control
+        widgets (created/wired by the caller). The resulting container is
+        hidden by default.
+
+        Args:
+            controls_layout (QtWidgets.QLayout): The layout containing the actual
+                setting widgets.
+
+        Returns:
+            QtWidgets.QWidget: The wrapper widget containing the header and controls.
         """
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
         container = QtWidgets.QWidget()
         container.setWhatsThis(AdvancedMainWidget._INFO_TEXT)
 
-        # ---- Title header (top-left): gear + title + info-on-hover ----
+        # Title header (top-left)
         header = QtWidgets.QHBoxLayout()
         header.setContentsMargins(2, 0, 2, 0)
         header.setSpacing(8)
@@ -267,22 +257,21 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         _gear_pix = QtGui.QPixmap(os.path.join(icons_dir, "gear.svg"))
         if not _gear_pix.isNull():
             gear.setPixmap(_gear_pix)
-        header.addWidget(gear, 0, QtCore.Qt.AlignVCenter)
+        header.addWidget(gear, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         title = QtWidgets.QLabel("Advanced Options")
         title.setStyleSheet(
             "QLabel { color: rgba(28, 40, 52, 235); font-size: 14px; "
             "font-weight: bold; background: transparent; border: none; }"
         )
-        header.addWidget(title, 0, QtCore.Qt.AlignVCenter)
+        header.addWidget(title, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        # Info icon (SVG) with a hover brighten effect; shows the advanced
-        # usage message on hover. TODO: ensure info.svg exists in icons dir.
+        # Info icon
         info = _InfoIcon(
             os.path.join(icons_dir, "warning-circle.svg"),
             tooltip=AdvancedMainWidget._INFO_TEXT,
         )
-        header.addWidget(info, 0, QtCore.Qt.AlignVCenter)
+        header.addWidget(info, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         header.addStretch()
 
@@ -291,35 +280,54 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         wrap.addLayout(header)
         wrap.addLayout(controls_layout)
 
-        container.hide()  # shown when anchored
+        container.hide()
         return container
 
     def build_content(self, controls_layout: QtWidgets.QLayout) -> QtWidgets.QWidget:
-        """Build and adopt a fresh advanced container around ``controls_layout``."""
+        """Builds and adopts a fresh advanced container around `controls_layout`.
+
+        Args:
+            controls_layout (QtWidgets.QLayout): The layout containing the user controls.
+
+        Returns:
+            QtWidgets.QWidget: The assigned content container.
+        """
         self.content_container = self.build_container(controls_layout)
         return self.content_container
 
-    def set_content_widget(self, widget: QtWidgets.QWidget):
+    def set_content_widget(self, widget: QtWidgets.QWidget) -> None:
         """Injects an already-built container into the popup.
 
-        Retained for backward compatibility / parity with the device-info
-        popup. Prefer :meth:`build_content` for the advanced settings.
+        Retained for backward compatibility or parity with the device-info
+        popup. Prefer `build_content` for the advanced settings.
+
+        Args:
+            widget (QtWidgets.QWidget): The fully built widget to insert.
         """
         self.content_container = widget
         self.content_layout.addWidget(widget)
         widget.show()
 
-    # ------------------------------------------------------------------
-    # Popup lifecycle
-    # ------------------------------------------------------------------
     @classmethod
     def toggle(cls, owner, anchor, controls_layout, main_window=None, attr="_advanced_popup"):
-        """Open or close the advanced popup, owning the full lifecycle.
+        """Opens or closes the advanced popup, owning the full lifecycle.
 
-        ``owner`` stores the popup instance (typically the UIControls instance).
-        The container is taken from ``owner._advanced_content_container`` if it
-        was pre-built; otherwise it is built from ``controls_layout`` and cached
-        there. If a popup is already visible it is closed (toggle) -> ``None``.
+        `owner` stores the popup instance (typically the UIControls instance).
+        The container is taken from `owner._advanced_content_container` if it
+        was pre-built; otherwise it is built from `controls_layout` and cached
+        there. If a popup is already visible it is closed.
+
+        Args:
+            owner (object): The parent object or controller that stores the popup state.
+            anchor (QtWidgets.QWidget): The UI element this popup should anchor to.
+            controls_layout (QtWidgets.QLayout): The layout containing the inner controls.
+            main_window (QtWidgets.QWidget, optional): The application main window.
+                Defaults to None.
+            attr (str, optional): The attribute name on `owner` where the popup is stored.
+                Defaults to "_advanced_popup".
+
+        Returns:
+            AdvancedMainWidget | None: The active popup instance if opened, or None if closed.
         """
         existing = getattr(owner, attr, None)
         if existing is not None and existing.isVisible():
@@ -343,7 +351,16 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         return popup
 
     def show_anchored_to(self, anchor: QtWidgets.QWidget, main_window=None) -> None:
-        """Shows the popup pinned to the anchor, clamped to the main window."""
+        """Shows the popup pinned to the anchor, clamped to the main window bounds.
+
+        Calculates geometry to ensure the dropdown renders neatly beneath or near
+        the anchor while avoiding rendering off-screen.
+
+        Args:
+            anchor (QtWidgets.QWidget): The widget this popup stems from.
+            main_window (QtWidgets.QWidget, optional): The top-level window used for
+                boundary constraints. Defaults to None.
+        """
         self._main_window = main_window
         self.adjustSize()
 
@@ -353,7 +370,6 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         x = anchor_br.x() + self._SHADOW_MARGIN_R - popup_w
         y = anchor_br.y() + 2 - self._SHADOW_MARGIN_T
 
-        # Clamp logic to ensure it doesn't render off-screen/off-app
         top_level = anchor.window() if anchor is not None else None
         bounds = (
             top_level.geometry()
@@ -385,21 +401,35 @@ class AdvancedMainWidget(QtWidgets.QWidget):
             self._main_window.installEventFilter(self)
         self.show()
 
-    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802
+        """Filters events on the main window to automatically close the popup.
+
+        Triggers closure on main window movements or resizes to prevent floating UI.
+
+        Args:
+            watched (QtCore.QObject): The object being watched.
+            event (QtCore.QEvent): The intercepted event.
+
+        Returns:
+            bool: Always returns the base class eventFilter result.
+        """
         # Auto-close if the main window moves or resizes
         if watched is self._main_window and event.type() in (
-            QtCore.QEvent.Resize,
-            QtCore.QEvent.Move,
-            QtCore.QEvent.WindowStateChange,
+            QtCore.QEvent.Type.Resize,
+            QtCore.QEvent.Type.Move,
+            QtCore.QEvent.Type.WindowStateChange,
         ):
             self.close()
         return super().eventFilter(watched, event)
 
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
+        """Cleans up event filters when the popup is closed.
+
+        Args:
+            event (QtGui.QCloseEvent): The close event.
+        """
         if self._main_window is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._main_window.removeEventFilter(self)
-            except Exception:
-                pass
             self._main_window = None
         super().closeEvent(event)

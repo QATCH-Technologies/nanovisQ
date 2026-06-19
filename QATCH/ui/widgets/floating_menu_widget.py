@@ -11,9 +11,11 @@ class FloatingMenuWidget(QtWidgets.QWidget):
 
         # Make the widget frameless, transparent, and always on top
         self.setWindowFlags(
-            QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.Tool
+            QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowStaysOnTopHint
+            | QtCore.Qt.Tool
         )
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # Reserve space for the shadow effect
         self.setContentsMargins(0, 0, 10, 10)

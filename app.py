@@ -5,8 +5,7 @@ import sys
 import time
 from multiprocessing import freeze_support
 
-from PyQt5 import QtCore, QtGui
-from PyQt5.QtGui import QPixmap, QColor
+from PyQt5 import QtCore
 from PyQt5.QtWidgets import QApplication
 
 from QATCH.common.architecture import Architecture, OSType

@@ -146,7 +146,7 @@ class UIMain:
             Architecture.get_path(), "QATCH", "icons", "high-res-nanovisq-logo-no-bg.png"
         )
         original_pixmap = QtGui.QPixmap(icon_path).scaledToWidth(
-            100, QtCore.Qt.SmoothTransformation
+            100, QtCore.Qt.TransformationMode.SmoothTransformation
         )
         rounded_pixmap = QtGui.QPixmap(original_pixmap.size())
         rounded_pixmap.fill(QtCore.Qt.transparent)
@@ -173,14 +173,14 @@ class UIMain:
         self.mode_run = QtWidgets.QLabel("Run")
         self.mode_run.setObjectName("menuItem")
         self.mode_run.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-        self.mode_run.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.mode_run.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.mode_run.mousePressEvent = self._set_run_mode
 
         # Analyze Mode
         self.mode_analyze = QtWidgets.QLabel("Analyze")
         self.mode_analyze.setObjectName("menuItem")
         self.mode_analyze.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-        self.mode_analyze.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.mode_analyze.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.mode_analyze.mousePressEvent = self._set_analyze_mode
 
         # Tools Header
@@ -192,14 +192,14 @@ class UIMain:
         # Using this instead of <sup> for beter antialiasing.
         self.mode_learn.setObjectName("menuItem")
         self.mode_learn.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-        self.mode_learn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.mode_learn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.mode_learn.mousePressEvent = self._set_learn_mode
 
         # Donnan Calculator Tool
         self.mode_donnan = QtWidgets.QLabel("Donnan-Gibbs Calculator")
         self.mode_donnan.setObjectName("menuItem")
         self.mode_donnan.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-        self.mode_donnan.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.mode_donnan.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.mode_donnan.setWordWrap(True)
         self.mode_donnan.mousePressEvent = self._set_donnan_mode
 
@@ -207,7 +207,7 @@ class UIMain:
         self.mode_injection = QtWidgets.QLabel("Injection Force Calculator")
         self.mode_injection.setObjectName("menuItem")
         self.mode_injection.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-        self.mode_injection.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.mode_injection.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.mode_injection.setWordWrap(True)
         self.mode_injection.mousePressEvent = self._set_injection_mode
 
@@ -401,7 +401,7 @@ class UIMain:
         self.btnLogToggle = QtWidgets.QToolButton(self.log_toggle_bar)
         self.btnLogToggle.setObjectName("logToggleBtn")
         self.btnLogToggle.setFixedSize(22, 18)
-        self.btnLogToggle.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btnLogToggle.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btnLogToggle.setIcon(self._log_chevron_down)  # expanded -> shows collapse action
         self.btnLogToggle.setIconSize(QtCore.QSize(11, 11))
         self.btnLogToggle.setToolTip("Hide console")

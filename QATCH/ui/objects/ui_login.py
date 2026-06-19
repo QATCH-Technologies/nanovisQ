@@ -174,8 +174,8 @@ class LoginCentralWidget(QtWidgets.QWidget):
         if not self.size().isEmpty():
             raw = raw.scaled(
                 self.size(),
-                QtCore.Qt.KeepAspectRatioByExpanding,
-                QtCore.Qt.SmoothTransformation,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
             )
 
         self._blurred = self._apply_blur(raw, radius=22)
@@ -193,8 +193,8 @@ class LoginCentralWidget(QtWidgets.QWidget):
         if not self.size().isEmpty() and not pixmap.isNull():
             pixmap = pixmap.scaled(
                 self.size(),
-                QtCore.Qt.KeepAspectRatioByExpanding,
-                QtCore.Qt.SmoothTransformation,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
             )
 
         self._blurred = self._apply_blur(pixmap, radius=22)
@@ -309,7 +309,7 @@ class GlassCard(QtWidgets.QFrame):
 
         # Prevent the base class from painting opaque backgrounds
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Executes the custom glassmorphism painting pipeline.
@@ -347,7 +347,7 @@ class GlassCard(QtWidgets.QFrame):
         shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
         p.fillRect(self.rect(), QtGui.QBrush(shimmer))
         p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(QtGui.QColor(120, 160, 200, 135), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 175), 1.0))
@@ -391,7 +391,7 @@ class SlidingPanel(QtWidgets.QWidget):
         self.setContentsMargins(0, 0, 0, 0)
         self.setAutoFillBackground(False)
         self._inner = QtWidgets.QWidget(self)
-        self._inner.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        self._inner.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._inner.setAutoFillBackground(False)
         self._inner.move(0, 0)
 
@@ -459,7 +459,7 @@ class SlidingPanel(QtWidgets.QWidget):
         self._anim.setEasingCurve(QtCore.QEasingCurve.InOutQuart)
 
         # DeleteWhenStopped helps with memory management in long-running apps
-        self._anim.start(QtCore.QPropertyAnimation.DeleteWhenStopped)
+        self._anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
 
 class _UserInfoProxy:
@@ -569,7 +569,7 @@ class UILogin:
 
         # Sign In
         signInPage = QtWidgets.QWidget()
-        signInPage.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        signInPage.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         si = QtWidgets.QVBoxLayout(signInPage)
         si.setContentsMargins(28, 26, 28, 22)
@@ -578,26 +578,29 @@ class UILogin:
 
         # Logo
         logoLabel = QtWidgets.QLabel()
-        logoLabel.setAlignment(QtCore.Qt.AlignCenter)
-        logoLabel.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        logoLabel.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        logoLabel.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         logo_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-icon.png")
         logo_pm = QtGui.QPixmap(logo_path)
 
         if not logo_pm.isNull():
             logo_pm = logo_pm.scaled(
-                54, 54, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
+                54,
+                54,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
             )
             logoLabel.setPixmap(logo_pm)
             logoLabel.setFixedSize(54, 54)
 
-        si.addWidget(logoLabel, alignment=QtCore.Qt.AlignCenter)
+        si.addWidget(logoLabel, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         si.addSpacing(2)
 
         # Title
         siTitle = QtWidgets.QLabel("Sign In")
         siTitle.setObjectName("cardTitle")
-        siTitle.setAlignment(QtCore.Qt.AlignCenter)
+        siTitle.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         siTitle.setStyleSheet("color: rgba(50, 55, 65, 220); font-size: 12pt; font-weight: 700;")
         si.addWidget(siTitle)
         si.addSpacing(4)
@@ -652,17 +655,17 @@ class UILogin:
         # Caps Lock indicator — always occupies its row; text is blank when off
         self.caps_indicator = QtWidgets.QLabel("")
         self.caps_indicator.setObjectName("capsIndicator")
-        self.caps_indicator.setAlignment(QtCore.Qt.AlignCenter)
+        self.caps_indicator.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.caps_indicator.setFixedHeight(16)
         self.caps_indicator.setStyleSheet(
             "color: rgba(200, 130, 30, 235); font-size: 7.5pt; font-weight: 600;"
         )
-        si.addWidget(self.caps_indicator, alignment=QtCore.Qt.AlignCenter)
+        si.addWidget(self.caps_indicator, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
         # Remember Me Toggle
         self.remember_me_cb = QtWidgets.QCheckBox("Remember me")
         self.remember_me_cb.setObjectName("rememberMe")
-        self.remember_me_cb.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.remember_me_cb.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.remember_me_cb.setStyleSheet("""
             QCheckBox {
                 color: rgba(60, 70, 80, 220);
@@ -698,7 +701,7 @@ class UILogin:
         self.sign_in_btn = QtWidgets.QPushButton("Sign In")
         self.sign_in_btn.setObjectName("signInBtn")
         self.sign_in_btn.setFixedHeight(_BTN_H)
-        self.sign_in_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.sign_in_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.sign_in_btn.setStyleSheet(self._make_primary_btn_style())
         self.sign_in_btn.clicked.connect(self.action_sign_in)
         si.addWidget(self.sign_in_btn)
@@ -708,8 +711,8 @@ class UILogin:
         # Forgot Password link
         forgotPasswordLbl = QtWidgets.QLabel("Forgot Password?")
         forgotPasswordLbl.setObjectName("forgotPassword")
-        forgotPasswordLbl.setAlignment(QtCore.Qt.AlignCenter)
-        forgotPasswordLbl.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        forgotPasswordLbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        forgotPasswordLbl.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         forgotPasswordLbl.setStyleSheet("""
             QLabel {
                 color: rgba(100, 110, 120, 180);
@@ -722,7 +725,7 @@ class UILogin:
 
         # Forgot Password
         recoverPage = QtWidgets.QWidget()
-        recoverPage.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        recoverPage.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         rec = QtWidgets.QVBoxLayout(recoverPage)
         rec.setContentsMargins(28, 18, 28, 18)
@@ -743,12 +746,12 @@ class UILogin:
 
         recTitle = QtWidgets.QLabel("Reset Password")
         recTitle.setObjectName("recoverTitle")
-        recTitle.setAlignment(QtCore.Qt.AlignCenter)
+        recTitle.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         recTitle.setStyleSheet("color: rgba(50, 55, 65, 220); font-size: 12pt; font-weight: 700;")
         rec.addWidget(recTitle)
 
         recInfo = QtWidgets.QLabel("Contact your administrator to reset your password.")
-        recInfo.setAlignment(QtCore.Qt.AlignCenter)
+        recInfo.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         recInfo.setWordWrap(True)
         recInfo.setStyleSheet("color: rgba(100, 110, 120, 220); font-size: 8.5pt;")
         rec.addWidget(recInfo)
@@ -763,14 +766,14 @@ class UILogin:
         self.sendResetBtn = QtWidgets.QPushButton("Send Reset Link")
         self.sendResetBtn.setObjectName("sendResetBtn")
         self.sendResetBtn.setFixedHeight(_BTN_H)
-        self.sendResetBtn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.sendResetBtn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.sendResetBtn.setStyleSheet(self._make_primary_btn_style())
         self.sendResetBtn.clicked.connect(self._on_send_reset)
         self.sendResetBtn.setVisible(False)
         rec.addWidget(self.sendResetBtn)
 
         self.recoverStatus = QtWidgets.QLabel("")
-        self.recoverStatus.setAlignment(QtCore.Qt.AlignCenter)
+        self.recoverStatus.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.recoverStatus.setWordWrap(True)
         self.recoverStatus.setFixedHeight(34)
         self.recoverStatus.setStyleSheet(
@@ -815,10 +818,10 @@ class UILogin:
         card_vbox.addWidget(self._slider)
 
         v_layout = QtWidgets.QVBoxLayout(self.centralwidget)
-        v_layout.setAlignment(QtCore.Qt.AlignCenter)
+        v_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         v_layout.addStretch(2)
         v_layout.addSpacing(20)
-        v_layout.addWidget(self.loginCard, alignment=QtCore.Qt.AlignCenter)
+        v_layout.addWidget(self.loginCard, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         v_layout.addStretch(3)
 
         # Floating badge for error / info messages
@@ -980,7 +983,7 @@ class UILogin:
         btn = QtWidgets.QPushButton(text)
         btn.setObjectName("backBtn")
         btn.setFixedHeight(24)
-        btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
 
         # Add the icon if a path is provided
         if icon_path and os.path.exists(icon_path):
@@ -1308,4 +1311,4 @@ class UILogin:
         self._shake_anim.setKeyValueAt(0.9, base + QtCore.QPoint(-2, 0))
         self._shake_anim.setKeyValueAt(1.0, base)
 
-        self._shake_anim.start(QtCore.QPropertyAnimation.DeleteWhenStopped)
+        self._shake_anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)

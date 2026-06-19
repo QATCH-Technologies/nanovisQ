@@ -27,6 +27,7 @@ from QATCH.VisQAI.src.models.ingredient import (
 )
 from QATCH.VisQAI.src.utils.list_utils import ListUtils
 from QATCH.common.userProfiles import UserProfiles
+
 TAG = "[QueryRunInfoWidget]"
 
 
@@ -600,7 +601,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         # layout_v.addLayout(self.r1) # hide Surface Tension
         # layout_v.addLayout(self.r2) # hide Contact Angle
         layout_v.addLayout(self.r3)  # show Density
-        # self.l_channels.setAlignment(QtCore.Qt.AlignCenter)
+        # self.l_channels.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout_v.addLayout(h_channels)
         self.q_recall = QtWidgets.QCheckBox("Remember for next run")
         self.q_recall.setChecked(True)
@@ -1251,7 +1252,6 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.t_channels.setPalette(palette)  # set background
 
     def switch_user_at_sign_time(self):
-        
 
         new_username, new_initials, new_userrole = UserProfiles.change(UserRoles.ANALYZE)
         if UserProfiles.check(UserRoles(new_userrole), UserRoles.ANALYZE):

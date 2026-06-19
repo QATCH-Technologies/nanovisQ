@@ -72,7 +72,7 @@ class AnimatedComboBox(QtWidgets.QComboBox):
         super().__init__(parent)
         self.setView(QtWidgets.QListView())
         self.setStyleSheet(_COMBO_GLASS_QSS)
-        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
         # Pre-configure the popup container ONCE, now, before it is ever shown.
         # Doing this lazily inside showPopup() (after super().showPopup() has
@@ -85,11 +85,14 @@ class AnimatedComboBox(QtWidgets.QComboBox):
         # --- Arrow Icon Setup ---
         self.arrow_lbl = QtWidgets.QLabel(self)
         self.arrow_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-        self.arrow_lbl.setAlignment(QtCore.Qt.AlignCenter)
+        self.arrow_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.arrow_lbl.setStyleSheet("background: transparent; border: none;")
 
         self._base_pixmap = QtGui.QPixmap(icon_path).scaled(
-            11, 11, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
+            11,
+            11,
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
         )
         self.arrow_lbl.setPixmap(self._base_pixmap)
 
@@ -111,9 +114,11 @@ class AnimatedComboBox(QtWidgets.QComboBox):
             return
         self._container = container
         container.setWindowFlags(
-            QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint | QtCore.Qt.NoDropShadowWindowHint
+            QtCore.Qt.WindowType.Popup
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint
         )
-        container.setAttribute(QtCore.Qt.WA_TranslucentBackground, False)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, False)
         container.setStyleSheet("""
             QComboBoxPrivateContainer {
                 background-color: rgb(245, 247, 250);
@@ -183,5 +188,7 @@ class AnimatedComboBox(QtWidgets.QComboBox):
     def _on_spin_frame(self, angle: float) -> None:
         self._current_angle = angle
         transform = QtGui.QTransform().rotate(angle)
-        rotated = self._base_pixmap.transformed(transform, QtCore.Qt.SmoothTransformation)
+        rotated = self._base_pixmap.transformed(
+            transform, QtCore.Qt.TransformationMode.SmoothTransformation
+        )
         self.arrow_lbl.setPixmap(rotated)

@@ -2270,7 +2270,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Tear down any existing welcome items to prevent layout duplicates
         self._remove_welcome_text()
-        
+
         target = self._plt2_arr[1] or self._plt2_arr[0]
         if not target:
             return
@@ -2278,7 +2278,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Determine responsive font sizes
         font_size_pt = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
         font_family = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
-        
+
         text_color_val = (100, 105, 115, 240)
         icon_color_val = (140, 145, 155, 240)
 
@@ -4595,7 +4595,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 right_axis = p.getAxis("right")
                 if right_axis:
                     # Scale is kept at 1.0 for tick generation; display divides by 1e6
-                    # to convert from the internal ×1e6 representation to decimal dissipation.
+                    # to convert from the internal x1e6 representat×on to decimal dissipation.
                     right_axis.setScale(1.0)
                     right_axis.enableAutoSIPrefix(False)
                     right_axis.tickStrings = lambda values, scale, spacing: [
@@ -4770,7 +4770,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 right_axis = p.getAxis("right")
                 if right_axis:
                     # Scale is kept at 1.0 for tick generation; display divides by 1e6
-                    # to convert from the internal ×1e6 representation to decimal dissipation.
+                    # to convert from the internal x1e6 representat×on to decimal dissipation.
                     right_axis.setScale(1.0)
                     right_axis.enableAutoSIPrefix(False)
                     right_axis.tickStrings = lambda values, scale, spacing: [

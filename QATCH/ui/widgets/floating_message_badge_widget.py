@@ -50,9 +50,11 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
 
         # Frameless tool window that stays above the app without stealing focus.
         self.setWindowFlags(
-            QtCore.Qt.Tool | QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint
+            QtCore.Qt.Tool
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowStaysOnTopHint
         )
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(QtCore.Qt.WA_ShowWithoutActivating)
         self.setWindowOpacity(0.0)
 
@@ -72,14 +74,14 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self.label = QtWidgets.QLabel("")
         self.label.setObjectName("floatingMessageText")
         self.label.setProperty("messageType", "info")
-        self.label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft)
+        self.label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignLeft)
         self.label.setWordWrap(True)
         self.label.setMaximumWidth(420)
-        panel_layout.addWidget(self.label, 1, QtCore.Qt.AlignVCenter)
+        panel_layout.addWidget(self.label, 1, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        self.close_button = QtWidgets.QPushButton("×")
+        self.close_button = QtWidgets.QPushButton("x")
         self.close_button.setObjectName("floatingMessageClose")
-        self.close_button.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.close_button.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.close_button.setToolTip("Close")
         self.close_button.setAccessibleName("Close message")
         self.close_button.setFixedSize(22, 22)
@@ -119,7 +121,7 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
 
         # Fallback when no custom icon is supplied or the path cannot be loaded.
         self.close_button.setIcon(QtGui.QIcon())
-        self.close_button.setText("×")
+        self.close_button.setText("x")
 
     def show_message(
         self,
@@ -180,10 +182,10 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
             if event_type in (QtCore.QEvent.Hide, QtCore.QEvent.Close):
                 self.clear()
             elif self.isVisible() and event_type in (
-                QtCore.QEvent.Move,
-                QtCore.QEvent.Resize,
+                QtCore.QEvent.Type.Move,
+                QtCore.QEvent.Type.Resize,
                 QtCore.QEvent.Show,
-                QtCore.QEvent.WindowStateChange,
+                QtCore.QEvent.Type.WindowStateChange,
             ):
                 # Reposition synchronously to eliminate drag lag
                 self._reposition_to_anchor()

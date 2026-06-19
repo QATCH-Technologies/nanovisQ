@@ -48,7 +48,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             self.verticalHeader().setVisible(False)
 
             # --- NEW: Pointing hand cursor for the select/unselect all header ---
-            self.horizontalHeader().setCursor(QtCore.Qt.PointingHandCursor)
+            self.horizontalHeader().setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
             self.setAlternatingRowColors(True)
             self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -135,7 +135,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # approach is to disable Qt's auto-fill so our paintEvent draws the scrim
         # directly over the parent's backing store.
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         # Install event-filter on parent and top-level window so we refit on resize.
         if parent is not None:
             parent.installEventFilter(self)
@@ -296,7 +296,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.btn_fullscreen.clicked.connect(self.toggle_fullscreen)
 
         # Close Window (Transparent icon button — matches create_user_widget btn_close style)
-        self.btn_close = QtWidgets.QPushButton("×", self)
+        self.btn_close = QtWidgets.QPushButton("x", self)
         self.btn_close.setFixedSize(button_size, button_size)
         self.btn_close.setToolTip("Close")
         self.btn_close.setStyleSheet("""
@@ -411,7 +411,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # Dev mode group — absorbs all leftover space so the admin group
         # stays pinned to the right regardless of expiry label visibility.
         dev_group = QtWidgets.QWidget()
-        dev_group.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        dev_group.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         dev_layout = QtWidgets.QHBoxLayout(dev_group)
         dev_layout.setContentsMargins(0, 0, 0, 0)
         dev_layout.setSpacing(0)
@@ -424,7 +424,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
         # Admin group — fixed to the right edge
         admin_group = QtWidgets.QWidget()
-        admin_group.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        admin_group.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         admin_layout = QtWidgets.QHBoxLayout(admin_group)
         admin_layout.setContentsMargins(0, 0, 0, 0)
         admin_layout.setSpacing(0)
@@ -1083,7 +1083,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 if getattr(self, "_pending_delete", []):
                     self._cancel_delete()
 
-        if event.type() in (QtCore.QEvent.Resize, QtCore.QEvent.Move):
+        if event.type() in (QtCore.QEvent.Type.Resize, QtCore.QEvent.Type.Move):
             if getattr(self, "_pending_delete", []):
                 self._cancel_delete()
 
@@ -1122,7 +1122,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         container = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout(container)
         layout.setContentsMargins(4, 2, 4, 2)
-        layout.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        layout.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         badge = QtWidgets.QLabel(role_name)
 
@@ -1204,13 +1204,13 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
             # 1. Initials
             item_init = QtWidgets.QTableWidgetItem(initials)
-            item_init.setTextAlignment(QtCore.Qt.AlignCenter)
+            item_init.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             item_init.setData(QtCore.Qt.UserRole, initials)
             self.table.setItem(row, 1, item_init)
 
             # 2. Name
             item_name = QtWidgets.QTableWidgetItem(data["Name"][row])
-            item_name.setTextAlignment(QtCore.Qt.AlignCenter)
+            item_name.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             item_name.setData(QtCore.Qt.UserRole, initials)
             self.table.setItem(row, 2, item_name)
 
@@ -1240,12 +1240,12 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             # 4 & 5. Dates
             item_created = QtWidgets.QTableWidgetItem(data["Created"][row])
             item_created.setFlags(QtCore.Qt.ItemIsEnabled)
-            item_created.setTextAlignment(QtCore.Qt.AlignCenter)
+            item_created.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 4, item_created)
 
             item_accessed = QtWidgets.QTableWidgetItem(data["Accessed"][row])
             item_accessed.setFlags(QtCore.Qt.ItemIsEnabled)
-            item_accessed.setTextAlignment(QtCore.Qt.AlignCenter)
+            item_accessed.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 5, item_accessed)
 
             # 6. Actions
@@ -1715,7 +1715,9 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
                 item = QtWidgets.QTableWidgetItem(clean_text)
                 item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
-                item.setTextAlignment(QtCore.Qt.AlignCenter if col < 3 else QtCore.Qt.AlignLeft)
+                item.setTextAlignment(
+                    QtCore.Qt.AlignmentFlag.AlignCenter if col < 3 else QtCore.Qt.AlignLeft
+                )
 
                 if is_error:
                     item.setForeground(QtGui.QBrush(QtGui.QColor(255, 60, 60)))

@@ -29,7 +29,7 @@ from QATCH.ui.widgets.well_plate_widget import WellPlate
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.components.number_icon_button import NumberIconButton
 from QATCH.ui.components.run_controls_button import RunControls
-from QATCH.ui.widgets.export_widget import Ui_Export
+from QATCH.ui.widgets.data_management_widget import DataManagementWidget
 from QATCH.ui.widgets.user_preferences_widget import UserPreferencesWidget
 from QATCH.ui.widgets.user_profiles_manager_widget import UserProfilesManagerWidget
 from QATCH.common.userProfiles import UserProfiles
@@ -40,8 +40,8 @@ from QATCH.common.licenseManager import LicenseManager
 from QATCH.processors.Device import serial
 from QATCH.ui.widgets.advanced_main_widget import (
     AdvancedMainWidget,
-    GlassWarningLabel,
 )
+from QATCH.ui.components.glass_warning_label import GlassWarningLabel
 from QATCH.ui.components.glass_push_button import GlassPushButton
 from QATCH.ui.components.glass_toggle import GlassToggle
 from QATCH.ui.components.animated_combo_box import AnimatedComboBox
@@ -59,7 +59,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.ui1 = UIControls()
         self.ui1.setupUi(self)
-        self.ui_export = Ui_Export()
+        self.data_management_widget = None
         # self.ui_configure_data = UIConfigureData()
         self.ui_preferences = UserPreferencesWidget(self)
         # self.userrole
@@ -201,17 +201,36 @@ class ControlsWindow(QtWidgets.QMainWindow):
         if not self.chk4.isChecked():
             QtCore.QTimer.singleShot(100, self.toggle_RandD)
 
+    def _data_overlay_parent(self):
+        """Parent to the overarching MainWin (full app window), not the thin
+        ControlsWindow — otherwise the overlay is locked to the controls bar."""
+        if hasattr(self.parent, "MainWin"):
+            return self.parent.MainWin.centralWidget() or self.parent.MainWin
+        return self.centralWidget() or self
+
+    def _open_data_management(self, mode):
+        parent = self._data_overlay_parent()
+        # (Re)build if missing or parented to a stale widget.
+        if self.data_management_widget is None or self.data_management_widget.parent is not parent:
+            self.data_management_widget = DataManagementWidget(parent=parent)
+        # Size to the full overlay parent up front so it doesn't pop small then snap.
+        try:
+            self.data_management_widget.setGeometry(parent.rect())
+        except Exception:
+            pass
+        self.data_management_widget.open_mode(mode)
+
     def analyze_data(self):
         self.parent.MainWin.ui0._set_analyze_mode(self)
 
     def import_data(self):
-        self.ui_export.showNormal(0)
+        self._open_data_management("import")
 
     def export_data(self):
-        self.ui_export.showNormal(1)
+        self._open_data_management("export")
 
     def recover_data(self):
-        self.ui_export.showNormal(2)
+        self._open_data_management("recover")
 
     # def configure_data(self):
     #     self.ui_configure_data.show()
@@ -511,8 +530,8 @@ class GlassControlsWidget(QtWidgets.QWidget):
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         p = QtGui.QPainter(self)
@@ -544,7 +563,7 @@ class GlassControlsWidget(QtWidgets.QWidget):
 
         # Borders — outer bright rim + inner cool-grey inset
         p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
         p.setPen(QtGui.QPen(QtGui.QColor(190, 210, 235, 70), 1.0))
@@ -570,7 +589,7 @@ class GlassHeaderLabel(QtWidgets.QLabel):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         # Text colour and padding only — background handled in paintEvent
         self.setStyleSheet(
             "QLabel { color: rgba(255, 255, 255, 230); "
@@ -604,7 +623,7 @@ class GlassHeaderLabel(QtWidgets.QLabel):
 
         # Borders
         p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(QtGui.QColor(80, 160, 215, 130), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 130), 1.0))
@@ -632,7 +651,7 @@ class GlassStatusLabel(QtWidgets.QLabel):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setStyleSheet(
             "QLabel { color: rgba(28, 40, 52, 210); " "padding: 2px 6px; background: transparent; }"
         )
@@ -658,7 +677,7 @@ class GlassStatusLabel(QtWidgets.QLabel):
 
         # Borders
         p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(QtGui.QColor(120, 160, 200, 110), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 160), 1.0))
@@ -855,7 +874,7 @@ class _AvatarLabel(QtWidgets.QWidget):
         font.setBold(True)
         p.setFont(font)
         p.setPen(QtGui.QColor(255, 255, 255, 235))
-        p.drawText(rect.toRect(), QtCore.Qt.AlignCenter, self._initials)
+        p.drawText(rect.toRect(), QtCore.Qt.AlignmentFlag.AlignCenter, self._initials)
         p.end()
 
 
@@ -874,7 +893,7 @@ class _GlassAccountInnerPanel(QtWidgets.QWidget):
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         p = QtGui.QPainter(self)
@@ -900,7 +919,7 @@ class _GlassAccountInnerPanel(QtWidgets.QWidget):
 
         # Dual borders (outer warm white, inner cool grey)
         p.setClipping(False)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 220), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), _R, _R)
         p.setPen(QtGui.QPen(QtGui.QColor(200, 210, 220, 90), 1.0))
@@ -944,10 +963,12 @@ class GlassAccountPopup(QtWidgets.QWidget):
     ) -> None:
         super().__init__(
             parent,
-            QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint | QtCore.Qt.NoDropShadowWindowHint,
+            QtCore.Qt.WindowType.Popup
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint,
         )
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
 
         self._open_manager_cb = open_manager_cb
@@ -1122,7 +1143,7 @@ class GlassAccountPopup(QtWidgets.QWidget):
                     border: 1px solid rgba(0, 118, 174, 160);
                 }
             """)
-            manage_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+            manage_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
             manage_btn.clicked.connect(self._on_manage_users)
             layout.addWidget(manage_btn)
 
@@ -1152,7 +1173,7 @@ class GlassAccountPopup(QtWidgets.QWidget):
                     border: 1px solid rgba(200, 70, 40, 170);
                 }
             """)
-            sign_out_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+            sign_out_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
             sign_out_btn.clicked.connect(self._on_sign_out)
             layout.addWidget(sign_out_btn)
 
@@ -1293,9 +1314,9 @@ class GlassAccountPopup(QtWidgets.QWidget):
         re-open it once the new window geometry has settled.
         """
         if watched is self._main_window and event.type() in (
-            QtCore.QEvent.Resize,
-            QtCore.QEvent.Move,
-            QtCore.QEvent.WindowStateChange,
+            QtCore.QEvent.Type.Resize,
+            QtCore.QEvent.Type.Move,
+            QtCore.QEvent.Type.WindowStateChange,
         ):
             self.close()
         return super().eventFilter(watched, event)
@@ -1597,7 +1618,7 @@ class UIControls:  # QtWidgets.QMainWindow
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "search.svg")
         self.pButton_ID.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_ID.setIconSize(QtCore.QSize(18, 18))
-        self.pButton_ID.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.pButton_ID.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.pButton_ID.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_ID.setObjectName("pButton_ID")
         self.Layout_controls.addWidget(self.pButton_ID, 2, 2, 1, 1)
@@ -1608,7 +1629,7 @@ class UIControls:  # QtWidgets.QMainWindow
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg")
         self.pButton_Refresh.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Refresh.setIconSize(QtCore.QSize(18, 18))
-        self.pButton_Refresh.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.pButton_Refresh.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.pButton_Refresh.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_Refresh.setObjectName("pButton_Refresh")
         self.Layout_controls.addWidget(self.pButton_Refresh, 2, 3, 1, 1)
@@ -1620,7 +1641,7 @@ class UIControls:  # QtWidgets.QMainWindow
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
         self.pButton_Configure.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Configure.setIconSize(QtCore.QSize(18, 18))
-        self.pButton_Configure.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.pButton_Configure.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.pButton_Configure.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_Configure.setObjectName("pButton_Configure")
         self.Layout_controls.addWidget(self.pButton_Configure, 2, 4, 1, 1)
@@ -1786,7 +1807,7 @@ class UIControls:  # QtWidgets.QMainWindow
         # temperature Control label (hidden data conduit — kept for compat) ----
         self.lTemp = TemperatureLabel()
         self.lTemp.setText("PV:--.--C SP:--.--C OP:----")
-        self.lTemp.setAlignment(QtCore.Qt.AlignCenter)
+        self.lTemp.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.lTemp.setFont(QtGui.QFont("Consolas", -1))
         self.lTemp.hide()
         self.Layout_controls.addWidget(self.lTemp, 2, 4, 1, 1)
@@ -1829,7 +1850,9 @@ class UIControls:  # QtWidgets.QMainWindow
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-logo_full.jpg")
         if USE_FULLSCREEN:
             pixmap = QtGui.QPixmap(icon_path)
-            pixmap = pixmap.scaled(250, 50, QtCore.Qt.KeepAspectRatio, QtCore.Qt.FastTransformation)
+            pixmap = pixmap.scaled(
+                250, 50, QtCore.Qt.AspectRatioMode.KeepAspectRatio, QtCore.Qt.FastTransformation
+            )
             self.l3.setPixmap(pixmap)
         else:
             self.l3.setPixmap(QtGui.QPixmap(icon_path))
@@ -1883,7 +1906,7 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # Program Status standby ----------------------------------------------
         self.infostatus = GlassStatusLabel()
-        self.infostatus.setAlignment(QtCore.Qt.AlignCenter)
+        self.infostatus.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.infostatus.setText("Program Status Standby")
         if USE_FULLSCREEN:
             self.infostatus.setFixedHeight(50)
@@ -1918,7 +1941,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.pButton_PlateConfig.setIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
         self.pButton_PlateConfig.setIconSize(QtCore.QSize(18, 18))
         self.pButton_PlateConfig.setToolTip("Plate Configuration...")
-        self.pButton_PlateConfig.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.pButton_PlateConfig.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.pButton_PlateConfig.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_PlateConfig.clicked.connect(self.doPlateConfig)
         self.hBox_MultiConfig = QtWidgets.QHBoxLayout()
@@ -1973,7 +1996,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_NextPortRow = NumberIconButton()
         self.tool_NextPortRow.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_NextPortRow.setText("Next Port")
-        self.tool_NextPortRow.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.tool_NextPortRow.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.tool_NextPortRow.clicked.connect(self.action_next_port)
         self.action_NextPortRow = self.tool_bar.addWidget(self.tool_NextPortRow)
 
@@ -1989,7 +2012,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_Initialize.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_Initialize.setIcon(icon_init)
         self.tool_Initialize.setText("Initialize")
-        self.tool_Initialize.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.tool_Initialize.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.tool_Initialize.clicked.connect(self.action_initialize)
         self.tool_bar.addWidget(self.tool_Initialize)
 
@@ -1999,7 +2022,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.run_controls = RunControls()
         self.run_controls.startRequested.connect(self.action_start)
         self.run_controls.stopRequested.connect(self.action_stop)
-        self.run_controls.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.run_controls.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.run_controls.setEnabled(False)
         self.tool_Start = self.run_controls  # backward-compat alias
         self.tool_Stop = self.run_controls
@@ -2014,7 +2037,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_Reset.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_Reset.setIcon(icon_reset)
         self.tool_Reset.setText("Reset")
-        self.tool_Reset.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.tool_Reset.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.tool_Reset.clicked.connect(self.action_reset)
         self.tool_bar.addWidget(self.tool_Reset)
 
@@ -2034,7 +2057,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_TempControl.setIcon(icon_temp)
         self.tool_TempControl.setText("Temp Control")
         self.tool_TempControl.setCheckable(True)
-        self.tool_TempControl.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.tool_TempControl.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.tool_TempControl.clicked.connect(self.action_tempcontrol)
         self.tool_TempControl.enterEvent = self.action_tempcontrol_warn_start
         self.tool_TempControl.leaveEvent = self.action_tempcontrol_warn_stop
@@ -2056,7 +2079,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tempStatusBar = QtWidgets.QLabel("Offline")
         self.tempStatusBar.setObjectName("tempStatusBanner")
         self.tempStatusBar.setFixedHeight(18)
-        self.tempStatusBar.setAlignment(QtCore.Qt.AlignCenter)
+        self.tempStatusBar.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         _status_font = QtGui.QFont()
         _status_font.setPointSize(7)
         _status_font.setBold(True)
@@ -2076,7 +2099,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.lOP = QtWidgets.QLabel("OP  ----")
         for lbl in (self.lPV, self.lSP, self.lOP):
             lbl.setFont(value_font)
-            lbl.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+            lbl.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
             lbl.setStyleSheet("background: transparent; border: none; color: rgba(30,40,55,210);")
 
         self.tempPidInfo = QtWidgets.QFrame()
@@ -2087,7 +2110,7 @@ class UIControls:  # QtWidgets.QMainWindow
 
         pid_header = QtWidgets.QLabel("PID INFO")
         pid_header.setObjectName("tempPidHeader")
-        pid_header.setAlignment(QtCore.Qt.AlignCenter)
+        pid_header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         pid_layout.addWidget(pid_header)
         pid_layout.addWidget(self.lPV)
         pid_layout.addWidget(self.lSP)
@@ -2121,7 +2144,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_Advanced.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_Advanced.setIcon(icon_advanced)
         self.tool_Advanced.setText("Advanced")
-        self.tool_Advanced.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.tool_Advanced.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.tool_Advanced.clicked.connect(self.action_advanced)
         self.tool_bar_2.addWidget(self.tool_Advanced)
 
@@ -2135,7 +2158,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tool_User.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_User.setIcon(icon_user)
         self.tool_User.setText("Account")
-        self.tool_User.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.tool_User.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.tool_User.setEnabled(self._is_user_signed_in())
         self.tool_User.clicked.connect(self._toggle_account_popup)
         self.tool_bar_2.addWidget(self.tool_User)
@@ -2192,7 +2215,9 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # --- Device Info container, widgets and layout ---
         self.device_info_container = QtWidgets.QWidget()
-        self.device_info_container.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+        self.device_info_container.setAttribute(
+            QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True
+        )
         self.device_info_container.setStyleSheet("background: transparent;")
         # Ensure enough room for the header + three stacked calibration cards +
         # close button so none of them get clipped when the popup sizes itself.
@@ -2203,7 +2228,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.back_btn.setIcon(QtGui.QIcon("left-arrow.svg"))
         self.back_btn.setIconSize(QtCore.QSize(20, 20))
         self.back_btn.setFixedSize(36, 36)
-        self.back_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.back_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.back_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(255, 255, 255, 40);
@@ -3518,7 +3543,9 @@ class UIControls:  # QtWidgets.QMainWindow
             "QLabel#infobarReadout { color: rgba(70, 90, 110, 190); font-size: 10px; "
             "background: transparent; border: none; padding: 0px 2px; }"
         )
-        self.infobar_readout.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft)
+        self.infobar_readout.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignLeft
+        )
 
         def _mirror_status(t):
             # Strip the legacy "Infobar" prefix/markup; the readout is labelled

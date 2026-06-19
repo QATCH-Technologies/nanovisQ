@@ -113,7 +113,7 @@ class GlassLineEdit(QtWidgets.QLineEdit):
         p.setPen(QtCore.Qt.NoPen)
         p.setBrush(QtGui.QBrush(fill))
         p.drawRoundedRect(rect, r, r)
-        p.setBrush(QtCore.Qt.NoBrush)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
         if self._in_error:
             p.setPen(QtGui.QPen(QtGui.QColor(210, 55, 55, 150), 1.0))

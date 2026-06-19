@@ -623,11 +623,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sort_by = QtWidgets.QLabel("Sort by:")
         self.sort_by_name = QtWidgets.QLabel("Name")
         # self.sort_by_name.setStyleSheet("color: #0D4AAF; text-decoration: none; padding-left: 15px;")
-        self.sort_by_name.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.sort_by_name.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.sort_by_name.mousePressEvent = self.action_sort_by_name
         self.sort_by_date = QtWidgets.QLabel("Date")
         # self.sort_by_date.setStyleSheet("color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;")
-        self.sort_by_date.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.sort_by_date.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.sort_by_date.mousePressEvent = self.action_sort_by_date
 
         sort_by_layout = QtWidgets.QHBoxLayout()
@@ -745,7 +745,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # self.tool_Advanced = QtWidgets.QLabel("Advanced Settings")
         # self.tool_Advanced.setStyleSheet("color: #0D4AAF; text-decoration: none; padding-left: 50px;")
-        # self.tool_Advanced.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        # self.tool_Advanced.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         # self.tool_Advanced.mousePressEvent = self.action_advanced
         # self.toolBar.addWidget(self.tool_Advanced)
 
@@ -842,7 +842,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tbox_ch_thick.textEdited.connect(self.set_new_ch_thick)
         self.gridLayout.addWidget(self.tbox_ch_thick, 6, 2)
         self.h0 = QtWidgets.QLabel()
-        self.h0.setAlignment(QtCore.Qt.AlignCenter)
+        self.h0.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.h0.setText("<u>?</u>")
         self.h0.setToolTip(
             "<b>Changes here apply to this session ONLY</b> Modify 'constants.py' to make a constant change value forever."
@@ -969,7 +969,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             and press \"Analyze\" action to view results.</span>")
         it = plot_text.textItem
         option = it.document().defaultTextOption()
-        option.setAlignment(QtCore.Qt.AlignCenter)
+        option.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         it.document().setDefaultTextOption(option)
         it.setTextWidth(it.boundingRect().width())
         plot_text.setPos(0.5, 0.5)
@@ -1005,7 +1005,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # self.QModel_widget = QtWidgets.QWidget(self)
         # self.QModel_widget.setWindowFlags(
-        #     QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)
+        #     QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.WindowType.FramelessWindowHint)
         # self.QModel_widget.setWindowTitle("QModel Widget")
         # self.QModel_runBtn = QtWidgets.QPushButton("Run QModel Again")
         # self.QModel_runBtn.clicked.connect(self._restore_qmodel_predictions)
@@ -1437,7 +1437,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         layout.setSpacing(6)
 
         status_label = QtWidgets.QLabel("Auto-fitting points\u2026")
-        status_label.setAlignment(QtCore.Qt.AlignCenter)
+        status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         progress_bar = QtWidgets.QProgressBar()
         progress_bar.setRange(0, 0)
@@ -1770,7 +1770,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             and press \"Analyze\" action to view results.</span>")
         it = plot_text.textItem
         option = it.document().defaultTextOption()
-        option.setAlignment(QtCore.Qt.AlignCenter)
+        option.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         it.document().setDefaultTextOption(option)
         it.setTextWidth(it.boundingRect().width())
         plot_text.setPos(0.5, 0.5)
@@ -5959,7 +5959,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         eh1 = float(abs(np.amax(ys_diff[t_0p5:t_1p0])))
         em2 = float(np.amax(ys_diff_fit))
         am2 = int(np.argmax(ys_diff_fit))
-        eh2 = eh1 * 2  # start threshold: 2× baseline noise
+        eh2 = eh1 * 2  # start threshold: 2x baseline noise
 
         # Start candidate
         t0 = t_start
@@ -8994,7 +8994,9 @@ class AnalyzerWorker(QtCore.QObject):
                     Log.d(
                         f"Trendline must be within range from {min_fit_end:2.2f} to {max_fit_end:2.2f}"
                     )
-                    Log.d(f"Initial Fill Trendline ranges from {local_visc_array.min():2.2f} to {local_visc_array.max():2.2f}")
+                    Log.d(
+                        f"Initial Fill Trendline ranges from {local_visc_array.min():2.2f} to {local_visc_array.max():2.2f}"
+                    )
                     if (
                         min_fit_end > local_visc_array.min() or max_fit_end < local_visc_array.max()
                     ):  # Trendline is outside the allowable range
@@ -9992,7 +9994,7 @@ class ResizeFilter(QtCore.QObject):
         self._draw_delay = 250  # ms
 
     def eventFilter(self, obj, event):
-        if event.type() == QtCore.QEvent.Resize:
+        if event.type() == QtCore.QEvent.Type.Resize:
             self._resize_time = monotonic()
             if not self._draw_pending:
                 self._draw_pending = True
