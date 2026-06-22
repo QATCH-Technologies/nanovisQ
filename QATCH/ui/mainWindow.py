@@ -2406,6 +2406,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.pButton_ResetApp.clicked.connect(self.factory_defaults)
         self.ControlsWin.ui1.pButton_ID.clicked.connect(self._port_identify)
         self.ControlsWin.ui1.pButton_Refresh.clicked.connect(self._port_list_refresh)
+        self.ControlsWin.ui1.pButton_Configure.clicked.connect(self._configure_device_info)
         self.ControlsWin.ui1.sBox_Samples.valueChanged.connect(self._update_sample_size)
         self.ControlsWin.ui1.slTemp.valueChanged.connect(self._update_tec_temp)
         self.ControlsWin.ui1.slTemp.sliderReleased.connect(self._update_tec_temp)

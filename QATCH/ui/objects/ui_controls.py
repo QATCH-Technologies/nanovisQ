@@ -2264,32 +2264,33 @@ class UIControls:  # QtWidgets.QMainWindow
         # --- Input validators ---
         self.validDeviceName = QtGui.QRegularExpressionValidator(
             QtCore.QRegularExpression(r'[^\\/:*?"\'<>|]{1,12}')
-        )
+        )  # 1-12 character string without forbidden characters
         self.validDevicePid = QtGui.QRegularExpressionValidator(
             QtCore.QRegularExpression(r"[0-9A-Fa-f]{1,2}")
-        )
+        )  # HEX values '00' thru 'FF'
         self.validTempOffset = QtGui.QRegularExpressionValidator(
             QtCore.QRegularExpression(
                 r"-?(?:[0-5](?:\.\d{0,2})?|6(?:\.(?:[0-2]\d?|3[0-5]?))?|6\.?|\.\d{1,2})"
             )
-        )
+        )  # Decimals -6.35 thru 6.35 (inclusive) with precision 2
         self.validPogoPosition = QtGui.QRegularExpressionValidator(
-            QtCore.QRegularExpression(r"[0-5]?[0-9]|60")
-        )
+            QtCore.QRegularExpression(r"[0-9]?[0-9]|1[0-7][0-9]|180")
+        )  # 0 thru 180 degrees (rotation)
         self.validPogoDelayMs = QtGui.QRegularExpressionValidator(
             QtCore.QRegularExpression(r"[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-4]")
-        )
+        )  # 0 thru 254 ms per step
 
         # Unified translucent style for text inputs
-        glass_input_style = """
+        glass_icon_style = """
             QLineEdit {
                 background: rgba(255, 255, 255, 60);
                 border: 1px solid rgba(255, 255, 255, 120);
                 border-radius: 6px;
                 padding: 4px 8px;
                 color: rgba(30, 40, 55, 220);
-                min-width: 150px;
             }
+        """
+        glass_input_style = glass_icon_style + """
             QLineEdit:focus {
                 background: rgba(255, 255, 255, 180);
                 border: 1px solid rgba(0, 120, 215, 150);
@@ -2300,6 +2301,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.device_name_input = QtWidgets.QLineEdit()
         self.device_name_input.setValidator(self.validDeviceName)
         self.device_name_input.setStyleSheet(glass_input_style)
+        self.device_name_input.setMinimumWidth(180)
         self.device_name_action = self.device_name_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
@@ -2311,6 +2313,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.device_pid_input = QtWidgets.QLineEdit()
         self.device_pid_input.setValidator(self.validDevicePid)
         self.device_pid_input.setStyleSheet(glass_input_style)
+        self.device_pid_input.setMinimumWidth(180)
         self.device_pid_action = self.device_pid_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
@@ -2326,13 +2329,22 @@ class UIControls:  # QtWidgets.QMainWindow
         self.device_config_reset.clicked.connect(self.on_device_config_reset)
 
         # Row 1L: Constant Temperature Calibration
-        self.temp_cal_always_input = QtWidgets.QLineEdit()
-        self.temp_cal_always_input.setValidator(self.validTempOffset)
-        self.temp_cal_always_input.setStyleSheet(glass_input_style)
-        self.temp_cal_always_action = self.temp_cal_always_input.addAction(
+        self.temp_cal_always_input = QtWidgets.QDoubleSpinBox()
+        self.temp_cal_always_input.setDecimals(2)
+        self.temp_cal_always_input.setRange(-6.35, 6.35)
+        self.temp_cal_always_input.setSingleStep(0.25)
+        # self.temp_cal_always_input.setValidator(self.validTempOffset)
+        self.temp_cal_always_input.setSuffix(" °C")
+        self.temp_cal_always_input.setStyleSheet(glass_input_style.replace("QLineEdit", "QDoubleSpinBox"))
+        self.temp_cal_always_input.setMinimumWidth(142)
+        self.temp_cal_always_icon = QtWidgets.QLineEdit()
+        self.temp_cal_always_icon.setStyleSheet(glass_icon_style)
+        self.temp_cal_always_icon.setFixedWidth(self.temp_cal_always_icon.sizeHint().height())
+        self.temp_cal_always_icon.setReadOnly(True)
+        self.temp_cal_always_action = self.temp_cal_always_icon.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
-        self.temp_cal_always_input.textEdited.connect(
+        self.temp_cal_always_input.textChanged.connect(
             lambda text, action=self.temp_cal_always_action: self.on_text_edit(text, action)
         )
         self.temp_cal_always_input.editingFinished.connect(
@@ -2340,13 +2352,22 @@ class UIControls:  # QtWidgets.QMainWindow
         )
 
         # Row 1R: Running Temperature Calibration
-        self.temp_cal_measure_input = QtWidgets.QLineEdit()
-        self.temp_cal_measure_input.setValidator(self.validTempOffset)
-        self.temp_cal_measure_input.setStyleSheet(glass_input_style)
-        self.temp_cal_measure_action = self.temp_cal_measure_input.addAction(
+        self.temp_cal_measure_input = QtWidgets.QDoubleSpinBox()
+        self.temp_cal_measure_input.setDecimals(2)
+        self.temp_cal_measure_input.setRange(-6.35, 6.35)
+        self.temp_cal_measure_input.setSingleStep(0.25)
+        # self.temp_cal_measure_input.setValidator(self.validTempOffset)
+        self.temp_cal_measure_input.setSuffix(" °C")
+        self.temp_cal_measure_input.setStyleSheet(glass_input_style.replace("QLineEdit", "QDoubleSpinBox"))
+        self.temp_cal_measure_input.setMinimumWidth(142)
+        self.temp_cal_measure_icon = QtWidgets.QLineEdit()
+        self.temp_cal_measure_icon.setStyleSheet(glass_icon_style)
+        self.temp_cal_measure_icon.setFixedWidth(self.temp_cal_measure_icon.sizeHint().height())
+        self.temp_cal_measure_icon.setReadOnly(True)
+        self.temp_cal_measure_action = self.temp_cal_measure_icon.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
-        self.temp_cal_measure_input.textEdited.connect(
+        self.temp_cal_measure_input.textChanged.connect(
             lambda text, action=self.temp_cal_measure_action: self.on_text_edit(text, action)
         )
         self.temp_cal_measure_input.editingFinished.connect(
@@ -2361,22 +2382,46 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_reset.clicked.connect(self.on_temp_cal_reset)
 
         # Row 2L: Lid Pogo Distance
+        self.lid_pogo_distance_combo = AnimatedComboBox(icon_path=self._combo_chevron)
+        # self.lid_pogo_distance_combo.setStyleSheet(glass_input_style)
+        self.lid_pogo_distance_combo.setMinimumWidth(95)
+        self.lid_pogo_distance_combo.addItems(["Most", "More", "Normal", "Less", "Least", "Custom"])
+        self.lid_pogo_distance_values = {"Most": 50, "More": 40, "Normal": 30, "Less": 20, "Least": 10}
+        self.lid_pogo_distance_combo.setCurrentIndex(2)
         self.lid_pogo_distance_input = QtWidgets.QLineEdit()
         self.lid_pogo_distance_input.setValidator(self.validPogoPosition)
+        # self.lid_pogo_distance_input.setSuffix("°")
         self.lid_pogo_distance_input.setStyleSheet(glass_input_style)
+        self.lid_pogo_distance_input.setFixedWidth(73)
+        self.lid_pogo_distance_input.setReadOnly(True)
         self.lid_pogo_distance_action = self.lid_pogo_distance_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.lid_pogo_distance_combo.currentTextChanged.connect(
+            lambda text, action=self.lid_pogo_distance_action: self.on_distance_edit(text, action)
         )
         self.lid_pogo_distance_input.textEdited.connect(
             lambda text, action=self.lid_pogo_distance_action: self.on_text_edit(text, action)
         )
 
         # Row 2R: Lid Pogo Delay
+        self.lid_pogo_delay_combo = AnimatedComboBox(icon_path=self._combo_chevron)
+        # self.lid_pogo_delay_combo.setStyleSheet(glass_input_style.replace("QLineEdit", "QComboBox"))
+        self.lid_pogo_delay_combo.setMinimumWidth(95)
+        self.lid_pogo_delay_combo.addItems(["Fastest", "Fast", "Normal", "Slow", "Slowest", "Custom"])
+        self.lid_pogo_delay_values = {"Fastest": 10, "Fast": 20, "Normal": 30, "Slow": 40, "Slowest": 50}
+        self.lid_pogo_delay_combo.setCurrentIndex(2)
         self.lid_pogo_delay_input = QtWidgets.QLineEdit()
         self.lid_pogo_delay_input.setValidator(self.validPogoDelayMs)
+        # self.lid_pogo_delay_input.setSuffix("ms")
         self.lid_pogo_delay_input.setStyleSheet(glass_input_style)
+        self.lid_pogo_delay_input.setFixedWidth(73)
+        self.lid_pogo_delay_input.setReadOnly(True)
         self.lid_pogo_delay_action = self.lid_pogo_delay_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.lid_pogo_delay_combo.currentTextChanged.connect(
+            lambda text, action=self.lid_pogo_delay_action: self.on_delay_edit(text, action)
         )
         self.lid_pogo_delay_input.textEdited.connect(
             lambda text, action=self.lid_pogo_delay_action: self.on_text_edit(text, action)
@@ -2441,9 +2486,11 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_card, temp_form, temp_btns = create_glass_card("Temperature Calibration")
         temp_form.addWidget(QtWidgets.QLabel("\u2206T_always:"), 0, 0)
         temp_form.addWidget(self.temp_cal_always_input, 0, 1)
+        temp_form.addWidget(self.temp_cal_always_icon, 0, 2)
         temp_form.addWidget(QtWidgets.QLabel("\u2206T_measure:"), 1, 0)
         temp_form.addWidget(self.temp_cal_measure_input, 1, 1)
-        temp_form.setColumnStretch(2, 1)
+        temp_form.addWidget(self.temp_cal_measure_icon, 1, 2)
+        temp_form.setColumnStretch(3, 1)
 
         temp_btns.addWidget(self.temp_cal_default)
         temp_btns.addWidget(self.temp_cal_save)
@@ -2453,10 +2500,12 @@ class UIControls:  # QtWidgets.QMainWindow
         # 3. Lid Pogo Card
         self.lid_pogo_cal_card, pogo_form, pogo_btns = create_glass_card("Lid POGO Calibration")
         pogo_form.addWidget(QtWidgets.QLabel("Servo Steps:"), 0, 0)
-        pogo_form.addWidget(self.lid_pogo_distance_input, 0, 1)
+        pogo_form.addWidget(self.lid_pogo_distance_combo, 0, 1)
+        pogo_form.addWidget(self.lid_pogo_distance_input, 0, 2)
         pogo_form.addWidget(QtWidgets.QLabel("Servo Delay:"), 1, 0)
-        pogo_form.addWidget(self.lid_pogo_delay_input, 1, 1)
-        pogo_form.setColumnStretch(2, 1)
+        pogo_form.addWidget(self.lid_pogo_delay_combo, 1, 1)
+        pogo_form.addWidget(self.lid_pogo_delay_input, 1, 2)
+        pogo_form.setColumnStretch(3, 1)
 
         pogo_btns.addWidget(self.lid_pogo_default)
         pogo_btns.addWidget(self.lid_pogo_save)
@@ -2519,15 +2568,39 @@ class UIControls:  # QtWidgets.QMainWindow
             action.setIcon(self.blankIcon)
             action.setIconText("blank")
 
-    def on_edit_finish(self, widget):
+    def on_distance_edit(self, text, action):
+        self.on_text_edit(text, action)
+        if text == "Custom":
+            self.lid_pogo_distance_input.setReadOnly(False)
+        else:
+            if text in self.lid_pogo_distance_values.keys():
+                val = self.lid_pogo_distance_values[text]
+            else:
+                val = 30
+            self.lid_pogo_distance_input.setReadOnly(True)
+            self.lid_pogo_distance_input.setText(str(val))
+
+    def on_delay_edit(self, text, action):
+        self.on_text_edit(text, action)
+        if text == "Custom":
+            self.lid_pogo_delay_input.setReadOnly(False)
+        else:
+            if text in self.lid_pogo_delay_values.keys():
+                val = self.lid_pogo_delay_values[text]
+            else:
+                val = 30
+            self.lid_pogo_delay_input.setReadOnly(True)
+            self.lid_pogo_delay_input.setText(str(val))
+
+    def on_edit_finish(self, widget: QtWidgets.QDoubleSpinBox):
+        return  # do nothing, no need for 0.05 rounding
         try:
-            text = widget.text()
-            if len(text):
-                rounded_05 = round(round(float(text) * 20) / 20, 2)
-                widget.setText(f"{rounded_05:2.02f}")
+            text = widget.value()
+            rounded_05 = round(round(float(text) * 20) / 20, 2)
+            widget.setValue(rounded_05)
         except (ValueError, TypeError):
-            Log.e("Invalid input, resetting field to blank.")
-            widget.setText("")
+            Log.e("Invalid input, resetting field to zero.")
+            widget.setValue(0.00)
 
     def on_device_config_default(self):
         default_name = self.ConfigBannerWidget.text().split()[-1]
@@ -2614,18 +2687,23 @@ class UIControls:  # QtWidgets.QMainWindow
         default_measure = "0.00"
 
         if self.temp_cal_always_input.text() != default_always:
-            self.temp_cal_always_input.setText(default_always)
+            self.temp_cal_always_input.setValue(
+                self.temp_cal_always_input.valueFromText(default_always)
+            )
             self.temp_cal_always_action.setIcon(self.unsavedIcon)
             self.temp_cal_always_action.setIconText("unsaved")
         if self.temp_cal_measure_input.text() != default_measure:
-            self.temp_cal_measure_input.setText(default_measure)
+            self.temp_cal_measure_input.setValue(
+                self.temp_cal_measure_input.valueFromText(default_measure)
+            )
             self.temp_cal_measure_action.setIcon(self.unsavedIcon)
             self.temp_cal_measure_action.setIconText("unsaved")
 
     def on_temp_cal_save(self):
         if self.temp_cal_always_action.iconText() == "unsaved":
             if self.temp_cal_always_input.hasAcceptableInput():
-                text = self.temp_cal_always_input.text()
+                text = self.temp_cal_always_input.value()
+                text = f"{text:2.02f}"
                 Log.d("Save T_always =", text)
                 if self.save_temp_cal_always_input(text):
                     self.temp_cal_always_action.setIcon(self.savedIcon)
@@ -2636,7 +2714,8 @@ class UIControls:  # QtWidgets.QMainWindow
                 )
         if self.temp_cal_measure_action.iconText() == "unsaved":
             if self.temp_cal_measure_input.hasAcceptableInput():
-                text = self.temp_cal_measure_input.text()
+                text = self.temp_cal_measure_input.value()
+                text = f"{text:2.02f}"
                 Log.d("Save T_measure =", text)
                 if self.save_temp_cal_measure_input(text):
                     self.temp_cal_measure_action.setIcon(self.savedIcon)
@@ -2651,7 +2730,7 @@ class UIControls:  # QtWidgets.QMainWindow
             Log.d("Reset T_always")
             self.temp_cal_always_input.clear()
             # self.temp_cal_always_input.setEnabled(False)
-            self.temp_cal_always_input.setPlaceholderText("Querying...")
+            # self.temp_cal_always_input.setPlaceholderText("Querying...")
             self.temp_cal_always_action.setIcon(self.blankIcon)
             self.temp_cal_always_action.setIconText("blank")
             QtCore.QTimer.singleShot(1, self.reset_temp_cal_always_input)
@@ -2659,20 +2738,22 @@ class UIControls:  # QtWidgets.QMainWindow
             Log.d("Reset T_measure")
             self.temp_cal_measure_input.clear()
             # self.temp_cal_measure_input.setEnabled(False)
-            self.temp_cal_measure_input.setPlaceholderText("Querying...")
+            # self.temp_cal_measure_input.setPlaceholderText("Querying...")
             self.temp_cal_measure_action.setIcon(self.blankIcon)
             self.temp_cal_measure_action.setIconText("blank")
             QtCore.QTimer.singleShot(3000, self.reset_temp_cal_measure_input)
 
     def on_lid_pogo_default(self):
-        default_distance = "30"
-        default_delay = "30"
+        default_distance = str(self.lid_pogo_distance_values["Normal"])
+        default_delay = str(self.lid_pogo_delay_values["Normal"])
 
         if self.lid_pogo_distance_input.text() != default_distance:
+            self.lid_pogo_distance_combo.setCurrentIndex(2)
             self.lid_pogo_distance_input.setText(default_distance)
             self.lid_pogo_distance_action.setIcon(self.unsavedIcon)
             self.lid_pogo_distance_action.setIconText("unsaved")
         if self.lid_pogo_delay_input.text() != default_delay:
+            self.lid_pogo_delay_combo.setCurrentIndex(2)
             self.lid_pogo_delay_input.setText(default_delay)
             self.lid_pogo_delay_action.setIcon(self.unsavedIcon)
             self.lid_pogo_delay_action.setIconText("unsaved")
@@ -2713,7 +2794,7 @@ class UIControls:  # QtWidgets.QMainWindow
             Log.d("Reset lid pogo distance")
             self.lid_pogo_distance_input.clear()
             # self.lid_pogo_distance_input.setEnabled(False)
-            self.lid_pogo_distance_input.setPlaceholderText("Querying...")
+            self.lid_pogo_distance_input.setPlaceholderText("...")
             self.lid_pogo_distance_action.setIcon(self.blankIcon)
             self.lid_pogo_distance_action.setIconText("blank")
             get_lid_cal = True
@@ -2721,7 +2802,7 @@ class UIControls:  # QtWidgets.QMainWindow
             Log.d("Reset lid pogo delay")
             self.lid_pogo_delay_input.clear()
             # self.lid_pogo_delay_input.setEnabled(False)
-            self.lid_pogo_delay_input.setPlaceholderText("Querying...")
+            self.lid_pogo_delay_input.setPlaceholderText("...")
             self.lid_pogo_delay_action.setIcon(self.blankIcon)
             self.lid_pogo_delay_action.setIconText("blank")
             get_lid_cal = True
@@ -2972,8 +3053,10 @@ class UIControls:  # QtWidgets.QMainWindow
 
         set_cal1 = mainWindow.tecWorker._tec_offset1
 
-        self.temp_cal_always_input.setText(set_cal1)
-        self.temp_cal_always_input.setPlaceholderText(None)
+        self.temp_cal_always_input.setValue(
+            self.temp_cal_always_input.valueFromText(set_cal1)
+        )
+        # self.temp_cal_always_input.setPlaceholderText(None)
         self.temp_cal_always_action.setIcon(self.savedIcon)
         self.temp_cal_always_action.setIconText("saved")
 
@@ -3034,8 +3117,10 @@ class UIControls:  # QtWidgets.QMainWindow
 
         set_cal2 = mainWindow.tecWorker._tec_offset2
 
-        self.temp_cal_measure_input.setText(set_cal2)
-        self.temp_cal_measure_input.setPlaceholderText(None)
+        self.temp_cal_measure_input.setValue(
+            self.temp_cal_measure_input.valueFromText(set_cal2)
+        )
+        # self.temp_cal_measure_input.setPlaceholderText(None)
         self.temp_cal_measure_action.setIcon(self.savedIcon)
         self.temp_cal_measure_action.setIconText("saved")
 
@@ -3092,11 +3177,23 @@ class UIControls:  # QtWidgets.QMainWindow
             Log.e("Unable to parse LID CAL reply.")
 
         if self.lid_pogo_distance_action.iconText() == "blank":
+            idx = self.lid_pogo_distance_combo.count() - 1  # Custom
+            for i, val in enumerate(self.lid_pogo_distance_values.values()):
+                if val == pogo_distance:
+                    idx = i
+                    break
+            self.lid_pogo_distance_combo.setCurrentIndex(idx)
             self.lid_pogo_distance_input.setText(str(pogo_distance))
             self.lid_pogo_distance_input.setPlaceholderText(None)
             self.lid_pogo_distance_action.setIcon(self.savedIcon)
             self.lid_pogo_distance_action.setIconText("saved")
         if self.lid_pogo_delay_action.iconText() == "blank":
+            idx = self.lid_pogo_delay_combo.count() - 1  # Custom
+            for i, val in enumerate(self.lid_pogo_delay_values.values()):
+                if val == pogo_delay:
+                    idx = i
+                    break
+            self.lid_pogo_delay_combo.setCurrentIndex(idx)
             self.lid_pogo_delay_input.setText(str(pogo_delay))
             self.lid_pogo_delay_input.setPlaceholderText(None)
             self.lid_pogo_delay_action.setIcon(self.savedIcon)
