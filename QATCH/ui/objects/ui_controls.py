@@ -2225,7 +2225,9 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # --- Header: Back Button & Banner ---
         self.back_btn = QtWidgets.QPushButton()
-        self.back_btn.setIcon(QtGui.QIcon("left-arrow.svg"))
+        self.back_btn.setIcon(QtGui.QIcon(
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "left-arrow.svg")
+        ))
         self.back_btn.setIconSize(QtCore.QSize(20, 20))
         self.back_btn.setFixedSize(36, 36)
         self.back_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
@@ -2247,6 +2249,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.back_btn.clicked.connect(self.on_device_config_editor_close)
 
         self.ConfigBannerWidget = GlassWarningLabel("Configuration Editor for Device")
+        self.ConfigBannerWidget.text_lbl.setWordWrap(False)  # single line title
 
         # Create a header layout that perfectly centers the banner
         # by balancing the back button with a dummy widget on the right.
@@ -2296,6 +2299,48 @@ class UIControls:  # QtWidgets.QMainWindow
                 border: 1px solid rgba(0, 120, 215, 150);
             }
         """
+        glass_spinbox_style = glass_input_style.replace("QLineEdit", "QDoubleSpinBox") + """
+            /* ========================================================= */
+            /* UP BUTTON & UP ARROW                                      */
+            /* ========================================================= */
+            QDoubleSpinBox::up-button {
+                background: rgba(255, 255, 255, 120);
+                border-top-right-radius: 4px;
+            }
+
+            QDoubleSpinBox::up-button:pressed {
+                background-color: rgba(200, 200, 200, 25);
+            }
+
+            QDoubleSpinBox::up-arrow {
+                image: url('""" + os.path.join(
+                    Architecture.get_path(), "QATCH", "icons", 
+                    "up-chevron.svg").replace("\\", "/") + """');
+                width: 10px;
+                height: 10px;
+            }
+
+            /* ========================================================= */
+            /* DOWN BUTTON & DOWN ARROW                                  */
+            /* ========================================================= */
+            QDoubleSpinBox::down-button {
+                background: rgba(255, 255, 255, 120);
+                border-bottom-right-radius: 4px;
+            }
+
+            QDoubleSpinBox::down-button:pressed {
+                background-color: rgba(200, 200, 200, 25);
+            }
+
+            QDoubleSpinBox::down-arrow {
+                image: url('""" + os.path.join(
+                    Architecture.get_path(), "QATCH", "icons", 
+                    "down-chevron.svg").replace("\\", "/") + """');
+                width: 10px;
+                height: 10px;
+            }
+        """
+
 
         # Row 0L: Device Name
         self.device_name_input = QtWidgets.QLineEdit()
@@ -2335,7 +2380,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_always_input.setSingleStep(0.25)
         # self.temp_cal_always_input.setValidator(self.validTempOffset)
         self.temp_cal_always_input.setSuffix(" °C")
-        self.temp_cal_always_input.setStyleSheet(glass_input_style.replace("QLineEdit", "QDoubleSpinBox"))
+        self.temp_cal_always_input.setStyleSheet(glass_spinbox_style)
         self.temp_cal_always_input.setMinimumWidth(142)
         self.temp_cal_always_icon = QtWidgets.QLineEdit()
         self.temp_cal_always_icon.setStyleSheet(glass_icon_style)
@@ -2358,7 +2403,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_measure_input.setSingleStep(0.25)
         # self.temp_cal_measure_input.setValidator(self.validTempOffset)
         self.temp_cal_measure_input.setSuffix(" °C")
-        self.temp_cal_measure_input.setStyleSheet(glass_input_style.replace("QLineEdit", "QDoubleSpinBox"))
+        self.temp_cal_measure_input.setStyleSheet(glass_spinbox_style)
         self.temp_cal_measure_input.setMinimumWidth(142)
         self.temp_cal_measure_icon = QtWidgets.QLineEdit()
         self.temp_cal_measure_icon.setStyleSheet(glass_icon_style)
@@ -2525,7 +2570,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.deviceLayout.addWidget(_card)
 
         # Bottom Close Button (Optional, keeping it if you still want it alongside back)
-        self.close_btn = GlassPushButton("Close Configuration Editor")
+        self.close_btn = GlassPushButton("Close Configuration Editor", variant="neutral")
         self.close_btn.clicked.connect(self.on_device_config_editor_close)
         self.close_btn.setFixedHeight(28)
 
