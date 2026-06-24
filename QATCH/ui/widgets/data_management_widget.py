@@ -375,7 +375,6 @@ class DataManagementWidget(QtWidgets.QWidget):
             # has started. Only populate inline if we're already visible.
             if self._revealed and self.isVisible():
                 mode.on_enter()
-            Log.d(f"{TAG} switched to mode '{key}' (instant)")
             return
 
         # Direction: moving DOWN the sidebar slides the new page up from below;
@@ -499,7 +498,6 @@ class DataManagementWidget(QtWidgets.QWidget):
             self._current_key = key
             self.btn_close.raise_()
             self.btn_fullscreen.raise_()
-            Log.d(f"{TAG} switched to mode '{key}' (slid {'down' if going_down else 'up'})")
 
         group.finished.connect(_finish)
         self._slide_group = group
