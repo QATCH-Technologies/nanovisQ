@@ -1096,6 +1096,7 @@ class UILogin:
           2. Configures the parent window's user roles and UI labels.
           3. Determines the initial software mode (Run vs. Analyze) based on permissions.
           4. Starts the session inactivity timer.
+          5. Clears the username field if 'Remember me' preference not selected.
 
         If authentication fails, it triggers error animations and displays a
         'Password invalid' message.
@@ -1131,6 +1132,8 @@ class UILogin:
             self._sessionTimer.start()
         else:
             name, init, role = None, None, 0
+
+        self._clear_not_remembered_user()
         self._clear_credentials()
 
         if name is not None:
@@ -1236,6 +1239,18 @@ class UILogin:
         else:
             Log.d("User session valid at hourly check.")
             self._sessionTimer.start()
+
+    def _clear_not_remembered_user(self) -> None:
+        """Clears the not remembered username from login form on sign in action.
+
+        Retrieves the 'Remember me' toggle state from checkbox widget. If not enabled,
+        it clears the entered username value in the field to be ready for the next sign
+        in and to make sure their username is not shown again when this session ends.
+        """
+        not_remembered = not self.remember_me_cb.isChecked()
+
+        if not_remembered:
+            self.user_username.clear()
 
     def _load_remembered_user(self) -> None:
         """Loads the remembered username from system settings on startup.

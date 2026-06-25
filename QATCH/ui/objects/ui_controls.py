@@ -3742,9 +3742,10 @@ class UIControls:  # QtWidgets.QMainWindow
 
         self.tempStatusBar.setText(status_text)
         self.tempStatusBar.setStyleSheet(
-            f"QLabel {{ background: {bg_colour}; color: {text_colour}; "
+            "QLabel { "
+            f"background: {bg_colour}; color: {text_colour}; "
             "border: 1px solid rgba(255, 255, 255, 160); "
-            "border-radius: 3px; padding: 0 6px; font-weight: bold; }}"
+            "border-radius: 3px; padding: 0 6px; font-weight: bold; }"
         )
 
     def action_tempcontrol(self):

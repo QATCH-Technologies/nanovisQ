@@ -8450,6 +8450,19 @@ class AnalyzerWorker(QtCore.QObject):
             )
             ax7 = fig4.add_subplot(111)
 
+            # Create the annotation object (hidden by default)
+            self.annot = ax7.annotate("", xy=(0,0), xytext=(-40,20),textcoords="offset points",
+                                bbox=dict(boxstyle="round", fc="w"),
+                                arrowprops=dict(arrowstyle="->"),
+                                picker=True)
+            self.annot.set_visible(False)
+            self.annot.get_bbox_patch().set_alpha(0.8)
+
+            # Connect the event listeners for click, hover and pick
+            fig4.canvas.mpl_connect("button_press_event", self._click)
+            fig4.canvas.mpl_connect("motion_notify_event", self.hover)
+            fig4.canvas.mpl_connect("pick_event", self.on_annot_click)
+
             high_shear_5x = 0
             high_shear_15x = 0
 
@@ -9191,6 +9204,10 @@ class AnalyzerWorker(QtCore.QObject):
             }
             rows = len(in_shear_rate)
             cols = len(data)
+
+            # Store to global for hover/pick actions
+            self.last_shear_rates = in_shear_rate
+            self.last_distances = distances
 
             # On multiplex systems, all `in_temp` will be NaN
             if len(real_temps) == 0:
@@ -9945,6 +9962,105 @@ class AnalyzerWorker(QtCore.QObject):
         if return_all_scores:
             return best_artist, debug_scores
         return best_artist
+
+    def get_point_index_from_shear_rate(self, shear_rate):
+        idx = 2
+        try:
+            if hasattr(self, "last_shear_rates") and hasattr(self, "last_distances"):
+                # initial_fill_pts = len(self.last_shear_rates) - len(self.last_distances)
+                shear_index = np.where(self.last_shear_rates == shear_rate)[0][0]
+                if shear_index != len(self.last_shear_rates) - 1:
+                    idx = max(3, 7 - shear_index)
+        except:
+            Log.w("An exception occurred while updating the index on annotation text.")
+        return idx - 2
+
+    def update_annot(self, child, ind):
+        """ Define the update function """
+        ax = getattr(self, "plot_ax", None)
+        if ax is None:
+            Log.w("No points to annotate.")
+            return
+        point_labels = {
+            0: "High-Shear",
+            1: "Initial Fill", 
+            2: "End of Initial", 
+            3: "Channel 1 Fill", 
+            4: "Channel 2 Fill", 
+            5: "Channel 3 Fill"
+        }
+        # If the child is a Scatter plot (PathCollection)
+        if hasattr(child, "get_offsets"):
+            pos = child.get_offsets()[ind["ind"][0]]
+        # If the child is a Line plot (Line2D)
+        elif hasattr(child, "get_data"):
+            xdata, ydata = child.get_data()
+            idx = ind["ind"][0]
+            pos = (xdata[idx], ydata[idx])
+        else:
+            return
+        if tuple(pos) == (0, 0):
+            # Log.d("Suppressed annotation update on errorbars hover event.")
+            return
+        idx = self.get_point_index_from_shear_rate(pos[0])
+        self.annot.xy = pos
+        self.annot.set_text(f"POI: {idx:.0f}\n{point_labels[idx]}\n{pos[0]:.2f} S⁻¹\n{pos[1]:.2f} cP\n(Click to Modify)")
+        self.annot.get_bbox_patch().set_facecolor("lightblue")
+
+    def _click(self, event):
+        ax = getattr(self, "plot_ax", None)
+        if ax is None:
+            Log.w("No points to annotate.")
+            return
+        fig = ax.figure
+        vis = self.annot.get_visible()
+        self.annot.set_visible(not vis)
+        fig.canvas.draw_idle()
+
+    def hover(self, event):
+        """ Define the hover event listener """
+        ax = getattr(self, "plot_ax", None)
+        if ax is None:
+            Log.w("No points to annotate.")
+            return
+        fig = ax.figure
+        vis = self.annot.get_visible()
+        if event.inaxes == ax:
+            # Loop through all children elements on the axes
+            for child in ax.get_children():
+                # Check if the child supports the 'contains' method
+                if hasattr(child, "contains") and child != self.annot:
+                    cont, ind = child.contains(event)
+                    if cont:
+                        # Update your annotation using the found child
+                        self.update_annot(child, ind)
+                        # self.annot.set_visible(True)
+                        if vis:
+                            fig.canvas.draw_idle()
+                        return  # Exit once you find the hovered item
+        # Hide annotation if mouse is not over any valid child
+        if vis:
+            self.annot.set_visible(False)
+            fig.canvas.draw_idle()
+
+    def on_annot_click(self, event):
+        ax = getattr(self, "plot_ax", None)
+        if ax is None:
+            Log.w("No points to annotate.")
+            return
+        fig = ax.figure
+        # Verify the clicked item is our specific annotation box
+        if event.artist == self.annot:
+            # Log.i(f"Success! You clicked the label. Current text: '{self.annot.get_text()}'")
+            # Modify the label to visually show it was clicked
+            # self.annot.get_bbox_patch().set_facecolor("lightgreen")
+            # fig.canvas.draw_idle()
+            self.parent.allow_modify = self.parent.tool_Modify.isChecked()
+            if not self.parent.allow_modify:
+                self.parent.tool_Modify.setChecked(True)
+                self.parent.allow_modify = self.parent.tool_Modify.isChecked()
+            idx = int(self.annot.get_text().splitlines()[0].split()[1]) + 2
+            self.parent.gotoStepNum(None, idx)
 
     def update(self, status):
         try:
