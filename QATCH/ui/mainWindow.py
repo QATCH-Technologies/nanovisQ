@@ -79,7 +79,11 @@ from QATCH.processors.InterpTemps import (
     QueueCommandFormat,
 )
 from QATCH.ui.popUp import PopUp, QueryComboBox
-from QATCH.ui.widgets.device_info_main_widget import DeviceInfoMainWidget
+# DeviceInfoMainWidget is no longer used: the device-config editor now lives as
+# the second perspective inside the advanced popup (AdvancedMainWidget) and is
+# revealed via an in-panel horizontal slide rather than a separate overlay
+# window. Kept here (commented) to document the removed dependency.
+# from QATCH.ui.widgets.device_info_main_widget import DeviceInfoMainWidget
 from QATCH.ui.workers.rename_output_files_worker import RenameOutputFilesWorker
 from QATCH.ui.workers.extract_worker import ExtractWorker
 from QATCH.ui.workers.tec_worker import TECWorker
@@ -2891,31 +2895,38 @@ class MainWindow(QtWidgets.QMainWindow):
     def _configure_device_info(self):
         if not len(self._selected_port) == 0:
 
-            existing_popup = getattr(self, "_dev_info_popup", None)
-            if existing_popup is not None and existing_popup.isVisible():
-                existing_popup.close()
+            ui1 = self.ControlsWin.ui1
+
+            # The device-config editor now lives as the second perspective INSIDE
+            # the advanced popup, rather than as a separate overlay window. The
+            # advanced content slides left to reveal it (and slides back on the
+            # device view's Back button), so the two views read as one surface.
+            popup = getattr(ui1, "_advanced_popup", None)
+
+            # Toggle: if the popup is already open AND showing the device view,
+            # a second Configure click slides back to the advanced view.
+            if (
+                popup is not None
+                and popup.isVisible()
+                and getattr(popup, "stage", None) is not None
+                and popup.stage.current_index() == 1
+            ):
+                popup.show_advanced_perspective(animated=True)
                 return
-            self._dev_info_popup = DeviceInfoMainWidget()
-            self._dev_info_popup.set_content_widget(self.ControlsWin.ui1.device_info_container)
-            # Match the advanced panel's WIDTH for visual continuity, but let the
-            # height follow the device-info content so all three calibration
-            # cards are fully visible (a fixed advanced-size would clip them).
-            _adv_size = self.ControlsWin.ui1.advanced_container.size()
-            _dev_hint = self.ControlsWin.ui1.device_info_container.sizeHint()
-            _dev_w = max(_adv_size.width(), _dev_hint.width())
-            _dev_h = max(_dev_hint.height(), _adv_size.height())
-            self.ControlsWin.ui1.device_info_container.setFixedSize(_dev_w, _dev_h)
-            self._dev_info_popup.show_anchored_to(
-                self.ControlsWin.ui1.tool_Advanced, main_window=self
-            )
+
+            # Populate the editor fields BEFORE the slide so the device view
+            # animates in already showing the selected device's values.
             self._update_configuration_banner_text()
-            QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.device_config_reset.click)
-            QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.temp_cal_reset.click)
-            QtCore.QTimer.singleShot(1, self.ControlsWin.ui1.lid_pogo_reset.click)
+            QtCore.QTimer.singleShot(1, ui1.device_config_reset.click)
+            QtCore.QTimer.singleShot(1, ui1.temp_cal_reset.click)
+            QtCore.QTimer.singleShot(1, ui1.lid_pogo_reset.click)
+
+            # Open the advanced popup (if needed) and slide to the device view.
+            ui1.show_device_config_editor()
 
             # restore selected port back to device
-            restore_port_idx = self.ControlsWin.ui1.cBox_Port.findData(self._selected_port)
-            self.ControlsWin.ui1.cBox_Port.setCurrentIndex(restore_port_idx)
+            restore_port_idx = ui1.cBox_Port.findData(self._selected_port)
+            ui1.cBox_Port.setCurrentIndex(restore_port_idx)
 
             return
 

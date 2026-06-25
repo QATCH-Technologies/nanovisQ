@@ -1583,145 +1583,6 @@ class _PerspectiveAnimator(QtCore.QObject):
         self._slide.start()
 
 
-class _SlidePerspectiveAnimator(QtCore.QObject):
-    """Horizontal slide entrance/exit for the device-configuration perspective.
-
-    The device-info perspective is conceptually "one level deeper" than the
-    advanced menu, so it slides in from the RIGHT on show (entering rightward
-    into view) and, when dismissed via the back button, slides back out to the
-    LEFT — reading as a return to the advanced view rather than a popup blink.
-
-    Like _PerspectiveAnimator this drives the top-level popup window directly
-    (move + setWindowOpacity), never a QGraphicsOpacityEffect, so the custom-
-    painted glass children (combos, spin boxes, buttons) are not cached into an
-    offscreen pixmap (which would cause ghosting / vanishing widgets).
-    """
-
-    def __init__(self, container: QtWidgets.QWidget) -> None:
-        super().__init__(container)
-        self._container = container
-        self._slide_offset = 28  # px to the right of final at the start
-        self._slide_to = None
-        self._slide_from = None
-        self._closing = False
-        self._close_cb = None
-
-        # Entrance: slide left into place (start offset to the right) + fade in.
-        self._in_slide = QtCore.QVariantAnimation(self)
-        self._in_slide.setDuration(240)
-        self._in_slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self._in_slide.setStartValue(0.0)
-        self._in_slide.setEndValue(1.0)
-        self._in_slide.valueChanged.connect(self._apply_in_slide)
-
-        self._in_fade = QtCore.QVariantAnimation(self)
-        self._in_fade.setDuration(200)
-        self._in_fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self._in_fade.setStartValue(0.0)
-        self._in_fade.setEndValue(1.0)
-        self._in_fade.valueChanged.connect(self._apply_fade)
-        self._in_fade.finished.connect(self._finish_in)
-
-        # Exit: slide further left + fade out, then invoke the close callback.
-        self._out_slide = QtCore.QVariantAnimation(self)
-        self._out_slide.setDuration(200)
-        self._out_slide.setEasingCurve(QtCore.QEasingCurve.InCubic)
-        self._out_slide.setStartValue(0.0)
-        self._out_slide.setEndValue(1.0)
-        self._out_slide.valueChanged.connect(self._apply_out_slide)
-
-        self._out_fade = QtCore.QVariantAnimation(self)
-        self._out_fade.setDuration(200)
-        self._out_fade.setEasingCurve(QtCore.QEasingCurve.InCubic)
-        self._out_fade.setStartValue(1.0)
-        self._out_fade.setEndValue(0.0)
-        self._out_fade.valueChanged.connect(self._apply_fade)
-        self._out_fade.finished.connect(self._finish_out)
-
-        container.installEventFilter(self)
-
-    # -- entrance ----------------------------------------------------------
-    def eventFilter(self, obj, event) -> bool:
-        if obj is self._container and event.type() == QtCore.QEvent.Show:
-            self._closing = False
-            self._in_fade.stop()
-            self._in_fade.start()
-            QtCore.QTimer.singleShot(0, self._begin_in_slide)
-        return super().eventFilter(obj, event)
-
-    def _begin_in_slide(self) -> None:
-        win = self._container.window()
-        if win is None or not win.isVisible():
-            return
-        final_pos = win.pos()
-        self._slide_to = QtCore.QPoint(final_pos)
-        self._slide_from = QtCore.QPoint(final_pos.x() + self._slide_offset, final_pos.y())
-        win.move(self._slide_from)
-        self._in_slide.stop()
-        self._in_slide.start()
-
-    def _apply_in_slide(self, t) -> None:
-        win = self._container.window()
-        if win is None or self._slide_to is None:
-            return
-        x = int(self._slide_from.x() + (self._slide_to.x() - self._slide_from.x()) * float(t))
-        win.move(x, self._slide_to.y())
-
-    def _finish_in(self) -> None:
-        win = self._container.window()
-        if win is not None:
-            win.setWindowOpacity(1.0)
-            if self._slide_to is not None:
-                win.move(self._slide_to)
-
-    # -- exit --------------------------------------------------------------
-    def play_exit(self, on_finished) -> None:
-        """Slide left + fade out, then call ``on_finished`` to actually hide.
-
-        If the window can't be resolved the callback fires immediately so the
-        dismiss never gets stuck.
-        """
-        win = self._container.window()
-        if win is None or not win.isVisible():
-            on_finished()
-            return
-        self._closing = True
-        self._close_cb = on_finished
-        base = win.pos()
-        self._slide_to = QtCore.QPoint(base)  # current = start of exit
-        self._slide_from = QtCore.QPoint(base.x() - self._slide_offset, base.y())
-        self._out_slide.stop()
-        self._out_slide.start()
-        self._out_fade.stop()
-        self._out_fade.start()
-
-    def _apply_out_slide(self, t) -> None:
-        win = self._container.window()
-        if win is None or self._slide_to is None:
-            return
-        # Move from current position leftward by _slide_offset over the tween.
-        x = int(self._slide_to.x() + (self._slide_from.x() - self._slide_to.x()) * float(t))
-        win.move(x, self._slide_to.y())
-
-    def _finish_out(self) -> None:
-        win = self._container.window()
-        if win is not None:
-            # Restore opacity/position so the next open starts clean.
-            win.setWindowOpacity(1.0)
-            if self._slide_to is not None:
-                win.move(self._slide_to)
-        cb, self._close_cb = self._close_cb, None
-        self._closing = False
-        if cb is not None:
-            cb()
-
-    # -- shared ------------------------------------------------------------
-    def _apply_fade(self, v) -> None:
-        win = self._container.window()
-        if win is not None:
-            win.setWindowOpacity(float(v))
-
-
 # ---------------------------------------------------------------------------
 # Main class
 # ---------------------------------------------------------------------------
@@ -2398,11 +2259,9 @@ class UIControls:  # QtWidgets.QMainWindow
             QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True
         )
         self.device_info_container.setStyleSheet("background: transparent;")
-        # Match the advanced perspective's footprint: let the container size to
-        # its content (header + three calibration cards) exactly like the
-        # advanced layout does, rather than forcing an oversized 520x560 floor
-        # that made the device view noticeably larger than the advanced view.
-        # A modest minimum width keeps the cards from collapsing too narrow.
+        # The device perspective uses the same sectioned, two-column layout as
+        # the advanced view, so it sizes to its content and shares the advanced
+        # view's footprint rather than forcing an oversized floor.
         self.device_info_container.setMinimumWidth(440)
         self.device_info_container.setSizePolicy(
             QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum
@@ -2695,116 +2554,122 @@ class UIControls:  # QtWidgets.QMainWindow
         self.lid_pogo_reset = GlassPushButton("Reset")
         self.lid_pogo_reset.clicked.connect(self.on_lid_pogo_reset)
 
-        # --- Custom Translucent Cards ---
-        def create_glass_card(title_text):
-            card = QtWidgets.QFrame()
-            card.setStyleSheet("""
-                QFrame {
-                    background: rgba(255, 255, 255, 30);
-                    border: 1px solid rgba(255, 255, 255, 90);
-                    border-radius: 12px;
-                }
-                QLabel { 
-                    border: none; 
-                    background: transparent; 
-                    color: rgba(40, 50, 65, 210);
-                }
-            """)
-            layout = QtWidgets.QVBoxLayout(card)
-            layout.setContentsMargins(16, 16, 16, 16)
-            layout.setSpacing(12)
+        # --- Sectioned layout (mirrors the Advanced perspective) ---
+        # The device perspective now uses the SAME visual language as the
+        # advanced view: quiet uppercase _SectionHeader labels, hairline
+        # dividers, and consistent 14px section spacing — instead of the old
+        # heavy bordered glass cards (which were taller and stylistically
+        # divergent). This tightens the device view so its height matches the
+        # advanced view and the two read as one cohesive surface when sliding.
+        def dev_section(title, *rows):
+            col = QtWidgets.QVBoxLayout()
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setSpacing(6)
+            col.addWidget(_SectionHeader(title))
+            col.addWidget(_hairline())
+            for row in rows:
+                if isinstance(row, QtWidgets.QLayout):
+                    col.addLayout(row)
+                else:
+                    col.addWidget(row)
+            col.addStretch()
+            return col
 
-            title = QtWidgets.QLabel(title_text.upper())
-            title.setStyleSheet("font-weight: bold; font-size: 10pt; letter-spacing: 1px;")
-            layout.addWidget(title)
+        def dev_form(*pairs):
+            """A compact 2-column grid: (label_text, widget[, widget...])."""
+            grid = QtWidgets.QGridLayout()
+            grid.setContentsMargins(0, 0, 0, 0)
+            grid.setHorizontalSpacing(10)
+            grid.setVerticalSpacing(8)
+            for r, pair in enumerate(pairs):
+                label_text, widgets = pair[0], pair[1:]
+                grid.addWidget(QtWidgets.QLabel(label_text), r, 0)
+                for c, w in enumerate(widgets, start=1):
+                    grid.addWidget(w, r, c)
+            grid.setColumnStretch(len(max(pairs, key=len)), 1)
+            return grid
 
-            form_layout = QtWidgets.QGridLayout()
-            form_layout.setContentsMargins(0, 0, 0, 0)
-            form_layout.setSpacing(12)
-            layout.addLayout(form_layout)
+        def dev_btn_row(*buttons):
+            row = QtWidgets.QHBoxLayout()
+            row.setContentsMargins(0, 4, 0, 0)
+            row.setSpacing(8)
+            for b in buttons:
+                row.addWidget(b)
+            row.addStretch()
+            return row
 
-            btn_layout = QtWidgets.QHBoxLayout()
-            btn_layout.setContentsMargins(0, 8, 0, 0)
-            btn_layout.setSpacing(8)
-            layout.addLayout(btn_layout)
+        # 1. Device Configuration
+        device_section = dev_section(
+            "Device Configuration",
+            dev_form(
+                ("Device Name:", self.device_name_input),
+                ("Position ID:", self.device_pid_input),
+            ),
+            dev_btn_row(
+                self.device_config_default,
+                self.device_config_save,
+                self.device_config_reset,
+            ),
+        )
 
-            return card, form_layout, btn_layout
+        # 2. Temperature Calibration
+        temp_section = dev_section(
+            "Temperature Calibration",
+            dev_form(
+                ("\u2206T_always:", self.temp_cal_always_input, self.temp_cal_always_icon),
+                ("\u2206T_measure:", self.temp_cal_measure_input, self.temp_cal_measure_icon),
+            ),
+            dev_btn_row(
+                self.temp_cal_default,
+                self.temp_cal_save,
+                self.temp_cal_reset,
+            ),
+        )
 
-        # 1. Device Config Card
-        self.device_config_card, dev_form, dev_btns = create_glass_card("Device Configuration")
-        dev_form.addWidget(QtWidgets.QLabel("Device Name:"), 0, 0)
-        dev_form.addWidget(self.device_name_input, 0, 1)
-        dev_form.addWidget(QtWidgets.QLabel("Position ID:"), 1, 0)
-        dev_form.addWidget(self.device_pid_input, 1, 1)
-        dev_form.setColumnStretch(2, 1)  # Prevent inputs from expanding horizontally
+        # 3. Lid POGO Calibration
+        pogo_section = dev_section(
+            "Lid POGO Calibration",
+            dev_form(
+                ("Servo Steps:", self.lid_pogo_distance_combo, self.lid_pogo_distance_input),
+                ("Servo Delay:", self.lid_pogo_delay_combo, self.lid_pogo_delay_input),
+            ),
+            dev_btn_row(
+                self.lid_pogo_default,
+                self.lid_pogo_save,
+                self.lid_pogo_reset,
+            ),
+        )
 
-        dev_btns.addWidget(self.device_config_default)
-        dev_btns.addWidget(self.device_config_save)
-        dev_btns.addWidget(self.device_config_reset)
-        dev_btns.addStretch()
+        # Two columns, mirroring the advanced view's column arrangement so the
+        # footprint (and height) of the two perspectives match. Device Config +
+        # Temperature Calibration stack on the left; Lid POGO sits on the right.
+        dev_left_col = QtWidgets.QVBoxLayout()
+        dev_left_col.setSpacing(14)
+        dev_left_col.addLayout(device_section)
+        dev_left_col.addLayout(temp_section)
+        dev_left_col.addStretch()
 
-        # 2. Temp Cal Card
-        self.temp_cal_card, temp_form, temp_btns = create_glass_card("Temperature Calibration")
-        temp_form.addWidget(QtWidgets.QLabel("\u2206T_always:"), 0, 0)
-        temp_form.addWidget(self.temp_cal_always_input, 0, 1)
-        temp_form.addWidget(self.temp_cal_always_icon, 0, 2)
-        temp_form.addWidget(QtWidgets.QLabel("\u2206T_measure:"), 1, 0)
-        temp_form.addWidget(self.temp_cal_measure_input, 1, 1)
-        temp_form.addWidget(self.temp_cal_measure_icon, 1, 2)
-        temp_form.setColumnStretch(3, 1)
+        dev_right_col = QtWidgets.QVBoxLayout()
+        dev_right_col.setSpacing(14)
+        dev_right_col.addLayout(pogo_section)
+        dev_right_col.addStretch()
 
-        temp_btns.addWidget(self.temp_cal_default)
-        temp_btns.addWidget(self.temp_cal_save)
-        temp_btns.addWidget(self.temp_cal_reset)
-        temp_btns.addStretch()
+        dev_columns = QtWidgets.QHBoxLayout()
+        dev_columns.setSpacing(22)
+        dev_columns.addLayout(dev_left_col, 3)
+        dev_columns.addLayout(dev_right_col, 2)
 
-        # 3. Lid Pogo Card
-        self.lid_pogo_cal_card, pogo_form, pogo_btns = create_glass_card("Lid POGO Calibration")
-        pogo_form.addWidget(QtWidgets.QLabel("Servo Steps:"), 0, 0)
-        pogo_form.addWidget(self.lid_pogo_distance_combo, 0, 1)
-        pogo_form.addWidget(self.lid_pogo_distance_input, 0, 2)
-        pogo_form.addWidget(QtWidgets.QLabel("Servo Delay:"), 1, 0)
-        pogo_form.addWidget(self.lid_pogo_delay_combo, 1, 1)
-        pogo_form.addWidget(self.lid_pogo_delay_input, 1, 2)
-        pogo_form.setColumnStretch(3, 1)
-
-        pogo_btns.addWidget(self.lid_pogo_default)
-        pogo_btns.addWidget(self.lid_pogo_save)
-        pogo_btns.addWidget(self.lid_pogo_reset)
-        pogo_btns.addStretch()
-
-        # --- Main Vertical Layout Assembly ---
-        # The three calibration cards stack vertically. Each card keeps its
-        # natural height (no vertical stretch between them) so all three are
-        # always fully visible rather than being squeezed by surrounding
-        # stretches. A small fixed spacing separates them.
-        self.deviceLayout = QtWidgets.QVBoxLayout()
-        self.deviceLayout.setSpacing(14)
-        self.deviceLayout.setContentsMargins(0, 0, 0, 0)
-        for _card in (self.device_config_card, self.temp_cal_card, self.lid_pogo_cal_card):
-            _card.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum)
-            self.deviceLayout.addWidget(_card)
-
-        # Final layout combining everything. Margins/spacing mirror the advanced
-        # container's wrap (no oversized outer padding) so this perspective has
-        # the same footprint as the advanced view rather than a larger one.
+        # Final layout: header row on top, then the two columns. Outer margins
+        # and spacing match the advanced container's wrap exactly.
         bannerLayout = QtWidgets.QVBoxLayout(self.device_info_container)
-        bannerLayout.setContentsMargins(2, 0, 2, 0)
+        bannerLayout.setContentsMargins(2, 2, 2, 2)
         bannerLayout.setSpacing(10)
+        bannerLayout.addLayout(header_layout)  # back + gear + title + info
+        bannerLayout.addLayout(dev_columns)
+        bannerLayout.addStretch(1)
 
-        bannerLayout.addLayout(header_layout)  # title row (icon + title + info)
-        bannerLayout.addLayout(self.deviceLayout)  # three cards, natural heights
-        bannerLayout.addStretch(1)  # single trailing stretch absorbs extra space
-
-        # Hide it initially; the popup will show it when anchored
+        # Hide it initially; the popup hosts and reveals it via a slide.
         self.device_info_container.hide()
-
-        # --- Perspective transition animation ---
-        # The device-info perspective sits one level "deeper" than the advanced
-        # menu, so it slides in from the RIGHT on show and slides back out to the
-        # LEFT when the back button is pressed — reading as a forward/back
-        # navigation between the two views rather than an instant popup swap.
-        self._device_slide_animator = _SlidePerspectiveAnimator(self.device_info_container)
 
         MainWindow1.setCentralWidget(self.centralwidget)
 
@@ -3475,24 +3340,21 @@ class UIControls:  # QtWidgets.QMainWindow
                 unsaved_input = True
                 break
         if not unsaved_input:
-            # Slide the perspective back out to the LEFT (toward the advanced
-            # view) before actually hiding the popup, so dismissing reads as a
-            # back-navigation. The hide runs as the animation's completion
-            # callback. Fall back to an immediate hide if the animator is
-            # unavailable for any reason.
-            def _do_hide():
+            # Slide the perspective back RIGHT to the advanced view within the
+            # SAME popup surface (the advanced content slides back into view and
+            # the device content slides off to the right). This reads as a back-
+            # navigation rather than the whole popup window sliding away.
+            popup = getattr(self, "_advanced_popup", None)
+            if popup is not None and popup.isVisible():
+                popup.show_advanced_perspective(animated=True)
+            else:
+                # Fallback: no live popup (e.g. opened standalone) — just hide.
                 container = self.device_info_container
-                host = container.parent().parent() if container.parent() else None
+                host = container.window() if container is not None else None
                 if host is not None:
                     host.hide()
-                else:
+                elif container is not None:
                     container.hide()
-
-            animator = getattr(self, "_device_slide_animator", None)
-            if animator is not None:
-                animator.play_exit(_do_hide)
-            else:
-                _do_hide()
 
     def _update_progress_text(self):
         # get innerText from HTML in infobar
@@ -3742,10 +3604,9 @@ class UIControls:  # QtWidgets.QMainWindow
 
         self.tempStatusBar.setText(status_text)
         self.tempStatusBar.setStyleSheet(
-            "QLabel { "
-            f"background: {bg_colour}; color: {text_colour}; "
+            f"QLabel {{ background: {bg_colour}; color: {text_colour}; "
             "border: 1px solid rgba(255, 255, 255, 160); "
-            "border-radius: 3px; padding: 0 6px; font-weight: bold; }"
+            "border-radius: 3px; padding: 0 6px; font-weight: bold; }}"
         )
 
     def action_tempcontrol(self):
@@ -3943,6 +3804,40 @@ class UIControls:  # QtWidgets.QMainWindow
             return  # toggled closed
         # Keep a handle to the container the popup built (size queries, etc.).
         self.advanced_container = popup.content_container
+
+    def _ensure_advanced_popup(self):
+        """Return the live advanced popup, opening it (on the advanced view) if needed."""
+        popup = getattr(self, "_advanced_popup", None)
+        if popup is not None and popup.isVisible():
+            return popup
+        main_window = getattr(self, "parent", None)
+        popup = AdvancedMainWidget.toggle(
+            owner=self,
+            anchor=self.tool_Advanced,
+            controls_layout=self._advanced_controls_layout,
+            main_window=main_window,
+        )
+        if popup is not None:
+            self.advanced_container = popup.content_container
+        return popup
+
+    def show_device_config_editor(self):
+        """Open the advanced popup (if needed) and slide to the device view.
+
+        This is the entry point external code (e.g. mainWindow) calls when the
+        user chooses to configure the connected device. The device-config
+        perspective lives as the second page inside the advanced popup, so the
+        advanced content slides left and the device content slides into view as
+        part of the same glass surface.
+        """
+        popup = self._ensure_advanced_popup()
+        if popup is None:
+            return None
+        # Make sure the device perspective is registered as the second page.
+        if self.device_info_container is not None:
+            popup.set_device_perspective(self.device_info_container)
+        popup.show_device_perspective(animated=True)
+        return popup
 
     # -- Account dropdown -----------------------------------------------------
 

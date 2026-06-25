@@ -161,6 +161,151 @@ class _AdvancedInnerPanel(QtWidgets.QWidget):
         p.end()
 
 
+class _PerspectiveStage(QtWidgets.QWidget):
+    """A clipped, horizontally-scrolling viewport that hosts two perspectives.
+
+    Both the "advanced" perspective (index 0) and the "device" perspective
+    (index 1) live side-by-side inside a single inner strip that is twice the
+    viewport width. Switching perspectives animates the strip's horizontal
+    offset so the advanced content slides left and reveals the device content
+    as part of the SAME surface — not as a separate popup window sliding in as
+    an overlay.
+
+    The viewport sizes itself to the *currently active* perspective's size hint
+    (the inactive one is laid out but does not inflate the viewport), so the
+    popup footprint matches whichever view is showing rather than the larger of
+    the two.
+
+    Attributes:
+        _DURATION (int): Slide animation duration in milliseconds.
+    """
+
+    _DURATION: int = 260
+
+    transitionFinished = QtCore.pyqtSignal(int)  # emits the settled index
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setStyleSheet("background: transparent;")
+
+        # The strip holds the two perspectives left-to-right. It is moved
+        # horizontally inside this (clipping) viewport via setGeometry.
+        self._strip = QtWidgets.QWidget(self)
+        self._strip.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self._strip.setStyleSheet("background: transparent;")
+
+        self._pages: list[QtWidgets.QWidget | None] = [None, None]
+        self._index = 0
+        self._offset = 0.0  # 0.0 == advanced fully shown, 1.0 == device fully shown
+
+        self._anim = QtCore.QVariantAnimation(self)
+        self._anim.setDuration(self._DURATION)
+        self._anim.valueChanged.connect(self._on_anim_value)
+        self._anim.finished.connect(self._on_anim_finished)
+
+    # -- page management ---------------------------------------------------
+    def set_page(self, index: int, widget: QtWidgets.QWidget) -> None:
+        """Adopt ``widget`` as the perspective at ``index`` (0=advanced, 1=device)."""
+        old = self._pages[index]
+        if old is widget:
+            return
+        if old is not None:
+            old.setParent(None)
+        self._pages[index] = widget
+        widget.setParent(self._strip)
+        widget.show()
+        self._relayout()
+
+    def current_index(self) -> int:
+        return self._index
+
+    # -- sizing ------------------------------------------------------------
+    def _active_page(self) -> QtWidgets.QWidget | None:
+        # During a transition the viewport sizes to the TALLER of the two pages
+        # so neither clips mid-slide; at rest it tracks the active page so the
+        # popup footprint matches the visible perspective.
+        if self._anim.state() == QtCore.QAbstractAnimation.State.Running:
+            a, b = self._pages
+            if a is not None and b is not None:
+                return a if self._page_h(a) >= self._page_h(b) else b
+        return self._pages[self._index]
+
+    def _page_w(self, p: QtWidgets.QWidget) -> int:
+        """A page's effective width: the larger of its hint and its minimum."""
+        return max(p.sizeHint().width(), p.minimumSizeHint().width(), p.minimumWidth())
+
+    def _page_h(self, p: QtWidgets.QWidget) -> int:
+        return max(p.sizeHint().height(), p.minimumSizeHint().height())
+
+    def sizeHint(self) -> QtCore.QSize:  # noqa: N802
+        page = self._active_page()
+        if page is None:
+            return QtCore.QSize(440, 320)
+        # Width tracks the widest page so horizontal travel is consistent and
+        # neither page overflows its slot.
+        w = 0
+        for p in self._pages:
+            if p is not None:
+                w = max(w, self._page_w(p))
+        return QtCore.QSize(w, self._page_h(page))
+
+    def minimumSizeHint(self) -> QtCore.QSize:  # noqa: N802
+        return self.sizeHint()
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # noqa: N802
+        self._relayout()
+        super().resizeEvent(event)
+
+    def _relayout(self) -> None:
+        """Lay both pages side-by-side and position the strip per the offset."""
+        vw = self.width()
+        vh = self.height()
+        if vw <= 0 or vh <= 0:
+            return
+        # Strip is two viewport-widths wide; each page occupies one slot.
+        self._strip.setGeometry(self._strip_x(), 0, vw * 2, vh)
+        for i, page in enumerate(self._pages):
+            if page is not None:
+                page.setGeometry(i * vw, 0, vw, vh)
+
+    def _strip_x(self) -> int:
+        return int(round(-self._offset * self.width()))
+
+    # -- transitions -------------------------------------------------------
+    def slide_to(self, index: int, animated: bool = True) -> None:
+        """Slide to perspective ``index`` (0=advanced, 1=device)."""
+        index = 1 if index else 0
+        target = float(index)
+        if not animated or not self.isVisible():
+            self._index = index
+            self._offset = target
+            self.updateGeometry()
+            self._relayout()
+            self.transitionFinished.emit(index)
+            return
+        if abs(self._offset - target) < 1e-3 and self._index == index:
+            return
+        self._index = index  # active (for final sizing) is the destination
+        self._anim.stop()
+        self._anim.setStartValue(float(self._offset))
+        self._anim.setEndValue(target)
+        self._anim.start()
+
+    def _on_anim_value(self, v) -> None:
+        self._offset = float(v)
+        # Re-assert width/height each frame so the viewport can grow/shrink
+        # smoothly as the taller/shorter page comes into view.
+        self.updateGeometry()
+        self._strip.move(self._strip_x(), 0)
+
+    def _on_anim_finished(self) -> None:
+        self._offset = float(self._index)
+        self.updateGeometry()
+        self._relayout()
+        self.transitionFinished.emit(self._index)
+
+
 class AdvancedMainWidget(QtWidgets.QWidget):
     """Frosted-glass dropdown panel for the Advanced Settings.
 
@@ -198,6 +343,7 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         self.setAutoFillBackground(False)
 
         self._main_window = None
+        self._anchor = None
         self.content_container = None  # built lazily by build_content()
 
         # Outer container
@@ -222,6 +368,13 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         # Inner layout
         self.content_layout = QtWidgets.QVBoxLayout(self._panel)
         self.content_layout.setContentsMargins(14, 14, 14, 14)
+
+        # Perspective stage: hosts the advanced + device views side-by-side and
+        # slides horizontally between them inside this single popup surface.
+        self.stage = _PerspectiveStage(self._panel)
+        self.content_layout.addWidget(self.stage)
+        self.stage.transitionFinished.connect(self._on_stage_transition_finished)
+        self._on_device_back = None  # optional callback after sliding back
 
     @staticmethod
     def build_container(controls_layout: QtWidgets.QLayout) -> QtWidgets.QWidget:
@@ -296,7 +449,7 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         return self.content_container
 
     def set_content_widget(self, widget: QtWidgets.QWidget) -> None:
-        """Injects an already-built container into the popup.
+        """Injects an already-built container as the advanced perspective.
 
         Retained for backward compatibility or parity with the device-info
         popup. Prefer `build_content` for the advanced settings.
@@ -305,8 +458,45 @@ class AdvancedMainWidget(QtWidgets.QWidget):
             widget (QtWidgets.QWidget): The fully built widget to insert.
         """
         self.content_container = widget
-        self.content_layout.addWidget(widget)
+        self.stage.set_page(0, widget)
         widget.show()
+
+    # -- perspective hosting --------------------------------------------------
+    def set_advanced_perspective(self, widget: QtWidgets.QWidget) -> None:
+        """Registers ``widget`` as the advanced (index 0) perspective."""
+        self.content_container = widget
+        self.stage.set_page(0, widget)
+        widget.show()
+
+    def set_device_perspective(self, widget: QtWidgets.QWidget) -> None:
+        """Registers ``widget`` as the device-config (index 1) perspective."""
+        self.device_container = widget
+        self.stage.set_page(1, widget)
+        widget.show()
+
+    def show_device_perspective(self, animated: bool = True) -> None:
+        """Slide the panel left to reveal the device-config perspective."""
+        self.stage.slide_to(1, animated=animated)
+
+    def show_advanced_perspective(self, animated: bool = True, on_finished=None) -> None:
+        """Slide the panel right, back to the advanced perspective.
+
+        Args:
+            animated (bool): Whether to animate the slide.
+            on_finished (callable, optional): Invoked once the slide settles on
+                the advanced view (used by the device "Back" button).
+        """
+        self._on_device_back = on_finished
+        self.stage.slide_to(0, animated=animated)
+
+    def _on_stage_transition_finished(self, index: int) -> None:
+        # Keep the popup tightly sized to whichever perspective settled, then
+        # re-anchor so it doesn't drift off the anchor as the height changes.
+        self.adjustSize()
+        self._reanchor()
+        if index == 0 and self._on_device_back is not None:
+            cb, self._on_device_back = self._on_device_back, None
+            cb()
 
     @classmethod
     def toggle(cls, owner, anchor, controls_layout, main_window=None, attr="_advanced_popup"):
@@ -344,8 +534,18 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         else:
             popup.content_container = container
 
-        popup.content_layout.addWidget(container)
-        container.show()
+        popup.set_advanced_perspective(container)
+
+        # If the owner has a pre-built device-config perspective, register it as
+        # the second page so the two views can slide within this one popup.
+        device_container = getattr(owner, "device_info_container", None)
+        if device_container is not None:
+            popup.set_device_perspective(device_container)
+
+        # Let the owner reach the popup to drive perspective transitions.
+        owner._advanced_popup = popup
+        popup.stage.slide_to(0, animated=False)
+
         setattr(owner, attr, popup)
         popup.show_anchored_to(anchor, main_window=main_window)
         return popup
@@ -362,8 +562,17 @@ class AdvancedMainWidget(QtWidgets.QWidget):
                 boundary constraints. Defaults to None.
         """
         self._main_window = main_window
+        self._anchor = anchor
         self.adjustSize()
 
+        x, y = self._compute_anchored_pos(anchor)
+        self.move(x, y)
+        if self._main_window is not None:
+            self._main_window.installEventFilter(self)
+        self.show()
+
+    def _compute_anchored_pos(self, anchor: QtWidgets.QWidget) -> tuple:
+        """Computes the clamped top-left position for the current popup size."""
         popup_w, popup_h = self.width(), self.height()
         anchor_br = anchor.mapToGlobal(QtCore.QPoint(anchor.width(), anchor.height()))
 
@@ -395,11 +604,14 @@ class AdvancedMainWidget(QtWidgets.QWidget):
                     y = y_above
                 else:
                     y -= visible.bottom() - bounds.bottom()
+        return x, y
 
+    def _reanchor(self) -> None:
+        """Re-pin the popup to its anchor after its size changes."""
+        if getattr(self, "_anchor", None) is None:
+            return
+        x, y = self._compute_anchored_pos(self._anchor)
         self.move(x, y)
-        if self._main_window is not None:
-            self._main_window.installEventFilter(self)
-        self.show()
 
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802
         """Filters events on the main window to automatically close the popup.
