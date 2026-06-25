@@ -45,6 +45,7 @@ from QATCH.ui.components.glass_warning_label import GlassWarningLabel
 from QATCH.ui.components.glass_push_button import GlassPushButton
 from QATCH.ui.components.glass_toggle import GlassToggle
 from QATCH.ui.components.animated_combo_box import AnimatedComboBox
+from QATCH.ui.components.animated_spin_box import AnimatedDoubleSpinBox
 
 # ---------------------------------------------------------------------------
 # Glass-morphism primitives
@@ -285,20 +286,12 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
 
     def manage_user_profiles(self):
-        # dissallow user management if Analyze mode still has unsaved changes (after prompt to close)
-        # still logged in, but user cannot stay in Analyze mode
-        if not self.parent.MainWin.ui0._set_run_mode(None):
+        # Disallow user management if the current mode is busy or has unsaved
+        # changes — but otherwise leave the active mode untouched. The manager
+        # is a glassmorphic overlay now, not a modal dialog, so it no longer
+        # needs to force-switch to Run mode to open.
+        if not self.parent.MainWin.ui0._check_mode_change_allowed():
             Log.d("User has unsaved changes in Analyze mode. Manage users aborted.")
-            return
-
-        # dissallow user management if current mode is busy
-        if not self.parent.ControlsWin.ui1.pButton_Start.isEnabled():
-            PopUp.warning(
-                self,
-                "Action Not Allowed",
-                "User info cannot be changed during an active capture.\n"
-                + "Please 'Stop' the measurement before attempting this action.",
-            )
             return
 
         if self.userrole != UserRoles.ADMIN and self.userrole != UserRoles.NONE:
@@ -1394,6 +1387,53 @@ def _hairline() -> QtWidgets.QFrame:
     return line
 
 
+class _DeviceConfigTitle(QtWidgets.QLabel):
+    """Title label for the device-config perspective that stays banner-compatible.
+
+    The device perspective replaced the old ``GlassWarningLabel`` banner with a
+    clean left-aligned title. External code (mainWindow.py) still drives that
+    former banner through ``.text()`` / ``.setText()`` to stamp the connected
+    device handle onto it (e.g. ``"Configuration Editor for Device 1A"`` and a
+    later ``.endswith(dev_handle)`` check).
+
+    To keep that contract intact while showing a tidy title, this widget stores
+    the raw banner string verbatim — ``text()`` returns exactly what was set, so
+    every existing string operation behaves as before — but the VISIBLE text is
+    a friendlier rendering: ``"Device Configuration"`` plus the trailing handle
+    when one is present.
+    """
+
+    _PREFIX = "Configuration Editor for Device"
+    _DISPLAY_BASE = "Device Configuration"
+
+    def __init__(self, text: str = "", parent=None) -> None:
+        super().__init__(parent)
+        self._raw_text = ""
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802 (Qt override)
+        self._raw_text = text if text is not None else ""
+        super().setText(self._render(self._raw_text))
+
+    def text(self) -> str:  # noqa: N802 (Qt override)
+        # Return the raw banner string so external endswith()/split() logic
+        # keeps operating on the same value the old banner exposed.
+        return self._raw_text
+
+    def _render(self, raw: str) -> str:
+        """Map a raw banner string to the friendly visible title.
+
+        Anything trailing the legacy prefix (the device handle) is appended to
+        the display title; without a handle, just the base title is shown.
+        """
+        handle = ""
+        if raw.startswith(self._PREFIX):
+            handle = raw[len(self._PREFIX) :].strip()
+        if handle:
+            return f"{self._DISPLAY_BASE}  ·  {handle}"
+        return self._DISPLAY_BASE
+
+
 class LabeledToggle(QtWidgets.QWidget):
     """A GlassToggle paired with a text label in a horizontal row.
 
@@ -1541,6 +1581,145 @@ class _PerspectiveAnimator(QtCore.QObject):
         win.move(self._slide_from)
         self._slide.stop()
         self._slide.start()
+
+
+class _SlidePerspectiveAnimator(QtCore.QObject):
+    """Horizontal slide entrance/exit for the device-configuration perspective.
+
+    The device-info perspective is conceptually "one level deeper" than the
+    advanced menu, so it slides in from the RIGHT on show (entering rightward
+    into view) and, when dismissed via the back button, slides back out to the
+    LEFT — reading as a return to the advanced view rather than a popup blink.
+
+    Like _PerspectiveAnimator this drives the top-level popup window directly
+    (move + setWindowOpacity), never a QGraphicsOpacityEffect, so the custom-
+    painted glass children (combos, spin boxes, buttons) are not cached into an
+    offscreen pixmap (which would cause ghosting / vanishing widgets).
+    """
+
+    def __init__(self, container: QtWidgets.QWidget) -> None:
+        super().__init__(container)
+        self._container = container
+        self._slide_offset = 28  # px to the right of final at the start
+        self._slide_to = None
+        self._slide_from = None
+        self._closing = False
+        self._close_cb = None
+
+        # Entrance: slide left into place (start offset to the right) + fade in.
+        self._in_slide = QtCore.QVariantAnimation(self)
+        self._in_slide.setDuration(240)
+        self._in_slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        self._in_slide.setStartValue(0.0)
+        self._in_slide.setEndValue(1.0)
+        self._in_slide.valueChanged.connect(self._apply_in_slide)
+
+        self._in_fade = QtCore.QVariantAnimation(self)
+        self._in_fade.setDuration(200)
+        self._in_fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        self._in_fade.setStartValue(0.0)
+        self._in_fade.setEndValue(1.0)
+        self._in_fade.valueChanged.connect(self._apply_fade)
+        self._in_fade.finished.connect(self._finish_in)
+
+        # Exit: slide further left + fade out, then invoke the close callback.
+        self._out_slide = QtCore.QVariantAnimation(self)
+        self._out_slide.setDuration(200)
+        self._out_slide.setEasingCurve(QtCore.QEasingCurve.InCubic)
+        self._out_slide.setStartValue(0.0)
+        self._out_slide.setEndValue(1.0)
+        self._out_slide.valueChanged.connect(self._apply_out_slide)
+
+        self._out_fade = QtCore.QVariantAnimation(self)
+        self._out_fade.setDuration(200)
+        self._out_fade.setEasingCurve(QtCore.QEasingCurve.InCubic)
+        self._out_fade.setStartValue(1.0)
+        self._out_fade.setEndValue(0.0)
+        self._out_fade.valueChanged.connect(self._apply_fade)
+        self._out_fade.finished.connect(self._finish_out)
+
+        container.installEventFilter(self)
+
+    # -- entrance ----------------------------------------------------------
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self._container and event.type() == QtCore.QEvent.Show:
+            self._closing = False
+            self._in_fade.stop()
+            self._in_fade.start()
+            QtCore.QTimer.singleShot(0, self._begin_in_slide)
+        return super().eventFilter(obj, event)
+
+    def _begin_in_slide(self) -> None:
+        win = self._container.window()
+        if win is None or not win.isVisible():
+            return
+        final_pos = win.pos()
+        self._slide_to = QtCore.QPoint(final_pos)
+        self._slide_from = QtCore.QPoint(final_pos.x() + self._slide_offset, final_pos.y())
+        win.move(self._slide_from)
+        self._in_slide.stop()
+        self._in_slide.start()
+
+    def _apply_in_slide(self, t) -> None:
+        win = self._container.window()
+        if win is None or self._slide_to is None:
+            return
+        x = int(self._slide_from.x() + (self._slide_to.x() - self._slide_from.x()) * float(t))
+        win.move(x, self._slide_to.y())
+
+    def _finish_in(self) -> None:
+        win = self._container.window()
+        if win is not None:
+            win.setWindowOpacity(1.0)
+            if self._slide_to is not None:
+                win.move(self._slide_to)
+
+    # -- exit --------------------------------------------------------------
+    def play_exit(self, on_finished) -> None:
+        """Slide left + fade out, then call ``on_finished`` to actually hide.
+
+        If the window can't be resolved the callback fires immediately so the
+        dismiss never gets stuck.
+        """
+        win = self._container.window()
+        if win is None or not win.isVisible():
+            on_finished()
+            return
+        self._closing = True
+        self._close_cb = on_finished
+        base = win.pos()
+        self._slide_to = QtCore.QPoint(base)  # current = start of exit
+        self._slide_from = QtCore.QPoint(base.x() - self._slide_offset, base.y())
+        self._out_slide.stop()
+        self._out_slide.start()
+        self._out_fade.stop()
+        self._out_fade.start()
+
+    def _apply_out_slide(self, t) -> None:
+        win = self._container.window()
+        if win is None or self._slide_to is None:
+            return
+        # Move from current position leftward by _slide_offset over the tween.
+        x = int(self._slide_to.x() + (self._slide_from.x() - self._slide_to.x()) * float(t))
+        win.move(x, self._slide_to.y())
+
+    def _finish_out(self) -> None:
+        win = self._container.window()
+        if win is not None:
+            # Restore opacity/position so the next open starts clean.
+            win.setWindowOpacity(1.0)
+            if self._slide_to is not None:
+                win.move(self._slide_to)
+        cb, self._close_cb = self._close_cb, None
+        self._closing = False
+        if cb is not None:
+            cb()
+
+    # -- shared ------------------------------------------------------------
+    def _apply_fade(self, v) -> None:
+        win = self._container.window()
+        if win is not None:
+            win.setWindowOpacity(float(v))
 
 
 # ---------------------------------------------------------------------------
@@ -2219,23 +2398,34 @@ class UIControls:  # QtWidgets.QMainWindow
             QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True
         )
         self.device_info_container.setStyleSheet("background: transparent;")
-        # Ensure enough room for the header + three stacked calibration cards +
-        # close button so none of them get clipped when the popup sizes itself.
-        self.device_info_container.setMinimumSize(520, 560)
+        # Match the advanced perspective's footprint: let the container size to
+        # its content (header + three calibration cards) exactly like the
+        # advanced layout does, rather than forcing an oversized 520x560 floor
+        # that made the device view noticeably larger than the advanced view.
+        # A modest minimum width keeps the cards from collapsing too narrow.
+        self.device_info_container.setMinimumWidth(440)
+        self.device_info_container.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum
+        )
 
-        # --- Header: Back Button & Banner ---
+        # --- Header: Back Button + Title (mirrors the Advanced view) ---
+        # The advanced perspective uses a left-aligned title row (icon + bold
+        # title + hover-info icon). The device perspective matches that, with a
+        # circular back button leading the row so the user can return to the
+        # advanced menu. Dismissing via this button slides the panel left.
         self.back_btn = QtWidgets.QPushButton()
-        self.back_btn.setIcon(QtGui.QIcon(
-            os.path.join(Architecture.get_path(), "QATCH", "icons", "left-arrow.svg")
-        ))
-        self.back_btn.setIconSize(QtCore.QSize(20, 20))
-        self.back_btn.setFixedSize(36, 36)
+        self.back_btn.setIcon(
+            QtGui.QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "left-arrow.svg"))
+        )
+        self.back_btn.setIconSize(QtCore.QSize(18, 18))
+        self.back_btn.setFixedSize(32, 32)
         self.back_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.back_btn.setToolTip("Back to Advanced Options")
         self.back_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(255, 255, 255, 40);
                 border: 1px solid rgba(255, 255, 255, 100);
-                border-radius: 18px;
+                border-radius: 16px;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 80);
@@ -2245,24 +2435,66 @@ class UIControls:  # QtWidgets.QMainWindow
                 background: rgba(255, 255, 255, 30);
             }
         """)
-        # Assuming the back button performs the same action as closing the editor
         self.back_btn.clicked.connect(self.on_device_config_editor_close)
 
-        self.ConfigBannerWidget = GlassWarningLabel("Configuration Editor for Device")
-        self.ConfigBannerWidget.text_lbl.setWordWrap(False)  # single line title
+        # Title icon (gear, matching the advanced header's leading glyph).
+        _dev_icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+        self.device_config_icon = QtWidgets.QLabel()
+        self.device_config_icon.setFixedSize(18, 18)
+        self.device_config_icon.setScaledContents(True)
+        self.device_config_icon.setStyleSheet("background: transparent; border: none;")
+        _dev_gear = QtGui.QPixmap(os.path.join(_dev_icons_dir, "gear.svg"))
+        if not _dev_gear.isNull():
+            self.device_config_icon.setPixmap(_dev_gear)
 
-        # Create a header layout that perfectly centers the banner
-        # by balancing the back button with a dummy widget on the right.
+        # Bold title, same typography as the advanced "Advanced Options" title.
+        # This widget doubles as the legacy ``ConfigBannerWidget``: external
+        # code (mainWindow.py) reads/writes the device handle through
+        # ``.text()`` / ``.setText()`` exactly as it did with the old
+        # GlassWarningLabel banner ("Configuration Editor for Device <handle>").
+        # _DeviceConfigTitle stores that raw banner string verbatim (so
+        # ``.text()`` / ``.endswith(dev_handle)`` keep working) while DISPLAYING
+        # a clean, left-aligned title with the handle appended.
+        self.device_config_title = _DeviceConfigTitle("Configuration Editor for Device")
+        self.device_config_title.setStyleSheet(
+            "QLabel { color: rgba(28, 40, 52, 235); font-size: 14px; "
+            "font-weight: bold; background: transparent; border: none; }"
+        )
+        # Backwards-compatible alias for external references.
+        self.ConfigBannerWidget = self.device_config_title
+
+        # Hover-info icon mirroring the advanced view's _InfoIcon usage.
+        self._device_info_text = (
+            "Configuration editor for the connected device — set its name, "
+            "position ID, temperature calibration, and lid POGO timing."
+        )
+        try:
+            from QATCH.ui.widgets.advanced_main_widget import _InfoIcon  # noqa: PLC0415
+
+            self.device_config_info = _InfoIcon(
+                os.path.join(_dev_icons_dir, "warning-circle.svg"),
+                tooltip=self._device_info_text,
+            )
+        except Exception:
+            # Fallback: a plain static info glyph if _InfoIcon isn't importable.
+            self.device_config_info = QtWidgets.QLabel()
+            self.device_config_info.setFixedSize(16, 16)
+            self.device_config_info.setScaledContents(True)
+            self.device_config_info.setStyleSheet("background: transparent; border: none;")
+            _info_pix = QtGui.QPixmap(os.path.join(_dev_icons_dir, "warning-circle.svg"))
+            if not _info_pix.isNull():
+                self.device_config_info.setPixmap(_info_pix)
+            self.device_config_info.setToolTip(self._device_info_text)
+
+        # Left-aligned header row: back button, gear, title, info, then stretch.
         header_layout = QtWidgets.QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        dummy_spacer = QtWidgets.QWidget()
-        dummy_spacer.setFixedSize(36, 36)
-
-        header_layout.addWidget(self.back_btn)
+        header_layout.setContentsMargins(2, 0, 2, 0)
+        header_layout.setSpacing(8)
+        header_layout.addWidget(self.back_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        header_layout.addWidget(self.device_config_icon, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        header_layout.addWidget(self.device_config_title, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        header_layout.addWidget(self.device_config_info, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         header_layout.addStretch()
-        header_layout.addWidget(self.ConfigBannerWidget)
-        header_layout.addStretch()
-        header_layout.addWidget(dummy_spacer)
 
         # --- Input validators ---
         self.validDeviceName = QtGui.QRegularExpressionValidator(
@@ -2299,48 +2531,10 @@ class UIControls:  # QtWidgets.QMainWindow
                 border: 1px solid rgba(0, 120, 215, 150);
             }
         """
-        glass_spinbox_style = glass_input_style.replace("QLineEdit", "QDoubleSpinBox") + """
-            /* ========================================================= */
-            /* UP BUTTON & UP ARROW                                      */
-            /* ========================================================= */
-            QDoubleSpinBox::up-button {
-                background: rgba(255, 255, 255, 120);
-                border-top-right-radius: 4px;
-            }
-
-            QDoubleSpinBox::up-button:pressed {
-                background-color: rgba(200, 200, 200, 25);
-            }
-
-            QDoubleSpinBox::up-arrow {
-                image: url('""" + os.path.join(
-                    Architecture.get_path(), "QATCH", "icons", 
-                    "up-chevron.svg").replace("\\", "/") + """');
-                width: 10px;
-                height: 10px;
-            }
-
-            /* ========================================================= */
-            /* DOWN BUTTON & DOWN ARROW                                  */
-            /* ========================================================= */
-            QDoubleSpinBox::down-button {
-                background: rgba(255, 255, 255, 120);
-                border-bottom-right-radius: 4px;
-            }
-
-            QDoubleSpinBox::down-button:pressed {
-                background-color: rgba(200, 200, 200, 25);
-            }
-
-            QDoubleSpinBox::down-arrow {
-                image: url('""" + os.path.join(
-                    Architecture.get_path(), "QATCH", "icons", 
-                    "down-chevron.svg").replace("\\", "/") + """');
-                width: 10px;
-                height: 10px;
-            }
-        """
-
+        # NOTE: the former ``glass_spinbox_style`` QSS block (which themed the
+        # native QDoubleSpinBox up/down buttons) has been removed. The temp-cal
+        # inputs are now AnimatedDoubleSpinBox instances, which carry their own
+        # glass styling and custom animated chevrons.
 
         # Row 0L: Device Name
         self.device_name_input = QtWidgets.QLineEdit()
@@ -2374,13 +2568,17 @@ class UIControls:  # QtWidgets.QMainWindow
         self.device_config_reset.clicked.connect(self.on_device_config_reset)
 
         # Row 1L: Constant Temperature Calibration
-        self.temp_cal_always_input = QtWidgets.QDoubleSpinBox()
+        self.temp_cal_always_input = AnimatedDoubleSpinBox(
+            up_icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg"),
+            down_icon_path=os.path.join(
+                Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
+            ),
+        )
         self.temp_cal_always_input.setDecimals(2)
         self.temp_cal_always_input.setRange(-6.35, 6.35)
         self.temp_cal_always_input.setSingleStep(0.25)
         # self.temp_cal_always_input.setValidator(self.validTempOffset)
         self.temp_cal_always_input.setSuffix(" °C")
-        self.temp_cal_always_input.setStyleSheet(glass_spinbox_style)
         self.temp_cal_always_input.setMinimumWidth(142)
         self.temp_cal_always_icon = QtWidgets.QLineEdit()
         self.temp_cal_always_icon.setStyleSheet(glass_icon_style)
@@ -2397,13 +2595,17 @@ class UIControls:  # QtWidgets.QMainWindow
         )
 
         # Row 1R: Running Temperature Calibration
-        self.temp_cal_measure_input = QtWidgets.QDoubleSpinBox()
+        self.temp_cal_measure_input = AnimatedDoubleSpinBox(
+            up_icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg"),
+            down_icon_path=os.path.join(
+                Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
+            ),
+        )
         self.temp_cal_measure_input.setDecimals(2)
         self.temp_cal_measure_input.setRange(-6.35, 6.35)
         self.temp_cal_measure_input.setSingleStep(0.25)
         # self.temp_cal_measure_input.setValidator(self.validTempOffset)
         self.temp_cal_measure_input.setSuffix(" °C")
-        self.temp_cal_measure_input.setStyleSheet(glass_spinbox_style)
         self.temp_cal_measure_input.setMinimumWidth(142)
         self.temp_cal_measure_icon = QtWidgets.QLineEdit()
         self.temp_cal_measure_icon.setStyleSheet(glass_icon_style)
@@ -2431,7 +2633,13 @@ class UIControls:  # QtWidgets.QMainWindow
         # self.lid_pogo_distance_combo.setStyleSheet(glass_input_style)
         self.lid_pogo_distance_combo.setMinimumWidth(95)
         self.lid_pogo_distance_combo.addItems(["Most", "More", "Normal", "Less", "Least", "Custom"])
-        self.lid_pogo_distance_values = {"Most": 50, "More": 40, "Normal": 30, "Less": 20, "Least": 10}
+        self.lid_pogo_distance_values = {
+            "Most": 50,
+            "More": 40,
+            "Normal": 30,
+            "Less": 20,
+            "Least": 10,
+        }
         self.lid_pogo_distance_combo.setCurrentIndex(2)
         self.lid_pogo_distance_input = QtWidgets.QLineEdit()
         self.lid_pogo_distance_input.setValidator(self.validPogoPosition)
@@ -2453,8 +2661,16 @@ class UIControls:  # QtWidgets.QMainWindow
         self.lid_pogo_delay_combo = AnimatedComboBox(icon_path=self._combo_chevron)
         # self.lid_pogo_delay_combo.setStyleSheet(glass_input_style.replace("QLineEdit", "QComboBox"))
         self.lid_pogo_delay_combo.setMinimumWidth(95)
-        self.lid_pogo_delay_combo.addItems(["Fastest", "Fast", "Normal", "Slow", "Slowest", "Custom"])
-        self.lid_pogo_delay_values = {"Fastest": 10, "Fast": 20, "Normal": 30, "Slow": 40, "Slowest": 50}
+        self.lid_pogo_delay_combo.addItems(
+            ["Fastest", "Fast", "Normal", "Slow", "Slowest", "Custom"]
+        )
+        self.lid_pogo_delay_values = {
+            "Fastest": 10,
+            "Fast": 20,
+            "Normal": 30,
+            "Slow": 40,
+            "Slowest": 50,
+        }
         self.lid_pogo_delay_combo.setCurrentIndex(2)
         self.lid_pogo_delay_input = QtWidgets.QLineEdit()
         self.lid_pogo_delay_input.setValidator(self.validPogoDelayMs)
@@ -2569,36 +2785,26 @@ class UIControls:  # QtWidgets.QMainWindow
             _card.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum)
             self.deviceLayout.addWidget(_card)
 
-        # Bottom Close Button (Optional, keeping it if you still want it alongside back)
-        self.close_btn = GlassPushButton("Close Configuration Editor", variant="neutral")
-        self.close_btn.clicked.connect(self.on_device_config_editor_close)
-        self.close_btn.setFixedHeight(28)
-
-        # Final Banner Layout combining everything
+        # Final layout combining everything. Margins/spacing mirror the advanced
+        # container's wrap (no oversized outer padding) so this perspective has
+        # the same footprint as the advanced view rather than a larger one.
         bannerLayout = QtWidgets.QVBoxLayout(self.device_info_container)
-        bannerLayout.setContentsMargins(24, 20, 24, 20)
-        bannerLayout.setSpacing(18)
+        bannerLayout.setContentsMargins(2, 0, 2, 0)
+        bannerLayout.setSpacing(10)
 
-        bannerLayout.addLayout(header_layout)  # Added Header here
+        bannerLayout.addLayout(header_layout)  # title row (icon + title + info)
         bannerLayout.addLayout(self.deviceLayout)  # three cards, natural heights
         bannerLayout.addStretch(1)  # single trailing stretch absorbs extra space
-
-        # Center the close button slightly distinct from the layout stretch
-        close_btn_layout = QtWidgets.QHBoxLayout()
-        close_btn_layout.addStretch()
-        close_btn_layout.addWidget(self.close_btn)
-        close_btn_layout.addStretch()
-        bannerLayout.addLayout(close_btn_layout)
 
         # Hide it initially; the popup will show it when anchored
         self.device_info_container.hide()
 
         # --- Perspective transition animation ---
-        # Give the device-info perspective a fade + gentle slide-up entrance so
-        # switching from the advanced view into the configure-device view reads
-        # as a smooth transition rather than an instant popup swap. The same
-        # helper is applied to the advanced container below.
-        self._install_perspective_animation(self.device_info_container)
+        # The device-info perspective sits one level "deeper" than the advanced
+        # menu, so it slides in from the RIGHT on show and slides back out to the
+        # LEFT when the back button is pressed — reading as a forward/back
+        # navigation between the two views rather than an instant popup swap.
+        self._device_slide_animator = _SlidePerspectiveAnimator(self.device_info_container)
 
         MainWindow1.setCentralWidget(self.centralwidget)
 
@@ -2648,6 +2854,9 @@ class UIControls:  # QtWidgets.QMainWindow
             widget.setValue(0.00)
 
     def on_device_config_default(self):
+        # ConfigBannerWidget.text() returns the raw banner string (handle-aware),
+        # so the device default name is its last token: the device handle when
+        # one is set, or "Device" from the base "...for Device" string otherwise.
         default_name = self.ConfigBannerWidget.text().split()[-1]
         default_pid = "FF"
 
@@ -3098,9 +3307,7 @@ class UIControls:  # QtWidgets.QMainWindow
 
         set_cal1 = mainWindow.tecWorker._tec_offset1
 
-        self.temp_cal_always_input.setValue(
-            self.temp_cal_always_input.valueFromText(set_cal1)
-        )
+        self.temp_cal_always_input.setValue(self.temp_cal_always_input.valueFromText(set_cal1))
         # self.temp_cal_always_input.setPlaceholderText(None)
         self.temp_cal_always_action.setIcon(self.savedIcon)
         self.temp_cal_always_action.setIconText("saved")
@@ -3162,9 +3369,7 @@ class UIControls:  # QtWidgets.QMainWindow
 
         set_cal2 = mainWindow.tecWorker._tec_offset2
 
-        self.temp_cal_measure_input.setValue(
-            self.temp_cal_measure_input.valueFromText(set_cal2)
-        )
+        self.temp_cal_measure_input.setValue(self.temp_cal_measure_input.valueFromText(set_cal2))
         # self.temp_cal_measure_input.setPlaceholderText(None)
         self.temp_cal_measure_action.setIcon(self.savedIcon)
         self.temp_cal_measure_action.setIconText("saved")
@@ -3270,7 +3475,24 @@ class UIControls:  # QtWidgets.QMainWindow
                 unsaved_input = True
                 break
         if not unsaved_input:
-            self.device_info_container.parent().parent().hide()
+            # Slide the perspective back out to the LEFT (toward the advanced
+            # view) before actually hiding the popup, so dismissing reads as a
+            # back-navigation. The hide runs as the animation's completion
+            # callback. Fall back to an immediate hide if the animator is
+            # unavailable for any reason.
+            def _do_hide():
+                container = self.device_info_container
+                host = container.parent().parent() if container.parent() else None
+                if host is not None:
+                    host.hide()
+                else:
+                    container.hide()
+
+            animator = getattr(self, "_device_slide_animator", None)
+            if animator is not None:
+                animator.play_exit(_do_hide)
+            else:
+                _do_hide()
 
     def _update_progress_text(self):
         # get innerText from HTML in infobar

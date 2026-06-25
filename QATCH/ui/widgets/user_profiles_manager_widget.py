@@ -164,14 +164,17 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
         # Animation state
         self._scrim_alpha = 0  # paintEvent reads this; animated on open/close
-        self._panel_alpha = 215  # glass_frame background alpha; animated on open/close
+        self._panel_alpha = 215  # glass_frame background alpha; fixed per fullscreen state
         self._closing = False  # guards closeEvent re-entry during fade-out
-        # NOTE: no QGraphicsOpacityEffect here — installing one on a child widget whose
-        # parent overrides paintEvent with WA_NoSystemBackground causes Qt's effect
-        # compositor to try to grab the widget pixmap while our painter is already
-        # active → "Painter not active" / "A paint device can only be painted by one
-        # painter at a time" spam and invisible content.  We animate via stylesheet
-        # background-alpha instead, which is safe at any call site.
+        self._close_in_progress = False
+        self._fade_anim = None  # single reusable open/close fade (like DataManagementWidget)
+
+        # Fade via a composited opacity effect (animating the property is a
+        # paint-time multiply) instead of re-setting the stylesheet each frame,
+        # which would reparse + repolish the entire glass subtree per frame.
+        self._glass_opacity = QtWidgets.QGraphicsOpacityEffect(self.glass_frame)
+        self._glass_opacity.setOpacity(1.0)
+        self.glass_frame.setGraphicsEffect(self._glass_opacity)
 
         self.main_layout = QtWidgets.QVBoxLayout(self.glass_frame)
         self.main_layout.setContentsMargins(20, 12, 20, 20)
@@ -188,7 +191,10 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 border-radius: 27px;
             }
         """)
-        self._apply_shadow(self.taskbar_frame, blur_radius=15, alpha=20, offset=(0, 4))
+        # NOTE: no QGraphicsDropShadowEffect here — glass_frame (an ancestor)
+        # carries a QGraphicsOpacityEffect for fading, and Qt doesn't compose
+        # nested widget graphics effects reliably (see data_management_widget.py).
+        # The border above provides sufficient visual separation.
         self.header_layout = QtWidgets.QHBoxLayout()
         self.header_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -410,7 +416,17 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # ── Assemble ─────────────────────────────────────────────────
         # Dev mode group — absorbs all leftover space so the admin group
         # stays pinned to the right regardless of expiry label visibility.
-        dev_group = QtWidgets.QWidget()
+        # Parent these grouping widgets to glass_frame at construction. A
+        # parentless QWidget is a top-level window, and setting
+        # WA_TranslucentBackground on a top-level widget forces Qt to realize its
+        # native window backing IMMEDIATELY — before the widget is reparented
+        # into settings_layout. That momentary translucent top-level is the
+        # empty window frame that flashes on open. Giving them a parent up front
+        # means they are in-layout children from the start and never get a
+        # native window of their own. (The reference DataManagementWidget never
+        # creates parentless translucent intermediates, which is why it doesn't
+        # exhibit the flash.)
+        dev_group = QtWidgets.QWidget(self.glass_frame)
         dev_group.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         dev_layout = QtWidgets.QHBoxLayout(dev_group)
         dev_layout.setContentsMargins(0, 0, 0, 0)
@@ -423,7 +439,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         dev_layout.addStretch()  # internal stretch — soaks up excess left-side space
 
         # Admin group — fixed to the right edge
-        admin_group = QtWidgets.QWidget()
+        admin_group = QtWidgets.QWidget(self.glass_frame)
         admin_group.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         admin_layout = QtWidgets.QHBoxLayout(admin_group)
         admin_layout.setContentsMargins(0, 0, 0, 0)
@@ -695,7 +711,6 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         """
         if hasattr(self, "anim") and self.anim.state() == QtCore.QAbstractAnimation.Running:
             self.anim.stop()
-        self._destroy_fs_proxy()
 
         self._is_fullscreen = not getattr(self, "_is_fullscreen", False)
 
@@ -782,17 +797,6 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         means the animated state and end state are identical — no jump.
         """
         self._restore_column_modes()
-
-    def _destroy_fs_proxy(self):
-        """Remove the fullscreen-transition pixmap proxy if one exists."""
-        proxy = getattr(self, "_fs_proxy", None)
-        if proxy is not None:
-            try:
-                proxy.hide()
-                proxy.deleteLater()
-            except RuntimeError:
-                pass
-            self._fs_proxy = None
 
     def _restore_column_modes(self):
         """Re-apply the correct header resize modes after a fullscreen animation.
@@ -913,19 +917,24 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         if self._closing:
             event.accept()
             return
-        # If a close animation is already in flight let it finish
-        if (
-            hasattr(self, "_close_anim")
-            and self._close_anim.state() == QtCore.QAbstractAnimation.Running
-        ):
-            event.ignore()
-            return
+        anim = getattr(self, "_fade_anim", None)
+        if anim is not None and anim.state() == QtCore.QAbstractAnimation.Running:
+            # A close fade is already running; let it finish.
+            if self._close_in_progress:
+                event.ignore()
+                return
         event.ignore()
+        self._close_in_progress = True
         self._animate_close()
 
     # ------------------------------------------------------------------
     # Open / close animations
     # ------------------------------------------------------------------
+
+    def _set_glass_opacity(self, frac):
+        frac = max(0.0, min(1.0, float(frac)))
+        if self._glass_opacity is not None:
+            self._glass_opacity.setOpacity(frac)
 
     def _set_panel_alpha(self, alpha):
         """Apply glass-frame background alpha through the stylesheet (no graphics effect)."""
@@ -943,119 +952,101 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             }}
         """)
 
-    def _animate_open(self):
-        """Fade the scrim AND the glass panel in together over 200 ms.
+    def _stop_anim(self):
+        """Stop and fully tear down any running fade so it can't keep firing."""
+        anim = getattr(self, "_fade_anim", None)
+        if anim is not None:
+            try:
+                anim.stop()
+                anim.valueChanged.disconnect()
+                anim.finished.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+            anim.deleteLater()
+            self._fade_anim = None
 
-        The panel starts fully transparent (set in setVisible) and fades to its
-        target alpha in lockstep with the scrim, so the entrance is a smooth
-        cross-fade rather than an instant pop or a flash of an unsettled frame.
-        """
-        if (
-            hasattr(self, "_close_anim")
-            and self._close_anim.state() == QtCore.QAbstractAnimation.Running
-        ):
-            self._close_anim.stop()
-
-        target_alpha = 255 if getattr(self, "_is_fullscreen", False) else 215
-        self._scrim_alpha = 0
-        self._panel_alpha = 0
-        self._set_panel_alpha(0)
-        self.update()
-
-        self._open_anim = QtCore.QVariantAnimation(self)
-        self._open_anim.setDuration(200)
-        self._open_anim.setEasingCurve(QtCore.QEasingCurve.OutQuad)
-        self._open_anim.setStartValue(0.0)
-        self._open_anim.setEndValue(1.0)
+    def _run_fade(self, scrim_from, scrim_to, op_from, op_to, duration, easing, on_done=None):
+        """Animate the scrim alpha (cheap paintEvent) and the glass opacity
+        effect (composited) from fixed endpoints. No per-frame stylesheet."""
+        self._stop_anim()
+        anim = QtCore.QVariantAnimation(self)
+        anim.setDuration(duration)
+        anim.setEasingCurve(easing)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
 
         def _step(t):
-            self._scrim_alpha = int(65 * t)
-            self._set_panel_alpha(int(target_alpha * t))
-            self.update()
-
-        self._open_anim.valueChanged.connect(_step)
+            self._scrim_alpha = int(scrim_from + (scrim_to - scrim_from) * t)
+            self._set_glass_opacity(op_from + (op_to - op_from) * t)
+            self.update()  # repaint the scrim only
 
         def _settle():
-            self._scrim_alpha = 65
-            self._set_panel_alpha(target_alpha)
+            self._scrim_alpha = int(scrim_to)
+            self._set_glass_opacity(op_to)
             self.update()
+            done_anim = self._fade_anim
+            self._fade_anim = None
+            if done_anim is not None:
+                done_anim.deleteLater()
+            if on_done is not None:
+                on_done()
 
-        self._open_anim.finished.connect(_settle)
-        self._open_anim.start()
+        anim.valueChanged.connect(_step)
+        anim.finished.connect(_settle)
+        self._fade_anim = anim
+        anim.start()
+
+    def _animate_open(self):
+        """Fade the scrim and the glass panel in together over 200 ms.
+
+        The panel's own alpha/border/radius are fixed at their target values
+        immediately (matching DataManagementWidget); the entrance fade itself
+        is purely a composited opacity ramp on glass_frame, so it never
+        re-polishes the stylesheet per frame.
+        """
+        target_alpha = 255 if getattr(self, "_is_fullscreen", False) else 215
+        self._panel_alpha = target_alpha
+        self._set_panel_alpha(target_alpha)
+        self._scrim_alpha = 0
+        self._set_glass_opacity(0.0)
+        self.update()
+        self._run_fade(
+            scrim_from=0,
+            scrim_to=65,
+            op_from=0.0,
+            op_to=1.0,
+            duration=200,
+            easing=QtCore.QEasingCurve.OutQuad,
+        )
 
     def _animate_close(self):
-        """Fade the scrim out then perform the real close.
-
-        Inset state: the panel is semi-transparent, so a simple scrim fade reads
-        cleanly. Fullscreen: the panel is opaque and edge-to-edge, so a scrim-
-        only fade looks like an instant pop. For a smooth dismissal we collapse a
-        STATIC PIXMAP of the panel inward (same proxy technique as
-        toggle_fullscreen — no live table reflow) while the scrim fades.
+        """Fade the scrim and the glass panel out together, then perform the
+        real close. Identical whether inset or fullscreen — the panel's own
+        opacity fades along with the scrim, so no pixmap-proxy collapse is
+        needed to avoid an "instant pop" at fullscreen.
         """
-        if (
-            hasattr(self, "_open_anim")
-            and self._open_anim.state() == QtCore.QAbstractAnimation.Running
-        ):
-            self._open_anim.stop()
         # A fullscreen expand/collapse may still be in flight — stop it cleanly.
         if hasattr(self, "anim") and self.anim.state() == QtCore.QAbstractAnimation.Running:
             self.anim.stop()
-        self._destroy_fs_proxy()
 
-        start_scrim = self._scrim_alpha
-        is_fs = getattr(self, "_is_fullscreen", False)
-
-        # Scrim fade (drives paintEvent).
-        self._close_anim = QtCore.QVariantAnimation(self)
-        self._close_anim.setDuration(180)
-        self._close_anim.setEasingCurve(QtCore.QEasingCurve.InQuad)
-        self._close_anim.setStartValue(0.0)
-        self._close_anim.setEndValue(1.0)
-
-        def _step(progress):
-            self._scrim_alpha = int(start_scrim * (1.0 - progress))
-            self.update()
-
-        self._close_anim.valueChanged.connect(_step)
-        self._close_anim.finished.connect(self._do_close)
-
-        if is_fs:
-            # Collapse a frozen pixmap of the frame inward, parallel to the fade.
-            w, h = self.width(), self.height()
-            pct = getattr(self, "_default_margin_pct", 0.175)
-            mx, my = int(w * pct), int(h * pct)
-            start_rect = self.glass_frame.geometry()
-            target_rect = QtCore.QRect(mx, my, w - 2 * mx, h - 2 * my)
-
-            frozen = self.glass_frame.grab()
-            self.glass_frame.hide()
-
-            self._fs_proxy = QtWidgets.QLabel(self)
-            self._fs_proxy.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-            self._fs_proxy.setScaledContents(True)
-            self._fs_proxy.setPixmap(frozen)
-            self._fs_proxy.setGeometry(start_rect)
-            self._fs_proxy.show()
-            self._fs_proxy.raise_()
-
-            self._close_frame_anim = QtCore.QPropertyAnimation(self._fs_proxy, b"geometry", self)
-            self._close_frame_anim.setDuration(180)
-            self._close_frame_anim.setEasingCurve(QtCore.QEasingCurve.InQuad)
-            self._close_frame_anim.setStartValue(start_rect)
-            self._close_frame_anim.setEndValue(target_rect)
-            self._close_frame_anim.valueChanged.connect(
-                lambda rect: self._update_dots_position(rect.x(), rect.y())
-            )
-            self._close_frame_anim.start()
-
-        self._close_anim.start()
+        cur_op = self._glass_opacity.opacity() if self._glass_opacity else 1.0
+        self._run_fade(
+            scrim_from=self._scrim_alpha,
+            scrim_to=0,
+            op_from=cur_op,
+            op_to=0.0,
+            duration=180,
+            easing=QtCore.QEasingCurve.InQuad,
+            on_done=self._do_close,
+        )
 
     def _do_close(self):
         """Actually perform the close after the fade-out animation completes."""
-        self._destroy_fs_proxy()
+        self._stop_anim()
         self._closing = True
         self.close()  # closeEvent sees _closing=True → accepts → Qt calls hide()
         self._closing = False
+        self._close_in_progress = False
         # Reset to inset state so the next open always starts clean, regardless
         # of whether we closed from fullscreen. The live frame is restored to a
         # visible, inset, semi-transparent panel here.
@@ -1071,6 +1062,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             self.btn_fullscreen.setIcon(self._fs_normal_icon)
         self._panel_alpha = 215
         self._set_panel_alpha(215)
+        self._set_glass_opacity(1.0)
         self._refit_to_parent()
 
     def eventFilter(self, obj, event):
@@ -1443,11 +1435,27 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             border_color = "rgba(108, 117, 125, 0.45)"
             text_color = "#495057"
 
-        # --- NEW: Dynamically dye the SVG arrow to match the role text color ---
+        # --- Dynamically dye the SVG arrow to match the role text color ---
+        # Pre-render the tint into the pixmap itself (same technique as
+        # _tinted_icon) rather than a QGraphicsColorizeEffect: glass_frame
+        # carries a QGraphicsOpacityEffect for the open/close fade, and Qt
+        # doesn't compose nested widget graphics effects reliably — every
+        # role combo in the table got its own colorize effect, which spammed
+        # "QPainter::begin: A paint device can only be painted by one painter
+        # at a time" / "Painter not active" during the fade and corrupted the
+        # panel's first painted frame.
         if hasattr(combo, "arrow_lbl"):
-            effect = QtWidgets.QGraphicsColorizeEffect(combo.arrow_lbl)
-            effect.setColor(QtGui.QColor(text_color))
-            combo.arrow_lbl.setGraphicsEffect(effect)
+            base = getattr(combo, "_base_pixmap", None)
+            if base is not None and not base.isNull():
+                tinted = QtGui.QPixmap(base.size())
+                tinted.fill(QtCore.Qt.transparent)
+                p = QtGui.QPainter(tinted)
+                p.drawPixmap(0, 0, base)
+                p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+                p.fillRect(tinted.rect(), QtGui.QColor(text_color))
+                p.end()
+                combo._base_pixmap = tinted
+                combo.arrow_lbl.setPixmap(tinted)
 
         combo.setStyleSheet(f"""
             QComboBox {{

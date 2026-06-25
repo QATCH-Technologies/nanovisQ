@@ -532,6 +532,15 @@ class DataManagementWidget(QtWidgets.QWidget):
             geo = self.parent.rect()
         self.setGeometry(geo)
 
+        # If a fullscreen toggle animation is actively running, let it handle the
+        # margins. _apply_margin_frac (called below) repositions btn_close/
+        # btn_fullscreen, and those buttons have an eventFilter installed on
+        # them, so every animation frame's button move re-enters here via a
+        # Move event — without this guard it would snap the margins to the
+        # final _is_fullscreen state on every tick, defeating the animation.
+        if self._fs_anim is not None and self._fs_anim.state() == QtCore.QAbstractAnimation.Running:
+            return
+
         if frac is None:
             frac = 0.0 if self._is_fullscreen else self._default_margin_pct
         self._apply_margin_frac(frac)
@@ -539,24 +548,21 @@ class DataManagementWidget(QtWidgets.QWidget):
     def _apply_margin_frac(self, frac):
         """Position the glass panel inset by `frac` of each dimension.
 
-        frac == 0 -> fullscreen (flush, no radius/border); the inset value is
-        self._default_margin_pct. Intermediate values are used while animating.
-        Only the (cheap) layout margins change per frame; the stylesheet is
-        re-applied solely when the rounded/border state actually flips, since
-        setStyleSheet triggers an expensive repolish of the whole subtree.
+        frac == 0 -> fullscreen (flush, no radius/border); frac == self._default_margin_pct
+        -> fully inset. Border, radius and background alpha interpolate
+        continuously with frac (matching the live margin) so the fullscreen
+        toggle reads as one smooth motion instead of snapping partway through.
         """
         w, h = self.width(), self.height()
         mx = int(w * frac)
         my = int(h * frac)
         self.base_layout.setContentsMargins(mx, my, mx, my)
 
-        # Discrete border/radius state: rounded when inset, flush at fullscreen.
-        rounded = frac > (self._default_margin_pct * 0.5)
-        if rounded != getattr(self, "_glass_rounded", None):
-            self._glass_rounded = rounded
-            border, radius = (1.5, 12) if rounded else (0, 0)
-            alpha = 235 if rounded else 255  # fully opaque at fullscreen
-            self.glass_frame.setStyleSheet(self._glass_qss(alpha, border, radius))
+        p = 0.0 if self._default_margin_pct <= 0 else min(1.0, frac / self._default_margin_pct)
+        alpha = int(255 + (235 - 255) * p)
+        border = 1.5 * p
+        radius = int(12 * p)
+        self.glass_frame.setStyleSheet(self._glass_qss(alpha, border, radius))
 
         self._update_buttons_position(mx, my)
 
@@ -775,7 +781,6 @@ class DataManagementWidget(QtWidgets.QWidget):
         self.btn_fullscreen.setIcon(self._fs_normal_icon)
         self._panel_alpha = 235
         self._current_key = None
-        self._glass_rounded = None  # force stylesheet re-apply on next refit
         self._set_glass_opacity(1.0)
         self.content_stack.show()
         self.glass_frame.show()
