@@ -8458,7 +8458,8 @@ class AnalyzerWorker(QtCore.QObject):
             self.annot.set_visible(False)
             self.annot.get_bbox_patch().set_alpha(0.8)
 
-            # Connect the event listeners for hover and pick
+            # Connect the event listeners for click, hover and pick
+            fig4.canvas.mpl_connect("button_press_event", self._click)
             fig4.canvas.mpl_connect("motion_notify_event", self.hover)
             fig4.canvas.mpl_connect("pick_event", self.on_annot_click)
 
@@ -9998,10 +9999,23 @@ class AnalyzerWorker(QtCore.QObject):
             pos = (xdata[idx], ydata[idx])
         else:
             return
+        if tuple(pos) == (0, 0):
+            # Log.d("Suppressed annotation update on errorbars hover event.")
+            return
         idx = self.get_point_index_from_shear_rate(pos[0])
         self.annot.xy = pos
         self.annot.set_text(f"POI: {idx:.0f}\n{point_labels[idx]}\n{pos[0]:.2f} S⁻¹\n{pos[1]:.2f} cP\n(Click to Modify)")
         self.annot.get_bbox_patch().set_facecolor("lightblue")
+
+    def _click(self, event):
+        ax = getattr(self, "plot_ax", None)
+        if ax is None:
+            Log.w("No points to annotate.")
+            return
+        fig = ax.figure
+        vis = self.annot.get_visible()
+        self.annot.set_visible(not vis)
+        fig.canvas.draw_idle()
 
     def hover(self, event):
         """ Define the hover event listener """
@@ -10020,8 +10034,9 @@ class AnalyzerWorker(QtCore.QObject):
                     if cont:
                         # Update your annotation using the found child
                         self.update_annot(child, ind)
-                        self.annot.set_visible(True)
-                        fig.canvas.draw_idle()
+                        # self.annot.set_visible(True)
+                        if vis:
+                            fig.canvas.draw_idle()
                         return  # Exit once you find the hovered item
         # Hide annotation if mouse is not over any valid child
         if vis:
