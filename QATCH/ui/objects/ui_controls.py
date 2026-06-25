@@ -1423,15 +1423,385 @@ class _DeviceConfigTitle(QtWidgets.QLabel):
     def _render(self, raw: str) -> str:
         """Map a raw banner string to the friendly visible title.
 
-        Anything trailing the legacy prefix (the device handle) is appended to
-        the display title; without a handle, just the base title is shown.
+        Anything trailing the legacy prefix (the device handle) is rendered as a
+        small themed "chip" (bordered, filled, colored) so it reads clearly as
+        the connected device's name rather than plain trailing text. Without a
+        handle, just the base title is shown.
         """
         handle = ""
         if raw.startswith(self._PREFIX):
             handle = raw[len(self._PREFIX) :].strip()
+        base = (
+            f"<span style='color: rgba(28,40,52,235); font-size:14px; "
+            f"font-weight:bold;'>{self._DISPLAY_BASE}</span>"
+        )
         if handle:
-            return f"{self._DISPLAY_BASE}  ·  {handle}"
-        return self._DISPLAY_BASE
+            chip = (
+                "<span style='"
+                "background: rgba(10,163,230,38); "
+                "color: rgba(12,110,160,255); "
+                "border: 1px solid rgba(10,163,230,120); "
+                "border-radius: 7px; "
+                "padding: 1px 7px; "
+                "font-size: 12px; font-weight: bold; "
+                "letter-spacing: 0.5px;"
+                f"'>&nbsp;{handle}&nbsp;</span>"
+            )
+            # The em-space keeps a small gap between the title and the chip.
+            return f"{base}&#8195;{chip}"
+        return base
+
+
+class _SavedStateDot(QtWidgets.QWidget):
+    """A small glowing status dot that reflects a field's save state.
+
+    States, each a themed color with a soft outer glow:
+        * ``"querying"`` — red, pulsing (waiting on the device for a value)
+        * ``"blank"``    — quiet gray (no pending change, no value yet)
+        * ``"unsaved"``  — amber, gently pulsing to draw the eye
+        * ``"saved"``    — green, steady
+
+    The dot is purely visual; the authoritative state still lives on the
+    paired field action's ``iconText()`` (so all existing save/reset logic
+    keeps working). Call :meth:`set_state` whenever that text changes.
+
+    A one-shot :meth:`flash` pulse is used to nag the user about an unsaved
+    field when they try to leave the device view.
+    """
+
+    _COLORS = {
+        "blank": QtGui.QColor(150, 165, 180),
+        "unsaved": QtGui.QColor(240, 170, 50),
+        "saved": QtGui.QColor(60, 190, 120),
+        "querying": QtGui.QColor(228, 70, 70),
+    }
+    # States that should pulse continuously.
+    _PULSING = ("unsaved", "querying")
+    _SIZE = 14
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(self._SIZE, self._SIZE)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._state = "blank"
+        self._glow = 0.0  # 0..1 animated glow strength (pulsing when active)
+        self._flash = 0.0  # 0..1 one-shot attention flash overlay
+
+        # Continuous gentle pulse used while in a pulsing state.
+        self._pulse = QtCore.QVariantAnimation(self)
+        self._pulse.setStartValue(0.25)
+        self._pulse.setEndValue(1.0)
+        self._pulse.setDuration(900)
+        self._pulse.setEasingCurve(QtCore.QEasingCurve.InOutSine)
+        self._pulse.setLoopCount(-1)
+        self._pulse.valueChanged.connect(self._on_pulse)
+
+        # One-shot attention flash (used by flash()).
+        self._flash_anim = QtCore.QVariantAnimation(self)
+        self._flash_anim.setStartValue(1.0)
+        self._flash_anim.setEndValue(0.0)
+        self._flash_anim.setDuration(520)
+        self._flash_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        self._flash_anim.valueChanged.connect(self._on_flash)
+
+    def state(self) -> str:
+        return self._state
+
+    def set_state(self, state: str) -> None:
+        if state not in self._COLORS:
+            state = "blank"
+        if state == self._state:
+            return  # idempotent: avoid restarting the pulse on repeat calls
+        self._state = state
+        if state in self._PULSING:
+            self._pulse.stop()
+            self._pulse.start()
+        else:
+            self._pulse.stop()
+            self._glow = 1.0 if state == "saved" else 0.0
+        self.update()
+
+    def flash(self, times: int = 3) -> None:
+        """Play a brief attention pulse (used to nag about unsaved changes)."""
+        # Restart the one-shot flash; if not already unsaved-pulsing, this still
+        # reads as a distinct nudge because of the brighter overlay.
+        self._flash_anim.stop()
+        self._flash_anim.setLoopCount(max(1, times))
+        self._flash_anim.start()
+
+    def _on_pulse(self, v) -> None:
+        self._glow = float(v)
+        self.update()
+
+    def _on_flash(self, v) -> None:
+        self._flash = float(v)
+        self.update()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        c = QtGui.QColor(self._COLORS[self._state])
+        cx, cy = self.width() / 2.0, self.height() / 2.0
+
+        # Outer glow halo (strength driven by pulse / flash).
+        glow = max(self._glow, self._flash)
+        if glow > 0.01:
+            halo = QtGui.QColor(c)
+            halo.setAlphaF(0.35 * glow)
+            radius = 4.0 + 3.0 * glow
+            grad = QtGui.QRadialGradient(cx, cy, radius)
+            grad.setColorAt(0.0, halo)
+            transparent = QtGui.QColor(c)
+            transparent.setAlpha(0)
+            grad.setColorAt(1.0, transparent)
+            p.setBrush(QtGui.QBrush(grad))
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.drawEllipse(QtCore.QPointF(cx, cy), radius, radius)
+
+        # Core dot.
+        core_r = 3.4
+        p.setBrush(QtGui.QBrush(c))
+        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 170), 1.0))
+        p.drawEllipse(QtCore.QPointF(cx, cy), core_r, core_r)
+        p.end()
+
+
+class _BorderlessActionButton(QtWidgets.QPushButton):
+    """A flat, borderless text button that lightens on hover.
+
+    Used for the per-field Save / Reset / Default actions so they read as quiet
+    inline links rather than heavy glass pills. No border or fill at rest; a
+    subtle translucent gray wash appears on hover and deepens on press.
+    """
+
+    def __init__(self, text: str = "", parent=None, *, tone: str = "neutral") -> None:
+        super().__init__(text, parent)
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.setFlat(True)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        # Tones let "Save" read a touch more primary than Reset/Default.
+        _text_color = {
+            "neutral": "rgba(60, 78, 96, 230)",
+            "primary": "rgba(20, 120, 180, 235)",
+        }.get(tone, "rgba(60, 78, 96, 230)")
+        self.setStyleSheet(
+            f"""
+            QPushButton {{
+                border: none;
+                background: transparent;
+                color: {_text_color};
+                font-size: 12px;
+                font-weight: 600;
+                padding: 4px 10px;
+                border-radius: 7px;
+            }}
+            QPushButton:hover {{
+                background: rgba(120, 140, 160, 45);
+            }}
+            QPushButton:pressed {{
+                background: rgba(120, 140, 160, 80);
+            }}
+            QPushButton:disabled {{
+                color: rgba(120, 135, 150, 120);
+                background: transparent;
+            }}
+            """
+        )
+
+
+class _FieldStateAction:
+    """A minimal stand-in for a QLineEdit trailing QAction.
+
+    The device-config save/reset logic tracks each field's state purely through
+    a QAction's ``iconText()`` ("blank" / "unsaved" / "saved") and occasionally
+    ``setIcon()``. A bare QWidget like :class:`_RangeSliderField` has no such
+    line-edit action, so this lightweight object provides the same tiny surface
+    (``setIcon`` / ``setIconText`` / ``iconText``) and nothing else. It is used
+    as the authoritative state holder for the slider fields, keeping every
+    existing call site working without special-casing.
+    """
+
+    def __init__(self) -> None:
+        self._icon_text = "blank"
+        self._icon = None
+
+    def setIcon(self, icon) -> None:  # noqa: N802 (Qt-like API)
+        self._icon = icon
+
+    def icon(self):
+        return self._icon
+
+    def setIconText(self, text: str) -> None:  # noqa: N802 (Qt-like API)
+        self._icon_text = text or ""
+
+    def iconText(self) -> str:  # noqa: N802 (Qt-like API)
+        return self._icon_text
+
+
+class _RangeSliderField(QtWidgets.QWidget):
+    """A horizontal slider paired with a live, editable numeric box.
+
+    Replaces the preset dropdown + read-only box for the Lid POGO calibration
+    fields. Dragging the slider updates the number box; typing in the number box
+    (or stepping it) moves the slider. A single ``valueChanged(int)`` signal is
+    emitted on any change so callers can mark the field unsaved.
+
+    The numeric box exposes ``text()`` / ``setText()`` and the slider range is
+    configurable, so the surrounding save/reset/default logic only needs to read
+    and write a string value (mirroring the old read-only QLineEdit contract).
+    """
+
+    valueChanged = QtCore.pyqtSignal(int)
+
+    def __init__(
+        self,
+        minimum: int,
+        maximum: int,
+        suffix: str = "",
+        parent=None,
+        up_icon_path: str = "",
+        down_icon_path: str = "",
+    ) -> None:
+        super().__init__(parent)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setStyleSheet("background: transparent;")
+        self._suffix = suffix
+        self._guard = False  # re-entrancy guard for cross-updates
+
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider.setMinimum(minimum)
+        self.slider.setMaximum(maximum)
+        self.slider.setSingleStep(1)
+        self.slider.setPageStep(5)
+        self.slider.setStyleSheet(_RANGE_SLIDER_QSS)
+        self.slider.setMinimumWidth(120)
+        self.slider.valueChanged.connect(self._on_slider)
+
+        # Animated spin box (integer-configured: 0 decimals, step 1) with custom
+        # up/down chevrons, matching the temperature-calibration inputs.
+        self.spin = AnimatedDoubleSpinBox(
+            up_icon_path=up_icon_path,
+            down_icon_path=down_icon_path,
+        )
+        self.spin.setDecimals(0)
+        self.spin.setMinimum(float(minimum))
+        self.spin.setMaximum(float(maximum))
+        self.spin.setSingleStep(1)
+        self.spin.setSuffix(suffix)
+        self.spin.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.spin.setFixedWidth(78)
+        self.spin.valueChanged.connect(self._on_spin)
+
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(10)
+        lay.addWidget(self.slider, 1)
+        lay.addWidget(self.spin, 0)
+
+    # -- QLineEdit-compatible action shim ----------------------------------
+    def addAction(self, *args, **kwargs):  # noqa: N802 (Qt override/overload)
+        """Mimic ``QLineEdit.addAction(icon, position)``.
+
+        The device-config code adds a trailing action to each input solely to
+        carry save-state via ``iconText()``. This widget has no line-edit, so we
+        return a lightweight :class:`_FieldStateAction` instead of touching the
+        QWidget action list (which only accepts real QActions and would raise on
+        a QIcon). If called with a real QAction (the QWidget signature), defer
+        to the base implementation.
+        """
+        if args and isinstance(args[0], QtGui.QIcon):
+            return _FieldStateAction()
+        return super().addAction(*args, **kwargs)
+
+    # -- cross-wiring ------------------------------------------------------
+    def _on_slider(self, v: int) -> None:
+        if self._guard:
+            return
+        self._guard = True
+        self.spin.setValue(v)
+        self._guard = False
+        self.valueChanged.emit(v)
+
+    def _on_spin(self, v) -> None:
+        if self._guard:
+            return
+        iv = int(round(float(v)))
+        self._guard = True
+        self.slider.setValue(iv)
+        self._guard = False
+        self.valueChanged.emit(iv)
+
+    # -- string-compatible accessors (mirror the old QLineEdit contract) ---
+    def value(self) -> int:
+        return int(round(float(self.spin.value())))
+
+    def setValue(self, v: int) -> None:  # noqa: N802
+        self._guard = True
+        try:
+            iv = int(round(float(v)))
+        except (TypeError, ValueError):
+            iv = self.slider.minimum()
+        self.slider.setValue(iv)
+        self.spin.setValue(float(iv))
+        self._guard = False
+
+    def text(self) -> str:  # noqa: N802
+        return str(self.value())
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        try:
+            self.setValue(int(round(float(str(text).strip()))))
+        except (TypeError, ValueError):
+            pass
+
+    def hasAcceptableInput(self) -> bool:  # noqa: N802
+        return self.slider.minimum() <= self.value() <= self.slider.maximum()
+
+    def setPlaceholderText(self, text: str) -> None:  # noqa: N802
+        # SpinBox has no placeholder; accept the call for API parity (no-op).
+        return
+
+    def clear(self) -> None:
+        self.setValue(self.slider.minimum())
+
+
+# Themed QSS for the Lid POGO range sliders + their numeric boxes.
+_RANGE_SLIDER_QSS = """
+    QSlider::groove:horizontal {
+        height: 4px;
+        background: rgba(0, 0, 0, 30);
+        border-radius: 2px;
+    }
+    QSlider::handle:horizontal {
+        background: #0AA3E6;
+        border: 1px solid rgba(0, 130, 200, 200);
+        width: 14px;
+        height: 14px;
+        margin: -5px 0;
+        border-radius: 7px;
+    }
+    QSlider::handle:horizontal:hover {
+        background: #1FB3F0;
+    }
+    QSlider::sub-page:horizontal {
+        background: rgba(10, 163, 230, 140);
+        border-radius: 2px;
+    }
+"""
+
+_RANGE_SPIN_QSS = """
+    QSpinBox {
+        background: rgba(255, 255, 255, 60);
+        border: 1px solid rgba(255, 255, 255, 120);
+        border-radius: 12px;
+        padding: 4px 8px;
+        color: rgba(30, 40, 55, 220);
+    }
+    QSpinBox:focus {
+        background: rgba(255, 255, 255, 180);
+        border: 1px solid rgba(0, 120, 215, 150);
+    }
+"""
 
 
 class LabeledToggle(QtWidgets.QWidget):
@@ -2244,14 +2614,14 @@ class UIControls:  # QtWidgets.QMainWindow
         else:
             self.centralwidget.setLayout(self.gridLayout)
 
-        # QLineEdit icons, trailing position
+        # QLineEdit icons, trailing position.
+        # The in-field checkmark / warning icons have been removed: the glowing
+        # status dot beside each field now conveys save state. These remain as
+        # (empty) icons so the existing ``setIcon(...)`` call sites are harmless
+        # no-ops while the authoritative ``iconText()`` state machine is intact.
         self.blankIcon = QtGui.QIcon()
-        self.savedIcon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(), "QATCH", "icons", "checkmark-circle.svg")
-        )
-        self.unsavedIcon = QtGui.QIcon(
-            os.path.join(Architecture.get_path(), "QATCH", "icons", "warning.svg")
-        )
+        self.savedIcon = QtGui.QIcon()
+        self.unsavedIcon = QtGui.QIcon()
 
         # --- Device Info container, widgets and layout ---
         self.device_info_container = QtWidgets.QWidget()
@@ -2262,7 +2632,7 @@ class UIControls:  # QtWidgets.QMainWindow
         # The device perspective uses the same sectioned, two-column layout as
         # the advanced view, so it sizes to its content and shares the advanced
         # view's footprint rather than forcing an oversized floor.
-        self.device_info_container.setMinimumWidth(440)
+        self.device_info_container.setMinimumWidth(500)
         self.device_info_container.setSizePolicy(
             QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum
         )
@@ -2390,40 +2760,79 @@ class UIControls:  # QtWidgets.QMainWindow
                 border: 1px solid rgba(0, 120, 215, 150);
             }
         """
+        # Pill-shaped variant (rounded ends) for the device text inputs so they
+        # match the rounded glass combos / spin boxes used elsewhere.
+        glass_pill_style = """
+            QLineEdit {
+                background: rgba(255, 255, 255, 60);
+                border: 1px solid rgba(255, 255, 255, 120);
+                border-radius: 14px;
+                padding: 5px 12px;
+                color: rgba(30, 40, 55, 220);
+            }
+            QLineEdit:focus {
+                background: rgba(255, 255, 255, 180);
+                border: 1px solid rgba(0, 120, 215, 150);
+            }
+        """
         # NOTE: the former ``glass_spinbox_style`` QSS block (which themed the
         # native QDoubleSpinBox up/down buttons) has been removed. The temp-cal
         # inputs are now AnimatedDoubleSpinBox instances, which carry their own
         # glass styling and custom animated chevrons.
 
+        # Maps each field's QLineEdit "action" (the authoritative save-state
+        # holder, via iconText) to its glowing status dot so the dot can mirror
+        # state. Also maps action -> input widget so the field can pulse when it
+        # has unsaved changes and the user tries to leave.
+        self._field_dots = {}
+        self._field_widgets = {}
+
+        # A lightweight poller keeps every status dot in sync with its action's
+        # iconText regardless of which code path changed it (timer-delayed reset
+        # helpers, external mainWindow calls, etc.). set_state() is idempotent,
+        # so this is effectively free when nothing changed.
+        self._dot_sync_timer = QtCore.QTimer()
+        self._dot_sync_timer.setInterval(150)
+        self._dot_sync_timer.timeout.connect(self._sync_all_dots)
+        self._dot_sync_timer.start()
+
+        def _make_dot(action, widget):
+            dot = _SavedStateDot()
+            self._field_dots[action] = dot
+            self._field_widgets[action] = widget
+            return dot
+
         # Row 0L: Device Name
         self.device_name_input = QtWidgets.QLineEdit()
         self.device_name_input.setValidator(self.validDeviceName)
-        self.device_name_input.setStyleSheet(glass_input_style)
-        self.device_name_input.setMinimumWidth(180)
+        self.device_name_input.setStyleSheet(glass_pill_style)
+        self.device_name_input.setMinimumWidth(160)
         self.device_name_action = self.device_name_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.device_name_input.textEdited.connect(
             lambda text, action=self.device_name_action: self.on_text_edit(text, action)
         )
+        self.device_name_dot = _make_dot(self.device_name_action, self.device_name_input)
 
         # Row 0R: Device Position ID
         self.device_pid_input = QtWidgets.QLineEdit()
         self.device_pid_input.setValidator(self.validDevicePid)
-        self.device_pid_input.setStyleSheet(glass_input_style)
-        self.device_pid_input.setMinimumWidth(180)
+        self.device_pid_input.setStyleSheet(glass_pill_style)
+        self.device_pid_input.setMinimumWidth(160)
         self.device_pid_action = self.device_pid_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
         self.device_pid_input.textEdited.connect(
             lambda text, action=self.device_pid_action: self.on_text_edit(text, action)
         )
+        self.device_pid_dot = _make_dot(self.device_pid_action, self.device_pid_input)
 
-        self.device_config_default = GlassPushButton("Default")
+        self.device_config_default = _BorderlessActionButton("Default")
         self.device_config_default.clicked.connect(self.on_device_config_default)
-        self.device_config_save = GlassPushButton("Save")
+        self.device_config_save = _BorderlessActionButton("Save", tone="primary")
         self.device_config_save.clicked.connect(self.on_device_config_save)
-        self.device_config_reset = GlassPushButton("Reset")
+        self.device_config_reset = _BorderlessActionButton("Reset")
         self.device_config_reset.clicked.connect(self.on_device_config_reset)
 
         # Row 1L: Constant Temperature Calibration
@@ -2452,6 +2861,9 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_always_input.editingFinished.connect(
             lambda widget=self.temp_cal_always_input: self.on_edit_finish(widget)
         )
+        self.temp_cal_always_dot = _make_dot(
+            self.temp_cal_always_action, self.temp_cal_always_input
+        )
 
         # Row 1R: Running Temperature Calibration
         self.temp_cal_measure_input = AnimatedDoubleSpinBox(
@@ -2479,19 +2891,36 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_measure_input.editingFinished.connect(
             lambda widget=self.temp_cal_measure_input: self.on_edit_finish(widget)
         )
+        self.temp_cal_measure_dot = _make_dot(
+            self.temp_cal_measure_action, self.temp_cal_measure_input
+        )
 
-        self.temp_cal_default = GlassPushButton("Default")
+        self.temp_cal_default = _BorderlessActionButton("Default")
         self.temp_cal_default.clicked.connect(self.on_temp_cal_default)
-        self.temp_cal_save = GlassPushButton("Save")
+        self.temp_cal_save = _BorderlessActionButton("Save", tone="primary")
         self.temp_cal_save.clicked.connect(self.on_temp_cal_save)
-        self.temp_cal_reset = GlassPushButton("Reset")
+        self.temp_cal_reset = _BorderlessActionButton("Reset")
         self.temp_cal_reset.clicked.connect(self.on_temp_cal_reset)
 
-        # Row 2L: Lid Pogo Distance
+        # Row 2L: Lid Pogo Distance (Servo Steps) — range slider + number box.
+        # The named presets dropdown has been replaced by a direct 10–50 range
+        # slider paired with a live numeric box (custom values allowed anywhere
+        # in range). A hidden combo is retained ONLY so any external code that
+        # references ``lid_pogo_distance_combo`` keeps working.
+        self.lid_pogo_distance_field = _RangeSliderField(
+            10,
+            50,
+            suffix="",
+            up_icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg"),
+            down_icon_path=os.path.join(
+                Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
+            ),
+        )
+        self.lid_pogo_distance_input = self.lid_pogo_distance_field  # string-compatible alias
         self.lid_pogo_distance_combo = AnimatedComboBox(icon_path=self._combo_chevron)
-        # self.lid_pogo_distance_combo.setStyleSheet(glass_input_style)
-        self.lid_pogo_distance_combo.setMinimumWidth(95)
         self.lid_pogo_distance_combo.addItems(["Most", "More", "Normal", "Less", "Least", "Custom"])
+        self.lid_pogo_distance_combo.setCurrentIndex(2)
+        self.lid_pogo_distance_combo.hide()
         self.lid_pogo_distance_values = {
             "Most": 50,
             "More": 40,
@@ -2499,30 +2928,34 @@ class UIControls:  # QtWidgets.QMainWindow
             "Less": 20,
             "Least": 10,
         }
-        self.lid_pogo_distance_combo.setCurrentIndex(2)
-        self.lid_pogo_distance_input = QtWidgets.QLineEdit()
-        self.lid_pogo_distance_input.setValidator(self.validPogoPosition)
-        # self.lid_pogo_distance_input.setSuffix("°")
-        self.lid_pogo_distance_input.setStyleSheet(glass_input_style)
-        self.lid_pogo_distance_input.setFixedWidth(73)
-        self.lid_pogo_distance_input.setReadOnly(True)
+        self.lid_pogo_distance_field.setValue(30)
         self.lid_pogo_distance_action = self.lid_pogo_distance_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
-        self.lid_pogo_distance_combo.currentTextChanged.connect(
-            lambda text, action=self.lid_pogo_distance_action: self.on_distance_edit(text, action)
+        self.lid_pogo_distance_field.valueChanged.connect(
+            lambda v, action=self.lid_pogo_distance_action: self.on_text_edit(str(v), action)
         )
-        self.lid_pogo_distance_input.textEdited.connect(
-            lambda text, action=self.lid_pogo_distance_action: self.on_text_edit(text, action)
+        self.lid_pogo_distance_dot = _make_dot(
+            self.lid_pogo_distance_action, self.lid_pogo_distance_field
         )
 
-        # Row 2R: Lid Pogo Delay
+        # Row 2R: Lid Pogo Delay (Servo Delay) — matching range slider 0–254 ms.
+        self.lid_pogo_delay_field = _RangeSliderField(
+            0,
+            254,
+            suffix="",
+            up_icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg"),
+            down_icon_path=os.path.join(
+                Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
+            ),
+        )
+        self.lid_pogo_delay_input = self.lid_pogo_delay_field  # string-compatible alias
         self.lid_pogo_delay_combo = AnimatedComboBox(icon_path=self._combo_chevron)
-        # self.lid_pogo_delay_combo.setStyleSheet(glass_input_style.replace("QLineEdit", "QComboBox"))
-        self.lid_pogo_delay_combo.setMinimumWidth(95)
         self.lid_pogo_delay_combo.addItems(
             ["Fastest", "Fast", "Normal", "Slow", "Slowest", "Custom"]
         )
+        self.lid_pogo_delay_combo.setCurrentIndex(2)
+        self.lid_pogo_delay_combo.hide()
         self.lid_pogo_delay_values = {
             "Fastest": 10,
             "Fast": 20,
@@ -2530,37 +2963,29 @@ class UIControls:  # QtWidgets.QMainWindow
             "Slow": 40,
             "Slowest": 50,
         }
-        self.lid_pogo_delay_combo.setCurrentIndex(2)
-        self.lid_pogo_delay_input = QtWidgets.QLineEdit()
-        self.lid_pogo_delay_input.setValidator(self.validPogoDelayMs)
-        # self.lid_pogo_delay_input.setSuffix("ms")
-        self.lid_pogo_delay_input.setStyleSheet(glass_input_style)
-        self.lid_pogo_delay_input.setFixedWidth(73)
-        self.lid_pogo_delay_input.setReadOnly(True)
+        self.lid_pogo_delay_field.setValue(30)
         self.lid_pogo_delay_action = self.lid_pogo_delay_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
-        self.lid_pogo_delay_combo.currentTextChanged.connect(
-            lambda text, action=self.lid_pogo_delay_action: self.on_delay_edit(text, action)
+        self.lid_pogo_delay_field.valueChanged.connect(
+            lambda v, action=self.lid_pogo_delay_action: self.on_text_edit(str(v), action)
         )
-        self.lid_pogo_delay_input.textEdited.connect(
-            lambda text, action=self.lid_pogo_delay_action: self.on_text_edit(text, action)
+        self.lid_pogo_delay_dot = _make_dot(
+            self.lid_pogo_delay_action, self.lid_pogo_delay_field
         )
 
-        self.lid_pogo_default = GlassPushButton("Default")
+        self.lid_pogo_default = _BorderlessActionButton("Default")
         self.lid_pogo_default.clicked.connect(self.on_lid_pogo_default)
-        self.lid_pogo_save = GlassPushButton("Save")
+        self.lid_pogo_save = _BorderlessActionButton("Save", tone="primary")
         self.lid_pogo_save.clicked.connect(self.on_lid_pogo_save)
-        self.lid_pogo_reset = GlassPushButton("Reset")
+        self.lid_pogo_reset = _BorderlessActionButton("Reset")
         self.lid_pogo_reset.clicked.connect(self.on_lid_pogo_reset)
 
         # --- Sectioned layout (mirrors the Advanced perspective) ---
-        # The device perspective now uses the SAME visual language as the
-        # advanced view: quiet uppercase _SectionHeader labels, hairline
-        # dividers, and consistent 14px section spacing — instead of the old
-        # heavy bordered glass cards (which were taller and stylistically
-        # divergent). This tightens the device view so its height matches the
-        # advanced view and the two read as one cohesive surface when sliding.
+        # The device perspective uses the SAME visual language as the advanced
+        # view: quiet uppercase _SectionHeader labels, hairline dividers, and
+        # consistent spacing. Each editable field carries a glowing status dot
+        # (gray → amber → green) reflecting its save state.
         def dev_section(title, *rows):
             col = QtWidgets.QVBoxLayout()
             col.setContentsMargins(0, 0, 0, 0)
@@ -2575,98 +3000,113 @@ class UIControls:  # QtWidgets.QMainWindow
             col.addStretch()
             return col
 
-        def dev_form(*pairs):
-            """A compact 2-column grid: (label_text, widget[, widget...])."""
-            grid = QtWidgets.QGridLayout()
-            grid.setContentsMargins(0, 0, 0, 0)
-            grid.setHorizontalSpacing(10)
-            grid.setVerticalSpacing(8)
-            for r, pair in enumerate(pairs):
-                label_text, widgets = pair[0], pair[1:]
-                grid.addWidget(QtWidgets.QLabel(label_text), r, 0)
-                for c, w in enumerate(widgets, start=1):
-                    grid.addWidget(w, r, c)
-            grid.setColumnStretch(len(max(pairs, key=len)), 1)
-            return grid
+        def dev_field_row(label_html, field_widget, dot, *extra_widgets):
+            """One field row: [status dot] label : [widget(s)].
+
+            The leading dot makes each field's save state legible at a glance.
+            """
+            row = QtWidgets.QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(8)
+            row.addWidget(dot, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+            lbl = QtWidgets.QLabel(label_html)
+            lbl.setMinimumWidth(86)
+            row.addWidget(lbl, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+            row.addWidget(field_widget, 1)
+            for w in extra_widgets:
+                row.addWidget(w, 0)
+            return row
 
         def dev_btn_row(*buttons):
             row = QtWidgets.QHBoxLayout()
             row.setContentsMargins(0, 4, 0, 0)
-            row.setSpacing(8)
+            row.setSpacing(4)
+            row.addStretch()
             for b in buttons:
                 row.addWidget(b)
-            row.addStretch()
             return row
 
         # 1. Device Configuration
         device_section = dev_section(
             "Device Configuration",
-            dev_form(
-                ("Device Name:", self.device_name_input),
-                ("Position ID:", self.device_pid_input),
-            ),
+            dev_field_row("Device Name:", self.device_name_input, self.device_name_dot),
+            dev_field_row("Position ID:", self.device_pid_input, self.device_pid_dot),
             dev_btn_row(
                 self.device_config_default,
-                self.device_config_save,
                 self.device_config_reset,
+                self.device_config_save,
             ),
         )
 
-        # 2. Temperature Calibration
+        # 2. Temperature Calibration (ΔT with proper subscripts via rich text).
         temp_section = dev_section(
             "Temperature Calibration",
-            dev_form(
-                ("\u2206T_always:", self.temp_cal_always_input, self.temp_cal_always_icon),
-                ("\u2206T_measure:", self.temp_cal_measure_input, self.temp_cal_measure_icon),
+            dev_field_row(
+                "\u0394T<sub>always</sub>:",
+                self.temp_cal_always_input,
+                self.temp_cal_always_dot,
+                self.temp_cal_always_icon,
+            ),
+            dev_field_row(
+                "\u0394T<sub>measure</sub>:",
+                self.temp_cal_measure_input,
+                self.temp_cal_measure_dot,
+                self.temp_cal_measure_icon,
             ),
             dev_btn_row(
                 self.temp_cal_default,
-                self.temp_cal_save,
                 self.temp_cal_reset,
+                self.temp_cal_save,
             ),
         )
 
-        # 3. Lid POGO Calibration
+        # 3. Lid POGO Calibration — range sliders (full width, underneath).
         pogo_section = dev_section(
             "Lid POGO Calibration",
-            dev_form(
-                ("Servo Steps:", self.lid_pogo_distance_combo, self.lid_pogo_distance_input),
-                ("Servo Delay:", self.lid_pogo_delay_combo, self.lid_pogo_delay_input),
-            ),
+            dev_field_row("Servo Steps:", self.lid_pogo_distance_field, self.lid_pogo_distance_dot),
+            dev_field_row("Servo Delay:", self.lid_pogo_delay_field, self.lid_pogo_delay_dot),
             dev_btn_row(
                 self.lid_pogo_default,
-                self.lid_pogo_save,
                 self.lid_pogo_reset,
+                self.lid_pogo_save,
             ),
         )
 
-        # Two columns, mirroring the advanced view's column arrangement so the
-        # footprint (and height) of the two perspectives match. Device Config +
-        # Temperature Calibration stack on the left; Lid POGO sits on the right.
-        dev_left_col = QtWidgets.QVBoxLayout()
-        dev_left_col.setSpacing(14)
-        dev_left_col.addLayout(device_section)
-        dev_left_col.addLayout(temp_section)
-        dev_left_col.addStretch()
+        # --- Top row: Device Config + Temperature Calibration side-by-side ---
+        dev_top_row = QtWidgets.QHBoxLayout()
+        dev_top_row.setSpacing(22)
+        dev_top_row.addLayout(device_section, 1)
+        dev_top_row.addLayout(temp_section, 1)
 
-        dev_right_col = QtWidgets.QVBoxLayout()
-        dev_right_col.setSpacing(14)
-        dev_right_col.addLayout(pogo_section)
-        dev_right_col.addStretch()
+        # --- Global action buttons (Default All / Reset All / Save All) ---
+        # These operate across every section at once; the per-section buttons
+        # remain for targeted edits.
+        self.device_default_all = _BorderlessActionButton("Default All")
+        self.device_default_all.clicked.connect(self.on_device_default_all)
+        self.device_reset_all = _BorderlessActionButton("Reset All")
+        self.device_reset_all.clicked.connect(self.on_device_reset_all)
+        self.device_save_all = _BorderlessActionButton("Save All", tone="primary")
+        self.device_save_all.clicked.connect(self.on_device_save_all)
 
-        dev_columns = QtWidgets.QHBoxLayout()
-        dev_columns.setSpacing(22)
-        dev_columns.addLayout(dev_left_col, 3)
-        dev_columns.addLayout(dev_right_col, 2)
+        all_btn_row = QtWidgets.QHBoxLayout()
+        all_btn_row.setContentsMargins(0, 0, 0, 0)
+        all_btn_row.setSpacing(10)
+        all_btn_row.addStretch()
+        all_btn_row.addWidget(self.device_default_all)
+        all_btn_row.addWidget(self.device_reset_all)
+        all_btn_row.addWidget(self.device_save_all)
 
-        # Final layout: header row on top, then the two columns. Outer margins
-        # and spacing match the advanced container's wrap exactly.
+        # Final layout: header row, the two top sections, the POGO section
+        # underneath (full width), a divider, then the global action buttons.
         bannerLayout = QtWidgets.QVBoxLayout(self.device_info_container)
         bannerLayout.setContentsMargins(2, 2, 2, 2)
-        bannerLayout.setSpacing(10)
+        bannerLayout.setSpacing(12)
         bannerLayout.addLayout(header_layout)  # back + gear + title + info
-        bannerLayout.addLayout(dev_columns)
+        bannerLayout.addLayout(dev_top_row)
+        bannerLayout.addLayout(pogo_section)
         bannerLayout.addStretch(1)
+        bannerLayout.addWidget(_hairline())
+        bannerLayout.addLayout(all_btn_row)
 
         # Hide it initially; the popup hosts and reveals it via a slide.
         self.device_info_container.hide()
@@ -2683,6 +3123,59 @@ class UIControls:  # QtWidgets.QMainWindow
         else:
             action.setIcon(self.blankIcon)
             action.setIconText("blank")
+        self._sync_dot(action)
+
+    def _sync_dot(self, action):
+        """Update the glowing status dot paired with ``action`` to its state."""
+        dot = getattr(self, "_field_dots", {}).get(action)
+        if dot is not None:
+            dot.set_state(action.iconText() or "blank")
+
+    def _sync_all_dots(self):
+        """Refresh every field dot from its action's current iconText."""
+        for action, dot in getattr(self, "_field_dots", {}).items():
+            dot.set_state(action.iconText() or "blank")
+
+    def _has_unsaved_device_changes(self) -> bool:
+        """True if any device field currently holds unsaved input."""
+        for action in getattr(self, "_field_dots", {}):
+            if action.iconText() == "unsaved":
+                return True
+        return False
+
+    def _pulse_unsaved_device_fields(self) -> None:
+        """Flash the dot AND the input of every field with unsaved changes.
+
+        Used when the user tries to slide back to the advanced view while edits
+        are pending, to draw attention to exactly which fields need attention.
+        """
+        for action, dot in getattr(self, "_field_dots", {}).items():
+            if action.iconText() == "unsaved":
+                dot.flash(times=3)
+                widget = getattr(self, "_field_widgets", {}).get(action)
+                if widget is not None:
+                    self._pulse_widget_border(widget)
+
+    def _pulse_widget_border(self, widget) -> None:
+        """Briefly pulse an amber border on ``widget`` to flag unsaved input."""
+        # _RangeSliderField pulses its inner spin box; everything else pulses
+        # its own stylesheet border via a transient amber outline.
+        target = getattr(widget, "spin", widget)
+        base_qss = target.styleSheet()
+        amber = (
+            target.__class__.__name__ + " { border: 1px solid rgba(240,170,50,230); "
+            "border-radius: 12px; }"
+        )
+        # Simple 3-blink using timers so we don't depend on a QSS property anim.
+        def _on():
+            target.setStyleSheet(base_qss + amber)
+
+        def _off():
+            target.setStyleSheet(base_qss)
+
+        for i in range(3):
+            QtCore.QTimer.singleShot(i * 320, _on)
+            QtCore.QTimer.singleShot(i * 320 + 160, _off)
 
     def on_distance_edit(self, text, action):
         self.on_text_edit(text, action)
@@ -2733,6 +3226,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.device_pid_input.setText(default_pid)
             self.device_pid_action.setIcon(self.unsavedIcon)
             self.device_pid_action.setIconText("unsaved")
+        self._sync_all_dots()
 
     def on_device_config_save(self):
         ok_name = False
@@ -2782,6 +3276,7 @@ class UIControls:  # QtWidgets.QMainWindow
         elif ok_name:  # (needed only if PID not changed too)
             mainWindow._refresh_ports()  # update name in port list
         # elif ok_cal: do nothing
+        self._sync_all_dots()
 
     def on_device_config_reset(self):
         if self.device_name_action.iconText() != "saved":
@@ -2790,7 +3285,7 @@ class UIControls:  # QtWidgets.QMainWindow
             # self.device_name_input.setEnabled(False)
             self.device_name_input.setPlaceholderText("Querying...")
             self.device_name_action.setIcon(self.blankIcon)
-            self.device_name_action.setIconText("blank")
+            self.device_name_action.setIconText("querying")
             QtCore.QTimer.singleShot(500, self.reset_device_name_input)
         if self.device_pid_action.iconText() != "saved":
             Log.d("Reset device pid")
@@ -2798,8 +3293,9 @@ class UIControls:  # QtWidgets.QMainWindow
             # self.device_pid_input.setEnabled(False)
             self.device_pid_input.setPlaceholderText("Querying...")
             self.device_pid_action.setIcon(self.blankIcon)
-            self.device_pid_action.setIconText("blank")
+            self.device_pid_action.setIconText("querying")
             QtCore.QTimer.singleShot(1000, self.reset_device_pid_input)
+        self._sync_all_dots()
 
     def on_temp_cal_default(self):
         default_always = "0.00"
@@ -2817,6 +3313,7 @@ class UIControls:  # QtWidgets.QMainWindow
             )
             self.temp_cal_measure_action.setIcon(self.unsavedIcon)
             self.temp_cal_measure_action.setIconText("unsaved")
+        self._sync_all_dots()
 
     def on_temp_cal_save(self):
         if self.temp_cal_always_action.iconText() == "unsaved":
@@ -2843,6 +3340,7 @@ class UIControls:  # QtWidgets.QMainWindow
                 Log.e(
                     f"Invalid T_measure input: {self.temp_cal_measure_input.text()} (out of valid range)"
                 )
+        self._sync_all_dots()
 
     def on_temp_cal_reset(self):
         if self.temp_cal_always_action.iconText() != "saved":
@@ -2851,7 +3349,7 @@ class UIControls:  # QtWidgets.QMainWindow
             # self.temp_cal_always_input.setEnabled(False)
             # self.temp_cal_always_input.setPlaceholderText("Querying...")
             self.temp_cal_always_action.setIcon(self.blankIcon)
-            self.temp_cal_always_action.setIconText("blank")
+            self.temp_cal_always_action.setIconText("querying")
             QtCore.QTimer.singleShot(1, self.reset_temp_cal_always_input)
         if self.temp_cal_measure_action.iconText() != "saved":
             Log.d("Reset T_measure")
@@ -2859,23 +3357,23 @@ class UIControls:  # QtWidgets.QMainWindow
             # self.temp_cal_measure_input.setEnabled(False)
             # self.temp_cal_measure_input.setPlaceholderText("Querying...")
             self.temp_cal_measure_action.setIcon(self.blankIcon)
-            self.temp_cal_measure_action.setIconText("blank")
+            self.temp_cal_measure_action.setIconText("querying")
             QtCore.QTimer.singleShot(3000, self.reset_temp_cal_measure_input)
+        self._sync_all_dots()
 
     def on_lid_pogo_default(self):
         default_distance = str(self.lid_pogo_distance_values["Normal"])
         default_delay = str(self.lid_pogo_delay_values["Normal"])
 
         if self.lid_pogo_distance_input.text() != default_distance:
-            self.lid_pogo_distance_combo.setCurrentIndex(2)
             self.lid_pogo_distance_input.setText(default_distance)
             self.lid_pogo_distance_action.setIcon(self.unsavedIcon)
             self.lid_pogo_distance_action.setIconText("unsaved")
         if self.lid_pogo_delay_input.text() != default_delay:
-            self.lid_pogo_delay_combo.setCurrentIndex(2)
             self.lid_pogo_delay_input.setText(default_delay)
             self.lid_pogo_delay_action.setIcon(self.unsavedIcon)
             self.lid_pogo_delay_action.setIconText("unsaved")
+        self._sync_all_dots()
 
     def on_lid_pogo_save(self):
         send_lid_cal_cmd = False
@@ -2906,6 +3404,7 @@ class UIControls:  # QtWidgets.QMainWindow
                 form_error = True
         if send_lid_cal_cmd and not form_error:
             self.save_lid_pogo_calibration()
+        self._sync_all_dots()
 
     def on_lid_pogo_reset(self):
         get_lid_cal = False
@@ -2915,7 +3414,7 @@ class UIControls:  # QtWidgets.QMainWindow
             # self.lid_pogo_distance_input.setEnabled(False)
             self.lid_pogo_distance_input.setPlaceholderText("...")
             self.lid_pogo_distance_action.setIcon(self.blankIcon)
-            self.lid_pogo_distance_action.setIconText("blank")
+            self.lid_pogo_distance_action.setIconText("querying")
             get_lid_cal = True
         if self.lid_pogo_delay_action.iconText() != "saved":
             Log.d("Reset lid pogo delay")
@@ -2923,10 +3422,33 @@ class UIControls:  # QtWidgets.QMainWindow
             # self.lid_pogo_delay_input.setEnabled(False)
             self.lid_pogo_delay_input.setPlaceholderText("...")
             self.lid_pogo_delay_action.setIcon(self.blankIcon)
-            self.lid_pogo_delay_action.setIconText("blank")
+            self.lid_pogo_delay_action.setIconText("querying")
             get_lid_cal = True
         if get_lid_cal:
             QtCore.QTimer.singleShot(1500, self.get_lid_pogo_calibration)
+        self._sync_all_dots()
+
+    # -- Global (All) actions -------------------------------------------------
+    def on_device_default_all(self):
+        """Apply 'Default' to every section at once."""
+        self.on_device_config_default()
+        self.on_temp_cal_default()
+        self.on_lid_pogo_default()
+        self._sync_all_dots()
+
+    def on_device_reset_all(self):
+        """Apply 'Reset' to every section at once."""
+        self.on_device_config_reset()
+        self.on_temp_cal_reset()
+        self.on_lid_pogo_reset()
+        self._sync_all_dots()
+
+    def on_device_save_all(self):
+        """Apply 'Save' to every section at once."""
+        self.on_device_config_save()
+        self.on_temp_cal_save()
+        self.on_lid_pogo_save()
+        self._sync_all_dots()
 
     def save_device_name_input(self, text):
         mainWindow = self.parent.parent
@@ -3291,7 +3813,7 @@ class UIControls:  # QtWidgets.QMainWindow
         except:
             Log.e("Unable to parse LID CAL reply.")
 
-        if self.lid_pogo_distance_action.iconText() == "blank":
+        if self.lid_pogo_distance_action.iconText() in ("blank", "querying"):
             idx = self.lid_pogo_distance_combo.count() - 1  # Custom
             for i, val in enumerate(self.lid_pogo_distance_values.values()):
                 if val == pogo_distance:
@@ -3302,7 +3824,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.lid_pogo_distance_input.setPlaceholderText(None)
             self.lid_pogo_distance_action.setIcon(self.savedIcon)
             self.lid_pogo_distance_action.setIconText("saved")
-        if self.lid_pogo_delay_action.iconText() == "blank":
+        if self.lid_pogo_delay_action.iconText() in ("blank", "querying"):
             idx = self.lid_pogo_delay_combo.count() - 1  # Custom
             for i, val in enumerate(self.lid_pogo_delay_values.values()):
                 if val == pogo_delay:
@@ -3313,6 +3835,7 @@ class UIControls:  # QtWidgets.QMainWindow
             self.lid_pogo_delay_input.setPlaceholderText(None)
             self.lid_pogo_delay_action.setIcon(self.savedIcon)
             self.lid_pogo_delay_action.setIconText("saved")
+        self._sync_all_dots()
 
     def blank_device_config_icon_text(self):
         self.device_name_action.setIconText("blank")
@@ -3321,6 +3844,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_measure_action.setIconText("blank")
         self.lid_pogo_distance_action.setIconText("blank")
         self.lid_pogo_delay_action.setIconText("blank")
+        self._sync_all_dots()
 
     def on_device_config_editor_close(self):
         actions = [
@@ -3339,6 +3863,11 @@ class UIControls:  # QtWidgets.QMainWindow
                 )
                 unsaved_input = True
                 break
+        if unsaved_input:
+            # Don't leave: pulse every field that still has unsaved changes (dot
+            # flash + amber border blink) so the user sees exactly what's pending.
+            self._pulse_unsaved_device_fields()
+            return
         if not unsaved_input:
             # Slide the perspective back RIGHT to the advanced view within the
             # SAME popup surface (the advanced content slides back into view and

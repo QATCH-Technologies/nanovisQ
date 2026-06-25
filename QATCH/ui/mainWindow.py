@@ -79,6 +79,7 @@ from QATCH.processors.InterpTemps import (
     QueueCommandFormat,
 )
 from QATCH.ui.popUp import PopUp, QueryComboBox
+
 # DeviceInfoMainWidget is no longer used: the device-config editor now lives as
 # the second perspective inside the advanced popup (AdvancedMainWidget) and is
 # revealed via an in-panel horizontal slide rather than a separate overlay
