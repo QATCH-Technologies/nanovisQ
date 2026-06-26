@@ -417,6 +417,13 @@ class ExportMode(DataModeWidget):
         self.root.addWidget(self.stepper)
 
         self.step_stack = QtWidgets.QStackedWidget()
+        # Let _slide_step truly hide() the stack during a step transition
+        # (cheapest possible "don't paint this" — no compositing, no QSS,
+        # nothing to race) while it still reserves its layout space, so
+        # hiding it doesn't snap the stepper/footer around it.
+        stack_policy = self.step_stack.sizePolicy()
+        stack_policy.setRetainSizeWhenHidden(True)
+        self.step_stack.setSizePolicy(stack_policy)
         self.dest_scroll = self._make_step_scroll(self._build_destination_page())
         self.scope_scroll = self._make_step_scroll(self._build_scope_page())
         self.fields_scroll = self._make_step_scroll(self._build_fields_page())
@@ -1286,18 +1293,21 @@ class ExportMode(DataModeWidget):
         new_lbl.show()
         new_lbl.raise_()
 
-        # The live stack underneath is left as-is (not hidden, no opacity
-        # effect) — setVisible(False) would collapse its reserved space in
-        # the shared QVBoxLayout (stepper above, footer below), snapping them
-        # around (the earlier "stepper sliding"/jumpy-layout bug), and a
-        # QGraphicsOpacityEffect here is worse: applied to a QStackedWidget
-        # full of custom-painted children (GlassOptionCard, GlassPushButton,
-        # toggle chips, ...), it intermittently raced Qt's own paint pass and
-        # produced "QPainter::begin: A paint device can only be painted by
-        # one painter at a time" spam. It's also unnecessary: old_lbl and
-        # new_lbl share the exact same duration/curve, so their union covers
-        # the clip's full rect at every frame (a "push", no gap) — the live
-        # stack never has a chance to show through underneath anyway.
+        # Hide the live stack for the duration — genuinely hidden, not just
+        # covered. Relying on "the proxies always cover it" (the previous
+        # approach) left a real ghosting artifact: the live stack already
+        # shows the NEW page underneath, and any imprecision (DPI scaling,
+        # async layout/paint timing) let it bleed through during the slide.
+        # A plain hide() has nothing like that to go wrong — Qt simply skips
+        # painting it, which is also far cheaper than the QGraphicsOpacityEffect
+        # this used to use (that one applied to a QStackedWidget full of
+        # custom-painted children — GlassOptionCard, GlassPushButton, toggle
+        # chips — and intermittently raced Qt's own paint pass, producing
+        # "QPainter::begin: a paint device can only be painted by one painter
+        # at a time" spam). retainSizeWhenHidden (set once at construction)
+        # keeps its layout space reserved, so the stepper/footer don't snap
+        # around it the way they did with a plain setVisible(False).
+        stack.hide()
 
         # Both animations share the EXACT same duration/curve so old and new
         # move in lockstep — old's trailing edge and new's leading edge stay
@@ -1320,6 +1330,7 @@ class ExportMode(DataModeWidget):
         group.addAnimation(anim_new)
 
         def _finish():
+            stack.show()
             clip.hide()
             clip.setParent(None)
             clip.deleteLater()
@@ -1432,9 +1443,12 @@ class ExportMode(DataModeWidget):
             # Switching to USB: adopt the currently detected USB drive if the
             # shared loop already found one; otherwise leave the field as-is
             # so a manually-chosen target (via Choose…) isn't clobbered.
-            drive = self._drive()
+            # NOTE: usb_drive (hardware-detected), not drive (export target)
+            # — the latter may still hold a stale Folder path here.
+            drive = getattr(self.services, "usb_drive", None)
             if drive:
                 self.target_field.setText(drive)
+                self._set_drive(drive)
         else:
             # Folder: target is whatever was chosen / defaulted.
             t = self.target_field.text()
@@ -1469,16 +1483,21 @@ class ExportMode(DataModeWidget):
         anim.start()
 
     def _on_usb_add(self):
-        drive = getattr(self.services, "drive", None)
+        # usb_drive is the hardware-detected letter; drive is the export
+        # target. Mirror one into the other only while USB is the active
+        # destination — otherwise a detected stick must not clobber a
+        # Folder destination the user already chose.
+        drive = getattr(self.services, "usb_drive", None)
         if self._chk_usb:
             self.target_field.setText(drive if drive else "[NONE]")
+            self._set_drive(drive)
         Log.i(TAG, f"[{drive}] USB drive found! Ready to export.")
         self._update_export_enabled()
 
     def _on_usb_remove(self):
         Log.w(TAG, "USB drive removed. Please eject first next time.")
-        self._set_drive(None)
         if self._chk_usb:
+            self._set_drive(None)
             self.target_field.setText("[NONE]")
         self._update_export_enabled()
 

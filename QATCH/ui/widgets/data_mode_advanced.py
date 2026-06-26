@@ -19,11 +19,15 @@ Behavioural parity with the original:
 
 LAYOUT: USB Drive / Local storage / Danger zone cards (matches the wireframe).
 The USB card shows live connection status + free/total space (from
-``self.services.drive``, refreshed on usb_add/usb_remove); the storage card
-shows a usage bar for locally logged run data against the host volume's
-capacity. Recycle Bin size isn't broken out separately — there's no portable
-way to query it without extra OS-specific dependencies, so the bar reflects
-active local run data only.
+``self.services.usb_drive`` — the hardware-detected drive letter, refreshed
+on usb_add/usb_remove). This is deliberately NOT ``self.services.drive``,
+which is Export mode's *chosen target* and may be any local folder; reading
+that here was a bug — it made this card claim a plain export folder (e.g.
+C:\...\export) was a connected USB stick. The storage card shows a usage bar
+for locally logged run data against the host volume's capacity. Recycle Bin
+size isn't broken out separately — there's no portable way to query it
+without extra OS-specific dependencies, so the bar reflects active local
+run data only.
 """
 
 import os
@@ -274,7 +278,7 @@ class AdvancedMode(DataModeWidget):
     #  USB status / local storage display
     # ------------------------------------------------------------------
     def _refresh_usb_status(self, *_):
-        drive = getattr(self.services, "drive", None)
+        drive = getattr(self.services, "usb_drive", None)
         if drive:
             self.usb_status_pill.setText("●  Connected")
             self.usb_status_pill.setToolTip(drive)
@@ -376,7 +380,7 @@ class AdvancedMode(DataModeWidget):
 
     def _eject_task(self, abort):
         self.services.set_freeze(False)
-        drive = getattr(self.services, "drive", None)
+        drive = getattr(self.services, "usb_drive", None)
         try:
             Log.i(TAG, f"[{drive}] USB drive ejecting...")
             self.services.emit_progress(
@@ -400,7 +404,7 @@ class AdvancedMode(DataModeWidget):
                 ),
                 shell=True,
             )
-            if getattr(self.services, "drive", None) is None:
+            if getattr(self.services, "usb_drive", None) is None:
                 Log.i(TAG, "USB drive ejected.")
                 self.services.emit_progress(
                     self.MODE_KEY, "USB drive ejected. Safe to remove.", 100, "b"

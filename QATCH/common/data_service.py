@@ -47,7 +47,19 @@ class DataServices(QtCore.QObject):
         super().__init__(parent)
 
         # Shared drive / run state (ported fields from Ui_Export).
+        #
+        # ``drive`` and ``usb_drive`` look redundant but mean different
+        # things, and conflating them is what made Advanced's "USB Drive"
+        # card show a local export folder (e.g. C:\...\export) as if it
+        # were a connected USB stick:
+        #   - usb_drive: the actual hardware-detected USB drive letter, if
+        #     any. Only the USB-detection loop (``_main_loop``) writes this;
+        #     everyone else only reads it. None means "no USB connected."
+        #   - drive: the user's current chosen export/erase TARGET, which
+        #     may be a USB drive letter or any plain folder path. Export
+        #     mode owns writes to this.
         self.drive: Optional[str] = None
+        self.usb_drive: Optional[str] = None
         self.source_subfolder: str = ""
 
         # Concurrency primitives. ``_abort`` is the cooperative cancel flag the
@@ -83,6 +95,8 @@ class DataServices(QtCore.QObject):
 
         Original responsibilities:
           - poll for USB drives, diff against last seen set
+          - write the detected drive letter (or None) to ``self.usb_drive``
+            — NOT ``self.drive``, which is the user's chosen export target
           - emit usb_add / usb_remove on change
           - exit cleanly when self._stop is set
         """
