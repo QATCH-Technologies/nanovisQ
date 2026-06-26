@@ -39,7 +39,7 @@ LAYOUT (responsive redesign):
     * USB vs Folder targets are mutually exclusive; selecting one clears the
       other; `drive` tracks the active target.
     * Export-as CSV/ZIP/Folder is exclusive; CSV enables the field picker and
-      relabels Merge/Skip -> Append/Abort.
+      relabels Merge/Skip -> Append/Cancel.
     * Run scope is All vs Selection (a logged-data subfolder).
     * Date filter is Off / Today / Last-N {Hours,Days,Weeks}.
     * Existing-files policy is Merge / Replace / Skip (ids 2 / 1 / 3).
@@ -251,6 +251,140 @@ class _Stepper(QtWidgets.QWidget):
         return f"QFrame {{ background: {color}; border: none; }}"
 
 
+class _FlowLayout(QtWidgets.QLayout):
+    """Left-to-right layout that wraps to additional rows as needed.
+
+    Used for the CSV column chips so a wide field list reads as a simple
+    flowing row (per the wireframe) instead of a fixed-column grid that
+    leaves uneven gaps for differently-sized labels.
+    """
+
+    def __init__(self, parent=None, margin=0, spacing=8):
+        super().__init__(parent)
+        self._items = []
+        self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+
+    def addItem(self, item):
+        self._items.append(item)
+        self.invalidate()
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, index):
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index):
+        item = self._items.pop(index) if 0 <= index < len(self._items) else None
+        if item is not None:
+            self.invalidate()
+        return item
+
+    def expandingDirections(self):
+        return QtCore.Qt.Orientations(QtCore.Qt.Orientation(0))
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._do_layout(QtCore.QRect(0, 0, width, 0), test_only=True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, test_only=False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QtCore.QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        left, top, right, bottom = self.getContentsMargins()
+        return size + QtCore.QSize(left + right, top + bottom)
+
+    def _do_layout(self, rect, test_only):
+        left, top, right, bottom = self.getContentsMargins()
+        effective = rect.adjusted(left, top, -right, -bottom)
+        x, y = effective.x(), effective.y()
+        line_height = 0
+        spacing = self.spacing()
+
+        for item in self._items:
+            hint = item.sizeHint()
+            next_x = x + hint.width() + spacing
+            if next_x - spacing > effective.right() and line_height > 0:
+                x = effective.x()
+                y += line_height + spacing
+                next_x = x + hint.width() + spacing
+                line_height = 0
+            if not test_only:
+                item.setGeometry(QtCore.QRect(QtCore.QPoint(x, y), hint))
+            x = next_x
+            line_height = max(line_height, hint.height())
+        return y + line_height - rect.y() + bottom
+
+
+class _ToggleChip(QtWidgets.QPushButton):
+    """A checkable pill used for the CSV column picker.
+
+    Reads as a wrapping tag: a check mark prefix + accent fill while
+    selected, a "+" prefix + plain outline while not — so the picker's
+    state is legible without a separate checkbox glyph competing for
+    space in a tight wrapping row.
+    """
+
+    def __init__(self, label, parent=None):
+        super().__init__(parent)
+        self._label = label
+        self.setCheckable(True)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.setChecked(True)
+        self.toggled.connect(self._restyle)
+        self._restyle()
+
+    def label(self):
+        return self._label
+
+    def _restyle(self, *_):
+        checked = self.isChecked()
+        self.setText(("✓ " if checked else "+ ") + self._label)
+        if checked:
+            self.setStyleSheet("""
+                QPushButton {
+                    background: rgba(10, 163, 230, 35);
+                    border: 1.5px solid rgba(0, 118, 174, 200);
+                    border-radius: 13px; padding: 5px 12px;
+                    color: rgba(0, 90, 135, 245); font-size: 12px; font-weight: 700;
+                }
+                QPushButton:hover { background: rgba(10, 163, 230, 55); }
+                QPushButton:disabled {
+                    background: rgba(10, 163, 230, 22);
+                    border: 1.5px solid rgba(0, 118, 174, 120);
+                    color: rgba(0, 90, 135, 150);
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QPushButton {
+                    background: rgba(255, 255, 255, 130);
+                    border: 1px solid rgba(180, 190, 202, 200);
+                    border-radius: 13px; padding: 5px 12px;
+                    color: rgba(60, 72, 88, 200); font-size: 12px; font-weight: 600;
+                }
+                QPushButton:hover {
+                    background: rgba(255, 255, 255, 190);
+                    border: 1px solid rgba(140, 155, 172, 220);
+                }
+                QPushButton:disabled {
+                    background: rgba(255, 255, 255, 70);
+                    border: 1px solid rgba(180, 190, 202, 120);
+                    color: rgba(60, 72, 88, 120);
+                }
+            """)
+
+
 class ExportMode(DataModeWidget):
     MODE_KEY = "export"
     MODE_LABEL = "Export"
@@ -435,80 +569,60 @@ class ExportMode(DataModeWidget):
         card = self._card("Export Scope", "Choose what gets exported and how")
         lay = card.body
 
-        # --- Export name (prominent, full-width, top of the card) -------
-        # Pulled out of the responsive grid and given a larger label + its own
-        # banded row so it reads as the primary thing you set before exporting.
-        name_band = QtWidgets.QFrame()
-        name_band.setObjectName("nameBand")
-        name_band.setStyleSheet("""
-            QFrame#nameBand {
-                background: rgba(222, 238, 248, 130);
-                border: 1px solid rgba(140, 170, 195, 190);
-                border-radius: 10px;
-            }
-        """)
-        nb = QtWidgets.QVBoxLayout(name_band)
-        nb.setContentsMargins(12, 10, 12, 10)
-        nb.setSpacing(6)
-        name_label = QtWidgets.QLabel("Export Name")
-        name_label.setStyleSheet(
-            "QLabel { color: rgba(30, 42, 56, 230); font-size: 13px; "
-            "font-weight: 700; background: transparent; }"
-        )
-        nb.addWidget(name_label)
+        # --- Export name (full-width, top of the card) ------------------
+        # Pulled out of the responsive grid so it reads as the first thing
+        # you set before exporting, but otherwise a plain field like the
+        # rest of the page — no special highlight box.
         self.name_field = GlassLineEdit()
-        self.name_field.setMinimumHeight(38)  # taller than grid fields = prominence
-        nb.addWidget(self.name_field)
-        lay.addWidget(name_band)
+        self.name_field.setMinimumHeight(34)
+        lay.addWidget(self._field("Export name", self.name_field))
         lay.addSpacing(4)
 
-        # The rest of the settings build as self-contained "field" units dropped
-        # into a responsive grid that re-flows between 1 and 2 columns.
+        # The rest of the settings build as two self-contained "field" column
+        # units — Which Runs / Export As — dropped into a responsive grid
+        # that re-flows between 1 and 2 columns. Each field stacks its cards
+        # vertically rather than side-by-side, matching the wireframe.
 
-        # --- Runs to export: All vs Selection (+ choose button) ---------
+        # --- Which runs: All vs Selection (+ choose button) -------------
         self.scope_group = GlassOptionCardGroup(self)
-        self.btn_scope_all = GlassOptionCard("All Runs", "Export every run")
-        self.btn_scope_sel = GlassOptionCard("Selection", "Choose a device or run")
+        self.btn_scope_all = GlassOptionCard("All runs", "Export every run in the database")
+        self.btn_scope_sel = GlassOptionCard("Selected runs", "Pick specific devices or runs")
         self.scope_group.addCard(self.btn_scope_all, 0)
         self.scope_group.addCard(self.btn_scope_sel, 1)
         self.btn_scope_all.setChecked(True)
         self.scope_group.toggled.connect(self._on_selection_changed)
-        self.btn_select_run = GlassPushButton(" All", variant="default")
-        self.btn_select_run.setFixedHeight(34)
+        self.btn_select_run = GlassPushButton(" Choose…", variant="ghost")
+        self.btn_select_run.setFixedHeight(28)
         self.btn_select_run.setIcon(self._icon("folder.svg"))
         self.btn_select_run.clicked.connect(self._select_run)
-        scope_cards = QtWidgets.QHBoxLayout()
+        self.btn_select_run.setVisible(False)  # only relevant once "Selected runs" is active
+        scope_cards = QtWidgets.QVBoxLayout()
         scope_cards.setContentsMargins(0, 0, 0, 0)
         scope_cards.setSpacing(8)
-        scope_cards.addWidget(self.btn_scope_all, 1)
-        scope_cards.addWidget(self.btn_scope_sel, 1)
-        scope_inner = QtWidgets.QVBoxLayout()
-        scope_inner.setContentsMargins(0, 0, 0, 0)
-        scope_inner.setSpacing(8)
-        scope_inner.addLayout(scope_cards)
-        scope_inner.addWidget(self.btn_select_run)
-        self.field_scope = self._field("Runs to export", scope_inner)
+        scope_cards.addWidget(self.btn_scope_all)
+        scope_cards.addWidget(self.btn_scope_sel)
 
-        # --- Export format: CSV / ZIP / Folder -------------------------
-        self.format_group = GlassOptionCardGroup(self)
-        self.rb_csv = GlassOptionCard("CSV Report", "A single spreadsheet report")
-        self.rb_zip = GlassOptionCard("ZIP Archive", "One compressed archive of runs")
-        self.rb_folder_fmt = GlassOptionCard("Folder", "A plain folder of run files")
-        self.format_group.addCard(self.rb_csv, 0)
-        self.format_group.addCard(self.rb_zip, 1)
-        self.format_group.addCard(self.rb_folder_fmt, 2)
-        self.format_group.toggled.connect(self._on_format_changed)
-        format_row = QtWidgets.QHBoxLayout()
-        format_row.setContentsMargins(0, 0, 0, 0)
-        format_row.setSpacing(8)
-        for c in (self.rb_csv, self.rb_zip, self.rb_folder_fmt):
-            format_row.addWidget(c, 1)
-        self.field_format = self._field("Export as", format_row)
+        # Date range is a checkable sub-option of "Which runs" — nested in
+        # its own tinted box, only meaningful once switched on. An unchecked
+        # box means "all dates" (date_filter == 0 / date_filter_max == None).
+        date_box = QtWidgets.QFrame()
+        date_box.setObjectName("dateRangeBox")
+        date_box.setStyleSheet("""
+            QFrame#dateRangeBox {
+                background: rgba(240, 246, 250, 130);
+                border: 1px solid rgba(190, 205, 220, 170);
+                border-radius: 8px;
+            }
+        """)
+        db = QtWidgets.QVBoxLayout(date_box)
+        db.setContentsMargins(10, 8, 10, 8)
+        db.setSpacing(6)
+        self.chk_date_range = QtWidgets.QCheckBox("Limit to a date range")
+        self.chk_date_range.setStyleSheet(self._radio_qss())
+        self.chk_date_range.setChecked(True)
+        self.chk_date_range.stateChanged.connect(self._on_date_range_toggled)
+        db.addWidget(self.chk_date_range)
 
-        # --- Export by date: an explicit Start → End date range. --------
-        # This replaces the old All / Today / Last… mode segment entirely; any
-        # of those can be expressed as a range, so the range IS the behavior.
-        # An empty range (start == minimum sentinel) means "all dates".
         today = QtCore.QDate.currentDate()
         self.date_start = QtWidgets.QDateEdit()
         self.date_start.setCalendarPopup(True)
@@ -532,26 +646,51 @@ class ExportMode(DataModeWidget):
         self.date_end.setMinimumDate(self.date_start.date())
 
         date_inner = QtWidgets.QHBoxLayout()
-        date_inner.setContentsMargins(0, 0, 0, 0)
+        date_inner.setContentsMargins(20, 0, 0, 0)  # indent under the checkbox
         date_inner.setSpacing(8)
-        from_lbl = QtWidgets.QLabel("From")
-        from_lbl.setStyleSheet(self._inline_lbl_qss())
-        to_lbl = QtWidgets.QLabel("to")
-        to_lbl.setStyleSheet(self._inline_lbl_qss())
-        date_inner.addWidget(from_lbl, 0)
+        self.lbl_date_from = QtWidgets.QLabel("From")
+        self.lbl_date_from.setStyleSheet(self._inline_lbl_qss())
+        self.lbl_date_to = QtWidgets.QLabel("to")
+        self.lbl_date_to.setStyleSheet(self._inline_lbl_qss())
+        date_inner.addWidget(self.lbl_date_from, 0)
         date_inner.addWidget(self.date_start, 1)
-        date_inner.addWidget(to_lbl, 0)
+        date_inner.addWidget(self.lbl_date_to, 0)
         date_inner.addWidget(self.date_end, 1)
-        self.field_date = self._field("Export by date range", date_inner)
+        db.addLayout(date_inner)
 
-        # Responsive grid. Wide layout pairs settings two-up; narrow stacks them.
+        which_inner = QtWidgets.QVBoxLayout()
+        which_inner.setContentsMargins(0, 0, 0, 0)
+        which_inner.setSpacing(8)
+        which_inner.addLayout(scope_cards)
+        which_inner.addWidget(self.btn_select_run)
+        which_inner.addWidget(date_box)
+        self.field_which = self._field("Which runs", which_inner)
+
+        # --- Export as: CSV / ZIP / Folder -------------------------------
+        self.format_group = GlassOptionCardGroup(self)
+        self.rb_csv = GlassOptionCard("CSV Report", "A single spreadsheet — choose columns next")
+        self.rb_zip = GlassOptionCard("ZIP Archive", "One compressed archive of raw run files")
+        self.rb_folder_fmt = GlassOptionCard("Folder", "A plain folder of run files")
+        self.format_group.addCard(self.rb_csv, 0)
+        self.format_group.addCard(self.rb_zip, 1)
+        self.format_group.addCard(self.rb_folder_fmt, 2)
+        self.format_group.toggled.connect(self._on_format_changed)
+        format_col = QtWidgets.QVBoxLayout()
+        format_col.setContentsMargins(0, 0, 0, 0)
+        format_col.setSpacing(8)
+        for c in (self.rb_csv, self.rb_zip, self.rb_folder_fmt):
+            format_col.addWidget(c)
+        self.field_export_as = self._field("Export as", format_col)
+
+        # Responsive grid. Wide layout pairs the two columns side-by-side;
+        # narrow stacks them so cards never get crushed.
         self.scope_grid = QtWidgets.QGridLayout()
         self.scope_grid.setContentsMargins(0, 0, 0, 0)
-        self.scope_grid.setHorizontalSpacing(16)
+        self.scope_grid.setHorizontalSpacing(20)
         self.scope_grid.setVerticalSpacing(12)
         self.scope_grid.setColumnStretch(0, 1)
         self.scope_grid.setColumnStretch(1, 1)
-        self._scope_fields = [self.field_scope, self.field_format, self.field_date]
+        self._scope_fields = [self.field_which, self.field_export_as]
         lay.addLayout(self.scope_grid)
         self._relayout_grid(force=True)
 
@@ -563,32 +702,69 @@ class ExportMode(DataModeWidget):
     def _build_fields_page(self):
         host, outer = self._step_host()
 
-        self.csv_card = self._card("CSV Report Fields", "Tick the columns to include in the report")
-        lay = self.csv_card.body
-        lay.addWidget(self._caption("Columns to include"))
+        # "Select all" / "Clear" dock into the card header, top-right, next
+        # to the title — a quick bulk action so ticking columns one-by-one
+        # isn't the only way to set up a wide report.
+        header_actions = QtWidgets.QHBoxLayout()
+        header_actions.setContentsMargins(0, 0, 0, 0)
+        header_actions.setSpacing(4)
+        self.btn_csv_select_all = GlassPushButton(" Select all", variant="ghost")
+        self.btn_csv_select_all.setFixedHeight(24)
+        self.btn_csv_select_all.set_border_visible(False)
+        self.btn_csv_select_all.clicked.connect(self._on_csv_select_all)
+        self.btn_csv_clear = GlassPushButton(" Clear", variant="ghost")
+        self.btn_csv_clear.setFixedHeight(24)
+        self.btn_csv_clear.set_border_visible(False)
+        self.btn_csv_clear.clicked.connect(self._on_csv_clear)
+        header_actions.addWidget(self.btn_csv_select_all)
+        header_actions.addWidget(self.btn_csv_clear)
 
-        # A checkbox per column, laid out in a responsive grid (re-flows on
-        # resize). "Run Name" is required, so its box is checked + disabled.
-        self.csv_checks = {}
-        self.csv_checks_grid = QtWidgets.QGridLayout()
-        self.csv_checks_grid.setContentsMargins(0, 2, 0, 0)
-        self.csv_checks_grid.setHorizontalSpacing(18)
-        self.csv_checks_grid.setVerticalSpacing(8)
+        self.csv_card = self._card(
+            "CSV Report Fields",
+            "Tap the columns to include in the report.",
+            header_right=header_actions,
+        )
+        lay = self.csv_card.body
+
+        cols_row = QtWidgets.QHBoxLayout()
+        cols_row.setContentsMargins(0, 0, 0, 0)
+        cols_row.addWidget(self._caption("Columns to include"))
+        cols_row.addStretch(1)
+        self.csv_count_label = QtWidgets.QLabel()
+        self.csv_count_label.setStyleSheet(self._caption_qss())
+        cols_row.addWidget(self.csv_count_label)
+        lay.addLayout(cols_row)
+
+        # Columns flow as toggle chips (wrap left-to-right) rather than a
+        # fixed checkbox grid, so labels of differing length pack tightly.
+        # "Run Name" is required, so its chip stays checked + disabled.
+        self.csv_chips = {}
+        chip_host = QtWidgets.QWidget()
+        chip_host.setStyleSheet("background: transparent;")
+        self.csv_chip_flow = _FlowLayout(chip_host, margin=0, spacing=8)
         for field in CSV_FIELDS:
-            cb = QtWidgets.QCheckBox(field)
-            cb.setStyleSheet(self._check_qss())
-            cb.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-            cb.setChecked(True)
+            chip = _ToggleChip(field)
             if field == "Run Name":
-                cb.setEnabled(False)  # always present
-                cb.setToolTip("Run Name is always included")
-            self.csv_checks[field] = cb
-        lay.addLayout(self.csv_checks_grid)
-        self._relayout_csv_checks(force=True)
+                chip.setEnabled(False)  # always present
+                chip.setToolTip("Run Name is always included")
+            else:
+                chip.toggled.connect(self._update_csv_count)
+            self.csv_chips[field] = chip
+            self.csv_chip_flow.addWidget(chip)
+        lay.addWidget(chip_host)
+        self._update_csv_count()
         outer.addWidget(self.csv_card)
 
         # --- Existing-files policy: Merge / Replace / Skip -------------
-        policy_card = self._card("Existing Files", "What to do when a file already exists")
+        policy_card = self._card("Existing Files")
+        policy_card.body.addWidget(self._caption("When a file already exists"))
+        policy_desc = QtWidgets.QLabel(
+            "Applies if the export name matches a file already in the destination."
+        )
+        policy_desc.setStyleSheet(self._desc_qss())
+        policy_desc.setWordWrap(True)
+        policy_card.body.addWidget(policy_desc)
+
         self.policy_group = GlassOptionCardGroup(self)
         self.rb_merge = GlassOptionCard("Merge", "Keep newer versions")
         self.rb_replace = GlassOptionCard("Replace", "Overwrite existing")
@@ -608,21 +784,80 @@ class ExportMode(DataModeWidget):
         outer.addStretch(1)
         return host
 
+    def _on_csv_select_all(self):
+        for field, chip in self.csv_chips.items():
+            if field != "Run Name":
+                chip.setChecked(True)
+
+    def _on_csv_clear(self):
+        for field, chip in self.csv_chips.items():
+            if field != "Run Name":
+                chip.setChecked(False)
+
+    def _update_csv_count(self, *_):
+        total = len(CSV_FIELDS)
+        selected = len(self._selected_csv_cols())
+        self.csv_count_label.setText(f"{selected} of {total} selected")
+
     # ---- Step 3: Review --------------------------------------------------
     def _build_review_page(self):
         host, outer = self._step_host()
-        card = self._card("Review", "Confirm your selections, then export")
-        self.review_rows_lay = QtWidgets.QVBoxLayout()
-        self.review_rows_lay.setContentsMargins(0, 0, 0, 0)
-        self.review_rows_lay.setSpacing(14)
-        card.body.addLayout(self.review_rows_lay)
-        outer.addWidget(card)
+
+        heading = QtWidgets.QLabel("Review & export")
+        heading.setStyleSheet(
+            "QLabel { color: #333; font-size: 14px; font-weight: bold; background: transparent; }"
+        )
+        outer.addWidget(heading)
+        subtitle = QtWidgets.QLabel(
+            "Confirm your selections, then export. Tap Edit on any card to change it."
+        )
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(self._desc_qss())
+        outer.addWidget(subtitle)
+        outer.addSpacing(2)
+
+        self.review_cards_lay = QtWidgets.QVBoxLayout()
+        self.review_cards_lay.setContentsMargins(0, 0, 0, 0)
+        self.review_cards_lay.setSpacing(12)
+        outer.addLayout(self.review_cards_lay)
+
+        # "Ready to export" banner — restates the action in one sentence so
+        # the final click is unambiguous, instead of leaving the user to
+        # infer it from the cards above.
+        self.review_banner = QtWidgets.QFrame()
+        self.review_banner.setObjectName("reviewBanner")
+        self.review_banner.setStyleSheet("""
+            QFrame#reviewBanner {
+                background: rgba(222, 238, 248, 140);
+                border: 1px solid rgba(140, 170, 195, 190);
+                border-radius: 10px;
+            }
+        """)
+        banner_lay = QtWidgets.QHBoxLayout(self.review_banner)
+        banner_lay.setContentsMargins(12, 10, 12, 10)
+        banner_lay.setSpacing(8)
+        banner_icon = QtWidgets.QLabel("✓")
+        banner_icon.setStyleSheet(
+            "QLabel { color: rgba(0, 118, 174, 235); font-size: 14px; font-weight: 800; "
+            "background: transparent; }"
+        )
+        self.review_banner_text = QtWidgets.QLabel()
+        self.review_banner_text.setWordWrap(True)
+        self.review_banner_text.setStyleSheet(
+            "QLabel { color: rgba(0, 70, 110, 245); font-size: 12px; font-weight: 600; "
+            "background: transparent; }"
+        )
+        banner_lay.addWidget(banner_icon, 0)
+        banner_lay.addWidget(self.review_banner_text, 1)
+        outer.addWidget(self.review_banner)
+        outer.addSpacing(12)
+
         outer.addStretch(1)
         return host
 
     def _refresh_review(self):
-        while self.review_rows_lay.count():
-            item = self.review_rows_lay.takeAt(0)
+        while self.review_cards_lay.count():
+            item = self.review_cards_lay.takeAt(0)
             w = item.widget()
             if w is not None:
                 w.deleteLater()
@@ -630,67 +865,93 @@ class ExportMode(DataModeWidget):
         dest_card = self.dest_group.checkedButton()
         scope_btn = self.scope_group.checkedButton()
         scope_detail = (
-            f" ({self.btn_select_run.text().strip()})" if self.btn_scope_sel.isChecked() else ""
+            f" — {self.btn_select_run.text().strip()}" if self.btn_scope_sel.isChecked() else ""
         )
         fmt_btn = self.format_group.checkedButton()
         policy_btn = self.policy_group.checkedButton()
+        run_count = self._count_scoped_runs()
         date_text = (
             f"{self.date_start.date().toString('yyyy-MM-dd')} → "
             f"{self.date_end.date().toString('yyyy-MM-dd')}"
+            if self.chk_date_range.isChecked()
+            else "All dates"
         )
 
+        # Step indices line up with self._step_labels: Destination, Scope, Fields, Review.
         sections = [
             (
                 "Destination",
+                0,
                 [
-                    ("Destination", dest_card.text() if dest_card else "Folder on this PC"),
-                    ("Target", self.target_field.text()),
+                    ("Target", dest_card.text() if dest_card else "Folder on this PC"),
+                    ("Path", self.target_field.text()),
                     ("Dated subfolder", "Yes" if self.chk_dated_subfolder.isChecked() else "No"),
                 ],
             ),
             (
                 "Scope",
+                1,
                 [
                     ("Export name", self.name_field.text() or "(none — copied directly)"),
                     (
-                        "Runs to export",
-                        (scope_btn.text() if scope_btn else "All Runs") + scope_detail,
+                        "Runs",
+                        (scope_btn.text() if scope_btn else "All runs")
+                        + scope_detail
+                        + f" · {run_count} total",
                     ),
                     ("Date range", date_text),
                 ],
             ),
             (
-                "Fields",
+                "Format & Fields",
+                2,
                 [
                     ("Export as", fmt_btn.text() if fmt_btn else "CSV Report"),
-                    ("Existing files", policy_btn.text() if policy_btn else "Merge"),
+                    ("If file exists", policy_btn.text() if policy_btn else "Merge"),
                 ]
                 + (
-                    [("CSV columns", ", ".join(self._selected_csv_cols()))]
+                    [("Columns", ", ".join(self._selected_csv_cols()))]
                     if self.rb_csv.isChecked()
                     else []
                 ),
             ),
         ]
 
-        for idx, (heading, rows) in enumerate(sections):
-            if idx > 0:
-                divider = QtWidgets.QFrame()
-                divider.setFixedHeight(1)
-                divider.setStyleSheet("background: rgba(210, 218, 228, 150); border: none;")
-                self.review_rows_lay.addWidget(divider)
-            self.review_rows_lay.addWidget(self._build_review_section(heading, rows))
+        for heading, step_index, rows in sections:
+            self.review_cards_lay.addWidget(self._build_review_card(heading, step_index, rows))
 
-    def _build_review_section(self, heading, rows):
-        section = QtWidgets.QWidget()
-        section.setStyleSheet("background: transparent;")
-        slay = QtWidgets.QVBoxLayout(section)
-        slay.setContentsMargins(0, 0, 0, 0)
-        slay.setSpacing(8)
+        fmt_phrase = {0: "one CSV report", 1: "a ZIP archive", 2: "a folder of files"}.get(
+            self.format_group.checkedId(), "a report"
+        )
+        dest_label = dest_card.text() if dest_card else "Folder on this PC"
+        plural = "" if run_count == 1 else "s"
+        self.review_banner_text.setText(
+            f"Ready to export {run_count} run{plural} as {fmt_phrase} to {dest_label}."
+        )
 
-        head = QtWidgets.QLabel(heading.upper())
-        head.setStyleSheet(self._caption_qss())
-        slay.addWidget(head)
+    def _build_review_card(self, title, step_index, rows):
+        """One grouped review card: a small caption + "Edit" link (jumps
+        back to the step that owns this data) above a 2-column field grid."""
+        card = QtWidgets.QFrame()
+        card.setObjectName("glassPanel")
+        card.setStyleSheet(self._glass_panel_qss())
+        clay = QtWidgets.QVBoxLayout(card)
+        clay.setContentsMargins(14, 12, 14, 12)
+        clay.setSpacing(8)
+
+        head_row = QtWidgets.QHBoxLayout()
+        head_row.setContentsMargins(0, 0, 0, 0)
+        head_row.setSpacing(8)
+        cap = QtWidgets.QLabel(title.upper())
+        cap.setStyleSheet(self._caption_qss())
+        head_row.addWidget(cap)
+        head_row.addStretch(1)
+        edit_btn = GlassPushButton(" Edit", variant="ghost")
+        edit_btn.setFixedHeight(24)
+        edit_btn.set_border_visible(False)
+        edit_btn.clicked.connect(lambda _=False, idx=step_index: self._go_to_step(idx))
+        head_row.addWidget(edit_btn)
+        clay.addLayout(head_row)
 
         grid = QtWidgets.QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
@@ -701,8 +962,78 @@ class ExportMode(DataModeWidget):
         for i, (label, value) in enumerate(rows):
             r, c = divmod(i, 2)
             grid.addWidget(self._review_field(label, value), r, c)
-        slay.addLayout(grid)
-        return section
+        clay.addLayout(grid)
+        return card
+
+    def _count_scoped_runs(self):
+        """Count run folders matching the current scope (device/run
+        selection + unnamed-run policy + date range), for the Review
+        banner. Lightweight: only stats file mtimes, never parses runs."""
+        data_path = Constants.log_prefer_path
+        select_device, select_run = os.path.split(self._source_subfolder)
+        if select_device == "":
+            select_device = select_run
+            select_run = ""
+        try:
+            date_filter = self._compute_filter_min()
+            date_filter_max = self._compute_filter_max()
+        except ValueError:
+            date_filter, date_filter_max = 0, None
+
+        count = 0
+        try:
+            devices = os.listdir(data_path)
+        except OSError:
+            return 0
+        for device in devices:
+            if select_device and select_device != device:
+                continue
+            device_path = os.path.join(data_path, device)
+            if not os.path.isdir(device_path):
+                continue
+            try:
+                runs = os.listdir(device_path)
+            except OSError:
+                continue
+            for run in runs:
+                if select_run and select_run != run:
+                    continue
+                run_path = os.path.join(device_path, run)
+                if not os.path.isdir(run_path):
+                    continue
+                is_unnamed = run == "_unnamed" or device == "_unnamed"
+                if is_unnamed and not self._export_unnamed:
+                    continue
+                if date_filter != 0 or date_filter_max is not None:
+                    if not self._run_in_date_range(run_path, date_filter, date_filter_max):
+                        continue
+                count += 1
+        return count
+
+    @staticmethod
+    def _run_in_date_range(run_path, date_filter, date_filter_max):
+        """True if the newest file mtime in ``run_path`` falls within the
+        given [date_filter, date_filter_max) window."""
+        try:
+            files = os.listdir(run_path)
+        except OSError:
+            return False
+        last_modified = None
+        for f in files:
+            try:
+                mtime = os.stat(os.path.join(run_path, f)).st_mtime
+            except OSError:
+                continue
+            ts = datetime.datetime.fromtimestamp(mtime, tz=tz.utc)
+            if last_modified is None or ts > last_modified:
+                last_modified = ts
+        if last_modified is None:
+            return False
+        if date_filter != 0 and last_modified < date_filter:
+            return False
+        if date_filter_max is not None and last_modified >= date_filter_max:
+            return False
+        return True
 
     @staticmethod
     def _review_field(label, value):
@@ -729,7 +1060,7 @@ class ExportMode(DataModeWidget):
     def _selected_csv_cols(self):
         """The ordered list of columns the user has ticked (Run Name always
         first/included). Replaces the old combo_csv_cols.check_items() read."""
-        return [f for f in CSV_FIELDS if f == "Run Name" or self.csv_checks[f].isChecked()]
+        return [f for f in CSV_FIELDS if f == "Run Name" or self.csv_chips[f].isChecked()]
 
     # ---- Status + actions ---------------------------------------------
     def _build_status_and_actions(self):
@@ -847,7 +1178,8 @@ class ExportMode(DataModeWidget):
         """Reset every wizard field back to its defaults and return to step
         0 — used after a completed export, and by Cancel when idle."""
         self._source_subfolder = ""
-        self.btn_select_run.setText(" All")
+        self.btn_select_run.setText(" Choose…")
+        self.btn_select_run.setVisible(False)
         self.scope_group.setCheckedId(0)  # All Runs
 
         self.format_group.setCheckedId(0)  # CSV Report
@@ -856,11 +1188,12 @@ class ExportMode(DataModeWidget):
         today = QtCore.QDate.currentDate()
         self.date_start.setDate(today.addMonths(-1))
         self.date_end.setDate(today)
+        self.chk_date_range.setChecked(True)
 
         self.policy_group.setCheckedId(POLICY_MERGE)
 
-        for cb in self.csv_checks.values():
-            cb.setChecked(True)
+        for chip in self.csv_chips.values():
+            chip.setChecked(True)
 
         self.chk_dated_subfolder.setChecked(True)
         self._generate_name()
@@ -953,16 +1286,18 @@ class ExportMode(DataModeWidget):
         new_lbl.show()
         new_lbl.raise_()
 
-        # Make the live stack fully transparent — NOT hidden — for the
-        # duration. setVisible(False) would collapse its reserved space in
-        # the shared QVBoxLayout (stepper above, footer below), snapping
-        # them around (the earlier "stepper sliding"/jumpy-layout bug).
-        # Opacity 0 has no effect on layout — it just stops the live stack
-        # (already showing the new page underneath the proxies) from
-        # bleeding through at the proxies' edges.
-        stack_effect = QtWidgets.QGraphicsOpacityEffect(stack)
-        stack.setGraphicsEffect(stack_effect)
-        stack_effect.setOpacity(0.0)
+        # The live stack underneath is left as-is (not hidden, no opacity
+        # effect) — setVisible(False) would collapse its reserved space in
+        # the shared QVBoxLayout (stepper above, footer below), snapping them
+        # around (the earlier "stepper sliding"/jumpy-layout bug), and a
+        # QGraphicsOpacityEffect here is worse: applied to a QStackedWidget
+        # full of custom-painted children (GlassOptionCard, GlassPushButton,
+        # toggle chips, ...), it intermittently raced Qt's own paint pass and
+        # produced "QPainter::begin: A paint device can only be painted by
+        # one painter at a time" spam. It's also unnecessary: old_lbl and
+        # new_lbl share the exact same duration/curve, so their union covers
+        # the clip's full rect at every frame (a "push", no gap) — the live
+        # stack never has a chance to show through underneath anyway.
 
         # Both animations share the EXACT same duration/curve so old and new
         # move in lockstep — old's trailing edge and new's leading edge stay
@@ -985,7 +1320,6 @@ class ExportMode(DataModeWidget):
         group.addAnimation(anim_new)
 
         def _finish():
-            stack.setGraphicsEffect(None)
             clip.hide()
             clip.setParent(None)
             clip.deleteLater()
@@ -1028,34 +1362,10 @@ class ExportMode(DataModeWidget):
         for field in self._scope_fields:
             field.show()
 
-    def _relayout_csv_checks(self, force=False):
-        """Flow the column checkboxes into 1–3 columns based on width."""
-        avail = (
-            self.fields_scroll.viewport().width() if hasattr(self, "fields_scroll") else self.width()
-        )
-        cols = 3 if avail >= RESPONSIVE_BREAKPOINT else (2 if avail >= 360 else 1)
-        if not force and cols == getattr(self, "_csv_check_cols", None):
-            return
-        self._csv_check_cols = cols
-        while self.csv_checks_grid.count():
-            item = self.csv_checks_grid.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.setParent(self.csv_card)
-        for c in range(3):
-            self.csv_checks_grid.setColumnStretch(c, 1 if c < cols else 0)
-        for idx, field in enumerate(CSV_FIELDS):
-            r, c = divmod(idx, cols)
-            self.csv_checks_grid.addWidget(self.csv_checks[field], r, c)
-        for cb in self.csv_checks.values():
-            cb.show()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if hasattr(self, "scope_grid"):
             self._relayout_grid()
-        if hasattr(self, "csv_checks_grid"):
-            self._relayout_csv_checks()
 
     # ------------------------------------------------------------------
     #  Shared-service hooks
@@ -1068,7 +1378,6 @@ class ExportMode(DataModeWidget):
         self.services.usb_remove.connect(self._on_usb_remove)
         self._update_export_enabled()
         self._relayout_grid(force=True)
-        self._relayout_csv_checks(force=True)
 
     def on_freeze(self, frozen: bool):
         # Mirror freezeGUI's enable/disable (Erase-only handled elsewhere).
@@ -1237,7 +1546,7 @@ class ExportMode(DataModeWidget):
             return
         selected = folder.toLocalFile()
         if data_root not in selected:
-            self.btn_select_run.setText(" All")
+            self.btn_select_run.setText(" Choose…")
             self._source_subfolder = ""
             Log.w(TAG, "Selected folder not in logged data path.")
             return
@@ -1252,10 +1561,16 @@ class ExportMode(DataModeWidget):
         self._generate_name()
 
     def _on_selection_changed(self, *_):
+        self.btn_select_run.setVisible(self.btn_scope_sel.isChecked())
         if self.btn_scope_all.isChecked():
-            self.btn_select_run.setText(" All")
+            self.btn_select_run.setText(" Choose…")
             self._source_subfolder = ""
             self._generate_name()
+
+    def _on_date_range_toggled(self, *_):
+        enabled = self.chk_date_range.isChecked()
+        for w in (self.date_start, self.date_end, self.lbl_date_from, self.lbl_date_to):
+            w.setEnabled(enabled)
 
     # ------------------------------------------------------------------
     #  Name / format handlers
@@ -1286,13 +1601,17 @@ class ExportMode(DataModeWidget):
         self.csv_card.setProperty("dimmed", not is_csv)
         self.csv_card.style().unpolish(self.csv_card)
         self.csv_card.style().polish(self.csv_card)
-        # CSV relabels the merge/skip policy to Append/Abort (semantics differ).
+        # CSV relabels the merge/skip policy to Append/Cancel (semantics differ).
         if is_csv:
             self.rb_merge.setText("Append")
-            self.rb_skip.setText("Abort")
+            self.rb_merge.setDescription("Add rows to the file")
+            self.rb_skip.setText("Cancel")
+            self.rb_skip.setDescription("Leave existing untouched")
         else:
             self.rb_merge.setText("Merge")
+            self.rb_merge.setDescription("Keep newer versions")
             self.rb_skip.setText("Skip")
+            self.rb_skip.setDescription("Leave existing untouched")
         # The dated-subfolder toggle stays freely editable regardless of
         # format: it lives on the Destination step, before the user has even
         # reached this Scope step's format choice, so locking/forcing it here
@@ -1336,15 +1655,21 @@ class ExportMode(DataModeWidget):
 
     def _compute_filter_min(self):
         """Date floor: local midnight at the START of the selected start date,
-        as an aware UTC datetime. Raises ValueError if start is after end."""
+        as an aware UTC datetime. 0 ("no filter") if the date-range checkbox
+        is off. Raises ValueError if start is after end."""
+        if not self.chk_date_range.isChecked():
+            return 0
         start, end = self.date_start.date(), self.date_end.date()
         if start > end:
-            raise ValueError('"Export by date range" start date must be on or before the end date.')
+            raise ValueError('"Limit to a date range" start date must be on or before the end date.')
         return self._qdate_to_utc_floor(start)
 
     def _compute_filter_max(self):
         """Date ceiling: local midnight at the END of the selected end date
-        (i.e. start of the following day) so the end day is inclusive."""
+        (i.e. start of the following day) so the end day is inclusive. None
+        ("no filter") if the date-range checkbox is off."""
+        if not self.chk_date_range.isChecked():
+            return None
         return self._qdate_to_utc_ceiling(self.date_end.date())
 
     def _do_export(self):
@@ -1490,8 +1815,8 @@ class ExportMode(DataModeWidget):
                 self.csv_report_path = export_folder + ".csv"
                 policy = self._policy_id()
                 if os.path.exists(self.csv_report_path):
-                    if policy == POLICY_SKIP:  # "Abort" in CSV mode
-                        Log.e(TAG, "CSV report already exists; user selected Abort.")
+                    if policy == POLICY_SKIP:  # "Cancel" in CSV mode
+                        Log.e(TAG, "CSV report already exists; user selected Cancel.")
                         self.services.emit_progress(
                             self.MODE_KEY,
                             "CSV report already exists. Export aborted.",
@@ -2112,34 +2437,6 @@ class ExportMode(DataModeWidget):
             "QLabel { color: rgba(60, 72, 88, 200); font-size: 12px; " "background: transparent; }"
         )
 
-    @staticmethod
-    def _check_qss():
-        """Glass-friendly checkbox styling for the CSV column pickers."""
-        return """
-            QCheckBox {
-                color: rgba(40, 50, 65, 215); font-size: 12px;
-                background: transparent; spacing: 8px; padding: 2px 0px;
-            }
-            QCheckBox:disabled { color: rgba(40, 50, 65, 120); }
-            QCheckBox::indicator {
-                width: 16px; height: 16px; border-radius: 5px;
-                border: 1px solid rgba(120, 130, 145, 170);
-                background: rgba(255, 255, 255, 160);
-            }
-            QCheckBox::indicator:hover {
-                border: 1px solid rgba(10, 163, 230, 200);
-            }
-            QCheckBox::indicator:checked {
-                background: rgba(10, 163, 230, 230);
-                border: 1px solid rgba(10, 163, 230, 235);
-                image: url(none);
-            }
-            QCheckBox::indicator:checked:disabled {
-                background: rgba(10, 163, 230, 120);
-                border: 1px solid rgba(10, 163, 230, 120);
-            }
-        """
-
     def _date_qss(self):
         """Glass styling for QDateEdit that mirrors the line-edit/combo look."""
         icon_path = self._icon_file_path("date-range.svg")
@@ -2191,12 +2488,9 @@ class ExportMode(DataModeWidget):
             pass
         return ""
 
-    def _card(self, title, subtitle=""):
-        """A frosted glass panel. Returns the QFrame with a `.body` QVBoxLayout
-        for callers to populate (header + optional subtitle are pre-added)."""
-        card = QtWidgets.QFrame()
-        card.setObjectName("glassPanel")
-        card.setStyleSheet("""
+    @staticmethod
+    def _glass_panel_qss():
+        return """
             QFrame#glassPanel {
                 background: rgba(255, 255, 255, 110);
                 border: 1px solid rgba(218, 224, 232, 170);
@@ -2206,17 +2500,39 @@ class ExportMode(DataModeWidget):
                 background: rgba(255, 255, 255, 55);
                 border: 1px solid rgba(218, 224, 232, 100);
             }
-        """)
+        """
+
+    def _card(self, title, subtitle="", header_right=None):
+        """A frosted glass panel. Returns the QFrame with a `.body` QVBoxLayout
+        for callers to populate (header + optional subtitle are pre-added).
+
+        ``header_right`` is an optional widget or layout (e.g. "Select all /
+        Clear" actions, an "Edit" link) docked to the right of the title,
+        on the same line.
+        """
+        card = QtWidgets.QFrame()
+        card.setObjectName("glassPanel")
+        card.setStyleSheet(self._glass_panel_qss())
         outer = QtWidgets.QVBoxLayout(card)
         outer.setContentsMargins(14, 12, 14, 12)
         outer.setSpacing(8)
 
+        head_row = QtWidgets.QHBoxLayout()
+        head_row.setContentsMargins(0, 0, 0, 0)
+        head_row.setSpacing(8)
         header = QtWidgets.QLabel(title)
         header.setStyleSheet(
             "QLabel { color: #333; font-size: 12px; font-weight: bold; "
             "background: transparent; }"
         )
-        outer.addWidget(header)
+        head_row.addWidget(header)
+        head_row.addStretch(1)
+        if header_right is not None:
+            if isinstance(header_right, QtWidgets.QLayout):
+                head_row.addLayout(header_right)
+            else:
+                head_row.addWidget(header_right)
+        outer.addLayout(head_row)
         if subtitle:
             sub = QtWidgets.QLabel(subtitle)
             sub.setStyleSheet(self._desc_qss())

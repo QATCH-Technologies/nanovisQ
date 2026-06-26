@@ -280,7 +280,6 @@ class QTextEditLogger(QtCore.QObject):
         self.level_filter.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
         self.level_filter.setFixedSize(120, 28)
         self.level_filter.currentTextChanged.connect(self.apply_filter)
-        self.level_filter.setCurrentText("INFO")  # calls apply_filter
         control_layout.addWidget(self.level_filter)
 
         control_layout.addStretch()
@@ -406,6 +405,13 @@ class QTextEditLogger(QtCore.QObject):
         self._flush_timer.start()
 
         self._update_match_ui(0, 0)
+
+        # Set the default filter now that every attribute apply_filter touches
+        # (self._pending, self.logText, self.log_cache, self.search_input)
+        # actually exists — setting this earlier fired currentTextChanged
+        # synchronously during construction, before those existed, and
+        # crashed with "QTextEditLogger object has no attribute '_pending'".
+        self.level_filter.setCurrentText("INFO")  # calls apply_filter
 
     def focus_search(self):
         self.search_input.setFocus()

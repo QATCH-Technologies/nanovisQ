@@ -61,6 +61,7 @@ class GlassSegmentedControl(QtWidgets.QFrame):
             }}
         """)
         self._buttons = {}
+        self._icons = {}  # key -> (inactive QIcon, active QIcon)
         self._active_key = None
 
         if orientation == QtCore.Qt.Vertical:
@@ -68,9 +69,16 @@ class GlassSegmentedControl(QtWidgets.QFrame):
         else:
             lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(6, 6, 6, 6)
-        lay.setSpacing(6)
+        lay.setSpacing(4)
         self._group = QtWidgets.QButtonGroup(self)
         self._group.setExclusive(True)
+
+        # Every row is identical: an 18px stroke icon + label, left-aligned.
+        # Rows with no icon asset fall back to text-only rather than mixing
+        # icon/no-icon rows, which would break the "every row identical" look.
+        icon_size = QtCore.QSize(18, 18)
+        inactive_color = QtGui.QColor(80, 92, 108, 235)
+        active_color = QtGui.QColor(0, 100, 150, 255)
 
         for mode in modes:
             if len(mode) == 3:
@@ -79,19 +87,20 @@ class GlassSegmentedControl(QtWidgets.QFrame):
                 key, label = mode
                 icon_path = None
             btn = QtWidgets.QToolButton()
-            btn.setText(label)
+            btn.setText(f" {label}")
             btn.setCheckable(True)
             btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-            # Icon placeholder: wire the path now; if the file is missing the
-            # button simply shows text only, so this is safe to ship empty.
             if icon_path and os.path.exists(icon_path):
-                btn.setIcon(QtGui.QIcon(icon_path))
-                btn.setIconSize(QtCore.QSize(16, 16))
+                icon_inactive = self._tinted_icon(icon_path, inactive_color, icon_size.width())
+                icon_active = self._tinted_icon(icon_path, active_color, icon_size.width())
+                btn.setIcon(icon_inactive)
+                btn.setIconSize(icon_size)
                 btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+                self._icons[key] = (icon_inactive, icon_active)
             else:
                 btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
             if orientation == QtCore.Qt.Vertical:
-                btn.setFixedHeight(40)
+                btn.setFixedHeight(38)
                 btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
             else:
                 btn.setFixedHeight(30)
@@ -106,42 +115,117 @@ class GlassSegmentedControl(QtWidgets.QFrame):
             lay.addStretch()  # keep buttons pinned to the top of the sidebar
 
     @staticmethod
+    def _tinted_icon(path, color, size=18):
+        """A copy of the icon at *path* fully painted in *color* (SourceAtop,
+        so transparent SVG areas stay transparent)."""
+        src = QtGui.QIcon(path).pixmap(size, size)
+        dst = QtGui.QPixmap(src.size())
+        dst.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(dst)
+        p.drawPixmap(0, 0, src)
+        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+        p.fillRect(dst.rect(), color)
+        p.end()
+        return QtGui.QIcon(dst)
+
+    @staticmethod
     def _segment_qss():
         return """
             QToolButton {
                 background: transparent;
-                border: none;
-                border-left: 3px solid transparent;
+                border: 2px solid transparent;
                 border-radius: 11px;
                 color: rgba(70, 80, 95, 215);
                 font-size: 12px; font-weight: 600;
-                padding: 0px 10px;
+                padding: 0px 9px;
                 text-align: left;
             }
             QToolButton:hover {
-                background: rgba(255, 255, 255, 110);
+                background: rgba(255, 255, 255, 120);
             }
             QToolButton:checked {
-                background: rgba(255, 255, 255, 245);
-                border-left: 3px solid rgba(10, 163, 230, 235);
-                color: rgba(30, 41, 59, 255);
+                background: rgba(255, 255, 255, 240);
+                border: 2px solid rgba(10, 163, 230, 110);
+                color: rgba(0, 90, 135, 250);
                 font-weight: 700;
             }
             QToolButton:checked:hover {
-                background: rgba(255, 255, 255, 255);
+                background: rgba(255, 255, 255, 250);
             }
         """
 
     def set_active(self, key):
+        # NOTE: the glow used to be a QGraphicsDropShadowEffect applied to the
+        # checked QToolButton. Combining a graphics effect with a stylesheet
+        # background/border on a QToolButton is a known Qt gotcha — the
+        # button can render fully blank (icon, text, and background all
+        # gone) depending on platform/paint timing. The QSS-only halo below
+        # (a wider, low-alpha border standing in for "glow") gets the same
+        # look with zero risk of that failure mode.
         if key not in self._buttons:
             return
-        self._buttons[key].setChecked(True)
+        for k, btn in self._buttons.items():
+            is_active = k == key
+            btn.setChecked(is_active)
+            icons = self._icons.get(k)
+            if icons is not None:
+                btn.setIcon(icons[1] if is_active else icons[0])
         if key != self._active_key:
             self._active_key = key
             self.modeChanged.emit(key)
 
     def active_key(self):
         return self._active_key
+
+
+class _GlassPanel(QtWidgets.QFrame):
+    """The overlay's main frosted panel — background/border/radius are
+    painted directly instead of via QSS.
+
+    The fullscreen toggle animates alpha/border-width/radius every frame.
+    Driving that through ``setStyleSheet()`` (the original approach) means a
+    full CSS reparse + repolish of this frame AND its entire child tree
+    (header, sidebar, the active mode's whole widget tree) on every tick —
+    cheap when this panel was simple, but the per-mode content has since
+    grown a lot heavier (chips, option cards, scroll areas...), and that
+    repolish cascade is what showed up as animation stutter. Painting these
+    three properties manually and calling ``update()`` instead skips the
+    style system entirely, so a tick is just "redraw one rounded rect."
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._bg_alpha = 235
+        self._border_width = 1.5
+        self._radius = 12.0
+
+    def set_appearance(self, alpha, border_width, radius):
+        self._bg_alpha = alpha
+        self._border_width = border_width
+        self._radius = radius
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        bw = self._border_width
+        rect = QtCore.QRectF(self.rect()).adjusted(bw / 2, bw / 2, -bw / 2, -bw / 2)
+
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(QtGui.QColor(255, 255, 255, int(self._bg_alpha)))
+        if self._radius > 0:
+            painter.drawRoundedRect(rect, self._radius, self._radius)
+        else:
+            painter.drawRect(rect)
+
+        if bw > 0:
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), bw))
+            painter.setBrush(QtCore.Qt.NoBrush)
+            if self._radius > 0:
+                painter.drawRoundedRect(rect, self._radius, self._radius)
+            else:
+                painter.drawRect(rect)
+        painter.end()
 
 
 # ======================================================================
@@ -183,13 +267,13 @@ class DataManagementWidget(QtWidgets.QWidget):
         self._fade_anim = None  # single reusable open/close fade
         self._fs_anim = None  # fullscreen geometry animation
         self._close_in_progress = False
+        self._close_fade_proxy = None  # static-pixmap stand-in animated during close
 
         self.base_layout = QtWidgets.QVBoxLayout(self)
         self.base_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.glass_frame = QtWidgets.QFrame(self)
+        self.glass_frame = _GlassPanel(self)
         self.glass_frame.setObjectName("dmview")
-        self.glass_frame.setStyleSheet(self._glass_qss(235, 1.5, 12))
 
         # Fade via a composited opacity effect (animating the property is a
         # paint-time multiply) instead of re-setting the stylesheet each frame,
@@ -246,16 +330,6 @@ class DataManagementWidget(QtWidgets.QWidget):
         p.end()
         return QtGui.QIcon(dst)
 
-    @staticmethod
-    def _glass_qss(alpha, border, radius):
-        return f"""
-            QFrame#dmview {{
-                background: rgba(255, 255, 255, {alpha});
-                border: {border}px solid rgba(255, 255, 255, 230);
-                border-radius: {radius}px;
-            }}
-        """
-
     def _build_taskbar(self):
         # Header row (title only) sits across the top.
         self.top_section_layout = QtWidgets.QVBoxLayout()
@@ -300,7 +374,7 @@ class DataManagementWidget(QtWidgets.QWidget):
             "import": os.path.join(_icon_dir, "import.svg"),
             "export": os.path.join(_icon_dir, "export.svg"),
             "recover": os.path.join(_icon_dir, "recover.svg"),
-            "advanced": os.path.join(_icon_dir, "advanced.svg"),
+            "advanced": os.path.join(_icon_dir, "gear.svg"),
             "history": os.path.join(_icon_dir, "history.svg"),
         }
         modes = [
@@ -314,9 +388,10 @@ class DataManagementWidget(QtWidgets.QWidget):
         button_size = 28
         icon_size = QtCore.QSize(14, 14)
 
-        # Tint the fullscreen icon to match the close button color.
+        # Fullscreen isn't destructive like Close, so its hover tints to a
+        # lighter grey instead of the close button's red.
         self._FS_NORMAL = QtGui.QColor(110, 120, 130, 190)
-        self._FS_HOVER = QtGui.QColor(210, 55, 55, 230)
+        self._FS_HOVER = QtGui.QColor(175, 185, 196, 235)
         self._fs_normal_icon = self._tinted_icon(self.ICON_EXPAND, self._FS_NORMAL, size=14)
         self._fs_hover_icon = self._tinted_icon(self.ICON_EXPAND, self._FS_HOVER, size=14)
 
@@ -561,8 +636,8 @@ class DataManagementWidget(QtWidgets.QWidget):
         p = 0.0 if self._default_margin_pct <= 0 else min(1.0, frac / self._default_margin_pct)
         alpha = int(255 + (235 - 255) * p)
         border = 1.5 * p
-        radius = int(12 * p)
-        self.glass_frame.setStyleSheet(self._glass_qss(alpha, border, radius))
+        radius = 12.0 * p
+        self.glass_frame.set_appearance(alpha, border, radius)
 
         self._update_buttons_position(mx, my)
 
@@ -710,24 +785,36 @@ class DataManagementWidget(QtWidgets.QWidget):
             anim.deleteLater()
             self._fade_anim = None
 
-    def _run_fade(self, scrim_from, scrim_to, op_from, op_to, duration, easing, on_done=None):
-        """Animate the scrim alpha (cheap paintEvent) and the glass opacity
-        effect (composited) from fixed endpoints. No per-frame stylesheet."""
+    def _run_fade(
+        self, scrim_from, scrim_to, op_from, op_to, duration, easing, on_done=None, opacity_effect=None
+    ):
+        """Animate the scrim alpha (cheap paintEvent) and an opacity effect
+        (composited) from fixed endpoints. No per-frame stylesheet.
+
+        ``opacity_effect`` defaults to the live glass_frame's own effect
+        (the open fade). The close fade passes a lightweight effect on a
+        static pixmap proxy instead — see ``_animate_close``.
+        """
         self._stop_anim()
+        effect = opacity_effect if opacity_effect is not None else self._glass_opacity
         anim = QtCore.QVariantAnimation(self)
         anim.setDuration(duration)
         anim.setEasingCurve(easing)
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
 
+        def _set_opacity(frac):
+            if effect is not None:
+                effect.setOpacity(max(0.0, min(1.0, float(frac))))
+
         def _step(t):
             self._scrim_alpha = int(scrim_from + (scrim_to - scrim_from) * t)
-            self._set_glass_opacity(op_from + (op_to - op_from) * t)
+            _set_opacity(op_from + (op_to - op_from) * t)
             self.update()  # repaint the scrim only
 
         def _settle():
             self._scrim_alpha = int(scrim_to)
-            self._set_glass_opacity(op_to)
+            _set_opacity(op_to)
             self.update()
             done_anim = self._fade_anim
             self._fade_anim = None
@@ -755,7 +842,41 @@ class DataManagementWidget(QtWidgets.QWidget):
         )
 
     def _animate_close(self):
+        # Snapshot the panel once and fade a flat pixmap proxy instead of
+        # leaving the live QGraphicsOpacityEffect on glass_frame — that
+        # effect forces Qt to re-render the ENTIRE live widget tree (header,
+        # sidebar, and whatever the active mode's full content is) into an
+        # offscreen buffer on every single animation frame. That per-frame
+        # full-subtree recomposite is what showed up as close-animation
+        # stutter once the per-mode content grew heavier. A static pixmap
+        # has nothing left to re-render — fading it is just "blit one image
+        # at a lower alpha," every frame, regardless of how complex the
+        # live content underneath is.
+        self._teardown_close_fade_proxy()
         cur_op = self._glass_opacity.opacity() if self._glass_opacity else 1.0
+        geo = self.glass_frame.geometry()
+        pix = self.glass_frame.grab()
+        self.glass_frame.hide()
+
+        proxy = QtWidgets.QLabel(self)
+        proxy.setObjectName("closeFadeProxy")
+        proxy.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        proxy.setPixmap(pix)
+        proxy.setGeometry(geo)
+        proxy.show()
+        proxy.raise_()
+        # Keep the window-control buttons (siblings of glass_frame, drawn
+        # above it) on top of the new proxy too — raise_() puts the proxy
+        # at the top of self's stacking order, which would otherwise cover
+        # them for the duration of the close fade.
+        self.btn_close.raise_()
+        self.btn_fullscreen.raise_()
+        self._close_fade_proxy = proxy
+
+        proxy_opacity = QtWidgets.QGraphicsOpacityEffect(proxy)
+        proxy_opacity.setOpacity(cur_op)
+        proxy.setGraphicsEffect(proxy_opacity)
+
         self._run_fade(
             scrim_from=self._scrim_alpha,
             scrim_to=0,
@@ -764,11 +885,24 @@ class DataManagementWidget(QtWidgets.QWidget):
             duration=180,
             easing=QtCore.QEasingCurve.InQuad,
             on_done=self._do_close,
+            opacity_effect=proxy_opacity,
         )
+
+    def _teardown_close_fade_proxy(self):
+        proxy = self._close_fade_proxy
+        if proxy is not None:
+            try:
+                proxy.hide()
+                proxy.setParent(None)
+                proxy.deleteLater()
+            except RuntimeError:
+                pass
+            self._close_fade_proxy = None
 
     def _do_close(self):
         self.services.stop()  # tear down the shared USB loop on close
         self._stop_anim()
+        self._teardown_close_fade_proxy()
         self._teardown_slide()
         self._closing = True
         self.close()

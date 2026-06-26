@@ -6,23 +6,29 @@ PORT FROM export_widget.Ui_Export:
     do_clearAllHistory -> _clear_all()
 
 Functionally identical to the original (same log path, same clear-via-trash +
-reload, same empty-state handling), but instead of dumping the raw HTML log into
-a flat QTextEdit, each entry is parsed into a styled glass "card": colour-coded
-by action (Import = blue, Export = green), with the run count + timestamp as a
-header and the from/to/settings lines as structured detail rows.
+reload, same empty-state handling), but instead of dumping the raw HTML log
+into a flat QTextEdit, each entry renders as a compact, expandable row:
+direction chip + action/count + an inline "N skipped" pill, a right-aligned
+path preview and timestamp, and a chevron. Clicking a row expands it in place
+to show the full from/to/settings detail plus per-entry actions (Repeat
+export, Open folder). Rows are grouped under date headers (Today/Yesterday/...)
+and can be filtered to All/Export/Import and sorted Newest/Oldest first.
 """
 
 import os
 import re
 import html
+import datetime
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.core.constants import Constants
 from QATCH.common.logger import Logger as Log
+from QATCH.common.architecture import Architecture
 
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 from QATCH.ui.components.glass_push_button import GlassPushButton
+from QATCH.ui.components.animated_combo_box import AnimatedComboBox
 
 try:
     import send2trash
@@ -30,6 +36,18 @@ except Exception:  # pragma: no cover - optional dependency
     send2trash = None
 
 TAG = "[DataHistory]"
+
+
+class _ClickableRow(QtWidgets.QFrame):
+    """A transparent row container that emits ``clicked`` on a left click —
+    used as the always-visible header of an expandable history row."""
+
+    clicked = QtCore.pyqtSignal()
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 class HistoryMode(DataModeWidget):
@@ -42,46 +60,69 @@ class HistoryMode(DataModeWidget):
     def build(self):
         self._entries = []  # cached parsed entries (file order = newest first)
         self._sort_desc = True  # True: newest first; False: oldest first
+        self._filter = "all"  # "all" | "Exported" | "Imported"
 
-        # ---- Glass panel matching the import widget --------------------
-        card = self._card("Import / Export History")
-        card_lay = card.layout()
+        # Pagination state for the infinite-scroll list (see _render /
+        # _append_next_page / _on_scroll_changed).
+        self._page_entries = []  # full filtered/sorted list backing the list
+        self._visible_count = 0  # how many of _page_entries are rendered
+        self._last_group = None  # date-group header most recently rendered
+        self._end_label = None  # "— End of history —" marker, once shown
+        self._loading_more = False  # reentrancy guard for the scroll handler
 
-        # Header controls row: caption + sort segment.
+        heading = QtWidgets.QLabel("Import / Export History")
+        heading.setStyleSheet(
+            "QLabel { color: #333; font-size: 14px; font-weight: bold; background: transparent; }"
+        )
+        self.root.addWidget(heading)
+        subtitle = QtWidgets.QLabel("Every transfer, most recent first.")
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(self._desc_qss())
+        self.root.addWidget(subtitle)
+
+        # Controls row: All/Export/Import filter chips (left) + sort dropdown (right).
         controls = QtWidgets.QHBoxLayout()
-        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setContentsMargins(0, 4, 0, 0)
         controls.setSpacing(8)
-        sort_caption = QtWidgets.QLabel("Sort")
-        sort_caption.setStyleSheet(self._caption_qss())
-        controls.addWidget(sort_caption)
 
-        # Frosted segmented sort control (Newest / Oldest).
-        self.sort_segment = QtWidgets.QFrame()
-        self.sort_segment.setObjectName("sortSegment")
-        self.sort_segment.setStyleSheet("""
-            QFrame#sortSegment {
+        self.filter_group = QtWidgets.QButtonGroup(self)
+        self.btn_filter_all = self._segment_button("All")
+        self.btn_filter_export = self._segment_button("Export")
+        self.btn_filter_import = self._segment_button("Import")
+        self.filter_group.addButton(self.btn_filter_all, 0)
+        self.filter_group.addButton(self.btn_filter_export, 1)
+        self.filter_group.addButton(self.btn_filter_import, 2)
+        self.btn_filter_all.setChecked(True)
+        self.filter_group.buttonToggled.connect(self._on_filter_changed)
+
+        filter_box = QtWidgets.QFrame()
+        filter_box.setObjectName("filterSegment")
+        filter_box.setStyleSheet("""
+            QFrame#filterSegment {
                 background: rgba(255, 255, 255, 60);
                 border: 1px solid rgba(255, 255, 255, 150);
                 border-radius: 8px;
             }
         """)
-        seg_lay = QtWidgets.QHBoxLayout(self.sort_segment)
-        seg_lay.setContentsMargins(4, 4, 4, 4)
-        seg_lay.setSpacing(4)
-        self.sort_group = QtWidgets.QButtonGroup(self)
-        self.btn_newest = self._segment_button("Newest first", "Most recent at the top")
-        self.btn_oldest = self._segment_button("Oldest first", "Earliest at the top")
-        self.sort_group.addButton(self.btn_newest, 0)
-        self.sort_group.addButton(self.btn_oldest, 1)
-        self.btn_newest.setChecked(True)
-        seg_lay.addWidget(self.btn_newest)
-        seg_lay.addWidget(self.btn_oldest)
-        self.sort_group.buttonToggled.connect(self._on_sort_changed)
-        controls.addWidget(self.sort_segment)
+        filter_lay = QtWidgets.QHBoxLayout(filter_box)
+        filter_lay.setContentsMargins(4, 4, 4, 4)
+        filter_lay.setSpacing(4)
+        filter_lay.addWidget(self.btn_filter_all)
+        filter_lay.addWidget(self.btn_filter_export)
+        filter_lay.addWidget(self.btn_filter_import)
+        controls.addWidget(filter_box)
         controls.addStretch(1)
-        card_lay.addLayout(controls)
 
-        # Scrollable column of entry cards (frosted scrollbar, transparent body).
+        self.sort_combo = AnimatedComboBox(icon_path=self._icon_file_path("down-chevron.svg"))
+        self.sort_combo.addItem("Newest first", True)
+        self.sort_combo.addItem("Oldest first", False)
+        self.sort_combo.setCurrentIndex(0)
+        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        controls.addWidget(self.sort_combo)
+
+        self.root.addLayout(controls)
+
+        # Scrollable column of date groups + entry rows.
         self.scroll = QtWidgets.QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
@@ -102,10 +143,11 @@ class HistoryMode(DataModeWidget):
         self._list_host = QtWidgets.QWidget()
         self._list_host.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._list_layout = QtWidgets.QVBoxLayout(self._list_host)
-        self._list_layout.setContentsMargins(2, 2, 2, 2)
-        self._list_layout.setSpacing(10)
+        self._list_layout.setContentsMargins(2, 4, 2, 2)
+        self._list_layout.setSpacing(8)
         self._list_layout.addStretch(1)
         self.scroll.setWidget(self._list_host)
+        self.scroll.verticalScrollBar().valueChanged.connect(self._on_scroll_changed)
 
         # Empty-state label (shown when there's no history).
         self.empty_label = QtWidgets.QLabel("No import/export history to show.")
@@ -115,19 +157,21 @@ class HistoryMode(DataModeWidget):
             "font-style: italic; background: transparent; padding: 24px; }"
         )
 
-        card_lay.addWidget(self.empty_label)
-        card_lay.addWidget(self.scroll, 1)
+        self.root.addWidget(self.empty_label)
+        self.root.addWidget(self.scroll, 1)
 
-        # Footer row, right-aligned clear button.
+        # Footer row: total count (left), Clear All History (right).
         footer = QtWidgets.QHBoxLayout()
         footer.setContentsMargins(0, 0, 0, 0)
+        self.count_label = QtWidgets.QLabel()
+        self.count_label.setStyleSheet(self._caption_qss())
+        footer.addWidget(self.count_label)
         footer.addStretch(1)
-        self.btn_clear = GlassPushButton(" Clear All History", variant="danger")
-        self.btn_clear.setFixedHeight(34)
+        self.btn_clear = GlassPushButton(" Clear history", variant="danger")
+        self.btn_clear.setFixedHeight(32)
         self.btn_clear.clicked.connect(self._clear_all)
         footer.addWidget(self.btn_clear)
 
-        self.root.addWidget(card, 1)
         self.root.addLayout(footer)
 
     # ------------------------------------------------------------------
@@ -147,31 +191,34 @@ class HistoryMode(DataModeWidget):
             raw = ""
 
         self._entries = self._parse_entries(raw)  # newest-first (file order)
-        self._render(self._sorted_entries())
+        self._render(self._visible_entries())
 
         has_entries = bool(self._entries)
         self.btn_clear.setEnabled(has_entries)
         self.empty_label.setVisible(not has_entries)
         self.scroll.setVisible(has_entries)
-        self.sort_segment.setEnabled(has_entries)
+        total = sum(int(e["count"]) for e in self._entries if str(e["count"]).isdigit())
+        noun = "transfer" if len(self._entries) == 1 else "transfers"
+        self.count_label.setText(f"{len(self._entries)} {noun} logged ({total} runs)")
 
     # ------------------------------------------------------------------
-    #  Sorting
+    #  Filtering / sorting
     # ------------------------------------------------------------------
-    def _sorted_entries(self):
-        """Return the cached entries in the current sort order.
+    def _visible_entries(self):
+        entries = self._entries if self._sort_desc else list(reversed(self._entries))
+        if self._filter != "all":
+            entries = [e for e in entries if e["action"] == self._filter]
+        return entries
 
-        The parser yields newest-first (file order). Descending == newest first
-        (as parsed); ascending == oldest first (reversed)."""
-        if self._sort_desc:
-            return self._entries
-        return list(reversed(self._entries))
-
-    def _on_sort_changed(self, button, checked):
+    def _on_filter_changed(self, button, checked):
         if not checked:
             return
-        self._sort_desc = button is self.btn_newest
-        self._render(self._sorted_entries())
+        self._filter = {0: "all", 1: "Exported", 2: "Imported"}[self.filter_group.id(button)]
+        self._render(self._visible_entries())
+
+    def _on_sort_changed(self, index):
+        self._sort_desc = bool(self.sort_combo.itemData(index))
+        self._render(self._visible_entries())
 
     # ------------------------------------------------------------------
     #  Clear
@@ -236,6 +283,8 @@ class HistoryMode(DataModeWidget):
         dst = self._search(r'to\s+"(.*?)"', chunk)
         settings = self._search(r"Settings:\s*(.*?)\s*</small>", chunk)
         skipped = self._search(r"(Skipped\s+\d+\s+run\(s\).*?)\s*</small>", chunk)
+        skip_match = re.search(r"Skipped\s+(\d+)\s+run", chunk)
+        skipped_count = int(skip_match.group(1)) if skip_match else None
 
         return {
             "action": action,  # "Imported" | "Exported"
@@ -245,6 +294,7 @@ class HistoryMode(DataModeWidget):
             "dst": dst,
             "settings": settings,
             "skipped": skipped,
+            "skipped_count": skipped_count,
         }
 
     @staticmethod
@@ -253,92 +303,177 @@ class HistoryMode(DataModeWidget):
         return m.group(1).strip() if m else None
 
     # ------------------------------------------------------------------
-    #  Rendering — one glass card per entry
+    #  Rendering — date-grouped, compact expandable rows
     # ------------------------------------------------------------------
-    MAX_CARDS = 50  # cap rendered cards; long logs stay responsive
+    PAGE_SIZE = 50  # rows rendered per page; long logs stay responsive
 
     def _render(self, entries):
-        # Clear existing cards (keep the trailing stretch).
+        """Reset the list to ``entries`` and render just the first page.
+
+        Further pages are appended by ``_maybe_load_more`` as the user
+        scrolls toward the bottom (see ``_on_scroll_changed``).
+        """
+        # Clear existing rows/headers (keep the trailing stretch).
         while self._list_layout.count() > 1:
             item = self._list_layout.takeAt(0)
             w = item.widget()
             if w is not None:
                 w.deleteLater()
 
-        # Entries are newest-first; render at most MAX_CARDS of them.
-        shown = entries[: self.MAX_CARDS]
-        for rec in shown:
-            self._list_layout.insertWidget(self._list_layout.count() - 1, self._make_card(rec))
+        self._page_entries = entries
+        self._visible_count = 0
+        self._last_group = None
+        self._end_label = None
+        self._append_next_page()
 
-        if len(entries) > len(shown):
-            more = QtWidgets.QLabel(
-                f"Showing the {len(shown)} most recent of {len(entries)} entries."
-            )
-            more.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            more.setStyleSheet(
-                "QLabel { color: rgba(60, 72, 88, 150); font-size: 11px; "
-                "font-style: italic; background: transparent; padding: 6px; }"
-            )
-            self._list_layout.insertWidget(self._list_layout.count() - 1, more)
+        # Filter/sort changes should read from the top, not wherever the
+        # scrollbar happened to be left.
+        self.scroll.verticalScrollBar().setValue(0)
 
-    def _make_card(self, rec):
+    def _append_next_page(self):
+        """Render the next PAGE_SIZE entries onto the end of the list."""
+        remaining = self._page_entries[self._visible_count :]
+        batch = remaining[: self.PAGE_SIZE]
+        if not batch:
+            self._show_end_label()
+            return
+
+        for rec in batch:
+            group = self._group_label(rec["timestamp"])
+            if group != self._last_group:
+                self._list_layout.insertWidget(self._list_layout.count() - 1, self._group_header(group))
+                self._last_group = group
+            self._list_layout.insertWidget(self._list_layout.count() - 1, self._make_row(rec))
+        self._visible_count += len(batch)
+
+        if self._visible_count >= len(self._page_entries):
+            self._show_end_label()
+
+    def _show_end_label(self):
+        """Append an "end of history" cue — only once pagination actually
+        happened (a single page's worth of entries needs no such marker)."""
+        if self._end_label is not None or len(self._page_entries) <= self.PAGE_SIZE:
+            return
+        label = QtWidgets.QLabel("— End of history —")
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet(
+            "QLabel { color: rgba(60, 72, 88, 150); font-size: 11px; "
+            "font-style: italic; background: transparent; padding: 6px; }"
+        )
+        self._list_layout.insertWidget(self._list_layout.count() - 1, label)
+        self._end_label = label
+
+    def _on_scroll_changed(self, _value):
+        """Load the next page once the user scrolls near the bottom."""
+        if self._loading_more:
+            return
+        bar = self.scroll.verticalScrollBar()
+        near_bottom = bar.value() >= bar.maximum() - 48
+        if not near_bottom or self._visible_count >= len(self._page_entries):
+            return
+        self._loading_more = True
+        try:
+            self._append_next_page()
+        finally:
+            self._loading_more = False
+
+    @staticmethod
+    def _group_label(ts_str):
+        dt = HistoryMode._parse_ts(ts_str)
+        if dt is None:
+            return "EARLIER"
+        d = dt.date()
+        today = datetime.date.today()
+        if d == today:
+            return f"TODAY · {d.strftime('%B %d').upper()}"
+        if d == today - datetime.timedelta(days=1):
+            return f"YESTERDAY · {d.strftime('%B %d').upper()}"
+        if d.year != today.year:
+            return f"{d.strftime('%B %d').upper()}, {d.year}"
+        return d.strftime("%B %d").upper()
+
+    @staticmethod
+    def _group_header(text):
+        lbl = QtWidgets.QLabel(text)
+        lbl.setStyleSheet(
+            "QLabel { color: rgba(60, 72, 88, 150); font-size: 10px; font-weight: 700; "
+            "letter-spacing: 0.5px; background: transparent; padding: 8px 2px 2px 4px; }"
+        )
+        return lbl
+
+    def _make_row(self, rec):
         is_import = rec["action"] == "Imported"
-        if is_import:
-            accent = "rgba(0, 118, 174, 230)"
-            tint = "rgba(10, 163, 230, 22)"
-            badge = "Import"
-        else:
-            accent = "rgba(46, 140, 90, 230)"
-            tint = "rgba(46, 155, 110, 22)"
-            badge = "Export"
+        accent = QtGui.QColor(0, 118, 174, 235) if is_import else QtGui.QColor(46, 140, 90, 230)
+        tint = "rgba(10, 163, 230, 18)" if is_import else "rgba(46, 155, 110, 18)"
+        icon_name = "import.svg" if is_import else "export.svg"
+        label = "Import" if is_import else "Export"
 
         card = QtWidgets.QFrame()
-        card.setObjectName("historyCard")
+        card.setObjectName("historyRow")
         card.setStyleSheet(f"""
-            QFrame#historyCard {{
+            QFrame#historyRow {{
                 background: {tint};
                 border: 1px solid rgba(255, 255, 255, 150);
-                border-left: 3px solid {accent};
                 border-radius: 10px;
             }}
         """)
-        lay = QtWidgets.QVBoxLayout(card)
-        lay.setContentsMargins(14, 10, 14, 12)
-        lay.setSpacing(4)
+        outer = QtWidgets.QVBoxLayout(card)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        # Header row: badge + count + timestamp.
-        head = QtWidgets.QHBoxLayout()
-        head.setContentsMargins(0, 0, 0, 0)
-        head.setSpacing(8)
+        header = _ClickableRow()
+        header.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        header.setStyleSheet("QFrame { background: transparent; }")
+        hlay = QtWidgets.QHBoxLayout(header)
+        hlay.setContentsMargins(12, 9, 12, 9)
+        hlay.setSpacing(10)
 
-        badge_lbl = QtWidgets.QLabel(badge)
-        badge_lbl.setStyleSheet(
-            f"QLabel {{ color: #fff; background: {accent}; border-radius: 8px; "
-            f"padding: 1px 8px; font-size: 10px; font-weight: bold; }}"
+        hlay.addWidget(self._direction_chip(icon_name, accent))
+
+        title_lbl = QtWidgets.QLabel(f"{label} · {rec['count']} runs")
+        title_lbl.setStyleSheet(
+            "QLabel { color: rgba(28, 40, 52, 230); font-size: 12.5px; font-weight: 700; "
+            "background: transparent; }"
         )
-        count_lbl = QtWidgets.QLabel(f"{rec['count']} run(s)")
-        count_lbl.setStyleSheet(
-            "QLabel { color: rgba(28, 40, 52, 220); font-size: 13px; "
-            "font-weight: 600; background: transparent; }"
+        hlay.addWidget(title_lbl)
+
+        if rec["skipped_count"]:
+            hlay.addWidget(self._skip_pill(rec["skipped_count"]))
+
+        hlay.addStretch(1)
+
+        preview_path = rec["src"] if is_import else rec["dst"]
+        arrow = "←" if is_import else "→"
+        preview_lbl = QtWidgets.QLabel(f"{arrow} {self._short_path(preview_path)}")
+        preview_lbl.setStyleSheet(
+            "QLabel { color: rgba(60, 72, 88, 165); font-size: 11px; background: transparent; }"
         )
-        time_lbl = QtWidgets.QLabel(rec["timestamp"] or "")
+        hlay.addWidget(preview_lbl)
+
+        time_lbl = QtWidgets.QLabel(self._fmt_time(rec["timestamp"]))
         time_lbl.setStyleSheet(
             "QLabel { color: rgba(60, 72, 88, 150); font-size: 11px; background: transparent; }"
         )
+        hlay.addWidget(time_lbl)
 
-        head.addWidget(badge_lbl)
-        head.addWidget(count_lbl)
-        head.addStretch(1)
-        head.addWidget(time_lbl)
-        lay.addLayout(head)
+        chevron_lbl = QtWidgets.QLabel("▾")
+        chevron_lbl.setStyleSheet(
+            "QLabel { color: rgba(120, 130, 145, 200); font-size: 11px; background: transparent; }"
+        )
+        hlay.addWidget(chevron_lbl)
+        outer.addWidget(header)
 
-        # Detail rows.
+        detail = QtWidgets.QWidget()
+        detail.setVisible(False)
+        dlay = QtWidgets.QVBoxLayout(detail)
+        dlay.setContentsMargins(12, 0, 12, 10)
+        dlay.setSpacing(6)
         if rec["src"]:
-            lay.addWidget(self._detail_row("From", rec["src"]))
+            dlay.addWidget(self._detail_row("From", rec["src"]))
         if rec["dst"]:
-            lay.addWidget(self._detail_row("To", rec["dst"]))
+            dlay.addWidget(self._detail_row("To", rec["dst"]))
         if rec["settings"]:
-            lay.addWidget(self._detail_row("Settings", rec["settings"]))
+            dlay.addWidget(self._detail_row("Settings", rec["settings"]))
         if rec["skipped"]:
             warn = QtWidgets.QLabel(html.unescape(rec["skipped"]))
             warn.setWordWrap(True)
@@ -346,9 +481,34 @@ class HistoryMode(DataModeWidget):
                 "QLabel { color: rgba(180, 95, 20, 220); font-size: 11px; "
                 "background: transparent; }"
             )
-            lay.addWidget(warn)
+            dlay.addWidget(warn)
 
+        actions_row = QtWidgets.QHBoxLayout()
+        actions_row.setContentsMargins(0, 4, 0, 0)
+        actions_row.setSpacing(8)
+        if not is_import:
+            btn_repeat = GlassPushButton(" Repeat export", variant="primary")
+            btn_repeat.setFixedHeight(26)
+            btn_repeat.setIcon(self._icon("refresh-cw.svg"))
+            btn_repeat.clicked.connect(self._go_to_export)
+            actions_row.addWidget(btn_repeat)
+        open_target = rec["src"] if is_import else rec["dst"]
+        btn_open = GlassPushButton(" Open folder", variant="default")
+        btn_open.setFixedHeight(26)
+        btn_open.clicked.connect(lambda _=False, p=open_target: self._open_folder(p))
+        actions_row.addWidget(btn_open)
+        actions_row.addStretch(1)
+        dlay.addLayout(actions_row)
+        outer.addWidget(detail)
+
+        header.clicked.connect(lambda: self._toggle_row(detail, chevron_lbl))
         return card
+
+    @staticmethod
+    def _toggle_row(detail, chevron_lbl):
+        visible = not detail.isVisible()
+        detail.setVisible(visible)
+        chevron_lbl.setText("▴" if visible else "▾")
 
     @staticmethod
     def _detail_row(label, value):
@@ -376,33 +536,76 @@ class HistoryMode(DataModeWidget):
         return row
 
     # ------------------------------------------------------------------
+    #  Per-entry actions
+    # ------------------------------------------------------------------
+    def _go_to_export(self):
+        """Jump to the Export step so the user can set up a similar export.
+
+        Settings aren't replayed automatically — the logged text ("All Runs,
+        CSV Report, Append existing") is free-form and lossy to re-parse
+        reliably, so this is a shortcut to the wizard, not an auto-repeat.
+        """
+        w = self.parentWidget()
+        while w is not None and not hasattr(w, "segmented"):
+            w = w.parentWidget()
+        if w is not None:
+            w.segmented.set_active("export")
+        else:
+            Log.d(f"{TAG} could not locate container to switch to Export mode")
+
+    def _open_folder(self, path):
+        if not path:
+            return
+        target = path if os.path.isdir(path) else os.path.dirname(path)
+        if not target or not os.path.exists(target):
+            Log.w(TAG, f"Cannot open folder, path does not exist: {target}")
+            return
+        try:
+            if os.name == "nt":
+                os.startfile(target)
+            else:
+                import subprocess
+
+                subprocess.call(["xdg-open", target])
+        except OSError as e:
+            Log.e(TAG, f"Failed to open folder {target}: {e}")
+
+    # ------------------------------------------------------------------
+    #  Formatting helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _parse_ts(ts_str):
+        try:
+            return datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _fmt_time(ts_str):
+        dt = HistoryMode._parse_ts(ts_str)
+        return dt.strftime("%H:%M") if dt else (ts_str or "")
+
+    @staticmethod
+    def _short_path(path, max_len=42):
+        if not path:
+            return ""
+        if len(path) <= max_len:
+            return path
+        return "…" + path[-(max_len - 1):]
+
+    # ------------------------------------------------------------------
     @staticmethod
     def _history_path():
         return os.path.join(os.getcwd(), Constants.log_export_path, "export_history.log")
 
     # ------------------------------------------------------------------
-    #  Shared glass styling helpers (mirrors data_mode_import)
+    #  Shared glass styling helpers (mirrors data_mode_import / data_mode_advanced)
     # ------------------------------------------------------------------
-    def _card(self, title):
-        card = QtWidgets.QFrame()
-        card.setObjectName("glassPanel")
-        card.setStyleSheet("""
-            QFrame#glassPanel {
-                background: rgba(255, 255, 255, 30);
-                border: 1px solid rgba(200, 210, 220, 110);
-                border-radius: 10px;
-            }
-        """)
-        lay = QtWidgets.QVBoxLayout(card)
-        lay.setContentsMargins(14, 12, 14, 12)
-        lay.setSpacing(8)
-        header = QtWidgets.QLabel(title)
-        header.setStyleSheet(
-            "QLabel { color: #333; font-size: 12px; font-weight: bold; "
-            "background: transparent; }"
+    @staticmethod
+    def _desc_qss():
+        return (
+            "QLabel { color: rgba(60, 72, 88, 190); font-size: 12px; " "background: transparent; }"
         )
-        lay.addWidget(header)
-        return card
 
     @staticmethod
     def _caption_qss():
@@ -412,13 +615,63 @@ class HistoryMode(DataModeWidget):
             "letter-spacing: 0.5px; background: transparent; }"
         )
 
+    @staticmethod
+    def _skip_pill(count):
+        pill = QtWidgets.QLabel(f"{count} skipped")
+        pill.setStyleSheet(
+            "QLabel { color: rgba(150, 95, 10, 240); background: rgba(235, 175, 60, 75); "
+            "border-radius: 8px; font-size: 10px; font-weight: 700; padding: 1px 7px; }"
+        )
+        return pill
+
+    def _direction_chip(self, icon_name, color, size=26):
+        chip = QtWidgets.QLabel()
+        chip.setFixedSize(size, size)
+        chip.setAlignment(QtCore.Qt.AlignCenter)
+        chip.setStyleSheet(
+            f"QLabel {{ background: rgba({color.red()}, {color.green()}, {color.blue()}, 35); "
+            f"border-radius: {size // 2}px; }}"
+        )
+        icon = self._tinted_icon(icon_name, color, icon_size=int(size * 0.55))
+        if icon is not None:
+            chip.setPixmap(icon)
+        return chip
+
+    def _icon(self, name):
+        path = self._icon_file_path(name)
+        return QtGui.QIcon(path) if path else QtGui.QIcon()
+
+    def _tinted_icon(self, name, color, icon_size=18):
+        path = self._icon_file_path(name)
+        if not path:
+            return None
+        src = QtGui.QIcon(path).pixmap(icon_size, icon_size)
+        dst = QtGui.QPixmap(src.size())
+        dst.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(dst)
+        p.drawPixmap(0, 0, src)
+        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+        p.fillRect(dst.rect(), color)
+        p.end()
+        return dst
+
+    @staticmethod
+    def _icon_file_path(name):
+        try:
+            path = os.path.join(Architecture.get_path(), "QATCH", "icons", name)
+            if os.path.exists(path):
+                return path.replace("\\", "/")
+        except Exception:
+            pass
+        return ""
+
     def _segment_button(self, text, tooltip=""):
         btn = QtWidgets.QToolButton()
         btn.setText(text)
         btn.setCheckable(True)
         btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        btn.setFixedHeight(28)
-        btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        btn.setFixedHeight(26)
+        btn.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         if tooltip:
             btn.setToolTip(tooltip)
         btn.setStyleSheet(self._segment_qss())
@@ -438,3 +691,4 @@ class HistoryMode(DataModeWidget):
                 color: rgba(0, 118, 174, 230);
             }
         """
+

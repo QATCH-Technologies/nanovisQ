@@ -43,7 +43,6 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QLineEdit,
     QStackedWidget,
-    QComboBox,
     QSpinBox,
     QDoubleSpinBox,
     QDateEdit,
@@ -100,6 +99,7 @@ from QATCH.ui.workers.scan_worker import ScanWorker
 from QATCH.ui.dialogs.signature_dialog import SignatureDialog
 from QATCH.ui.widgets.recovery_filter_widget import RecoveryFilterWidget
 from QATCH.ui.widgets.toggle_list_widget import ToggleListWidget
+from QATCH.ui.components.animated_combo_box import AnimatedComboBox
 
 TAG = "[RunRecovery]"
 
@@ -147,7 +147,10 @@ class RecoveryDialog(QDialog):
 
         # Device Selection Row
         device_layout = QHBoxLayout()
-        self.device_combo = QComboBox(self)
+        self.device_combo = AnimatedComboBox(
+            icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"),
+            parent=self,
+        )
         if available_devices:
             self.device_combo.addItems(available_devices)
         else:
@@ -395,35 +398,38 @@ class RunRecoveryDialog(QWidget):
         )
         self.search_bar.setStyleSheet("""
             QLineEdit {
-                background-color: rgba(255, 255, 255, 180);
-                border: 1px solid rgba(0, 0, 0, 15);
-                border-radius: 6px;
+                background-color: rgba(255, 255, 255, 150);
+                border: 1px solid rgba(120, 130, 145, 150);
+                border-radius: 9px;
                 padding: 4px 10px;
-                font-size: 10pt;
-                color: #333333;
+                font-size: 12px;
+                color: rgb(40, 50, 62);
             }
             QLineEdit:focus {
-                border: 1px solid rgba(0, 114, 189, 100);
-                background-color: rgba(255, 255, 255, 255);
+                border: 1px solid rgba(10, 163, 230, 200);
+                background-color: rgba(255, 255, 255, 225);
             }
             """)
         self.search_bar.textChanged.connect(self.refilter_list)
 
         _icon_btn_ss = """
             QPushButton {
-                background-color: rgba(255, 255, 255, 180);
-                border: 1px solid rgba(0, 0, 0, 15);
-                border-radius: 6px;
+                background-color: rgba(255, 255, 255, 150);
+                border: 1px solid rgba(120, 130, 145, 150);
+                border-radius: 9px;
             }
-            QPushButton:hover   { background-color: rgba(0, 0, 0,  8); }
-            QPushButton:pressed { background-color: rgba(0, 0, 0, 15); }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 200);
+                border: 1px solid rgba(90, 100, 115, 190);
+            }
+            QPushButton:pressed { background-color: rgba(255, 255, 255, 230); }
             QPushButton:checked {
-                background-color: rgba(0, 114, 189, 35);
-                border: 1px solid rgba(0, 114, 189, 80);
+                background-color: rgba(10, 163, 230, 45);
+                border: 1px solid rgba(0, 118, 174, 170);
             }
             QPushButton:disabled {
-                background-color: rgba(255, 255, 255, 120);
-                border: 1px solid rgba(0, 0, 0, 8);
+                background-color: rgba(255, 255, 255, 90);
+                border: 1px solid rgba(180, 190, 202, 120);
             }
         """
 
@@ -484,52 +490,29 @@ class RunRecoveryDialog(QWidget):
         sort_bar.setStyleSheet("""
             QWidget#sortBar { background: transparent; }
             QLabel#sortLabel {
-                color: #888888;
-                font-size: 9pt;
+                color: rgba(60, 72, 88, 200);
+                font-size: 12px;
                 background: transparent;
                 border: none;
                 padding-left: 2px;
             }
-            QComboBox#sortCombo {
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 4px;
-                padding: 2px 6px;
-                padding-right: 18px;
-                color: #444444;
-                font-size: 9pt;
-                min-width: 90px;
-            }
-            QComboBox#sortCombo:hover {
-                background-color: rgba(0, 0, 0, 8);
-                border: 1px solid rgba(0, 0, 0, 12);
-            }
-            QComboBox#sortCombo:focus {
-                border: 1px solid rgba(0, 114, 189, 100);
-            }
-            QComboBox#sortCombo::drop-down {
-                subcontrol-origin: padding;
-                subcontrol-position: right center;
-                width: 16px;
-                border: none;
-            }
             QPushButton#sortDir {
                 background-color: transparent;
                 border: 1px solid transparent;
-                border-radius: 4px;
-                color: #555555;
-                font-size: 11pt;
+                border-radius: 8px;
+                color: rgba(60, 72, 88, 210);
+                font-size: 15px;
                 font-weight: 600;
                 min-width: 22px;
                 min-height: 22px;
                 padding: 0px;
             }
             QPushButton#sortDir:hover {
-                background-color: rgba(0, 0, 0, 8);
-                border: 1px solid rgba(0, 0, 0, 12);
+                background-color: rgba(255, 255, 255, 130);
+                border: 1px solid rgba(120, 130, 145, 150);
             }
             QPushButton#sortDir:pressed {
-                background-color: rgba(0, 0, 0, 15);
+                background-color: rgba(255, 255, 255, 190);
             }
             """)
         sort_bar.setObjectName("sortBar")
@@ -541,9 +524,10 @@ class RunRecoveryDialog(QWidget):
         sort_label = QLabel("Sort by")
         sort_label.setObjectName("sortLabel")
 
-        self.sort_combo = QComboBox()
-        self.sort_combo.setObjectName("sortCombo")
-        self.sort_combo.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.sort_combo = AnimatedComboBox(
+            icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg")
+        )
+        self.sort_combo.setMinimumWidth(100)
         for text, key in (
             ("Name", "name"),
             ("Date", "date"),
@@ -578,43 +562,43 @@ class RunRecoveryDialog(QWidget):
         self.runs_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.runs_list.setStyleSheet("""
             QListWidget {
-                border: 1px solid rgba(0, 0, 0, 15);
-                border-radius: 6px;
-                background-color: rgba(255, 255, 255, 180);
+                border: 1px solid rgba(218, 224, 232, 170);
+                border-radius: 10px;
+                background-color: rgba(255, 255, 255, 130);
                 padding: 4px;
                 outline: none;
             }
             QListWidget::item {
                 padding: 6px 8px;
-                border-radius: 4px;
+                border-radius: 7px;
                 margin-bottom: 2px;
-                color: #444444;
+                color: rgba(40, 50, 62, 230);
             }
-            QListWidget::item:hover    { background-color: rgba(0, 0, 0,  8); }
+            QListWidget::item:hover    { background-color: rgba(255, 255, 255, 140); }
             QListWidget::item:selected {
-                background-color: #f0f4f8;
-                color: #111111;
+                background-color: rgba(10, 163, 230, 35);
+                color: rgba(0, 90, 135, 245);
             }
             QScrollBar:vertical {
                 border: none;
                 background: transparent;
-                width: 10px;          /* 10px width */
-                margin: 0px;
-                border-radius: 5px;   /* 5px radius makes a 10px wide bar fully rounded */
+                width: 8px;
+                margin: 2px 0px 2px 0px;
+                border-radius: 4px;
             }
             QScrollBar::handle:vertical {
-                background: rgba(0, 0, 0, 40); /* Base grey */
-                min-height: 20px;
-                border-radius: 5px;   /* Fully rounded handle corners */
+                background: rgba(120, 134, 150, 110);
+                min-height: 24px;
+                border-radius: 4px;
             }
             QScrollBar::handle:vertical:hover {
-                background: rgba(0, 0, 0, 80); /* Darker grey on hover */
+                background: rgba(90, 104, 120, 150);
             }
             QScrollBar::handle:vertical:pressed {
-                background: rgba(0, 0, 0, 120); /* Slightly darker grey on click (no more blue) */
+                background: rgba(70, 84, 100, 180);
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px; 
+                height: 0px;
             }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
                 background: none;
@@ -627,11 +611,11 @@ class RunRecoveryDialog(QWidget):
         self.empty_list_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_list_placeholder.setStyleSheet("""
             QLabel {
-                border: 1px dashed rgba(0, 0, 0, 25);
-                border-radius: 6px;
-                background-color: rgba(255, 255, 255, 120);
-                color: #999999;
-                font-size: 10pt;
+                border: 1px dashed rgba(180, 190, 202, 150);
+                border-radius: 10px;
+                background-color: rgba(255, 255, 255, 90);
+                color: rgba(60, 72, 88, 160);
+                font-size: 13px;
                 padding: 20px;
             }
             """)
@@ -659,18 +643,18 @@ class RunRecoveryDialog(QWidget):
         self.details_frame.setMinimumWidth(0)
         self.details_frame.setStyleSheet("""
             QFrame#detailsFrame {
-                background-color: rgba(255, 255, 255, 180);
-                border: 1px solid rgba(0, 0, 0, 15);
-                border-radius: 6px;
+                background-color: rgba(255, 255, 255, 110);
+                border: 1px solid rgba(218, 224, 232, 170);
+                border-radius: 10px;
             }
             QFrame#detailsFrame QLabel {
                 border: none;
                 background: transparent;
-                color: #444444;
-                font-size: 9pt;
+                color: rgba(40, 50, 62, 230);
+                font-size: 12px;
             }
             QFrame#detailsSep {
-                background-color: rgba(0, 0, 0, 15);
+                background-color: rgba(210, 218, 228, 150);
                 border: none;
                 max-height: 1px;
                 min-height: 1px;
@@ -690,12 +674,12 @@ class RunRecoveryDialog(QWidget):
 
         def make_key_label(text):
             lbl = QLabel(text)
-            lbl.setStyleSheet("color: #888888; font-size: 9pt;")
+            lbl.setStyleSheet("color: rgba(60, 72, 88, 170); font-size: 11px; font-weight: 600;")
             return lbl
 
         def make_value_label():
             lbl = QLabel("-")
-            lbl.setStyleSheet("color: #333333; font-size: 9pt;")
+            lbl.setStyleSheet("color: rgba(28, 40, 52, 230); font-size: 12px; font-weight: 600;")
             lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             return lbl
 
@@ -734,22 +718,22 @@ class RunRecoveryDialog(QWidget):
             QPushButton {
                 background-color: transparent;
                 border: none;
-                border-radius: 4px;
-                color: rgba(0, 91, 159, 175);
-                font-size: 8pt;
-                font-weight: 500;
+                border-radius: 7px;
+                color: rgba(0, 90, 135, 220);
+                font-size: 11px;
+                font-weight: 600;
                 padding: 5px 9px;
                 text-align: left;
             }
             QPushButton:hover {
-                background-color: rgba(0, 114, 189, 22);
-                color: rgba(0, 91, 159, 230);
+                background-color: rgba(10, 163, 230, 35);
+                color: rgba(0, 90, 135, 250);
             }
             QPushButton:pressed {
-                background-color: rgba(0, 114, 189, 42);
+                background-color: rgba(10, 163, 230, 60);
             }
             QPushButton:disabled {
-                color: rgba(180, 180, 180, 150);
+                color: rgba(140, 150, 162, 150);
             }
             """)
         self.recover_button.clicked.connect(self.on_recover_clicked)
@@ -773,22 +757,22 @@ class RunRecoveryDialog(QWidget):
             QPushButton {
                 background-color: transparent;
                 border: none;
-                border-radius: 4px;
-                color: rgba(176, 42, 56, 175);
-                font-size: 8pt;
-                font-weight: 500;
+                border-radius: 7px;
+                color: rgba(176, 42, 56, 200);
+                font-size: 11px;
+                font-weight: 600;
                 padding: 5px 9px;
                 text-align: left;
             }
             QPushButton:hover {
-                background-color: rgba(220, 53, 69, 22);
-                color: rgba(176, 42, 56, 230);
+                background-color: rgba(220, 53, 69, 28);
+                color: rgba(176, 42, 56, 235);
             }
             QPushButton:pressed {
-                background-color: rgba(220, 53, 69, 42);
+                background-color: rgba(220, 53, 69, 48);
             }
             QPushButton:disabled {
-                color: rgba(180, 180, 180, 150);
+                color: rgba(140, 150, 162, 150);
             }
             """)
         self.delete_button.clicked.connect(self.on_delete_clicked)
@@ -808,15 +792,15 @@ class RunRecoveryDialog(QWidget):
         self.plot_card.setMinimumHeight(150)
         self.plot_card.setStyleSheet("""
             QFrame#plotCard {
-                background-color: rgba(255, 255, 255, 180);
-                border: 1px solid rgba(0, 0, 0, 15);
-                border-radius: 6px;
+                background-color: rgba(255, 255, 255, 110);
+                border: 1px solid rgba(218, 224, 232, 170);
+                border-radius: 10px;
             }
             QLabel#plotLegend {
                 background: transparent;
                 border: none;
-                color: #666666;
-                font-size: 8pt;
+                color: rgba(60, 72, 88, 190);
+                font-size: 11px;
             }
             """)
 
@@ -877,9 +861,9 @@ class RunRecoveryDialog(QWidget):
         self.empty_plot_placeholder.setStyleSheet("""
             QLabel {
                 background-color: #fafafa;
-                color: #aaaaaa;
-                font-size: 9pt;
-                border-radius: 4px;
+                color: rgba(140, 150, 162, 200);
+                font-size: 12px;
+                border-radius: 8px;
             }
             """)
 
@@ -894,10 +878,10 @@ class RunRecoveryDialog(QWidget):
         diss_hex = "#%02x%02x%02x" % self._DISS_COLOR
         self.plot_legend_label = QLabel(
             f'<span style="color:{freq_hex};">●</span>'
-            f'<span style="color:#777777;"> Frequency</span>'
+            f'<span style="color:#48586c;"> Frequency</span>'
             f"&nbsp;&nbsp;&nbsp;"
             f'<span style="color:{diss_hex};">●</span>'
-            f'<span style="color:#777777;"> Dissipation</span>'
+            f'<span style="color:#48586c;"> Dissipation</span>'
         )
         self.plot_legend_label.setObjectName("plotLegend")
         self.plot_legend_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1542,8 +1526,12 @@ class RunRecoveryDialog(QWidget):
             self.detail_duration.setText(f"{run.duration} seconds")
             self.detail_points.setText(f"{run.samples:,}")
 
-            ruling_color = "#2c8a3d" if run.ruling == "Good" else "#c12c3b"
-            self.detail_ruling.setStyleSheet(f"color: {ruling_color}; font-size: 9pt;")
+            ruling_color = (
+                "rgba(20, 130, 75, 235)" if run.ruling == "Good" else "rgba(190, 55, 45, 235)"
+            )
+            self.detail_ruling.setStyleSheet(
+                f"color: {ruling_color}; font-size: 12px; font-weight: 600;"
+            )
             self.detail_ruling.setText(run.ruling)
 
             self.detail_filesize.setText(f"{run.file_size_mb} MB")
@@ -1650,7 +1638,7 @@ class RunRecoveryDialog(QWidget):
         red_stylesheet = original_stylesheet + """
             QListWidget::item:selected {
                 background-color: rgba(220, 53, 69, 55);
-                color: #b02a38;
+                color: rgba(176, 42, 56, 235);
             }
         """
         self.runs_list.setStyleSheet(red_stylesheet)
@@ -1766,7 +1754,9 @@ class RunRecoveryDialog(QWidget):
         self.detail_points.setText(placeholder)
         self.detail_filesize.setText(placeholder)
         self.detail_ruling.setText(placeholder)
-        self.detail_ruling.setStyleSheet("color: #333333; font-size: 9pt;")
+        self.detail_ruling.setStyleSheet(
+            "color: rgba(28, 40, 52, 230); font-size: 12px; font-weight: 600;"
+        )
 
         if hasattr(self, "curve_freq") and hasattr(self, "curve_diss"):
             self.curve_freq.setData([], [])
