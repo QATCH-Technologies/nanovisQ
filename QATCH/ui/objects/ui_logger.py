@@ -278,10 +278,9 @@ class QTextEditLogger(QtCore.QObject):
         self.level_filter = AnimatedComboBox(icon_path=arrow_icon_path, parent=self.container)
         self.level_filter.setObjectName("LevelFilter")
         self.level_filter.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
-        self.level_filter.setCurrentText("DEBUG")
         self.level_filter.setFixedSize(120, 28)
         self.level_filter.currentTextChanged.connect(self.apply_filter)
-        self.current_filter_level = 10
+        self.level_filter.setCurrentText("INFO")  # calls apply_filter
         control_layout.addWidget(self.level_filter)
 
         control_layout.addStretch()
