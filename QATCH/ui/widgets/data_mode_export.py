@@ -67,6 +67,7 @@ from QATCH.common.logger import Logger as Log
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 from QATCH.ui.components.glass_push_button import GlassPushButton
 from QATCH.ui.components.glass_line_edit import GlassLineEdit
+from QATCH.ui.components.glass_option_card import GlassOptionCard, GlassOptionCardGroup
 
 # Parser for reading run capture archives when building the CSV report. Imported
 # lazily-safe: if VisQAI isn't importable at layout time, CSV export degrades to
@@ -109,6 +110,147 @@ _FORMULATION_COMPONENTS = [
 ]
 
 
+class _Stepper(QtWidgets.QWidget):
+    """Horizontal numbered-step indicator for the Export wizard.
+
+    Circles connected by thin rule lines; the current step is filled solid,
+    reached-but-not-current steps are outlined/tinted, future steps are plain
+    gray. Clicking a step the user has already reached jumps back to it.
+    """
+
+    stepClicked = QtCore.pyqtSignal(int)
+
+    def __init__(self, labels, parent=None):
+        super().__init__(parent)
+        self._current = 0
+        self._max_reached = 0
+        self._circles = []
+        self._captions = []
+        self._lines = []
+
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(4, 4, 4, 8)
+        outer.setSpacing(0)
+
+        # Circles and connecting lines live in their OWN grid row (row 0),
+        # with captions in a separate row (row 1) below. Keeping captions out
+        # of row 0 means row 0's height is just the circle's height, so a
+        # vertically-centered line lands on the circle's true center instead
+        # of the midpoint of "circle + caption" as a combined column.
+        grid = QtWidgets.QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(0)
+        grid.setVerticalSpacing(4)
+
+        col = 0
+        for i, label in enumerate(labels):
+            if i > 0:
+                line = QtWidgets.QFrame()
+                line.setFixedHeight(2)
+                line.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+                grid.addWidget(line, 0, col, QtCore.Qt.AlignVCenter)
+                grid.setColumnStretch(col, 1)
+                self._lines.append(line)
+                col += 1
+
+            circle = QtWidgets.QToolButton()
+            circle.setText(str(i + 1))
+            circle.setFixedSize(26, 26)
+            circle.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+            circle.clicked.connect(lambda _=False, idx=i: self._on_clicked(idx))
+            grid.addWidget(circle, 0, col, QtCore.Qt.AlignCenter)
+
+            cap = QtWidgets.QLabel(label)
+            cap.setAlignment(QtCore.Qt.AlignCenter)
+            grid.addWidget(cap, 1, col, QtCore.Qt.AlignHCenter)
+
+            self._circles.append(circle)
+            self._captions.append(cap)
+            grid.setColumnStretch(col, 0)
+            col += 1
+
+        outer.addLayout(grid)
+        self._restyle()
+
+    def _on_clicked(self, idx):
+        if idx <= self._max_reached:
+            self.stepClicked.emit(idx)
+
+    def set_current(self, index):
+        self._current = index
+        self._max_reached = max(self._max_reached, index)
+        self._restyle()
+
+    def reset(self):
+        """Clear "reached" progress entirely — used when the wizard itself
+        resets, so old steps don't keep showing as done/clickable."""
+        self._current = 0
+        self._max_reached = 0
+        self._restyle()
+
+    def _restyle(self):
+        # setStyleSheet() alone can leave a stale rendered pixmap behind for
+        # QSS-styled QToolButtons during rapid restyles (each step click
+        # restyles two circles at once) — an explicit unpolish/polish +
+        # update() forces an immediate, clean repaint instead of a "ghost"
+        # of the previous state lingering under the new one.
+        for i, circle in enumerate(self._circles):
+            if i == self._current:
+                state = "current"
+            elif i <= self._max_reached:
+                state = "done"
+            else:
+                state = "future"
+            circle.setStyleSheet(self._circle_qss(state))
+            circle.style().unpolish(circle)
+            circle.style().polish(circle)
+            circle.update()
+
+            cap = self._captions[i]
+            cap.setStyleSheet(self._caption_qss(active=(i == self._current)))
+            cap.style().unpolish(cap)
+            cap.style().polish(cap)
+            cap.update()
+        for i, line in enumerate(self._lines):
+            line.setStyleSheet(self._line_qss(done=(i < self._max_reached)))
+            line.style().unpolish(line)
+            line.style().polish(line)
+            line.update()
+
+    @staticmethod
+    def _circle_qss(state):
+        if state == "current":
+            body = "background: rgba(0, 118, 174, 235); color: white; border: none;"
+        elif state == "done":
+            body = (
+                "background: rgba(10, 163, 230, 90); color: rgba(0, 90, 135, 245); "
+                "border: 1px solid rgba(0, 118, 174, 150);"
+            )
+        else:
+            body = (
+                "background: rgba(255, 255, 255, 90); color: rgba(60, 72, 88, 170); "
+                "border: 1px solid rgba(180, 195, 210, 170);"
+            )
+        return f"QToolButton {{ {body} border-radius: 13px; font-weight: 700; font-size: 12px; }}"
+
+    @staticmethod
+    def _caption_qss(active):
+        # Weight is constant (700) regardless of state — varying it between
+        # active/inactive changes the text's rendered width slightly, which
+        # made the whole bar visibly jitter/resize on every step transition.
+        # Only colour differentiates the active step now.
+        color = "rgba(0, 90, 135, 245)" if active else "rgba(60, 72, 88, 160)"
+        return (
+            f"QLabel {{ color: {color}; font-size: 10px; font-weight: 700; "
+            "background: transparent; }"
+        )
+
+    @staticmethod
+    def _line_qss(done):
+        color = "rgba(0, 118, 174, 150)" if done else "rgba(190, 200, 212, 140)"
+        return f"QFrame {{ background: {color}; border: none; }}"
+
+
 class ExportMode(DataModeWidget):
     MODE_KEY = "export"
     MODE_LABEL = "Export"
@@ -128,72 +270,84 @@ class ExportMode(DataModeWidget):
         self._export_unnamed = False
         self._exported = False  # set True after a successful export
         self.csv_report_path = None  # path of the CSV report being written
+        self._task_running = False  # drives Cancel's dual abort/reset behavior
 
-        # Tracks the live column mode of the settings grid so resizeEvent only
-        # re-lays-out when the breakpoint is actually crossed.
+        # Tracks the live column mode of the responsive grids so resizeEvent
+        # only re-lays-out when a breakpoint is actually crossed.
         self._settings_two_col = None
 
-        # --- Scrollable content host -----------------------------------
-        # Everything that can grow lives inside a transparent scroll area; the
-        # action bar + status line stay pinned below it so Export is always
-        # reachable. This is the core fix for the overflow/overlap at small
-        # overlay sizes.
-        self.scroll = QtWidgets.QScrollArea()
-        self.scroll.setObjectName("exportScroll")
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
-        self.scroll.setStyleSheet(self._scroll_qss())
-        self.scroll.viewport().setStyleSheet("background: transparent;")
+        # --- Stepper + step pages ---------------------------------------
+        self._step_labels = ["Destination", "Scope", "Fields", "Review"]
+        self.stepper = _Stepper(self._step_labels)
+        self.stepper.stepClicked.connect(self._go_to_step)
+        self.root.addWidget(self.stepper)
 
-        self.scroll_host = QtWidgets.QWidget()
-        self.scroll_host.setObjectName("exportScrollHost")
-        self.scroll_host.setStyleSheet("QWidget#exportScrollHost { background: transparent; }")
-        self.content = QtWidgets.QVBoxLayout(self.scroll_host)
-        self.content.setContentsMargins(2, 2, 6, 2)  # right pad = room for scrollbar
-        self.content.setSpacing(12)
+        self.step_stack = QtWidgets.QStackedWidget()
+        self.dest_scroll = self._make_step_scroll(self._build_destination_page())
+        self.scope_scroll = self._make_step_scroll(self._build_scope_page())
+        self.fields_scroll = self._make_step_scroll(self._build_fields_page())
+        self.review_scroll = self._make_step_scroll(self._build_review_page())
+        for scroll in (self.dest_scroll, self.scope_scroll, self.fields_scroll, self.review_scroll):
+            self.step_stack.addWidget(scroll)
+        self.root.addWidget(self.step_stack, 1)
 
-        self._build_target_card()
-        self._build_settings_card()
-        self._build_csv_card()
-        self.content.addStretch(1)
-
-        self.scroll.setWidget(self.scroll_host)
-        self.root.addWidget(self.scroll, 1)
-
-        # Pinned footer: status readout + primary actions, always on-screen.
+        # Pinned footer: progress bar + Cancel / Back / Next-or-Export.
         self._build_status_and_actions()
 
         # Apply initial enable-state (CSV default, folder destination default).
         self.rb_csv.setChecked(True)
         self._on_format_changed()
         self._set_destination("folder")
+        self._step = 0
+        self.stepper.set_current(0)
+        self.btn_back.setEnabled(False)
 
-    # ---- Target card (USB / Folder) -----------------------------------
-    def _build_target_card(self):
+    @staticmethod
+    def _make_step_scroll(content_widget):
+        scroll = QtWidgets.QScrollArea()
+        scroll.setObjectName("exportScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet(ExportMode._scroll_qss())
+        scroll.viewport().setStyleSheet("background: transparent;")
+        scroll.setWidget(content_widget)
+        return scroll
+
+    @staticmethod
+    def _step_host():
+        host = QtWidgets.QWidget()
+        host.setObjectName("exportScrollHost")
+        host.setStyleSheet("QWidget#exportScrollHost { background: transparent; }")
+        outer = QtWidgets.QVBoxLayout(host)
+        outer.setContentsMargins(2, 2, 6, 2)  # right pad = room for scrollbar
+        outer.setSpacing(12)
+        return host, outer
+
+    # ---- Step 0: Destination -------------------------------------------
+    def _build_destination_page(self):
+        host, outer = self._step_host()
         card = self._card("Export Destination", "Where the exported data is written")
         lay = card.body
 
-        # Destination + target share one tidy block: a segmented control on
-        # top, then a single picker row that adapts to the chosen destination.
+        # Destination is a pair of labelled cards (radio-style); target picker
+        # adapts to whichever one is selected.
         lay.addWidget(self._caption("Export to"))
-
-        self.dest_segment = QtWidgets.QFrame()
-        self.dest_segment.setObjectName("destSegment")
-        self.dest_segment.setStyleSheet(self._segment_frame_qss())
-        dseg = QtWidgets.QHBoxLayout(self.dest_segment)
-        dseg.setContentsMargins(4, 4, 4, 4)
-        dseg.setSpacing(4)
-        self.dest_group = QtWidgets.QButtonGroup(self)
-        self.btn_dest_usb = self._segment_button("USB Drive", "Export to a removable USB drive")
-        self.btn_dest_folder = self._segment_button("Folder", "Export to a folder on this machine")
-        self.dest_group.addButton(self.btn_dest_usb, 0)
-        self.dest_group.addButton(self.btn_dest_folder, 1)
-        dseg.addWidget(self.btn_dest_usb)
-        dseg.addWidget(self.btn_dest_folder)
-        self.dest_group.buttonToggled.connect(self._on_dest_changed)
-        lay.addWidget(self.dest_segment)
+        self.dest_group = GlassOptionCardGroup(self)
+        dest_row = QtWidgets.QHBoxLayout()
+        dest_row.setContentsMargins(0, 0, 0, 0)
+        dest_row.setSpacing(8)
+        self.card_usb = GlassOptionCard("USB Drive", "Removable storage", show_radio=True)
+        self.card_folder = GlassOptionCard(
+            "Folder on this PC", "Local or network path", show_radio=True
+        )
+        self.dest_group.addCard(self.card_usb, 0)
+        self.dest_group.addCard(self.card_folder, 1)
+        self.dest_group.toggled.connect(self._on_dest_changed)
+        dest_row.addWidget(self.card_usb, 1)
+        dest_row.addWidget(self.card_folder, 1)
+        lay.addLayout(dest_row)
 
         # Target row: read-only target field + grouped action pickers. The
         # contents adapt to the destination (Detect/Eject for USB; Choose for
@@ -215,32 +369,70 @@ class ExportMode(DataModeWidget):
         picker_lay = QtWidgets.QHBoxLayout(picker_box)
         picker_lay.setContentsMargins(4, 4, 4, 4)
         picker_lay.setSpacing(4)
-        # USB actions
-        self.btn_detect = GlassPushButton(" Detect", variant="default")
+        # USB actions — borderless (ghost variant: blue-accent hover wash,
+        # matching the app's accent colour) since they already sit inside
+        # pickerBox's own frosted border; a border per-button too would be
+        # one too many. Fixed size policy keeps them from being stretched by
+        # the layout's surplus space while a sibling slides open/closed.
+        self.btn_detect = GlassPushButton(" Detect", variant="ghost")
         self.btn_detect.setFixedHeight(28)
         self.btn_detect.setIcon(self._icon("usb.svg"))
         self.btn_detect.clicked.connect(self._do_detect)
-        self.btn_eject = GlassPushButton(" Eject", variant="default")
+        self.btn_detect.set_border_visible(False)
+        self.btn_eject = GlassPushButton(" Eject", variant="ghost")
         self.btn_eject.setFixedHeight(28)
         self.btn_eject.clicked.connect(self._do_eject)
+        self.btn_eject.set_border_visible(False)
         # Folder action
-        self.btn_target = GlassPushButton(" Choose…", variant="default")
+        self.btn_target = GlassPushButton(" Choose…", variant="ghost")
         self.btn_target.setFixedHeight(28)
         self.btn_target.setIcon(self._icon("folder.svg"))
         self.btn_target.clicked.connect(self._select_target)
+        self.btn_target.set_border_visible(False)
+        for btn in (self.btn_detect, self.btn_eject, self.btn_target):
+            btn.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+
+        self.sep_detect_eject = self._picker_separator()
+        self.sep_eject_choose = self._picker_separator()
         picker_lay.addWidget(self.btn_detect)
+        picker_lay.addWidget(self.sep_detect_eject)
         picker_lay.addWidget(self.btn_eject)
+        picker_lay.addWidget(self.sep_eject_choose)
         picker_lay.addWidget(self.btn_target)
+
+        # Detect/Eject (and their separators) only apply to a USB
+        # destination; start collapsed (Folder is the default) and slide
+        # open/closed on _on_dest_changed.
+        for btn in (self.btn_detect, self.btn_eject):
+            btn._natural_w = btn.sizeHint().width()
+            btn.setMaximumWidth(0)
+            btn.setVisible(False)
+        self.sep_detect_eject.setVisible(False)
+        self.sep_eject_choose.setVisible(False)
 
         target_row.addWidget(self.target_field, 1)
         target_row.addWidget(picker_box, 0)
         lay.addLayout(target_row)
 
-        self.content.addWidget(card)
+        lay.addSpacing(4)
+        self.chk_dated_subfolder = QtWidgets.QCheckBox("Create a dated subfolder for this export")
+        self.chk_dated_subfolder.setStyleSheet(self._radio_qss())
+        self.chk_dated_subfolder.setChecked(True)
+        self.chk_dated_subfolder.setToolTip(
+            "When unchecked, files are copied directly into the target with no wrapper folder."
+        )
+        self.chk_dated_subfolder.stateChanged.connect(self._on_dated_subfolder_changed)
+        lay.addWidget(self.chk_dated_subfolder)
 
-    # ---- Settings card ------------------------------------------------
-    def _build_settings_card(self):
-        card = self._card("Export Settings", "Choose what gets exported and how")
+        outer.addWidget(card)
+        outer.addStretch(1)
+        return host
+
+    # ---- Step 1: Scope --------------------------------------------------
+    def _build_scope_page(self):
+        host, outer = self._step_host()
+        self.scope_host = host
+        card = self._card("Export Scope", "Choose what gets exported and how")
         lay = card.body
 
         # --- Export name (prominent, full-width, top of the card) -------
@@ -250,8 +442,8 @@ class ExportMode(DataModeWidget):
         name_band.setObjectName("nameBand")
         name_band.setStyleSheet("""
             QFrame#nameBand {
-                background: rgba(255, 255, 255, 55);
-                border: 1px solid rgba(255, 255, 255, 140);
+                background: rgba(222, 238, 248, 130);
+                border: 1px solid rgba(140, 170, 195, 190);
                 border-radius: 10px;
             }
         """)
@@ -264,21 +456,9 @@ class ExportMode(DataModeWidget):
             "font-weight: 700; background: transparent; }"
         )
         nb.addWidget(name_label)
-
-        name_inner = QtWidgets.QHBoxLayout()
-        name_inner.setContentsMargins(0, 0, 0, 0)
-        name_inner.setSpacing(8)
         self.name_field = GlassLineEdit()
         self.name_field.setMinimumHeight(38)  # taller than grid fields = prominence
-        name_inner.addWidget(self.name_field, 1)
-        self.chk_noname = QtWidgets.QCheckBox("Copy directly to folder")
-        self.chk_noname.setStyleSheet(self._radio_qss())
-        self.chk_noname.setToolTip(
-            "Write run files straight into the target with no wrapper folder"
-        )
-        self.chk_noname.stateChanged.connect(self._on_noname_changed)
-        name_inner.addWidget(self.chk_noname, 0)
-        nb.addLayout(name_inner)
+        nb.addWidget(self.name_field)
         lay.addWidget(name_band)
         lay.addSpacing(4)
 
@@ -286,34 +466,44 @@ class ExportMode(DataModeWidget):
         # into a responsive grid that re-flows between 1 and 2 columns.
 
         # --- Runs to export: All vs Selection (+ choose button) ---------
-        self.scope_segment, self.scope_group, (self.btn_scope_all, self.btn_scope_sel) = (
-            self._make_segment([("All Runs", ""), ("Selection", "")])
-        )
+        self.scope_group = GlassOptionCardGroup(self)
+        self.btn_scope_all = GlassOptionCard("All Runs", "Export every run")
+        self.btn_scope_sel = GlassOptionCard("Selection", "Choose a device or run")
+        self.scope_group.addCard(self.btn_scope_all, 0)
+        self.scope_group.addCard(self.btn_scope_sel, 1)
         self.btn_scope_all.setChecked(True)
-        self.scope_group.buttonToggled.connect(self._on_selection_changed)
+        self.scope_group.toggled.connect(self._on_selection_changed)
         self.btn_select_run = GlassPushButton(" All", variant="default")
         self.btn_select_run.setFixedHeight(34)
         self.btn_select_run.setIcon(self._icon("folder.svg"))
         self.btn_select_run.clicked.connect(self._select_run)
-        scope_inner = QtWidgets.QHBoxLayout()
+        scope_cards = QtWidgets.QHBoxLayout()
+        scope_cards.setContentsMargins(0, 0, 0, 0)
+        scope_cards.setSpacing(8)
+        scope_cards.addWidget(self.btn_scope_all, 1)
+        scope_cards.addWidget(self.btn_scope_sel, 1)
+        scope_inner = QtWidgets.QVBoxLayout()
         scope_inner.setContentsMargins(0, 0, 0, 0)
         scope_inner.setSpacing(8)
-        scope_inner.addWidget(self.scope_segment, 1)
-        scope_inner.addWidget(self.btn_select_run, 0)
+        scope_inner.addLayout(scope_cards)
+        scope_inner.addWidget(self.btn_select_run)
         self.field_scope = self._field("Runs to export", scope_inner)
 
         # --- Export format: CSV / ZIP / Folder -------------------------
-        self.format_segment, self.format_group, (self.rb_csv, self.rb_zip, self.rb_folder_fmt) = (
-            self._make_segment(
-                [
-                    ("CSV Report", "A single spreadsheet report"),
-                    ("ZIP Archive", "One compressed archive of runs"),
-                    ("Folder", "A plain folder of run files"),
-                ]
-            )
-        )
-        self.format_group.buttonToggled.connect(self._on_format_changed)
-        self.field_format = self._field("Export as", self.format_segment)
+        self.format_group = GlassOptionCardGroup(self)
+        self.rb_csv = GlassOptionCard("CSV Report", "A single spreadsheet report")
+        self.rb_zip = GlassOptionCard("ZIP Archive", "One compressed archive of runs")
+        self.rb_folder_fmt = GlassOptionCard("Folder", "A plain folder of run files")
+        self.format_group.addCard(self.rb_csv, 0)
+        self.format_group.addCard(self.rb_zip, 1)
+        self.format_group.addCard(self.rb_folder_fmt, 2)
+        self.format_group.toggled.connect(self._on_format_changed)
+        format_row = QtWidgets.QHBoxLayout()
+        format_row.setContentsMargins(0, 0, 0, 0)
+        format_row.setSpacing(8)
+        for c in (self.rb_csv, self.rb_zip, self.rb_folder_fmt):
+            format_row.addWidget(c, 1)
+        self.field_format = self._field("Export as", format_row)
 
         # --- Export by date: an explicit Start → End date range. --------
         # This replaces the old All / Today / Last… mode segment entirely; any
@@ -354,40 +544,25 @@ class ExportMode(DataModeWidget):
         date_inner.addWidget(self.date_end, 1)
         self.field_date = self._field("Export by date range", date_inner)
 
-        # --- Existing-files policy: Merge / Replace / Skip -------------
-        self.policy_segment, self.policy_group, (self.rb_merge, self.rb_replace, self.rb_skip) = (
-            self._make_segment(
-                [
-                    ("Merge", "Keep newer versions"),
-                    ("Replace", "Overwrite existing"),
-                    ("Skip", "Leave existing untouched"),
-                ],
-                ids=[POLICY_MERGE, POLICY_REPLACE, POLICY_SKIP],
-            )
-        )
-        self.rb_merge.setChecked(True)
-        self.field_policy = self._field("When a file already exists", self.policy_segment)
-
         # Responsive grid. Wide layout pairs settings two-up; narrow stacks them.
-        self.settings_grid = QtWidgets.QGridLayout()
-        self.settings_grid.setContentsMargins(0, 0, 0, 0)
-        self.settings_grid.setHorizontalSpacing(16)
-        self.settings_grid.setVerticalSpacing(12)
-        self.settings_grid.setColumnStretch(0, 1)
-        self.settings_grid.setColumnStretch(1, 1)
-        self._settings_fields = [
-            self.field_scope,
-            self.field_format,
-            self.field_date,
-            self.field_policy,
-        ]
-        lay.addLayout(self.settings_grid)
+        self.scope_grid = QtWidgets.QGridLayout()
+        self.scope_grid.setContentsMargins(0, 0, 0, 0)
+        self.scope_grid.setHorizontalSpacing(16)
+        self.scope_grid.setVerticalSpacing(12)
+        self.scope_grid.setColumnStretch(0, 1)
+        self.scope_grid.setColumnStretch(1, 1)
+        self._scope_fields = [self.field_scope, self.field_format, self.field_date]
+        lay.addLayout(self.scope_grid)
         self._relayout_grid(force=True)
 
-        self.content.addWidget(card)
+        outer.addWidget(card)
+        outer.addStretch(1)
+        return host
 
-    # ---- CSV fields card ----------------------------------------------
-    def _build_csv_card(self):
+    # ---- Step 2: Fields -------------------------------------------------
+    def _build_fields_page(self):
+        host, outer = self._step_host()
+
         self.csv_card = self._card("CSV Report Fields", "Tick the columns to include in the report")
         lay = self.csv_card.body
         lay.addWidget(self._caption("Columns to include"))
@@ -410,27 +585,146 @@ class ExportMode(DataModeWidget):
             self.csv_checks[field] = cb
         lay.addLayout(self.csv_checks_grid)
         self._relayout_csv_checks(force=True)
-        self.content.addWidget(self.csv_card)
+        outer.addWidget(self.csv_card)
 
-    def _relayout_csv_checks(self, force=False):
-        """Flow the column checkboxes into 1–3 columns based on width."""
-        avail = self.scroll.viewport().width() if hasattr(self, "scroll") else self.width()
-        cols = 3 if avail >= RESPONSIVE_BREAKPOINT else (2 if avail >= 360 else 1)
-        if not force and cols == getattr(self, "_csv_check_cols", None):
-            return
-        self._csv_check_cols = cols
-        while self.csv_checks_grid.count():
-            item = self.csv_checks_grid.takeAt(0)
+        # --- Existing-files policy: Merge / Replace / Skip -------------
+        policy_card = self._card("Existing Files", "What to do when a file already exists")
+        self.policy_group = GlassOptionCardGroup(self)
+        self.rb_merge = GlassOptionCard("Merge", "Keep newer versions")
+        self.rb_replace = GlassOptionCard("Replace", "Overwrite existing")
+        self.rb_skip = GlassOptionCard("Skip", "Leave existing untouched")
+        self.policy_group.addCard(self.rb_merge, POLICY_MERGE)
+        self.policy_group.addCard(self.rb_replace, POLICY_REPLACE)
+        self.policy_group.addCard(self.rb_skip, POLICY_SKIP)
+        self.rb_merge.setChecked(True)
+        policy_row = QtWidgets.QHBoxLayout()
+        policy_row.setContentsMargins(0, 0, 0, 0)
+        policy_row.setSpacing(8)
+        for c in (self.rb_merge, self.rb_replace, self.rb_skip):
+            policy_row.addWidget(c, 1)
+        policy_card.body.addLayout(policy_row)
+        outer.addWidget(policy_card)
+
+        outer.addStretch(1)
+        return host
+
+    # ---- Step 3: Review --------------------------------------------------
+    def _build_review_page(self):
+        host, outer = self._step_host()
+        card = self._card("Review", "Confirm your selections, then export")
+        self.review_rows_lay = QtWidgets.QVBoxLayout()
+        self.review_rows_lay.setContentsMargins(0, 0, 0, 0)
+        self.review_rows_lay.setSpacing(14)
+        card.body.addLayout(self.review_rows_lay)
+        outer.addWidget(card)
+        outer.addStretch(1)
+        return host
+
+    def _refresh_review(self):
+        while self.review_rows_lay.count():
+            item = self.review_rows_lay.takeAt(0)
             w = item.widget()
             if w is not None:
-                w.setParent(self.csv_card)
-        for c in range(3):
-            self.csv_checks_grid.setColumnStretch(c, 1 if c < cols else 0)
-        for idx, field in enumerate(CSV_FIELDS):
-            r, c = divmod(idx, cols)
-            self.csv_checks_grid.addWidget(self.csv_checks[field], r, c)
-        for cb in self.csv_checks.values():
-            cb.show()
+                w.deleteLater()
+
+        dest_card = self.dest_group.checkedButton()
+        scope_btn = self.scope_group.checkedButton()
+        scope_detail = (
+            f" ({self.btn_select_run.text().strip()})" if self.btn_scope_sel.isChecked() else ""
+        )
+        fmt_btn = self.format_group.checkedButton()
+        policy_btn = self.policy_group.checkedButton()
+        date_text = (
+            f"{self.date_start.date().toString('yyyy-MM-dd')} → "
+            f"{self.date_end.date().toString('yyyy-MM-dd')}"
+        )
+
+        sections = [
+            (
+                "Destination",
+                [
+                    ("Destination", dest_card.text() if dest_card else "Folder on this PC"),
+                    ("Target", self.target_field.text()),
+                    ("Dated subfolder", "Yes" if self.chk_dated_subfolder.isChecked() else "No"),
+                ],
+            ),
+            (
+                "Scope",
+                [
+                    ("Export name", self.name_field.text() or "(none — copied directly)"),
+                    (
+                        "Runs to export",
+                        (scope_btn.text() if scope_btn else "All Runs") + scope_detail,
+                    ),
+                    ("Date range", date_text),
+                ],
+            ),
+            (
+                "Fields",
+                [
+                    ("Export as", fmt_btn.text() if fmt_btn else "CSV Report"),
+                    ("Existing files", policy_btn.text() if policy_btn else "Merge"),
+                ]
+                + (
+                    [("CSV columns", ", ".join(self._selected_csv_cols()))]
+                    if self.rb_csv.isChecked()
+                    else []
+                ),
+            ),
+        ]
+
+        for idx, (heading, rows) in enumerate(sections):
+            if idx > 0:
+                divider = QtWidgets.QFrame()
+                divider.setFixedHeight(1)
+                divider.setStyleSheet("background: rgba(210, 218, 228, 150); border: none;")
+                self.review_rows_lay.addWidget(divider)
+            self.review_rows_lay.addWidget(self._build_review_section(heading, rows))
+
+    def _build_review_section(self, heading, rows):
+        section = QtWidgets.QWidget()
+        section.setStyleSheet("background: transparent;")
+        slay = QtWidgets.QVBoxLayout(section)
+        slay.setContentsMargins(0, 0, 0, 0)
+        slay.setSpacing(8)
+
+        head = QtWidgets.QLabel(heading.upper())
+        head.setStyleSheet(self._caption_qss())
+        slay.addWidget(head)
+
+        grid = QtWidgets.QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(10)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        for i, (label, value) in enumerate(rows):
+            r, c = divmod(i, 2)
+            grid.addWidget(self._review_field(label, value), r, c)
+        slay.addLayout(grid)
+        return section
+
+    @staticmethod
+    def _review_field(label, value):
+        block = QtWidgets.QWidget()
+        block.setStyleSheet("background: transparent;")
+        blay = QtWidgets.QVBoxLayout(block)
+        blay.setContentsMargins(0, 0, 0, 0)
+        blay.setSpacing(2)
+        lbl = QtWidgets.QLabel(label)
+        lbl.setStyleSheet(
+            "QLabel { color: rgba(60, 72, 88, 160); font-size: 10px; font-weight: 600; "
+            "text-transform: uppercase; letter-spacing: 0.5px; background: transparent; }"
+        )
+        val = QtWidgets.QLabel(str(value))
+        val.setWordWrap(True)
+        val.setStyleSheet(
+            "QLabel { color: rgba(20, 30, 42, 235); font-size: 13px; font-weight: 600; "
+            "background: transparent; }"
+        )
+        blay.addWidget(lbl)
+        blay.addWidget(val)
+        return block
 
     def _selected_csv_cols(self):
         """The ordered list of columns the user has ticked (Run Name always
@@ -469,63 +763,296 @@ class ExportMode(DataModeWidget):
         """)
         flay.addWidget(self.export_progress)
 
-        # Buttons match the Import UI: compact, content-sized (no minimum
-        # width), both the default glass variant, sitting at the right end of
-        # the row.
+        # Cancel sits on the left (always available — aborts a running task, or
+        # resets the wizard to step 1 when idle); Back/Next-or-Export on the
+        # right, matching the wireframe's footer.
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
         self.btn_cancel = GlassPushButton(" Cancel", variant="default")
         self.btn_cancel.setFixedHeight(34)
-        self.btn_cancel.setEnabled(False)
-        self.btn_cancel.clicked.connect(self.services.request_abort)
-        self.btn_export = GlassPushButton(" Export", variant="default")
-        self.btn_export.setFixedHeight(34)
-        self.btn_export.setEnabled(False)
-        self.btn_export.clicked.connect(self._do_export)
+        self.btn_cancel.clicked.connect(self._on_cancel_clicked)
+        self.btn_back = GlassPushButton(" Back", variant="default")
+        self.btn_back.setFixedHeight(34)
+        self.btn_back.clicked.connect(self._go_back)
+        self.btn_next = GlassPushButton(" Next →", variant="primary")
+        self.btn_next.setFixedHeight(34)
+        self.btn_next.clicked.connect(self._go_next_or_export)
 
-        row.addStretch(1)
         row.addWidget(self.btn_cancel, 0)
-        row.addWidget(self.btn_export, 0)
+        row.addStretch(1)
+        row.addWidget(self.btn_back, 0)
+        row.addWidget(self.btn_next, 0)
 
         flay.addLayout(row)
         self.root.addWidget(footer, 0)
 
     # ------------------------------------------------------------------
+    #  Wizard step navigation
+    # ------------------------------------------------------------------
+    def _go_to_step(self, index):
+        if index == self._step:
+            return
+        going_forward = index > self._step
+        old_index = self._step
+
+        # Prep the destination page's content BEFORE sliding so its captured
+        # pixmap (used by the slide) reflects the latest selections, not a
+        # stale snapshot from whenever that page was last shown.
+        if index == len(self._step_labels) - 1:
+            self._refresh_review()
+
+        self._step = index
+        self.stepper.set_current(index)
+        self.btn_back.setEnabled(index > 0)
+        if index == 0:
+            self._update_export_enabled()
+        else:
+            self.btn_next.setEnabled(True)
+        self.btn_next.setText(" Export" if index == len(self._step_labels) - 1 else " Next →")
+
+        self._slide_step(old_index, index, going_forward)
+
+    def _go_back(self):
+        if self._step > 0:
+            self._go_to_step(self._step - 1)
+
+    def _go_next_or_export(self):
+        if self._step == len(self._step_labels) - 1:
+            self._do_export()
+            return
+        if self._step == 0 and self._drive() is None:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Export Destination",
+                "Choose a target folder or USB drive before continuing.",
+            )
+            return
+        if self._step == 1:
+            try:
+                self._compute_filter_min()
+                self._compute_filter_max()
+            except ValueError as e:
+                QtWidgets.QMessageBox.warning(self, "Export by date range", str(e))
+                return
+        self._go_to_step(self._step + 1)
+
+    def _on_cancel_clicked(self):
+        if self._task_running:
+            self.services.request_abort()
+        else:
+            self._reset_state()
+
+    def _reset_state(self):
+        """Reset every wizard field back to its defaults and return to step
+        0 — used after a completed export, and by Cancel when idle."""
+        self._source_subfolder = ""
+        self.btn_select_run.setText(" All")
+        self.scope_group.setCheckedId(0)  # All Runs
+
+        self.format_group.setCheckedId(0)  # CSV Report
+        self._on_format_changed()
+
+        today = QtCore.QDate.currentDate()
+        self.date_start.setDate(today.addMonths(-1))
+        self.date_end.setDate(today)
+
+        self.policy_group.setCheckedId(POLICY_MERGE)
+
+        for cb in self.csv_checks.values():
+            cb.setChecked(True)
+
+        self.chk_dated_subfolder.setChecked(True)
+        self._generate_name()
+
+        self.dest_group.setCheckedId(1)  # Folder on this PC
+        self._refresh_target(no_ask=True)
+
+        self._exported = False
+        # Explicit, not just via _go_to_step(0): that call is a no-op when
+        # already on step 0, which would otherwise leave old steps marked
+        # "done" (still highlighted/clickable) after a reset.
+        self.stepper.reset()
+        self._go_to_step(0)
+
+    # ------------------------------------------------------------------
+    #  Step slide transition (pixmap-proxy cross-slide, same technique as
+    #  DataManagementWidget._slide_to — adapted to horizontal/Next-Back).
+    # ------------------------------------------------------------------
+    def _teardown_step_slide(self):
+        """Stop any running slide and destroy its proxy clip immediately, so
+        a rapid double Next/Back click can't leave a stale page snapshot
+        painting over the live stack."""
+        group = getattr(self, "_step_slide_group", None)
+        if group is not None:
+            try:
+                group.stop()
+                group.deleteLater()
+            except RuntimeError:
+                pass
+            self._step_slide_group = None
+        clip = getattr(self, "_step_slide_clip", None)
+        if clip is not None:
+            try:
+                clip.hide()
+                clip.setParent(None)
+                clip.deleteLater()
+            except RuntimeError:
+                pass
+            self._step_slide_clip = None
+        if hasattr(self, "step_stack"):
+            self.step_stack.setGraphicsEffect(None)
+            self.step_stack.show()
+
+    def _slide_step(self, old_index, new_index, going_forward):
+        """Cross-slide the outgoing/incoming step pages horizontally: Next
+        slides the new page in from the right (old exits left); Back is the
+        mirror image."""
+        self._teardown_step_slide()
+
+        stack = self.step_stack
+        old_widget = stack.widget(old_index)
+        new_widget = stack.widget(new_index)
+        size = stack.size()
+        if old_widget is None or new_widget is None or size.width() <= 0 or size.height() <= 0:
+            stack.setCurrentIndex(new_index)  # layout not settled — fall back to instant
+            return
+
+        old_pix = old_widget.grab()
+        stack.setCurrentIndex(new_index)
+        new_widget.resize(size)
+        new_pix = new_widget.grab()
+
+        clip = QtWidgets.QFrame(self)
+        clip.setObjectName("stepSlideClip")
+        clip.setStyleSheet("QFrame#stepSlideClip { background: transparent; border: none; }")
+        clip.setGeometry(stack.geometry())
+        clip.show()
+        clip.raise_()  # paint over the (still-visible, still-laid-out) live stack
+        self._step_slide_clip = clip
+
+        w = size.width()
+        rest = QtCore.QPoint(0, 0)
+        if going_forward:
+            old_end = QtCore.QPoint(-w, 0)  # old exits left
+            new_start = QtCore.QPoint(w, 0)  # new enters from the right
+        else:
+            old_end = QtCore.QPoint(w, 0)  # old exits right
+            new_start = QtCore.QPoint(-w, 0)  # new enters from the left
+
+        old_lbl = QtWidgets.QLabel(clip)
+        old_lbl.setPixmap(old_pix)
+        old_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        old_lbl.setGeometry(QtCore.QRect(rest, size))
+        old_lbl.show()
+
+        new_lbl = QtWidgets.QLabel(clip)
+        new_lbl.setPixmap(new_pix)
+        new_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        new_lbl.setGeometry(QtCore.QRect(new_start, size))
+        new_lbl.show()
+        new_lbl.raise_()
+
+        # Make the live stack fully transparent — NOT hidden — for the
+        # duration. setVisible(False) would collapse its reserved space in
+        # the shared QVBoxLayout (stepper above, footer below), snapping
+        # them around (the earlier "stepper sliding"/jumpy-layout bug).
+        # Opacity 0 has no effect on layout — it just stops the live stack
+        # (already showing the new page underneath the proxies) from
+        # bleeding through at the proxies' edges.
+        stack_effect = QtWidgets.QGraphicsOpacityEffect(stack)
+        stack.setGraphicsEffect(stack_effect)
+        stack_effect.setOpacity(0.0)
+
+        # Both animations share the EXACT same duration/curve so old and new
+        # move in lockstep — old's trailing edge and new's leading edge stay
+        # joined at every frame (a "push"), with no momentary gap that would
+        # let the live stack (already showing the new page) flash through.
+        anim_old = QtCore.QPropertyAnimation(old_lbl, b"pos", self)
+        anim_old.setDuration(220)
+        anim_old.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        anim_old.setStartValue(rest)
+        anim_old.setEndValue(old_end)
+
+        anim_new = QtCore.QPropertyAnimation(new_lbl, b"pos", self)
+        anim_new.setDuration(220)
+        anim_new.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        anim_new.setStartValue(new_start)
+        anim_new.setEndValue(rest)
+
+        group = QtCore.QParallelAnimationGroup(self)
+        group.addAnimation(anim_old)
+        group.addAnimation(anim_new)
+
+        def _finish():
+            stack.setGraphicsEffect(None)
+            clip.hide()
+            clip.setParent(None)
+            clip.deleteLater()
+            self._step_slide_clip = None
+            self._step_slide_group = None
+
+        group.finished.connect(_finish)
+        self._step_slide_group = group
+        group.start()
+
+    # ------------------------------------------------------------------
     #  Responsive grid relayout
     # ------------------------------------------------------------------
     def _relayout_grid(self, force=False):
-        """Place the settings fields in 1 or 2 columns based on content width."""
-        avail = self.scroll.viewport().width() if hasattr(self, "scroll") else self.width()
+        """Place the Scope step's fields in 1 or 2 columns based on width."""
+        avail = self.scope_scroll.viewport().width() if hasattr(self, "scope_scroll") else self.width()
         two_col = avail >= RESPONSIVE_BREAKPOINT
         if not force and two_col == self._settings_two_col:
             return
         self._settings_two_col = two_col
 
         # Detach existing items without deleting the field widgets.
-        while self.settings_grid.count():
-            item = self.settings_grid.takeAt(0)
+        while self.scope_grid.count():
+            item = self.scope_grid.takeAt(0)
             w = item.widget()
             if w is not None:
-                w.setParent(self.scroll_host)
+                w.setParent(self.scope_host)
 
         if two_col:
-            self.settings_grid.setColumnStretch(0, 1)
-            self.settings_grid.setColumnStretch(1, 1)
-            for idx, field in enumerate(self._settings_fields):
+            self.scope_grid.setColumnStretch(0, 1)
+            self.scope_grid.setColumnStretch(1, 1)
+            for idx, field in enumerate(self._scope_fields):
                 r, c = divmod(idx, 2)
-                self.settings_grid.addWidget(field, r, c)
+                self.scope_grid.addWidget(field, r, c)
         else:
-            self.settings_grid.setColumnStretch(0, 1)
-            self.settings_grid.setColumnStretch(1, 0)
-            for idx, field in enumerate(self._settings_fields):
-                self.settings_grid.addWidget(field, idx, 0, 1, 2)
-        for field in self._settings_fields:
+            self.scope_grid.setColumnStretch(0, 1)
+            self.scope_grid.setColumnStretch(1, 0)
+            for idx, field in enumerate(self._scope_fields):
+                self.scope_grid.addWidget(field, idx, 0, 1, 2)
+        for field in self._scope_fields:
             field.show()
+
+    def _relayout_csv_checks(self, force=False):
+        """Flow the column checkboxes into 1–3 columns based on width."""
+        avail = (
+            self.fields_scroll.viewport().width() if hasattr(self, "fields_scroll") else self.width()
+        )
+        cols = 3 if avail >= RESPONSIVE_BREAKPOINT else (2 if avail >= 360 else 1)
+        if not force and cols == getattr(self, "_csv_check_cols", None):
+            return
+        self._csv_check_cols = cols
+        while self.csv_checks_grid.count():
+            item = self.csv_checks_grid.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(self.csv_card)
+        for c in range(3):
+            self.csv_checks_grid.setColumnStretch(c, 1 if c < cols else 0)
+        for idx, field in enumerate(CSV_FIELDS):
+            r, c = divmod(idx, cols)
+            self.csv_checks_grid.addWidget(self.csv_checks[field], r, c)
+        for cb in self.csv_checks.values():
+            cb.show()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, "settings_grid"):
+        if hasattr(self, "scope_grid"):
             self._relayout_grid()
         if hasattr(self, "csv_checks_grid"):
             self._relayout_csv_checks()
@@ -545,7 +1072,12 @@ class ExportMode(DataModeWidget):
 
     def on_freeze(self, frozen: bool):
         # Mirror freezeGUI's enable/disable (Erase-only handled elsewhere).
-        for w in (self.dest_segment, self.btn_export):
+        # Destination cards aren't gated here: they live on their own wizard
+        # step the user can't reach mid-export anyway, and disabling them
+        # caused a visible "stuck disabled" flash on the Destination step
+        # right as a completed export resets back to it (the success signal
+        # can arrive on the GUI thread before the freeze-clearing one does).
+        for w in (self.btn_next, self.btn_back):
             w.setDisabled(frozen)
 
     def on_progress(self, label, pct, color):
@@ -554,40 +1086,78 @@ class ExportMode(DataModeWidget):
             self.export_progress.setValue(max(0, min(100, int(pct))))
         except Exception:
             pass
+        # pct == 100 with the "success" colour is unique to _export_task's
+        # final "Exported to ..." message (cancelled/error finish at 100
+        # with "b"/"r" instead) — reset the wizard back to a clean slate
+        # once an export genuinely completes.
+        if pct == 100 and color == "g":
+            self._reset_state()
 
     # ------------------------------------------------------------------
     #  USB / folder destination state (preserves chk_usb/chk_folder/drive)
     # ------------------------------------------------------------------
     def _set_destination(self, kind):
         """Programmatically set the destination ('usb' or 'folder')."""
-        if kind == "usb":
-            self.btn_dest_usb.setChecked(True)
-        else:
-            self.btn_dest_folder.setChecked(True)
+        self.dest_group.setCheckedId(0 if kind == "usb" else 1)
 
-    def _on_dest_changed(self, button, checked):
+    def _on_dest_changed(self, card, checked):
         if not checked:
             return
-        is_usb = button is self.btn_dest_usb
+        is_usb = card is self.card_usb
         self._chk_usb = is_usb
         self._chk_folder = not is_usb
 
-        # Swap which picker actions are relevant for the destination.
-        self.btn_detect.setVisible(is_usb)
-        self.btn_eject.setVisible(is_usb)
-        self.btn_target.setVisible(not is_usb)
+        # Detect/Eject are USB-only extras; Choose… stays available for both
+        # destinations so there's always a manual way to set/override the
+        # target — auto-detection isn't guaranteed to find a drive. Slide
+        # Detect/Eject open/closed rather than an abrupt show/hide; their
+        # separators track the same state (no point separating from a
+        # button that isn't there).
+        self._slide_button(self.btn_detect, is_usb)
+        self._slide_button(self.btn_eject, is_usb)
+        self.sep_detect_eject.setVisible(is_usb)
+        self.sep_eject_choose.setVisible(is_usb)
+        self.btn_target.setVisible(True)
 
         if is_usb:
-            # Switching to USB: clear any folder target and adopt the currently
-            # detected USB drive (if the shared loop already found one).
+            # Switching to USB: adopt the currently detected USB drive if the
+            # shared loop already found one; otherwise leave the field as-is
+            # so a manually-chosen target (via Choose…) isn't clobbered.
             drive = self._drive()
-            self.target_field.setText(drive if drive else "[NONE]")
+            if drive:
+                self.target_field.setText(drive)
         else:
             # Folder: target is whatever was chosen / defaulted.
             t = self.target_field.text()
             self._set_drive(t if t and t != "[NONE]" else None)
             self._refresh_target(no_ask=True)
         self._update_export_enabled()
+
+    def _slide_button(self, widget, show):
+        """Slide a USB-only action button open (show=True) or closed
+        (show=False) by animating maximumWidth — a real QWidget property
+        that QHBoxLayout respects every frame, so siblings reflow smoothly
+        as it grows/shrinks (unlike animating geometry directly, which only
+        the layout itself is allowed to set)."""
+        natural_w = getattr(widget, "_natural_w", widget.sizeHint().width())
+        anim = QtCore.QPropertyAnimation(widget, b"maximumWidth", self)
+        anim.setDuration(200)
+        if show:
+            widget.setVisible(True)
+            anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+            anim.setStartValue(widget.maximumWidth())
+            anim.setEndValue(natural_w)
+        else:
+            anim.setEasingCurve(QtCore.QEasingCurve.InCubic)
+            anim.setStartValue(widget.maximumWidth())
+            anim.setEndValue(0)
+            anim.finished.connect(lambda: widget.setVisible(False))
+
+        self._dest_anims = [
+            a for a in getattr(self, "_dest_anims", []) if a.state() == QtCore.QAbstractAnimation.Running
+        ]
+        self._dest_anims.append(anim)
+        anim.start()
 
     def _on_usb_add(self):
         drive = getattr(self.services, "drive", None)
@@ -614,8 +1184,11 @@ class ExportMode(DataModeWidget):
         return getattr(self.services, "drive", None)
 
     def _update_export_enabled(self):
+        # Live-gates Next while the user is on the Destination step; steps
+        # 1-3 validate (and warn) at click-time instead in _go_next_or_export.
         ready = (self._chk_usb or self._chk_folder) and self._drive() is not None
-        self.btn_export.setEnabled(bool(ready))
+        if getattr(self, "_step", 0) == 0 and hasattr(self, "btn_next"):
+            self.btn_next.setEnabled(bool(ready))
 
     # ------------------------------------------------------------------
     #  Selection / target pickers
@@ -668,7 +1241,8 @@ class ExportMode(DataModeWidget):
             self._source_subfolder = ""
             Log.w(TAG, "Selected folder not in logged data path.")
             return
-        self.btn_scope_sel.setChecked(True)
+        self.scope_group.setCheckedId(1)  # Selection — setChecked() alone wouldn't
+        # enforce exclusivity or notify the group (only the click path / setCheckedId do).
         sub = selected.replace(data_root, "").replace("/", Constants.slash)
         sub = sub.strip(Constants.slash)
         self._source_subfolder = sub
@@ -698,11 +1272,11 @@ class ExportMode(DataModeWidget):
         )
         if leaf:
             default = leaf
-        enabled = not self.chk_noname.isChecked()
+        enabled = self.chk_dated_subfolder.isChecked()
         self.name_field.setEnabled(enabled)
         self.name_field.setText(default if enabled else "")
 
-    def _on_noname_changed(self, *_):
+    def _on_dated_subfolder_changed(self, *_):
         self._generate_name()
 
     def _on_format_changed(self, *_):
@@ -719,13 +1293,12 @@ class ExportMode(DataModeWidget):
         else:
             self.rb_merge.setText("Merge")
             self.rb_skip.setText("Skip")
-        # "Copy directly to folder" only valid when exporting as a Folder.
-        if not self.rb_folder_fmt.isChecked():
-            self.chk_noname.setEnabled(False)
-            if self.chk_noname.isChecked():
-                self.chk_noname.setChecked(False)
-        else:
-            self.chk_noname.setEnabled(True)
+        # The dated-subfolder toggle stays freely editable regardless of
+        # format: it lives on the Destination step, before the user has even
+        # reached this Scope step's format choice, so locking/forcing it here
+        # would make a control they already set appear to break for no
+        # visible reason. Unchecking it for CSV/ZIP just changes the report's
+        # default file name (falls back to the target folder's name).
 
     # ------------------------------------------------------------------
     #  USB detect / eject (delegate to shared service)
@@ -806,17 +1379,18 @@ class ExportMode(DataModeWidget):
         )
 
     def _set_running(self, running):
+        self._task_running = running  # plain bool; safe to set from the worker thread
         QtCore.QMetaObject.invokeMethod(
-            self.btn_export,
+            self.btn_next,
             "setEnabled",
             QtCore.Qt.QueuedConnection,
             QtCore.Q_ARG(bool, not running),
         )
         QtCore.QMetaObject.invokeMethod(
-            self.btn_cancel,
+            self.btn_back,
             "setEnabled",
             QtCore.Qt.QueuedConnection,
-            QtCore.Q_ARG(bool, running),
+            QtCore.Q_ARG(bool, not running and self._step > 0),
         )
         # Reset to 0 on start, then show/hide the slim bar (worker-thread safe).
         if running:
@@ -1499,20 +2073,20 @@ class ExportMode(DataModeWidget):
         )
 
     @staticmethod
-    def _segment_frame_qss():
-        return """
-            QFrame { background: rgba(255, 255, 255, 60);
-                     border: 1px solid rgba(255, 255, 255, 150);
-                     border-radius: 8px; }
-        """
+    def _picker_box_qss():
+        # No fill/border of its own — the thin separators between Detect,
+        # Eject, and Choose… (shown only while Detect/Eject are expanded)
+        # are the only visual division here now.
+        return "QFrame#pickerBox { background: transparent; border: none; }"
 
     @staticmethod
-    def _picker_box_qss():
-        return """
-            QFrame#pickerBox { background: rgba(255, 255, 255, 60);
-                               border: 1px solid rgba(255, 255, 255, 150);
-                               border-radius: 8px; }
-        """
+    def _picker_separator():
+        """A thin vertical divider between borderless pickerBox actions."""
+        sep = QtWidgets.QFrame()
+        sep.setFixedWidth(1)
+        sep.setFixedHeight(18)
+        sep.setStyleSheet("background: rgba(170, 182, 196, 150); border: none;")
+        return sep
 
     @staticmethod
     def _scroll_qss():
@@ -1566,103 +2140,56 @@ class ExportMode(DataModeWidget):
             }
         """
 
-    @staticmethod
-    def _date_qss():
+    def _date_qss(self):
         """Glass styling for QDateEdit that mirrors the line-edit/combo look."""
-        return """
-            QDateEdit {
+        icon_path = self._icon_file_path("date-range.svg")
+        drop_image = f"image: url({icon_path});" if icon_path else ""
+        return f"""
+            QDateEdit {{
                 background: rgba(255, 255, 255, 150);
                 border: 1px solid rgba(120, 130, 145, 150);
                 border-radius: 14px; padding-left: 12px; padding-right: 6px;
                 color: rgb(40, 50, 62); font-weight: bold; min-height: 26px;
-            }
-            QDateEdit:hover {
+            }}
+            QDateEdit:hover {{
                 background: rgba(255, 255, 255, 200);
                 border: 1px solid rgba(90, 100, 115, 190);
-            }
-            QDateEdit:focus {
+            }}
+            QDateEdit:focus {{
                 background: rgba(255, 255, 255, 225);
                 border: 1px solid rgba(10, 163, 230, 200);
-            }
-            QDateEdit::drop-down {
-                border: none; background: transparent; width: 22px;
+            }}
+            QDateEdit::drop-down {{
+                border: none; background: transparent; width: 24px;
                 subcontrol-position: center right; margin-right: 4px;
-            }
-            QDateEdit::down-arrow {
-                width: 0px; height: 0px;
-            }
-            QCalendarWidget QWidget { alternate-background-color: rgba(235,240,246,255); }
-            QCalendarWidget QAbstractItemView:enabled {
+            }}
+            QDateEdit::down-arrow {{
+                {drop_image}
+                width: 14px; height: 14px;
+            }}
+            QCalendarWidget QWidget {{ alternate-background-color: rgba(235,240,246,255); }}
+            QCalendarWidget QAbstractItemView:enabled {{
                 color: rgb(40, 50, 62);
                 selection-background-color: rgba(10, 163, 230, 60);
                 selection-color: rgb(20, 30, 40);
-            }
+            }}
         """
-
-    def _segment_button(self, text, tooltip=""):
-        btn = QtWidgets.QToolButton()
-        btn.setText(text)
-        btn.setCheckable(True)
-        btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        btn.setFixedHeight(28)
-        btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-        if tooltip:
-            btn.setToolTip(tooltip)
-        btn.setStyleSheet(self._segment_qss())
-        return btn
-
-    @staticmethod
-    def _segment_qss():
-        return """
-            QToolButton {
-                background: transparent; border: none; border-radius: 6px;
-                color: rgba(40, 50, 65, 190); font-size: 12px; font-weight: 600;
-                padding: 0px 10px;
-            }
-            QToolButton:hover   { background: rgba(255, 255, 255, 80); }
-            QToolButton:checked {
-                background: rgba(255, 255, 255, 235);
-                color: rgba(0, 118, 174, 230);
-            }
-            QToolButton:disabled { color: rgba(40, 50, 65, 90); }
-        """
-
-    def _make_segment(self, items, ids=None):
-        """Build a frosted segmented control.
-
-        items : list of (label, tooltip). ids: optional explicit button ids.
-        Returns (frame, QButtonGroup, tuple_of_buttons). Exclusive selection.
-        """
-        frame = QtWidgets.QFrame()
-        frame.setObjectName("segFrame")
-        frame.setStyleSheet(
-            "QFrame#segFrame { background: rgba(255,255,255,60); "
-            "border: 1px solid rgba(255,255,255,150); border-radius: 8px; }"
-        )
-        lay = QtWidgets.QHBoxLayout(frame)
-        lay.setContentsMargins(4, 4, 4, 4)
-        lay.setSpacing(4)
-        group = QtWidgets.QButtonGroup(frame)
-        group.setExclusive(True)
-        buttons = []
-        for i, (label, tip) in enumerate(items):
-            btn = self._segment_button(label, tip)
-            bid = ids[i] if ids is not None else i
-            group.addButton(btn, bid)
-            lay.addWidget(btn)
-            buttons.append(btn)
-        return frame, group, tuple(buttons)
 
     def _icon(self, name):
+        path = self._icon_file_path(name)
+        return QtGui.QIcon(path) if path else QtGui.QIcon()
+
+    @staticmethod
+    def _icon_file_path(name):
         try:
             from QATCH.common.architecture import Architecture
 
             path = os.path.join(Architecture.get_path(), "QATCH", "icons", name)
             if os.path.exists(path):
-                return QtGui.QIcon(path)
+                return path.replace("\\", "/")
         except Exception:
             pass
-        return QtGui.QIcon()
+        return ""
 
     def _card(self, title, subtitle=""):
         """A frosted glass panel. Returns the QFrame with a `.body` QVBoxLayout
@@ -1671,13 +2198,13 @@ class ExportMode(DataModeWidget):
         card.setObjectName("glassPanel")
         card.setStyleSheet("""
             QFrame#glassPanel {
-                background: rgba(255, 255, 255, 30);
-                border: 1px solid rgba(200, 210, 220, 110);
+                background: rgba(255, 255, 255, 110);
+                border: 1px solid rgba(218, 224, 232, 170);
                 border-radius: 10px;
             }
             QFrame#glassPanel[dimmed="true"] {
-                background: rgba(255, 255, 255, 14);
-                border: 1px solid rgba(200, 210, 220, 70);
+                background: rgba(255, 255, 255, 55);
+                border: 1px solid rgba(218, 224, 232, 100);
             }
         """)
         outer = QtWidgets.QVBoxLayout(card)

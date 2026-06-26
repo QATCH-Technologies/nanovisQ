@@ -7,21 +7,6 @@ Structure mirrors create_user_widget.py exactly: same card geometry, same
 open/close animation (scrim fade + slide-up), same inline error system, and
 the same x close / → submit button conventions.
 
-Layout (top → bottom inside the card)
---------------------------------------
-  x close button (top-right)
-  reset-password.svg icon
-  "Reset Password" title
-  User info card  ─ initials avatar · full name · role badge
-  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-  Email field     (placeholder — coming soon)
-  Username field  (placeholder — coming soon)
-  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-  New Password field        [👁]
-  Confirm New Password      [👁]
-  Inline error label
-  → submit button (centred)
-
 Signal
 ------
   password_confirmed(str)  — emitted with the validated plaintext password

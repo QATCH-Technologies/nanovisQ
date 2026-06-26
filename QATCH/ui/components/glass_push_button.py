@@ -130,6 +130,21 @@ _PALETTES: dict[str, dict] = {
         sh_peak=(200, 210, 220, 240),
         text_role="dark",
     ),
+    # Ghost: near-invisible at rest, blue-accent wash on hover — for compact
+    # actions packed inside an already-bordered container (set_border_visible
+    # off), where the app's blue accent reads as "interactive" more clearly
+    # than a generic white opacity bump.
+    "ghost": dict(
+        fills=(
+            (10, 163, 230, 18),  # resting — barely-there tint
+            (10, 163, 230, 60),  # hover
+            (10, 163, 230, 100),  # pressed
+        ),
+        border=(10, 163, 230, 150),
+        sh_accent=(185, 218, 248, 140),
+        sh_peak=(255, 255, 255, 240),
+        text_role="dark",
+    ),
 }
 
 _TEXT_COLORS: dict[str, QtGui.QColor] = {
@@ -170,6 +185,7 @@ class GlassPushButton(QtWidgets.QPushButton):
         self._shimmer_t: float = 0.0
         self._hovered: bool = False
         self._pressed_state: bool = False
+        self._border_visible: bool = True
 
         # 12 ms / ~0.022 step -> matches GlassLineEdit tick exactly
         self._timer = QtCore.QTimer(self)
@@ -218,6 +234,21 @@ class GlassPushButton(QtWidgets.QPushButton):
         """
         self._variant = variant
         self._apply_text_color(variant)
+        self.update()
+
+    def set_border_visible(self, visible: bool) -> None:
+        """Hide the glass border entirely while keeping the fill + shimmer
+        hover effect — for compact actions that sit inside an already
+        bordered container (e.g. the USB picker box), where drawing a border
+        around the button too would be one border too many.
+
+        Also drops keyboard focus when borderless: the native focus
+        rectangle some styles draw around a focused QPushButton would look
+        like a stray grey border reappearing on click, with nothing (no
+        custom border) to frame it."""
+        self._border_visible = visible
+        if not visible:
+            self.setFocusPolicy(QtCore.Qt.NoFocus)
         self.update()
 
     # ------------------------------------------------------------------
@@ -319,42 +350,43 @@ class GlassPushButton(QtWidgets.QPushButton):
         # ── Border / shimmer ─────────────────────────────────────────
         # Algorithm mirrors GlassLineEdit paintEvent exactly:
         # sweeping phase -> spread / peak gradient; settled phase -> solid accent.
-        t = self._shimmer_t
-        sh_accent = self._c(pal["sh_accent"])
-        sh_peak = self._c(pal["sh_peak"])
+        if self._border_visible:
+            t = self._shimmer_t
+            sh_accent = self._c(pal["sh_accent"])
+            sh_peak = self._c(pal["sh_peak"])
 
-        if self._hovered and t < 1.0:
-            # Sweeping shimmer: bright peak chases t across the border
-            spread = 0.30
-            grad = QtGui.QLinearGradient(0.0, 0.0, float(w), 0.0)
-            grad.setColorAt(0.0, sh_accent)
+            if self._hovered and t < 1.0:
+                # Sweeping shimmer: bright peak chases t across the border
+                spread = 0.30
+                grad = QtGui.QLinearGradient(0.0, 0.0, float(w), 0.0)
+                grad.setColorAt(0.0, sh_accent)
 
-            pre = max(0.0, t - spread)
-            if pre > 0.0:
-                grad.setColorAt(pre, sh_accent)
+                pre = max(0.0, t - spread)
+                if pre > 0.0:
+                    grad.setColorAt(pre, sh_accent)
 
-            grad.setColorAt(max(0.0, t - spread * 0.12), sh_peak)
-            grad.setColorAt(min(1.0, t + spread * 0.12), sh_peak)
+                grad.setColorAt(max(0.0, t - spread * 0.12), sh_peak)
+                grad.setColorAt(min(1.0, t + spread * 0.12), sh_peak)
 
-            post = min(1.0, t + spread)
-            if post < 1.0:
-                grad.setColorAt(post, sh_accent)
+                post = min(1.0, t + spread)
+                if post < 1.0:
+                    grad.setColorAt(post, sh_accent)
 
-            grad.setColorAt(1.0, sh_accent)
-            p.setPen(QtGui.QPen(QtGui.QBrush(grad), 1.5))
+                grad.setColorAt(1.0, sh_accent)
+                p.setPen(QtGui.QPen(QtGui.QBrush(grad), 1.5))
 
-        elif self._hovered:
-            # Settled: accent colour at slightly elevated alpha (mirrors
-            # GlassLineEdit's settled_color alpha 130 logic)
-            settled = QtGui.QColor(sh_accent)
-            settled.setAlpha(min(255, sh_accent.alpha() + 15))
-            p.setPen(QtGui.QPen(settled, 1.5))
+            elif self._hovered:
+                # Settled: accent colour at slightly elevated alpha (mirrors
+                # GlassLineEdit's settled_color alpha 130 logic)
+                settled = QtGui.QColor(sh_accent)
+                settled.setAlpha(min(255, sh_accent.alpha() + 15))
+                p.setPen(QtGui.QPen(settled, 1.5))
 
-        else:
-            # Resting border — same as GlassLineEdit's unfocused pen
-            p.setPen(QtGui.QPen(self._c(pal["border"]), 1.0))
+            else:
+                # Resting border — same as GlassLineEdit's unfocused pen
+                p.setPen(QtGui.QPen(self._c(pal["border"]), 1.0))
 
-        p.drawRoundedRect(rect, r, r)
+            p.drawRoundedRect(rect, r, r)
         p.end()
 
         # ── Icon + text rendering ────────────────────────────────────

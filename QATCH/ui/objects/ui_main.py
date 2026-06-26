@@ -1,6 +1,6 @@
 import datetime
 import os
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
@@ -257,17 +257,6 @@ class UIMain:
         self.floating_widget = FloatingMenuWidget(self)
         self.floating_widget.addItems(self.parent.VisQAIWin.getToolNames())
 
-        # user sign-in view frame: TODO
-        self.userview = QtWidgets.QScrollArea()
-        self.userview.setObjectName("userview")
-        self.userview.setFrameShape(QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
-        self.userview.setLineWidth(0)
-        self.userview.setMidLineWidth(0)
-        self.userview.setWidgetResizable(True)
-        # TODO: Implement user widget
-        self.userview.setWidget(parent.LoginWin.ui5.centralwidget)
-        self.userview.setMinimumSize(QtCore.QSize(1000, 122))
-
         # run mode view frame: Controls and Plots
         runwidget = QtWidgets.QWidget()
         runlayout = QtWidgets.QVBoxLayout()
@@ -350,21 +339,37 @@ class UIMain:
                 background: transparent;
             }
         """)
-        if UserProfiles.count() > 0:
-            # NOTE: this widget must not be changed at load time (or else it disappears)
-            self.splitter.addWidget(self.userview)
-        else:
-            self.splitter.addWidget(self.runview)
+        # NOTE: this widget must not be changed at load time (or else it disappears)
+        self.splitter.addWidget(self.runview)
         # Logger removed from the splitter; it is now a full-width bottom row.
         # The splitter holds only the active view, so the main row's height is
         # governed by the view/plots content.
         layout_v.addWidget(self.splitter)
         layout_h.addLayout(layout_v, 255)
 
+        # Main area (modemenu + views) wrapped so it can sit in the outer splitter.
+        self.main_area = QtWidgets.QWidget()
+        self.main_area.setObjectName("mainArea")
+        self.main_area.setLayout(layout_h)
+
+        # The login screen overlays just the sidebar+content area (not the
+        # console pane or its toggle bar/footer), so the debug console stays
+        # visible and toggleable while signed out.
+        parent.LoginWin.ui5.centralwidget.attach_to(self.main_area)
+
         # ----- Controls/footer bar: footer text (left) + subtle toggle (right) -----
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
         self._log_chevron_down = QtGui.QIcon(os.path.join(icons_dir, "down-chevron.svg"))
         self._log_chevron_up = QtGui.QIcon(os.path.join(icons_dir, "up-chevron.svg"))
+        # Darker-tinted variants for the dimmed, signed-out/collapsed strip
+        # (that strip is a muted gray, not dark navy, so icons stay dark too).
+        dimmed_tint = QtGui.QColor(40, 48, 56, 235)
+        self._log_chevron_down_light = self._tinted_icon(
+            os.path.join(icons_dir, "down-chevron.svg"), dimmed_tint
+        )
+        self._log_chevron_up_light = self._tinted_icon(
+            os.path.join(icons_dir, "up-chevron.svg"), dimmed_tint
+        )
 
         self.log_toggle_bar = QtWidgets.QWidget()
         self.log_toggle_bar.setObjectName("logToggleBar")
@@ -435,7 +440,31 @@ class UIMain:
         self._log_expanded_height = 200
         self._log_collapsed = False
 
-        # self.splitter.replaceWidget(0, self.userview)
+        # Outer vertical splitter: draggable handle lets the user resize the log.
+        self.log_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.log_splitter.setObjectName("logSplitter")
+        self.log_splitter.setHandleWidth(6)
+        self.log_splitter.addWidget(self.main_area)
+        self.log_splitter.addWidget(self.log_container)
+        self.log_splitter.setStretchFactor(0, 1)  # main area takes extra space
+        self.log_splitter.setStretchFactor(1, 0)  # logger keeps its set size
+        # Allow the logger pane to collapse fully (to 0) when toggled/dragged,
+        # but keep the main area from vanishing.
+        self.log_splitter.setCollapsible(0, False)
+        self.log_splitter.setCollapsible(1, True)
+        self.log_splitter.setSizes([1000, self._log_expanded_height])
+        # Track manual drags so the toggle restores to the user's chosen height.
+        self.log_splitter.splitterMoved.connect(self._on_log_splitter_moved)
+
+        self._signed_in = True
+        self._update_log_toggle_bar_theme()  # also sets the splitter handle style
+
+        # Animate the splitter sizes for the smooth open/close slide.
+        self._log_anim = QtCore.QVariantAnimation(self.centralwidget)
+        self._log_anim.setDuration(260)
+        self._log_anim.setEasingCurve(QtCore.QEasingCurve.InOutCubic)
+        self._log_anim.valueChanged.connect(self._on_log_anim_frame)
+
         self._force_splitter_mode_set = True
         if UserProfiles.count() > 0:
             self._set_no_user_mode(self.mode_mode)
@@ -459,44 +488,12 @@ class UIMain:
             not_resize.setVerticalStretch(i + 2)
             e.setSizePolicy(not_resize)
 
-        # Main area (modemenu + views) wrapped so it can sit in the outer splitter.
-        main_area = QtWidgets.QWidget()
-        main_area.setObjectName("mainArea")
-        main_area.setLayout(layout_h)
-
-        # Outer vertical splitter: draggable handle lets the user resize the log.
-        self.log_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        self.log_splitter.setObjectName("logSplitter")
-        self.log_splitter.setHandleWidth(6)
-        self.log_splitter.setStyleSheet("""
-            QSplitter#logSplitter::handle {
-                background: transparent;
-            }
-            QSplitter#logSplitter::handle:hover {
-                background: rgba(120, 130, 145, 60);
-            }
-        """)
-        self.log_splitter.addWidget(main_area)
-        self.log_splitter.addWidget(self.log_container)
-        self.log_splitter.setStretchFactor(0, 1)  # main area takes extra space
-        self.log_splitter.setStretchFactor(1, 0)  # logger keeps its set size
-        # Allow the logger pane to collapse fully (to 0) when toggled/dragged,
-        # but keep the main area from vanishing.
-        self.log_splitter.setCollapsible(0, False)
-        self.log_splitter.setCollapsible(1, True)
-        self.log_splitter.setSizes([1000, self._log_expanded_height])
-        # Track manual drags so the toggle restores to the user's chosen height.
-        self.log_splitter.splitterMoved.connect(self._on_log_splitter_moved)
-
-        # Animate the splitter sizes for the smooth open/close slide.
-        self._log_anim = QtCore.QVariantAnimation(self.centralwidget)
-        self._log_anim.setDuration(260)
-        self._log_anim.setEasingCurve(QtCore.QEasingCurve.InOutCubic)
-        self._log_anim.valueChanged.connect(self._on_log_anim_frame)
-
         outer_v = QtWidgets.QVBoxLayout()
         outer_v.setContentsMargins(0, 0, 0, 0)
-        outer_v.setSpacing(4)
+        # No spacing: any gap here exposes centralwidget's own background,
+        # which only matches the dimmed signed-out look approximately (it's
+        # a flat color, not the blurred snapshot) — better to have no seam.
+        outer_v.setSpacing(0)
         outer_v.addWidget(self.log_splitter, 1)  # main area over draggable logger
         outer_v.addWidget(self.log_toggle_bar)  # full-width toggle + footer bar
         self.centralwidget.setLayout(outer_v)
@@ -550,8 +547,8 @@ class UIMain:
         Smoothly slide the logger open or closed by animating the splitter sizes.
 
         Collapsing animates the log pane to 0 height; expanding animates it back
-        to the last user-chosen (or default) height. The chevron icon and tooltip
-        swap to reflect the next action.
+        to the last user-chosen (or default) height. The chevron icon, tooltip,
+        and strip color swap to reflect the next action.
         """
         self._log_anim.stop()
         sizes = self.log_splitter.sizes()
@@ -561,17 +558,14 @@ class UIMain:
         if self._log_collapsed:
             # Expand to the remembered height (clamped to available space).
             end = min(self._log_expanded_height, max(total - 60, 60))
-            self.btnLogToggle.setIcon(self._log_chevron_down)
-            self.btnLogToggle.setToolTip("Hide console")
         else:
             # Remember the current height, then collapse.
             if start > 0:
                 self._log_expanded_height = start
             end = 0
-            self.btnLogToggle.setIcon(self._log_chevron_up)
-            self.btnLogToggle.setToolTip("Show console")
 
         self._log_collapsed = not self._log_collapsed
+        self._update_log_toggle_bar_theme()
         self._log_anim.setStartValue(start)
         self._log_anim.setEndValue(end)
         self._log_anim.start()
@@ -595,14 +589,102 @@ class UIMain:
         if log_h <= 0:
             if not self._log_collapsed:
                 self._log_collapsed = True
-                self.btnLogToggle.setIcon(self._log_chevron_up)
-                self.btnLogToggle.setToolTip("Show console")
+                self._update_log_toggle_bar_theme()
         else:
             self._log_expanded_height = log_h
             if self._log_collapsed:
                 self._log_collapsed = False
-                self.btnLogToggle.setIcon(self._log_chevron_down)
-                self.btnLogToggle.setToolTip("Hide console")
+                self._update_log_toggle_bar_theme()
+
+    @staticmethod
+    def _tinted_icon(path: str, color: QtGui.QColor, size: int = 14) -> QtGui.QIcon:
+        """Returns a copy of the icon at `path` fully painted in `color`.
+
+        Uses SourceAtop composition so the tint respects the original alpha
+        channel — transparent SVG areas stay transparent.
+        """
+        src = QtGui.QIcon(path).pixmap(size, size)
+        dst = QtGui.QPixmap(src.size())
+        dst.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(dst)
+        p.drawPixmap(0, 0, src)
+        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+        p.fillRect(dst.rect(), color)
+        p.end()
+        return QtGui.QIcon(dst)
+
+    def mark_signed_in(self) -> None:
+        """Restores the normal (light) console-strip look once a user signs in."""
+        self._signed_in = True
+        self._update_log_toggle_bar_theme()
+
+    def _update_log_toggle_bar_theme(self) -> None:
+        """Updates the collapsed-console strip's color, icon, and tooltip.
+
+        Dimmed while signed out *and* collapsed — the same ~30% darkening
+        the login overlay applies to the blurred dashboard, applied to this
+        strip's own light tone, so it reads as part of the same dimmed
+        scene instead of a bright strip poking out from under it. Normal
+        light strip in every other state (expanded while signed out, or
+        signed in at all).
+        """
+        dark = (not self._signed_in) and self._log_collapsed
+        self.btnLogToggle.setToolTip("Show console" if self._log_collapsed else "Hide console")
+
+        if self._log_collapsed:
+            self.btnLogToggle.setIcon(self._log_chevron_up_light if dark else self._log_chevron_up)
+        else:
+            self.btnLogToggle.setIcon(
+                self._log_chevron_down_light if dark else self._log_chevron_down
+            )
+
+        if dark:
+            # ~30% black over the strip's normal light tone — the same dim
+            # level used on the blurred dashboard, not an unrelated dark color.
+            self.log_toggle_bar.setStyleSheet(
+                "QWidget#logToggleBar { background: rgba(164, 168, 172, 255); }"
+            )
+            self.copy_foot.setStyleSheet("""
+                QLabel#footerLabel {
+                    background: transparent;
+                    border: none;
+                    color: rgba(40, 48, 56, 200);
+                    font-size: 9px;
+                    font-weight: normal;
+                }
+            """)
+            # The collapsed splitter handle sits directly above this strip —
+            # left transparent it shows centralwidget's light background
+            # through, a stray bright sliver right at the resize divider.
+            self.log_splitter.setStyleSheet("""
+                QSplitter#logSplitter::handle {
+                    background: rgba(164, 168, 172, 255);
+                }
+                QSplitter#logSplitter::handle:hover {
+                    background: rgba(140, 145, 150, 255);
+                }
+            """)
+        else:
+            self.log_toggle_bar.setStyleSheet(
+                "QWidget#logToggleBar { background: transparent; }"
+            )
+            self.copy_foot.setStyleSheet("""
+                QLabel#footerLabel {
+                    background: transparent;
+                    border: none;
+                    color: rgba(70, 80, 95, 140);
+                    font-size: 9px;
+                    font-weight: normal;
+                }
+            """)
+            self.log_splitter.setStyleSheet("""
+                QSplitter#logSplitter::handle {
+                    background: transparent;
+                }
+                QSplitter#logSplitter::handle:hover {
+                    background: rgba(120, 130, 145, 60);
+                }
+            """)
 
     def _check_mode_change_allowed(self) -> bool:
         """
@@ -666,11 +748,10 @@ class UIMain:
                 - False: the mode change was aborted due to not being allowed (programmatic call).
                 - None if triggered via a UI event.
         """
-        current_widget = self.splitter.widget(0)
-        target_widget = self.userview
+        login = self.parent.LoginWin.ui5.centralwidget
 
         # Already in No User / Sign-In mode
-        if current_widget == target_widget and not self._force_splitter_mode_set:
+        if login.isVisible() and not self._force_splitter_mode_set:
             Log.d("User sign-in mode already active. Skipping mode change request.")
             if obj is None:
                 return True
@@ -687,7 +768,30 @@ class UIMain:
             widget.setProperty("active", "false")
             widget.style().unpolish(widget)
             widget.style().polish(widget)
-        self.splitter.replaceWidget(0, target_widget)
+        self.parent.ControlsWin.set_signed_in_menu_state(False)
+        self._signed_in = False
+        self._update_log_toggle_bar_theme()
+
+        session_expired = obj is None and not UserProfiles.session_info()[0]
+        session_loggedout = obj is None and not session_expired
+
+        def _do_reveal() -> None:
+            login.reveal_signed_out(self.main_area)
+            if session_expired:
+                self.parent.LoginWin.ui5.error_expired()
+            elif session_loggedout:
+                self.parent.LoginWin.ui5.error_loggedout()
+
+        def _reveal() -> None:
+            # Deferred so the very first cold-start call (made before the
+            # window is ever shown/the event loop is running) grabs a real
+            # frame instead of an unlaid-out blank one; imperceptible on the
+            # warm paths (sign out / session expiry) where the event loop is
+            # already running. The error/logout badge is shown only once the
+            # card is actually visible, so it anchors correctly.
+            self._wait_for_stable_size(self.main_area, _do_reveal)
+
+        QtCore.QTimer.singleShot(0, _reveal)
 
         self.parent.viewTutorialPage([1, 2, 0])
 
@@ -695,13 +799,47 @@ class UIMain:
         QtCore.QTimer.singleShot(500, self.parent.LoginWin.ui5.user_initials.setFocus)
 
         if obj is None:
-            if not UserProfiles.session_info()[0]:  # User session expired
-                self.parent.LoginWin.ui5.error_expired()
-            else:  # User manually logged out
-                self.parent.LoginWin.ui5.error_loggedout()
             return True
 
         return None
+
+    def _wait_for_stable_size(
+        self,
+        widget: QtWidgets.QWidget,
+        callback: Callable[[], None],
+        _last_size: Optional[QtCore.QSize] = None,
+        _attempts: int = 0,
+    ) -> None:
+        """Calls `callback` once `widget`'s size stops changing between polls.
+
+        On cold start, `showMaximized()` is called just before the event
+        loop starts, but the window manager's maximize and Qt's own layout
+        cascade for deeply nested splitters/scroll areas can take a couple
+        of extra event-loop iterations to fully settle. A single deferred
+        capture can grab `main_area` at its pre-settle (smaller) size,
+        producing a visibly stretched backdrop that then "snaps" to the
+        correct size once revealed. Polling until the size is unchanged
+        between two checks (or a small attempt cap, as a safety net) avoids
+        guessing a fixed delay while staying imperceptible once the window
+        is already stable (the common case for sign-out/session expiry).
+
+        Args:
+            widget (QtWidgets.QWidget): The widget whose size must settle.
+            callback (Callable[[], None]): Called once settled.
+            _last_size (QtCore.QSize, optional): Internal — previous poll's size.
+            _attempts (int, optional): Internal — poll count so far.
+        """
+        current_size = widget.size()
+        settled = (
+            current_size == _last_size and current_size.width() > 0 and current_size.height() > 0
+        )
+        if settled or _attempts >= 12:
+            callback()
+            return
+        QtCore.QTimer.singleShot(
+            30,
+            lambda: self._wait_for_stable_size(widget, callback, current_size, _attempts + 1),
+        )
 
     def _set_run_mode(self, obj: Optional[Any] = None) -> Optional[bool]:
         """
@@ -727,6 +865,10 @@ class UIMain:
         # Already in Run mode
         if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Run mode already active. Skipping mode change request.")
+            # Still re-assert the highlight: the splitter staying on runview
+            # doesn't mean the highlight was ever shown — e.g. right after
+            # signing in, where this is the very first "Run mode" request.
+            self.animate_mode_highlight(self.mode_run)
             return True if obj is None else None
 
         # Check if the mode change is allowed
@@ -798,6 +940,9 @@ class UIMain:
         # Already in Analyze mode
         if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Analyze mode already active. Skipping mode change request.")
+            # Still re-assert the highlight — see the matching comment in
+            # _set_run_mode for why "already active" doesn't imply "already shown".
+            self.animate_mode_highlight(self.mode_analyze)
             return True if obj is None else None
 
         # Check if the mode change is allowed
@@ -856,6 +1001,7 @@ class UIMain:
             else:
                 Log.d("VisQ.AI mode already active. Skipping mode change request.")
 
+            self.animate_mode_highlight(self.mode_learn)
             return True if obj is None else None
 
         # Check if the mode change is allowed
@@ -911,9 +1057,10 @@ class UIMain:
         current_widget = self.splitter.widget(0)
         target_widget = self.donnan_ui
 
-        # Already in Run mode
+        # Already in Donnan-Gibbs Calculator mode
         if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Donnan-Gibbs Calculator already active. Skipping mode change request.")
+            self.animate_mode_highlight(self.mode_donnan)
             return True if obj is None else None
 
         # Check if the mode change is allowed
@@ -975,9 +1122,10 @@ class UIMain:
         current_widget = self.splitter.widget(0)
         target_widget = self.injection_ui
 
-        # Already in Run mode
+        # Already in Injection Force Calculator mode
         if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Injection Force Calculator already active. Skipping mode change request.")
+            self.animate_mode_highlight(self.mode_injection)
             return True if obj is None else None
 
         # Check if the mode change is allowed

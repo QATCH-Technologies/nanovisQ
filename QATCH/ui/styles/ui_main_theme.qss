@@ -9,18 +9,22 @@
 }
 
 /* SCROLL AREAS */
-#modeMenuScrollArea, #userview, #runview, #analyze, #learn_ui, #logview {
-    background: rgba(255, 255, 255, 160); 
-    border: 1px solid rgba(255, 255, 255, 220); 
-    border-radius: 12px; 
+#modeMenuScrollArea, #runview, #analyze, #learn_ui, #logview {
+    background: rgba(255, 255, 255, 160);
+    border: 1px solid rgba(255, 255, 255, 220);
+    border-radius: 12px;
 }
 #runview {
     background: transparent;
     border: none;
     border-radius: 0px;
 }
+#logview {
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+}
 #modeMenuScrollArea > QWidget > QWidget,
-#userview > QWidget > QWidget,
 #runview > QWidget > QWidget,
 #analyze > QWidget > QWidget,
 #learn_ui > QWidget > QWidget,

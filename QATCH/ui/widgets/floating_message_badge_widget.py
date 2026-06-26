@@ -99,6 +99,10 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self._fade_animation.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         self._fade_animation.finished.connect(self._on_fade_animation_finished)
 
+        # Optional drop-in/slide-up spring motion (see show_message(drop_in=)
+        # and slide_out()) layered alongside the opacity fade above.
+        self._slide_animation = QtCore.QPropertyAnimation(self, b"pos", self)
+
         self._dismiss_timer = QtCore.QTimer(self)
         self._dismiss_timer.setSingleShot(True)
         self._dismiss_timer.timeout.connect(self.fade_out)
@@ -128,8 +132,18 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         text: str,
         is_error: bool = False,
         parent_widget: Optional[QtWidgets.QWidget] = None,
+        drop_in: bool = False,
+        drop_in_duration: int = 500,
     ) -> None:
-        """Update the message, position the badge, fade it in, then auto-dismiss it."""
+        """Update the message, position the badge, fade it in, then auto-dismiss it.
+
+        Args:
+            drop_in (bool, optional): If True, the badge also drops down
+                from 50px above its resting position with a springy
+                overshoot, instead of just fading in place.
+            drop_in_duration (int, optional): Duration of the drop-in slide,
+                in milliseconds, when `drop_in` is True.
+        """
         message_type = "error" if is_error else "info"
         self.panel.setProperty("messageType", message_type)
         self.label.setProperty("messageType", message_type)
@@ -143,12 +157,24 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
 
         self._dismiss_timer.stop()
         self._fade_animation.stop()
+        self._slide_animation.stop()
         self._hide_when_animation_finishes = False
 
         self.setWindowOpacity(0.0)
+
+        if drop_in:
+            final_pos = self.pos()
+            self.move(final_pos.x(), final_pos.y() - 50)
+            self._slide_animation.setDuration(drop_in_duration)
+            self._slide_animation.setEasingCurve(QtCore.QEasingCurve.OutBack)
+            self._slide_animation.setStartValue(self.pos())
+            self._slide_animation.setEndValue(final_pos)
+            self._slide_animation.start()
+
         self.show()
         self.raise_()
 
+        self._fade_animation.setDuration(self._fade_duration_ms)
         self._fade_animation.setStartValue(0.0)
         self._fade_animation.setEndValue(1.0)
         self._fade_animation.start()
@@ -161,10 +187,41 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
 
         self._dismiss_timer.stop()
         self._fade_animation.stop()
+        self._fade_animation.setDuration(self._fade_duration_ms)
         self._hide_when_animation_finishes = True
         self._fade_animation.setStartValue(self.windowOpacity())
         self._fade_animation.setEndValue(0.0)
         self._fade_animation.start()
+
+    def slide_out(self, duration: int = 250) -> None:
+        """Slides the badge up by 50px while fading it out, then hides it.
+
+        Used when dismissing a still-visible toast as part of a larger
+        transition (e.g. the sign-in "Deep Focus" dismissal), rather than
+        the plain fade_out()/instant clear() used elsewhere.
+
+        Args:
+            duration (int, optional): Slide/fade duration in milliseconds.
+        """
+        if not self.isVisible():
+            return
+
+        self._dismiss_timer.stop()
+        self._fade_animation.stop()
+        self._slide_animation.stop()
+        self._hide_when_animation_finishes = True
+
+        self._fade_animation.setDuration(duration)
+        self._fade_animation.setStartValue(self.windowOpacity())
+        self._fade_animation.setEndValue(0.0)
+        self._fade_animation.start()
+
+        start_pos = self.pos()
+        self._slide_animation.setDuration(duration)
+        self._slide_animation.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        self._slide_animation.setStartValue(start_pos)
+        self._slide_animation.setEndValue(QtCore.QPoint(start_pos.x(), start_pos.y() - 50))
+        self._slide_animation.start()
 
     def clear(self) -> None:
         """Immediately close the badge without waiting for the fade-out animation."""

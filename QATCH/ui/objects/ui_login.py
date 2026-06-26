@@ -137,6 +137,55 @@ class LoginWindow(QtWidgets.QMainWindow):
             event.ignore()
 
 
+class CardPopEffect(QtWidgets.QGraphicsEffect):
+    """Combined scale + opacity effect for the login card's "pop" in/out.
+
+    A single custom QGraphicsEffect rather than QGraphicsOpacityEffect plus
+    some separate scale mechanism, so the card can visually zoom (the "Deep
+    Focus" pop/push) without reflowing its real child widgets — QLineEdit,
+    QPushButton, etc. keep their normal layout-driven geometry; only the
+    rendered pixmap is transformed.
+    """
+
+    def __init__(self, parent: Optional[QtCore.QObject] = None) -> None:
+        super().__init__(parent)
+        self._scale: float = 1.0
+        self._opacity: float = 1.0
+
+    def setScale(self, scale: float) -> None:
+        self._scale = scale
+        self.update()
+
+    def scale(self) -> float:
+        return self._scale
+
+    def setOpacity(self, opacity: float) -> None:
+        self._opacity = max(0.0, min(1.0, opacity))
+        self.update()
+
+    def opacity(self) -> float:
+        return self._opacity
+
+    def boundingRectFor(self, source_rect: QtCore.QRectF) -> QtCore.QRectF:
+        # Margin so an overshoot scale (>1.0, e.g. the OutBack pop-in) isn't clipped.
+        margin = max(source_rect.width(), source_rect.height()) * 0.15
+        return source_rect.adjusted(-margin, -margin, margin, margin)
+
+    def draw(self, painter: QtGui.QPainter) -> None:
+        pixmap, offset = self.sourcePixmap(QtCore.Qt.LogicalCoordinates)
+        if pixmap.isNull():
+            return
+        painter.save()
+        painter.setOpacity(self._opacity)
+        rect = QtCore.QRectF(offset, QtCore.QSizeF(pixmap.size()))
+        center = rect.center()
+        painter.translate(center)
+        painter.scale(self._scale, self._scale)
+        painter.translate(-center)
+        painter.drawPixmap(offset, pixmap)
+        painter.restore()
+
+
 class LoginCentralWidget(QtWidgets.QWidget):
     """Central widget providing a blurred, frosted backdrop for the login card.
 
@@ -155,21 +204,89 @@ class LoginCentralWidget(QtWidgets.QWidget):
         """Initializes the central widget and configures paint attributes."""
         super().__init__(parent)
         self._blurred: Optional[QtGui.QPixmap] = None
+        self._raw_snapshot: Optional[QtGui.QPixmap] = None
 
-        # Optimization: Tell Qt this widget handles its own background painting
+        # "Deep Focus" backdrop state: both 0.0 (dashboard sharp/bright, the
+        # signed-in look) -> 1.0 (dashboard blurred/dimmed, the signed-out
+        # look). Applied via QPainter in paintEvent — deliberately NOT a
+        # QGraphicsEffect. An ancestor-level QGraphicsOpacityEffect was tried
+        # first, but it doesn't reliably cascade through the card's deep,
+        # real-widget subtree (native inputs, WA_TranslucentBackground
+        # children) on the real Windows backend. Manual paint-time
+        # compositing has no such ambiguity.
+        self._blur_frac: float = 0.0
+        self._dim_frac: float = 0.0
+        self._backdrop_anim: Optional[QtCore.QVariantAnimation] = None
+
+        # The card fades/scales independently via its own CardPopEffect —
+        # see register_dismissable_card().
+        self._card: Optional["GlassCard"] = None
+        self._card_effect: Optional[CardPopEffect] = None
+        self._card_anim: Optional[QtCore.QVariantAnimation] = None
+        self._border_anim: Optional[QtCore.QVariantAnimation] = None
+
+        # NOTE: deliberately NOT WA_OpaquePaintEvent. That hint tells Qt this
+        # widget always fully overwrites its area, so Qt skips repainting
+        # whatever is underneath first — fine at rest, but once paintEvent
+        # blends with reduced opacity during a transition, the blend needs
+        # the *live* parent content underneath, not a stale, skipped-repaint
+        # backing store.
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_OpaquePaintEvent, True)
 
-    def capture_backdrop(self, run_window: QtWidgets.QMainWindow) -> None:
-        """Captures a live snapshot of the provided window, blurs it, and repaints.
-
-        This allows the login screen to feel integrated into the current app state
-        by using the actual UI as the background.
+    def register_dismissable_card(self, card: "GlassCard") -> None:
+        """Gives `card` its own pop effect (scale + opacity) and tracks it
+        for the synchronized sign-out reveal / sign-in dismiss sequences.
 
         Args:
-            run_window (QtWidgets.QMainWindow): The window to grab for the backdrop.
+            card (GlassCard): The login card to animate alongside this
+                widget's backdrop during reveal_signed_out()/dismiss_for_signin().
         """
-        raw: QtGui.QPixmap = run_window.grab()
+        self._card = card
+        self._card_effect = CardPopEffect(card)
+        self._card_effect.setScale(1.0)
+        self._card_effect.setOpacity(1.0)
+        card.setGraphicsEffect(self._card_effect)
+
+    def attach_to(self, host: QtWidgets.QWidget) -> None:
+        """Mounts this widget as a full-coverage overlay on top of `host`.
+
+        Reparents onto `host`, tracks its resizes/moves (and those of its
+        top-level window) to stay perfectly fitted, and starts out hidden.
+
+        Args:
+            host (QtWidgets.QWidget): The widget this overlay should cover.
+        """
+        self.setParent(host)
+        host.installEventFilter(self)
+        top = host.window()
+        if top is not host:
+            top.installEventFilter(self)
+        self._refit_to_parent()
+        self.hide()
+
+    def _refit_to_parent(self) -> None:
+        """Resizes this overlay to exactly cover its parent widget."""
+        parent = self.parentWidget()
+        if parent is not None:
+            self.setGeometry(parent.rect())
+
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        """Keeps the overlay's geometry in sync with the watched host/window."""
+        if event.type() in (QtCore.QEvent.Type.Resize, QtCore.QEvent.Type.Move):
+            self._refit_to_parent()
+        return super().eventFilter(obj, event)
+
+    def capture_backdrop(self, source: QtWidgets.QWidget) -> None:
+        """Captures a live snapshot of the provided widget, blurs it, and repaints.
+
+        This allows the login screen to feel integrated into the current app state
+        by using the actual UI as the background. The pre-blur snapshot is cached
+        so subsequent resizes can rescale/reblur without re-grabbing live content.
+
+        Args:
+            source (QtWidgets.QWidget): The widget to grab for the backdrop.
+        """
+        raw: QtGui.QPixmap = source.grab()
 
         if not self.size().isEmpty():
             raw = raw.scaled(
@@ -178,32 +295,197 @@ class LoginCentralWidget(QtWidgets.QWidget):
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             )
 
+        self._raw_snapshot = raw
         self._blurred = self._apply_blur(raw, radius=22)
+        # A fresh capture always starts fully sharp/bright; any prior
+        # transition's progress is no longer meaningful.
+        self._stop_backdrop_anim()
+        self._blur_frac = 0.0
+        self._dim_frac = 0.0
         self.update()
 
-    def set_background_pixmap(self) -> None:
-        """Loads the default branded background image, blurs it, and updates UI.
+    def reveal_signed_out(
+        self,
+        backdrop_source: Optional[QtWidgets.QWidget] = None,
+        blur_duration: int = 400,
+        card_duration: int = 500,
+        border_delay: int = 100,
+    ) -> None:
+        """Plays the "Deep Focus" sign-out reveal.
 
-        This method scales the icon-sourced background to fill the current widget
-        geometry while maintaining aspect ratio and applying the frost effect.
+        The dashboard pulls out of focus — blurring and dimming in behind
+        the glass — while the login card pops into the foreground with a
+        slight overshoot, its emphasis border catching up shortly after.
+
+        Args:
+            backdrop_source (QtWidgets.QWidget, optional): If given, a fresh
+                `capture_backdrop()` is taken from this widget before showing.
+            blur_duration (int, optional): Background blur/dim duration (ms).
+            card_duration (int, optional): Card pop duration (ms).
+            border_delay (int, optional): Delay before the card border starts
+                fading in (ms), relative to the start of the card pop.
         """
-        path = os.path.join(Architecture.get_path(), "QATCH", "icons", "background.png")
-        pixmap = QtGui.QPixmap(path)
+        if backdrop_source is not None:
+            self.capture_backdrop(backdrop_source)
 
-        if not self.size().isEmpty() and not pixmap.isNull():
-            pixmap = pixmap.scaled(
-                self.size(),
-                QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            )
-
-        self._blurred = self._apply_blur(pixmap, radius=22)
+        self._stop_backdrop_anim()
+        self._stop_card_anim()
+        self._stop_border_anim()
+        self._blur_frac = 0.0
+        self._dim_frac = 0.0
+        self._refit_to_parent()
+        if self._card_effect is not None:
+            self._card_effect.setScale(0.9)
+            self._card_effect.setOpacity(0.0)
+        if self._card is not None:
+            self._card.set_border_frac(0.0)
         self.update()
+        self.show()
+        self.raise_()
 
-        # Explicitly trigger children to repaint to ensure glass-card
-        # transparency stays synchronized with the new background.
+        backdrop_anim = QtCore.QVariantAnimation(self)
+        backdrop_anim.setStartValue(0.0)
+        backdrop_anim.setEndValue(1.0)
+        backdrop_anim.setDuration(blur_duration)
+        backdrop_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        backdrop_anim.valueChanged.connect(self._set_backdrop_frac)
+        self._backdrop_anim = backdrop_anim
+        backdrop_anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+        card_anim = QtCore.QVariantAnimation(self)
+        card_anim.setStartValue(0.0)
+        card_anim.setEndValue(1.0)
+        card_anim.setDuration(card_duration)
+        card_anim.setEasingCurve(QtCore.QEasingCurve.OutBack)
+        card_anim.valueChanged.connect(self._set_card_pop_frac)
+        self._card_anim = card_anim
+        card_anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+        QtCore.QTimer.singleShot(
+            border_delay,
+            lambda: self._start_border_anim(max(card_duration - border_delay, 1)),
+        )
+
+    def dismiss_for_signin(self, card_duration: int = 250, blur_duration: int = 400) -> None:
+        """Plays the "Deep Focus" sign-in dismissal.
+
+        The login card snaps back and fades quickly — as if pushed past the
+        lens — while the dashboard pulls back into sharp, bright focus over
+        a slightly longer beat. The overlay fully tears down once the
+        background finishes resolving.
+
+        Args:
+            card_duration (int, optional): Card dismissal duration (ms).
+            blur_duration (int, optional): Background blur/dim-out duration (ms).
+        """
+        self._stop_card_anim()
+        self._stop_border_anim()
+        self._stop_backdrop_anim()
+
+        if self._card is not None:
+            self._card.set_border_frac(0.0)
+
+        card_anim = QtCore.QVariantAnimation(self)
+        card_anim.setStartValue(1.0)
+        card_anim.setEndValue(0.0)
+        card_anim.setDuration(card_duration)
+        card_anim.setEasingCurve(QtCore.QEasingCurve.InQuad)
+        card_anim.valueChanged.connect(self._set_card_pop_frac)
+        self._card_anim = card_anim
+        card_anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+        backdrop_anim = QtCore.QVariantAnimation(self)
+        backdrop_anim.setStartValue(self._blur_frac)
+        backdrop_anim.setEndValue(0.0)
+        backdrop_anim.setDuration(blur_duration)
+        backdrop_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        backdrop_anim.valueChanged.connect(self._set_backdrop_frac)
+        backdrop_anim.finished.connect(self._finish_dismiss)
+        self._backdrop_anim = backdrop_anim
+        backdrop_anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def _set_backdrop_frac(self, value: float) -> None:
+        """Applies the current blur/dim progress and repaints."""
+        self._blur_frac = value
+        self._dim_frac = value
+        self.update()
+        # GlassCard samples our pixmaps directly in its own paintEvent rather
+        # than inheriting our repaint, so it must be nudged explicitly to stay
+        # in sync frame-by-frame.
         for child in self.findChildren(QtWidgets.QWidget):
             child.update()
+
+    def _set_card_pop_frac(self, t: float) -> None:
+        """Applies the card's scale + opacity for the current pop progress.
+
+        `t` ranges 0.0 (hidden, 90% size) -> 1.0 (shown, 100% size), and may
+        briefly exceed 1.0 during an OutBack overshoot — CardPopEffect clamps
+        opacity but lets scale overshoot, which is the intended bounce.
+        """
+        if self._card_effect is None:
+            return
+        self._card_effect.setScale(0.9 + 0.1 * t)
+        self._card_effect.setOpacity(t)
+
+    def _start_border_anim(self, duration: int) -> None:
+        """Starts the card's delayed emphasis-border fade-in."""
+        if self._card is None:
+            return
+        self._stop_border_anim()
+        anim = QtCore.QVariantAnimation(self)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setDuration(duration)
+        anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        anim.valueChanged.connect(self._card.set_border_frac)
+        self._border_anim = anim
+        anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def _finish_dismiss(self) -> None:
+        """Hides the overlay and releases its cached backdrop pixmaps.
+
+        Called once the background finishes resolving to sharp/bright.
+        Beyond hiding, this drops the (potentially full-screen-sized)
+        blurred/raw snapshots so no stale frame and no image memory linger
+        while signed in — the next `reveal_signed_out()` always starts from
+        a fresh `capture_backdrop()`.
+        """
+        self.hide()
+        self._blurred = None
+        self._raw_snapshot = None
+        self._blur_frac = 0.0
+        self._dim_frac = 0.0
+
+    def _stop_backdrop_anim(self) -> None:
+        """Stops and detaches any in-flight blur/dim animation."""
+        if self._backdrop_anim is not None:
+            try:
+                self._backdrop_anim.stop()
+                self._backdrop_anim.valueChanged.disconnect()
+                self._backdrop_anim.finished.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+            self._backdrop_anim = None
+
+    def _stop_card_anim(self) -> None:
+        """Stops and detaches any in-flight card pop animation."""
+        if self._card_anim is not None:
+            try:
+                self._card_anim.stop()
+                self._card_anim.valueChanged.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+            self._card_anim = None
+
+    def _stop_border_anim(self) -> None:
+        """Stops and detaches any in-flight card-border animation."""
+        if self._border_anim is not None:
+            try:
+                self._border_anim.stop()
+                self._border_anim.valueChanged.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+            self._border_anim = None
 
     @staticmethod
     def _apply_blur(source: QtGui.QPixmap, radius: int = 22) -> QtGui.QPixmap:
@@ -239,36 +521,86 @@ class LoginCentralWidget(QtWidgets.QWidget):
 
         return out
 
+    @staticmethod
+    def _compose_backdrop(
+        p: QtGui.QPainter,
+        rect: QtCore.QRect,
+        sharp: Optional[QtGui.QPixmap],
+        blurred: Optional[QtGui.QPixmap],
+        blur_frac: float,
+        dim_frac: float,
+    ) -> None:
+        """Paints the "Deep Focus" backdrop into `rect`: a sharp/blurred
+        crossfade plus a light glass frost and a dark dimming overlay.
+
+        Shared by LoginCentralWidget's own paint and GlassCard's sampled
+        slice so both always show the exact same blur/dim progress.
+
+        Args:
+            p (QtGui.QPainter): The active painter.
+            rect (QtCore.QRect): The local rect to paint into.
+            sharp (QtGui.QPixmap, optional): The unblurred snapshot.
+            blurred (QtGui.QPixmap, optional): The pre-blurred snapshot.
+            blur_frac (float): 0.0 (sharp) -> 1.0 (fully blurred).
+            dim_frac (float): 0.0 (bright) -> 1.0 (max dim).
+        """
+        blur_frac = max(0.0, min(1.0, blur_frac))
+        dim_frac = max(0.0, min(1.0, dim_frac))
+
+        if sharp is not None and not sharp.isNull():
+            p.drawPixmap(rect, sharp, sharp.rect())
+            if blurred is not None and not blurred.isNull() and blur_frac > 0.0:
+                p.save()
+                p.setOpacity(p.opacity() * blur_frac)
+                p.drawPixmap(rect, blurred, blurred.rect())
+                p.restore()
+        elif blurred is not None and not blurred.isNull():
+            p.drawPixmap(rect, blurred, blurred.rect())
+        else:
+            # Fallback gradient shown during initial load/capture
+            grad = QtGui.QLinearGradient(0, 0, rect.width(), rect.height())
+            grad.setColorAt(0.0, QtGui.QColor(0xD8, 0xE6, 0xF0))
+            grad.setColorAt(1.0, QtGui.QColor(0xEE, 0xF4, 0xF8))
+            p.fillRect(rect, QtGui.QBrush(grad))
+
+        # Constant light glass frost — the identity of the card, independent
+        # of how dimmed the scene currently is.
+        p.fillRect(rect, QtGui.QColor(238, 243, 247, 62))
+
+        # Dark dimming overlay: 0 -> ~0.3 alpha as the camera pulls focus
+        # toward the foreground card.
+        dim_alpha = int(76 * dim_frac)
+        if dim_alpha > 0:
+            p.fillRect(rect, QtGui.QColor(0, 0, 0, dim_alpha))
+
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Renders the backdrop and the frosting overlay.
+        """Renders the "Deep Focus" backdrop: a blur/dim crossfade.
 
         Args:
             event (QtGui.QPaintEvent): The paint event triggered by Qt.
         """
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
-
-        if self._blurred:
-            p.drawPixmap(self.rect(), self._blurred, self._blurred.rect())
-        else:
-            # Fallback gradient shown during initial load/capture
-            grad = QtGui.QLinearGradient(0, 0, self.width(), self.height())
-            grad.setColorAt(0.0, QtGui.QColor(0xD8, 0xE6, 0xF0))
-            grad.setColorAt(1.0, QtGui.QColor(0xEE, 0xF4, 0xF8))
-            p.fillRect(self.rect(), QtGui.QBrush(grad))
-        p.fillRect(self.rect(), QtGui.QColor(238, 243, 247, 62))
+        self._compose_backdrop(
+            p, self.rect(), self._raw_snapshot, self._blurred, self._blur_frac, self._dim_frac
+        )
         p.end()
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
-        """Handles widget resizing by re-generating the blurred backdrop.
+        """Handles widget resizing by rescaling and re-blurring the cached snapshot.
 
         Args:
             event (QtGui.QResizeEvent): The resize event triggered by Qt.
         """
         super().resizeEvent(event)
-        if self._blurred is not None:
-            # Regenerate background to match new dimensions
-            self.set_background_pixmap()
+        if self._raw_snapshot is not None and not self.size().isEmpty():
+            scaled = self._raw_snapshot.scaled(
+                self.size(),
+                QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            self._blurred = self._apply_blur(scaled, radius=22)
+            self.update()
 
 
 class GlassCard(QtWidgets.QFrame):
@@ -306,10 +638,16 @@ class GlassCard(QtWidgets.QFrame):
         """
         super().__init__(parent)
         self._backdrop = backdrop
+        self._border_frac: float = 0.0
 
         # Prevent the base class from painting opaque backgrounds
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+
+    def set_border_frac(self, value: float) -> None:
+        """Sets the emphasis-border progress (0.0 hidden -> 1.0 fully shown)."""
+        self._border_frac = max(0.0, min(1.0, value))
+        self.update()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Executes the custom glassmorphism painting pipeline.
@@ -326,12 +664,20 @@ class GlassCard(QtWidgets.QFrame):
         clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
         p.setClipPath(clip)
         blurred = getattr(self._backdrop, "_blurred", None)
-        if blurred is not None and not blurred.isNull():
+        sharp = getattr(self._backdrop, "_raw_snapshot", None)
+        if (blurred is not None and not blurred.isNull()) or (
+            sharp is not None and not sharp.isNull()
+        ):
             origin = self.mapTo(self._backdrop, QtCore.QPoint(0, 0))
             p.save()
             p.translate(-origin.x(), -origin.y())
-            p.drawPixmap(self._backdrop.rect(), blurred, blurred.rect())
-            p.fillRect(self._backdrop.rect(), QtGui.QColor(238, 243, 247, 62))
+            # Mirror the backdrop's blur/dim progress so the card's sampled
+            # slice matches the area around it exactly during transitions.
+            blur_frac = getattr(self._backdrop, "_blur_frac", 0.0)
+            dim_frac = getattr(self._backdrop, "_dim_frac", 0.0)
+            LoginCentralWidget._compose_backdrop(
+                p, self._backdrop.rect(), sharp, blurred, blur_frac, dim_frac
+            )
             p.restore()
         else:
             grad = QtGui.QLinearGradient(0, 0, 0, self.height())
@@ -356,6 +702,12 @@ class GlassCard(QtWidgets.QFrame):
             self._RADIUS - 1.5,
             self._RADIUS - 1.5,
         )
+
+        # Emphasis border: a crisp 1px white edge that catches up shortly
+        # after the card pops in, like glass catching the light.
+        if self._border_frac > 0.0:
+            p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, int(210 * self._border_frac)), 1.0))
+            p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
 
         p.end()
 
@@ -448,9 +800,17 @@ class SlidingPanel(QtWidgets.QWidget):
 
         target_x = -page_idx * self._pw
 
-        # Stop existing animation to prevent conflicting positional updates
-        if self._anim and self._anim.state() == QtCore.QPropertyAnimation.Running:
-            self._anim.stop()
+        # Stop existing animation to prevent conflicting positional updates.
+        # DeleteWhenStopped (below) deletes the underlying C++ object once a
+        # previous animation finishes naturally, but leaves this Python
+        # reference dangling — touching it then raises RuntimeError.
+        if self._anim is not None:
+            try:
+                if self._anim.state() == QtCore.QPropertyAnimation.Running:
+                    self._anim.stop()
+            except RuntimeError:
+                pass
+            self._anim = None
 
         self._anim = QtCore.QPropertyAnimation(self._inner, b"pos")
         self._anim.setStartValue(self._inner.pos())
@@ -538,7 +898,6 @@ class UILogin:
         """
         self.parent = parent
         self.caps_lock_on = False
-        self._login_window: QtWidgets.QMainWindow = MainWindow5  # used by transition
 
         global _CARD_W, _INPUT_H, _PAGE_H, _BTN_H
         _CARD_W = 320
@@ -805,12 +1164,13 @@ class UILogin:
         self.loginCard.setObjectName("loginCard")
         self.loginCard.setAttribute(QtCore.Qt.WA_StyledBackground, False)
         self.loginCard.setContentsMargins(0, 0, 0, 0)
-
-        shadow = QtWidgets.QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(44)
-        shadow.setOffset(0, 10)
-        shadow.setColor(QtGui.QColor(15, 40, 70, 90))
-        self.loginCard.setGraphicsEffect(shadow)
+        # NOTE: intentionally no QGraphicsDropShadowEffect here — the card
+        # gets its own CardPopEffect below (via register_dismissable_card,
+        # for the sign-out/sign-in pop), and Qt doesn't compose two graphics
+        # effects on the same widget. The card's own manual border painting
+        # (see GlassCard.paintEvent) provides sufficient visual separation
+        # in place of the shadow.
+        self.centralwidget.register_dismissable_card(self.loginCard)
 
         card_vbox = QtWidgets.QVBoxLayout(self.loginCard)
         card_vbox.setContentsMargins(0, 0, 0, 0)
@@ -841,8 +1201,6 @@ class UILogin:
         # Initialize settings and load remembered user
         self._settings = QtCore.QSettings("QATCH", "nanovisQ")
         self._load_remembered_user()
-
-        QtCore.QTimer.singleShot(0, lambda: self.centralwidget.set_background_pixmap())
 
     def _make_input_style(self, error: bool = False) -> str:
         """Generates the QSS stylesheet for the GlassLineEdit components.
@@ -1122,7 +1480,9 @@ class UILogin:
         authenticated, filename, params = UserProfiles.auth(username, pwd, UserRoles.ANY)
 
         if authenticated:
-            self.floating_badge.clear()
+            # Animated, not an instant clear() — slides/fades out in sync
+            # with the card's "Deep Focus" dismissal below.
+            self.floating_badge.slide_out()
             self.user_info.suppress = True
             # Persistence
             self._save_remembered_user(username)
@@ -1143,6 +1503,8 @@ class UILogin:
             controls.signinout.setText("&Sign Out")
             controls.ui1.tool_User.setText(name)
             self.parent.AnalyzeProc.tool_User.setText(name)
+            controls.set_signed_in_menu_state(True)
+            self.parent.MainWin.ui0.mark_signed_in()
 
             # Restrict password management for non-admins
             if controls.userrole != UserRoles.ADMIN:
@@ -1152,6 +1514,11 @@ class UILogin:
                 self.parent.MainWin.ui0._set_run_mode(None)
             else:
                 self.parent.MainWin.ui0._set_analyze_mode(None)
+
+            # Dismiss the login overlay, revealing the now-current mode
+            # underneath. Decoupled from the mode-switch calls above since
+            # those may no-op (e.g. already on the matching mode at cold start).
+            self.centralwidget.dismiss_for_signin()
 
             # Cleanup temporary download attributes
             if hasattr(self.parent, "url_download"):
@@ -1176,11 +1543,10 @@ class UILogin:
         """Performs a full reset of the login interface to its initial state.
 
         This is the primary cleanup method called during application startup,
-        on Escape key presses, or upon user sign-out. It re-shows the hidden
-        login window, clears all input fields, resets error states, hides
-        the Caps Lock indicator, and slides the panel back to the Sign In page.
+        on Escape key presses, or upon user sign-out. It clears all input
+        fields, resets error states, hides the Caps Lock indicator, and
+        slides the panel back to the Sign In page.
         """
-        self._login_window.show()
         self.loginCard.show()
 
         # Clear inputs and error styling
@@ -1225,9 +1591,16 @@ class UILogin:
         )
 
     def show_signout_message(self) -> None:
-        """Triggers a floating badge notification confirming the user has signed out."""
+        """Triggers a floating badge notification confirming the user has signed out.
+
+        Drops in with a spring overshoot timed to land as the login card
+        settles, per the "Deep Focus" sign-out reveal.
+        """
         self.floating_badge.show_message(
-            "You have been signed out.", is_error=True, parent_widget=self.loginCard
+            "You have been signed out.",
+            is_error=True,
+            parent_widget=self.loginCard,
+            drop_in=True,
         )
 
     def check_user_session(self) -> None:

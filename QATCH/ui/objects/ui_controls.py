@@ -69,21 +69,24 @@ class ControlsWindow(QtWidgets.QMainWindow):
         UserProfiles().session_end()
 
     def _createMenu(self, target):
+        self._menu_target = target  # real menu bar lives on MainWin, not here
         self.menubar = []
         self.menubar.append(target.menuBar().addMenu("&Options"))
-        self.menubar[0].addAction("&Analyze Data", self.analyze_data)
-        self.menubar[0].addAction("&Import Data", self.import_data)
-        self.menubar[0].addAction("&Export Data", self.export_data)
-        self.menubar[0].addAction("&Recover Data", self.recover_data)
+        self.act_analyze_data = self.menubar[0].addAction("&Analyze Data", self.analyze_data)
+        self.act_import_data = self.menubar[0].addAction("&Import Data", self.import_data)
+        self.act_export_data = self.menubar[0].addAction("&Export Data", self.export_data)
+        self.act_recover_data = self.menubar[0].addAction("&Recover Data", self.recover_data)
         # self.menubar[0].addAction('&Configure Data', self.configure_data)
-        self.menubar[0].addAction("&Preferences", self.preferences)
-        self.menubar[0].addAction("&Find Devices", self.scan_subnets)
+        self.act_preferences = self.menubar[0].addAction("&Preferences", self.preferences)
+        self.act_find_devices = self.menubar[0].addAction("&Find Devices", self.scan_subnets)
         self.menubar[0].addAction("E&xit", self.close)
         self.menubar.append(target.menuBar().addMenu("&Users"))
         self.username = self.menubar[1].addAction("User: [NONE]")
         self.username.setEnabled(False)
         self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
-        self.menubar[1].addAction("Select &directory...", self.set_working_directory)
+        self.act_select_directory = self.menubar[1].addAction(
+            "Select &directory...", self.set_working_directory
+        )
         self.manage = self.menubar[1].addAction("&Manage Users...", self.manage_user_profiles)
         self.userrole = UserRoles.NONE
         self.menubar.append(target.menuBar().addMenu("&View"))
@@ -126,7 +129,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[4].addAction("&SW Change Log", self.sw_change_log)
         self.menubar[3].addAction("View &License", self.view_license)
         self.menubar[3].addAction("View &User Guide", self.view_user_guide)
-        self.menubar[3].addAction("&Check for Updates", self.check_for_updates)
+        self.act_check_updates = self.menubar[3].addAction(
+            "&Check for Updates", self.check_for_updates
+        )
         self.menubar[3].addSeparator()
         from QATCH.models.ModelData import __release__ as ModelData_release
         from QATCH.models.ModelData import __version__ as ModelData_version
@@ -201,6 +206,170 @@ class ControlsWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(100, self.toggle_temperature)
         if not self.chk4.isChecked():
             QtCore.QTimer.singleShot(100, self.toggle_RandD)
+
+        # Glass-rounded popup setup, matching the proven AnimatedComboBox
+        # pattern (animated_combo_box.py) instead of WA_TranslucentBackground:
+        # true per-pixel alpha on a native Windows popup composites as a
+        # muddy grey-brown smear, and QSS border-radius never clips the
+        # window's own (rectangular) shape, leaving square corners poking
+        # out from under the rounded paint. An opaque QSS background plus an
+        # explicit rounded QRegion mask avoids both.
+        for menu in (*self.menubar, self.modebar):
+            menu.setAttribute(QtCore.Qt.WA_TranslucentBackground, False)
+            menu.setWindowFlag(QtCore.Qt.NoDropShadowWindowHint, True)
+            menu.aboutToShow.connect(lambda m=menu: self._mask_menu_to_rounded_rect(m))
+
+    @staticmethod
+    def _mask_menu_to_rounded_rect(menu: QtWidgets.QMenu, radius: int = 10) -> None:
+        """Clips `menu` to a rounded-rect window mask once it has its real size.
+
+        Deferred a tick because the menu's size isn't final until just after
+        it's shown (see AnimatedComboBox._apply_popup_mask for the same need).
+        """
+
+        def _apply() -> None:
+            if not menu.isVisible():
+                return
+            rect = menu.rect()
+            path = QtGui.QPainterPath()
+            path.addRoundedRect(QtCore.QRectF(rect), radius, radius)
+            menu.setMask(QtGui.QRegion(path.toFillPolygon().toPolygon()))
+
+        QtCore.QTimer.singleShot(0, _apply)
+
+    def set_signed_in_menu_state(self, signed_in: bool) -> None:
+        """Locks down the menu bar while no user is signed in.
+
+        The glass login overlay is the supported sign-in gate, so while it's
+        showing, Options/Users/View are restricted to bare essentials
+        (Options keeps only Exit). Help stays available for read-only
+        reference, except update-checking and switching prediction model
+        versions, which are treated as operator actions.
+
+        Args:
+            signed_in (bool): True to restore full menu access, False to
+                lock it down to the signed-out subset.
+        """
+        # Options: only Exit stays enabled while signed out.
+        for action in (
+            self.act_analyze_data,
+            self.act_import_data,
+            self.act_export_data,
+            self.act_recover_data,
+            self.act_preferences,
+            self.act_find_devices,
+        ):
+            action.setEnabled(signed_in)
+
+        # Users: fully locked down while signed out.
+        self.signinout.setEnabled(signed_in)
+        self.act_select_directory.setEnabled(signed_in)
+        self.manage.setEnabled(signed_in)
+
+        # View: fully locked down while signed out.
+        self.modebar.menuAction().setEnabled(signed_in)
+        self.chk1.setEnabled(signed_in)
+        self.chk2.setEnabled(signed_in)
+        self.chk3.setEnabled(signed_in)
+        self.chk4.setEnabled(signed_in)
+
+        # Help: enabled regardless, except updates and model-version switching.
+        self.act_check_updates.setEnabled(signed_in)
+        self.menubar[5].menuAction().setEnabled(signed_in)  # "Model versions" submenu
+
+        self._apply_menu_bar_theme(signed_in)
+
+        # The Account toolbar button (top-right, next to Advanced) must be
+        # re-enabled the moment a session starts — previously nothing called
+        # this on sign-in, so it stayed disabled (built disabled, before any
+        # session existed) until a *second* launch happened to start with an
+        # already-valid session from the prior run.
+        self.ui1.refresh_user_button_state()
+
+    def _apply_menu_bar_theme(self, signed_in: bool) -> None:
+        """Tints the native menu bar and its dropdowns to match the glass
+        theme instead of the stark native default. While the sign-in gate
+        is up, this applies the *same* ~30% dimming the login overlay
+        applies to the blurred dashboard to the bar's own light tone — not
+        an unrelated dark color — so it reads as part of the same dimmed
+        scene. The normal light/glass tone returns once signed in.
+
+        QMenu (the dropdowns) is styled in the *same* stylesheet as
+        QMenuBar — a QMenu created via addMenu() is a logical child of the
+        bar in Qt's object tree, so it inherits this stylesheet too, even
+        though it pops up as its own top-level window.
+
+        Args:
+            signed_in (bool): Which palette to apply.
+        """
+        target = getattr(self, "_menu_target", None)
+        if target is None:
+            return
+
+        if signed_in:
+            target.menuBar().setStyleSheet("""
+                QMenuBar {
+                    background: rgba(233, 239, 244, 255);
+                    color: rgba(50, 60, 70, 230);
+                    border: none;
+                }
+                QMenuBar::item { background: transparent; padding: 4px 10px; }
+                QMenuBar::item:selected { background: rgba(10, 163, 230, 60); border-radius: 4px; }
+                QMenuBar::item:disabled { color: rgba(120, 130, 140, 140); }
+
+                QMenu {
+                    background: rgb(233, 239, 244);
+                    border: 1px solid rgba(255, 255, 255, 230);
+                    border-radius: 10px;
+                    padding: 6px;
+                }
+                QMenu::item {
+                    background: transparent;
+                    color: rgba(50, 60, 70, 230);
+                    padding: 6px 26px 6px 14px;
+                    border-radius: 6px;
+                }
+                QMenu::item:selected { background: rgba(10, 163, 230, 60); }
+                QMenu::item:disabled { color: rgba(120, 130, 140, 140); }
+                QMenu::separator {
+                    height: 1px;
+                    background: rgba(120, 130, 140, 70);
+                    margin: 4px 10px;
+                }
+                QMenu::indicator { width: 14px; height: 14px; }
+            """)
+        else:
+            target.menuBar().setStyleSheet("""
+                QMenuBar {
+                    background: rgba(163, 167, 171, 255);
+                    color: rgba(40, 48, 56, 235);
+                    border: none;
+                }
+                QMenuBar::item { background: transparent; padding: 4px 10px; }
+                QMenuBar::item:selected { background: rgba(255, 255, 255, 60); border-radius: 4px; }
+                QMenuBar::item:disabled { color: rgba(90, 98, 106, 150); }
+
+                QMenu {
+                    background: rgb(163, 167, 171);
+                    border: 1px solid rgba(255, 255, 255, 90);
+                    border-radius: 10px;
+                    padding: 6px;
+                }
+                QMenu::item {
+                    background: transparent;
+                    color: rgba(40, 48, 56, 235);
+                    padding: 6px 26px 6px 14px;
+                    border-radius: 6px;
+                }
+                QMenu::item:selected { background: rgba(255, 255, 255, 60); }
+                QMenu::item:disabled { color: rgba(90, 98, 106, 150); }
+                QMenu::separator {
+                    height: 1px;
+                    background: rgba(255, 255, 255, 80);
+                    margin: 4px 10px;
+                }
+                QMenu::indicator { width: 14px; height: 14px; }
+            """)
 
     def _data_overlay_parent(self):
         """Parent to the overarching MainWin (full app window), not the thin
