@@ -21,7 +21,7 @@ from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
-from QATCH.ui.components.animated_combo_box import AnimatedComboBox
+from QATCH.ui.components import AnimatedComboBox
 
 _LOGGER_GLASS_QSS = """
     /* ---- Main Container ---- */

@@ -65,9 +65,12 @@ from QATCH.core.constants import Constants
 from QATCH.common.logger import Logger as Log
 
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
-from QATCH.ui.components.glass_push_button import GlassPushButton
-from QATCH.ui.components.glass_line_edit import GlassLineEdit
-from QATCH.ui.components.glass_option_card import GlassOptionCard, GlassOptionCardGroup
+from QATCH.ui.components import (
+    GlassPushButton,
+    GlassLineEdit,
+    GlassOptionCard,
+    GlassOptionCardGroup,
+)
 
 # Parser for reading run capture archives when building the CSV report. Imported
 # lazily-safe: if VisQAI isn't importable at layout time, CSV export degrades to
@@ -1346,7 +1349,9 @@ class ExportMode(DataModeWidget):
     # ------------------------------------------------------------------
     def _relayout_grid(self, force=False):
         """Place the Scope step's fields in 1 or 2 columns based on width."""
-        avail = self.scope_scroll.viewport().width() if hasattr(self, "scope_scroll") else self.width()
+        avail = (
+            self.scope_scroll.viewport().width() if hasattr(self, "scope_scroll") else self.width()
+        )
         two_col = avail >= RESPONSIVE_BREAKPOINT
         if not force and two_col == self._settings_two_col:
             return
@@ -1477,7 +1482,9 @@ class ExportMode(DataModeWidget):
             anim.finished.connect(lambda: widget.setVisible(False))
 
         self._dest_anims = [
-            a for a in getattr(self, "_dest_anims", []) if a.state() == QtCore.QAbstractAnimation.Running
+            a
+            for a in getattr(self, "_dest_anims", [])
+            if a.state() == QtCore.QAbstractAnimation.Running
         ]
         self._dest_anims.append(anim)
         anim.start()
@@ -1680,7 +1687,9 @@ class ExportMode(DataModeWidget):
             return 0
         start, end = self.date_start.date(), self.date_end.date()
         if start > end:
-            raise ValueError('"Limit to a date range" start date must be on or before the end date.')
+            raise ValueError(
+                '"Limit to a date range" start date must be on or before the end date.'
+            )
         return self._qdate_to_utc_floor(start)
 
     def _compute_filter_max(self):

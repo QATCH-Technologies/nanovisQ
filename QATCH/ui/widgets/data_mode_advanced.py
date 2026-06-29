@@ -43,7 +43,7 @@ from QATCH.common.architecture import Architecture
 from QATCH.ui.popUp import PopUp
 
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
-from QATCH.ui.components.glass_push_button import GlassPushButton
+from QATCH.ui.components import GlassPushButton
 
 try:
     import send2trash

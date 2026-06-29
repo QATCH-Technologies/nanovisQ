@@ -6,7 +6,7 @@ No logic to port.
 """
 
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
-from QATCH.ui.dialogs.run_recovery_dialog import RunRecoveryDialog
+from QATCH.ui.dialogs import RunRecoveryDialog
 
 
 class RecoverMode(DataModeWidget):

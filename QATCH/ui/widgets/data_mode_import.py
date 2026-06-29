@@ -37,8 +37,7 @@ from QATCH.core.constants import Constants
 from QATCH.common.logger import Logger as Log
 
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
-from QATCH.ui.components.glass_push_button import GlassPushButton
-from QATCH.ui.components.glass_option_card import GlassOptionCard, GlassOptionCardGroup
+from QATCH.ui.components import GlassPushButton, GlassOptionCard, GlassOptionCardGroup
 
 TAG = "[DataImport]"
 
@@ -842,7 +841,9 @@ class ImportMode(DataModeWidget):
         # Keep refs so in-flight animations aren't GC'd mid-flight; several
         # chips may be popping at once (e.g. a multi-file drop).
         self._chip_anims = [
-            a for a in getattr(self, "_chip_anims", []) if a.state() == QtCore.QAbstractAnimation.Running
+            a
+            for a in getattr(self, "_chip_anims", [])
+            if a.state() == QtCore.QAbstractAnimation.Running
         ]
         self._chip_anims.append(grp)
         grp.start()

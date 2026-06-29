@@ -26,10 +26,7 @@ from QATCH.core.constants import Constants, UserRoles
 from QATCH.ui.popUp import PopUp
 from QATCH.common.userProfiles import UserProfiles, UserConstants
 from QATCH.common.architecture import Architecture
-from QATCH.ui.components.animated_combo_box import AnimatedComboBox
-from QATCH.ui.components.glass_line_edit import GlassLineEdit
-from QATCH.ui.components.glass_push_button import GlassPushButton
-from QATCH.ui.components.glass_toggle import GlassToggle
+from QATCH.ui.components import GlassToggle, GlassPushButton, GlassLineEdit, AnimatedComboBox
 from QATCH.ui.widgets.reset_password_widget import ResetPasswordWidget
 
 TAG = "[UserProfilesManager]"

@@ -32,7 +32,7 @@ from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.widgets.floating_message_badge_widget import FloatingMessageBadgeWidget
-from QATCH.ui.components.glass_line_edit import GlassLineEdit
+from QATCH.ui.components import GlassLineEdit
 
 _CARD_W: int = 320
 _INPUT_H: int = 34

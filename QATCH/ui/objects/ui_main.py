@@ -15,7 +15,7 @@ from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
 class _MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent):
         super().__init__()
-        parent.ControlsWin._createMenu(self)
+        parent.ControlsWin._create_menu(self)
         self.ui0 = UIMain()
         self.ui0.setup_ui(self, parent)
 
@@ -665,9 +665,7 @@ class UIMain:
                 }
             """)
         else:
-            self.log_toggle_bar.setStyleSheet(
-                "QWidget#logToggleBar { background: transparent; }"
-            )
+            self.log_toggle_bar.setStyleSheet("QWidget#logToggleBar { background: transparent; }")
             self.copy_foot.setStyleSheet("""
                 QLabel#footerLabel {
                     background: transparent;

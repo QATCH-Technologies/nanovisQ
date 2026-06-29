@@ -18,15 +18,10 @@ Version:
 """
 
 import os
-import zipfile
 import csv
 import io
-import shutil
-from xml.dom import minidom
 from contextlib import suppress
-from datetime import datetime, timedelta
-import datetime as dt
-import hashlib
+from datetime import datetime
 from PyQt5.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -43,30 +38,19 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QLineEdit,
     QStackedWidget,
-    QSpinBox,
-    QDoubleSpinBox,
-    QDateEdit,
-    QTimeEdit,
-    QGraphicsDropShadowEffect,
     QGraphicsBlurEffect,
     QGraphicsOpacityEffect,
     QProgressBar,
     QDialogButtonBox,
-    QCheckBox,
     QInputDialog,
 )
 
 from PyQt5.QtCore import (
     Qt,
-    QThread,
-    pyqtSignal,
     QPropertyAnimation,
     QEasingCurve,
     QSize,
     QPoint,
-    QDateTime,
-    QDate,
-    QTime,
     QTimer,
     QVariantAnimation,
     QParallelAnimationGroup,
@@ -76,30 +60,23 @@ from PyQt5.QtGui import (
     QIcon,
     QPixmap,
     QPainter,
-    QPaintEvent,
     QMouseEvent,
-    QCloseEvent,
     QBrush,
-    QColor,
 )
 from typing import List, Optional, Any, Dict, BinaryIO, Sequence, Set, Tuple, cast
 import numpy as np
 import send2trash
 import pyqtgraph as pg
-
-
 from QATCH.common.logger import Logger as Log
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileStorage import secure_open
-from QATCH.common.userProfiles import UserProfiles
-from QATCH.core.constants import Constants
-from QATCH.core.run_metadata import RunMetadata
-from QATCH.ui.workers.recovery_worker import RecoveryWorker
-from QATCH.ui.workers.scan_worker import ScanWorker
-from QATCH.ui.dialogs.signature_dialog import SignatureDialog
 from QATCH.ui.widgets.recovery_filter_widget import RecoveryFilterWidget
 from QATCH.ui.widgets.toggle_list_widget import ToggleListWidget
-from QATCH.ui.components.animated_combo_box import AnimatedComboBox
+from QATCH.core.constants import Constants
+from QATCH.core.run_metadata import RunMetadata
+from QATCH.ui.dialogs.signature_dialog import SignatureDialog
+from QATCH.ui.components import AnimatedComboBox
+from QATCH.ui.workers import RecoveryWorker, ScanWorker
 
 TAG = "[RunRecovery]"
 

@@ -25,8 +25,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
 from QATCH.core.constants import UserRoles
-from QATCH.ui.components.glass_line_edit import GlassLineEdit
-from QATCH.ui.components.animated_combo_box import AnimatedComboBox
+from QATCH.ui.components import GlassLineEdit, AnimatedComboBox
 
 _INPUT_H: int = 34
 

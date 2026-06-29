@@ -12,7 +12,7 @@ from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.arguments import Arguments
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants, MinimalPython
-from QATCH.ui.widgets.splash_screen_widget import QatchSplashScreen
+from QATCH.ui.widgets import QatchSplashScreen
 
 # from QATCH.ui import mainWindow # lazy load
 

@@ -17,9 +17,8 @@ Version:
     x.x.x?
 """
 
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 import hashlib
-import logging
 import multiprocessing
 import os
 import shutil
@@ -27,28 +26,19 @@ import stat
 import subprocess
 import sys
 import threading
-from collections import deque
-from time import localtime, mktime, strftime, strptime, time, monotonic
-from typing import List, Optional, Any, Callable
+from time import localtime, strftime, strptime, time, monotonic
+from typing import Optional, Any, Callable
 from xml.dom import minidom
 import numpy as np
-import pandas as pd
 import pyqtgraph as pg
-import os
-import shutil
 import pyzipper
 import requests
 from dateutil import parser
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph import AxisItem, GraphicsLayoutWidget
-from serial import serialutil
 from pathlib import Path
-from QATCH.ui.workers.worker_snapshot import WorkerSnapshot
-from QATCH.ui.objects.ui_main import _MainWindow
-from QATCH.ui.objects.ui_login import LoginWindow
 from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
-from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileManager import FileManager
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
@@ -69,10 +59,6 @@ from QATCH.processors.updater import (
     UpdaterTask_Dbx,
     UpdaterTask_Git,
 )
-from QATCH.ui.objects.ui_controls import ControlsWindow
-from QATCH.ui.objects.ui_plots import PlotsWindow
-from QATCH.ui.objects.ui_logger import LoggerWindow
-from QATCH.ui.objects.ui_info import InfoWindow
 from QATCH.processors.InterpTemps import (
     ActionType,
     InterpTempsProcess,
@@ -80,14 +66,20 @@ from QATCH.processors.InterpTemps import (
 )
 from QATCH.ui.popUp import PopUp, QueryComboBox
 
-# DeviceInfoMainWidget is no longer used: the device-config editor now lives as
-# the second perspective inside the advanced popup (AdvancedMainWidget) and is
-# revealed via an in-panel horizontal slide rather than a separate overlay
-# window. Kept here (commented) to document the removed dependency.
-# from QATCH.ui.widgets.device_info_main_widget import DeviceInfoMainWidget
-from QATCH.ui.workers.rename_output_files_worker import RenameOutputFilesWorker
-from QATCH.ui.workers.extract_worker import ExtractWorker
-from QATCH.ui.workers.tec_worker import TECWorker
+from QATCH.ui.workers import (
+    TECWorker,
+    ExtractWorker,
+    RenameOutputFilesWorker,
+    WorkerSnapshot
+)
+from QATCH.ui.objects import (
+    ControlsWindow,
+    PlotsWindow,
+    LoggerWindow,
+    InfoWindow,
+    LoginWindow,
+    _MainWindow
+)
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 from QATCH.processors.drying_detector import DryingDetection

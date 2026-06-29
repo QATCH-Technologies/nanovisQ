@@ -27,8 +27,7 @@ from QATCH.common.logger import Logger as Log
 from QATCH.common.architecture import Architecture
 
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
-from QATCH.ui.components.glass_push_button import GlassPushButton
-from QATCH.ui.components.animated_combo_box import AnimatedComboBox
+from QATCH.ui.components import GlassPushButton, AnimatedComboBox
 
 try:
     import send2trash
@@ -341,7 +340,9 @@ class HistoryMode(DataModeWidget):
         for rec in batch:
             group = self._group_label(rec["timestamp"])
             if group != self._last_group:
-                self._list_layout.insertWidget(self._list_layout.count() - 1, self._group_header(group))
+                self._list_layout.insertWidget(
+                    self._list_layout.count() - 1, self._group_header(group)
+                )
                 self._last_group = group
             self._list_layout.insertWidget(self._list_layout.count() - 1, self._make_row(rec))
         self._visible_count += len(batch)
@@ -591,7 +592,7 @@ class HistoryMode(DataModeWidget):
             return ""
         if len(path) <= max_len:
             return path
-        return "…" + path[-(max_len - 1):]
+        return "…" + path[-(max_len - 1) :]
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -691,4 +692,3 @@ class HistoryMode(DataModeWidget):
                 color: rgba(0, 118, 174, 230);
             }
         """
-

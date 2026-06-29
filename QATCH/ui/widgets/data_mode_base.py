@@ -18,8 +18,6 @@ The base provides ``self.services`` and a transparent root layout to build on.
 
 from PyQt5 import QtCore, QtWidgets
 
-from QATCH.common.logger import Logger as Log
-
 from QATCH.common.data_service import DataServices
 
 TAG = "[DataMode]"

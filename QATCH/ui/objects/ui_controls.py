@@ -10,77 +10,132 @@ Author(s)
     Others...
 
 Date:
-    2026-01-26
+    2026-06-29
 """
 
 import os
 import sys
-from time import monotonic, sleep
-from typing import Optional
+from time import monotonic
+from typing import Optional, Any, cast
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import (
-    QDesktopWidget,
-)
+from PyQt5.QtWidgets import QDesktopWidget
 
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants, OperationType, UserRoles
-from QATCH.ui.widgets.well_plate_widget import WellPlate
 from QATCH.ui.popUp import PopUp
-from QATCH.ui.components.number_icon_button import NumberIconButton
-from QATCH.ui.components.run_controls_button import RunControls
-from QATCH.ui.widgets.data_management_widget import DataManagementWidget
-from QATCH.ui.widgets.user_preferences_widget import UserPreferencesWidget
-from QATCH.ui.widgets.user_profiles_manager_widget import UserProfilesManagerWidget
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
 from QATCH.common.licenseManager import LicenseManager
 from QATCH.processors.Device import serial
-from QATCH.ui.widgets.advanced_main_widget import (
+from QATCH.ui.widgets import (
+    WellPlate,
+    DataManagementWidget,
+    UserPreferencesWidget,
+    UserProfilesManagerWidget,
     AdvancedMainWidget,
 )
-from QATCH.ui.components.glass_warning_label import GlassWarningLabel
-from QATCH.ui.components.glass_push_button import GlassPushButton
-from QATCH.ui.components.glass_toggle import GlassToggle
-from QATCH.ui.components.animated_combo_box import AnimatedComboBox
-from QATCH.ui.components.animated_spin_box import AnimatedDoubleSpinBox
-
-# ---------------------------------------------------------------------------
-# Glass-morphism primitives
-# ---------------------------------------------------------------------------
+from QATCH.ui.components import (
+    AnimatedDoubleSpinBox,
+    AnimatedComboBox,
+    GlassToggle,
+    RunControls,
+    NumberIconButton,
+    GlassPushButton,
+)
 
 TAG = "[ControlsWindow]"
 
 
 class ControlsWindow(QtWidgets.QMainWindow):
-    def __init__(self, parent, samples=Constants.argument_default_samples):
-        self.parent = parent
+    def __init__(self, parent: Any, samples: int = Constants.argument_default_samples) -> None:
+        """Initializes the main widget and its child components.
+
+        Sets up the user interface controls, user preferences, and initializes
+        the internal timer. Also ensures any previous user sessions are ended.
+
+        Args:
+            parent: The parent widget or window that owns this instance.
+            samples: The initial sample data or configuration. Defaults to
+                `Constants.argument_default_samples`.
+
+        Attributes:
+            parent (Any): Reference to the parent UI component.
+            ui1 (UIControls): The main user interface controls object.
+            data_management_widget (Optional[DataManagementWidget]): The widget
+                handling data management operations. Initialized as None.
+            ui_preferences (UserPreferencesWidget): The widget managing user
+                settings and preferences.
+            current_timer (QtCore.QTimer): Timer for handling timed events or
+                refresh loops within the UI.
+        """
+        self.parent: Any = parent
         super().__init__()
-        self.ui1 = UIControls()
+
+        self.ui1: UIControls = UIControls()
         self.ui1.setupUi(self)
-        self.data_management_widget = None
-        # self.ui_configure_data = UIConfigureData()
-        self.ui_preferences = UserPreferencesWidget(self)
-        # self.userrole
-        self.current_timer = QtCore.QTimer()
-        # self.current_timer.timeout.connect(self.double_toggle_plots)
+
+        self.data_management_widget: Optional[Any] = None
+        self.ui_preferences: UserPreferencesWidget = UserPreferencesWidget(self)
+        self.current_timer: QtCore.QTimer = QtCore.QTimer()
+
         UserProfiles().session_end()
 
-    def _createMenu(self, target):
+    def _create_menu(self, target: QtWidgets.QMainWindow) -> None:
+        """Constructs and configures the application's top-level menu bar.
+
+        This method builds the Options, Users, View, and Help menus, populates
+        them with their respective actions, and connects them to internal methods.
+        It also restores user view preferences from application settings and applies
+        custom visual styling to the menus.
+
+        Args:
+            target (QtWidgets.QMainWindow): The window or widget that
+                owns and displays the menu bar.
+
+        Attributes:
+            _menu_target (Any): Reference to the target hosting the menu.
+            menubar (List[QtWidgets.QMenu]): Collection of the primary top-level
+                menus added to the target's menu bar.
+            act_analyze_data (QtWidgets.QAction): Action to trigger data analysis.
+            act_import_data (QtWidgets.QAction): Action to import data files.
+            act_export_data (QtWidgets.QAction): Action to export data files.
+            act_recover_data (QtWidgets.QAction): Action to recover data.
+            act_preferences (QtWidgets.QAction): Action to open user preferences.
+            act_find_devices (QtWidgets.QAction): Action to scan subnets for devices.
+            username (QtWidgets.QAction): Display action for the current user.
+            signinout (QtWidgets.QAction): Action to toggle user sign in/out.
+            act_select_directory (QtWidgets.QAction): Action to set working directory.
+            manage (QtWidgets.QAction): Action to open the user profile manager.
+            userrole (int/Enum): The current user's role/permission level.
+            modebar (QtWidgets.QMenu): Sub-menu for selecting application modes.
+            chk1 (QtWidgets.QAction): Toggle action for the Console view.
+            chk2 (QtWidgets.QAction): Toggle action for the Amplitude view.
+            chk3 (QtWidgets.QAction): Toggle action for the Temperature view.
+            chk4 (QtWidgets.QAction): Toggle action for the Resonance/Dissipation view.
+            chk5 (QtWidgets.QAction): Action to view tutorials.
+            act_check_updates (QtWidgets.QAction): Action to check for software updates.
+            q_version_v1 (QtWidgets.QAction): Toggle for ModelData v1 prediction model.
+            q_version_v4 (QtWidgets.QAction): Toggle for QModel Fusion v4 prediction model.
+            q_version_v6 (QtWidgets.QAction): Toggle for QModel YOLO v6 prediction model.
+        """
         self._menu_target = target  # real menu bar lives on MainWin, not here
         self.menubar = []
-        self.menubar.append(target.menuBar().addMenu("&Options"))
+        menu_bar = target.menuBar()
+        if menu_bar is None:
+            Log.e(TAG, "Error mounting menubar to main window.  Menubar is `None`")
+            raise
+        self.menubar.append(menu_bar.addMenu("&Options"))
         self.act_analyze_data = self.menubar[0].addAction("&Analyze Data", self.analyze_data)
         self.act_import_data = self.menubar[0].addAction("&Import Data", self.import_data)
         self.act_export_data = self.menubar[0].addAction("&Export Data", self.export_data)
         self.act_recover_data = self.menubar[0].addAction("&Recover Data", self.recover_data)
-        # self.menubar[0].addAction('&Configure Data', self.configure_data)
         self.act_preferences = self.menubar[0].addAction("&Preferences", self.preferences)
         self.act_find_devices = self.menubar[0].addAction("&Find Devices", self.scan_subnets)
         self.menubar[0].addAction("E&xit", self.close)
-        self.menubar.append(target.menuBar().addMenu("&Users"))
+        self.menubar.append(menu_bar.addMenu("&Users"))
         self.username = self.menubar[1].addAction("User: [NONE]")
         self.username.setEnabled(False)
         self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
@@ -89,7 +144,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         )
         self.manage = self.menubar[1].addAction("&Manage Users...", self.manage_user_profiles)
         self.userrole = UserRoles.NONE
-        self.menubar.append(target.menuBar().addMenu("&View"))
+        self.menubar.append(menu_bar.addMenu("&View"))
         self.modebar = self.menubar[2].addMenu("&Mode")
         self.modebar.addAction("&1: Run", lambda: self.parent.MainWin.ui0._set_run_mode(None))
         self.modebar.addAction(
@@ -120,7 +175,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
             self.parent.AppSettings.value("viewState_Resonance_Dissipation", "True").lower()
             == "true"
         )
-        self.menubar.append(target.menuBar().addMenu("&Help"))
+        self.menubar.append(menu_bar.addMenu("&Help"))
         self.chk5 = self.menubar[3].addAction("View &Tutorials", self.view_tutorials)
         self.chk5.setCheckable(False)
         self.menubar.append(self.menubar[3].addMenu("View &Documentation"))
@@ -133,39 +188,39 @@ class ControlsWindow(QtWidgets.QMainWindow):
             "&Check for Updates", self.check_for_updates
         )
         self.menubar[3].addSeparator()
-        from QATCH.models.ModelData import __release__ as ModelData_release
-        from QATCH.models.ModelData import __version__ as ModelData_version
+        from QATCH.models.ModelData import __release__ as model_data_release
+        from QATCH.models.ModelData import __version__ as model_data_version
         from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
-            __release__ as QModel4_release,
+            __release__ as qmodel4_release,
         )
         from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
-            __version__ as QModel4_version,
+            __version__ as qmodel4_version,
         )
         from QATCH.QModel.src.models.v6_yolo.__init__ import (
-            __release__ as QModel6_release,
+            __release__ as qmodel6_release,
         )
         from QATCH.QModel.src.models.v6_yolo.__init__ import (
-            __version__ as QModel6_version,
+            __version__ as qmodel6_version,
         )
 
         qmodel_versions_menu = self.menubar[3].addMenu("Model versions (3 available)")
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
-            "ModelData v{} ({})".format(ModelData_version, ModelData_release),
+            "ModelData v{} ({})".format(model_data_version, model_data_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[0]
             ),
         )
         self.q_version_v1.setCheckable(True)
         self.q_version_v4 = self.menubar[5].addAction(
-            "QModel Fusion v{} ({})".format(QModel4_version, QModel4_release),
+            "QModel Fusion v{} ({})".format(qmodel4_version, qmodel4_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[1]
             ),
         )
         self.q_version_v4.setCheckable(True)
         self.q_version_v6 = self.menubar[5].addAction(
-            "QModel YOLO26 v{} ({})".format(QModel6_version, QModel6_release),
+            "QModel YOLO26 v{} ({})".format(qmodel6_version, qmodel6_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[2]
             ),
@@ -194,7 +249,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
             fingerprint_action = self.menubar[3].addAction(fingerprint_txt)
             fingerprint_action.setToolTip("Click to copy to clipboard")
             fingerprint_action.triggered.connect(
-                lambda: QtWidgets.QApplication.clipboard().setText(fingerprint_txt)
+                lambda: cast(QtGui.QClipboard, QtWidgets.QApplication.clipboard()).setText(
+                    fingerprint_txt
+                )
             )
 
         # update application UI states to reflect viewStates from AppSettings
@@ -207,24 +264,25 @@ class ControlsWindow(QtWidgets.QMainWindow):
         if not self.chk4.isChecked():
             QtCore.QTimer.singleShot(100, self.toggle_RandD)
 
-        # Glass-rounded popup setup, matching the proven AnimatedComboBox
-        # pattern (animated_combo_box.py) instead of WA_TranslucentBackground:
-        # true per-pixel alpha on a native Windows popup composites as a
-        # muddy grey-brown smear, and QSS border-radius never clips the
-        # window's own (rectangular) shape, leaving square corners poking
-        # out from under the rounded paint. An opaque QSS background plus an
-        # explicit rounded QRegion mask avoids both.
         for menu in (*self.menubar, self.modebar):
-            menu.setAttribute(QtCore.Qt.WA_TranslucentBackground, False)
-            menu.setWindowFlag(QtCore.Qt.NoDropShadowWindowHint, True)
+            menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, False)
+            menu.setWindowFlag(QtCore.Qt.WindowType.NoDropShadowWindowHint, True)
             menu.aboutToShow.connect(lambda m=menu: self._mask_menu_to_rounded_rect(m))
 
     @staticmethod
     def _mask_menu_to_rounded_rect(menu: QtWidgets.QMenu, radius: int = 10) -> None:
-        """Clips `menu` to a rounded-rect window mask once it has its real size.
+        """Applies a rounded-rectangle mask to a menu after it is rendered.
 
-        Deferred a tick because the menu's size isn't final until just after
-        it's shown (see AnimatedComboBox._apply_popup_mask for the same need).
+        Because a widget's geometry is often calculated or adjusted by the window
+        manager after the `aboutToShow` event, this method defers the masking
+        operation until the next event loop iteration. This ensures the menu
+        has achieved its final dimensions before the clipping region is applied.
+
+        Args:
+            menu (QtWidgets.QMenu): The menu widget to which the rounded
+                mask will be applied.
+            radius (int, optional): The corner radius of the mask in pixels.
+                Defaults to 10.
         """
 
         def _apply() -> None:
@@ -261,12 +319,12 @@ class ControlsWindow(QtWidgets.QMainWindow):
         ):
             action.setEnabled(signed_in)
 
-        # Users: fully locked down while signed out.
+        # Users: fully disabled while signed out.
         self.signinout.setEnabled(signed_in)
         self.act_select_directory.setEnabled(signed_in)
         self.manage.setEnabled(signed_in)
 
-        # View: fully locked down while signed out.
+        # View: fully disabled while signed out.
         self.modebar.menuAction().setEnabled(signed_in)
         self.chk1.setEnabled(signed_in)
         self.chk2.setEnabled(signed_in)
@@ -276,14 +334,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         # Help: enabled regardless, except updates and model-version switching.
         self.act_check_updates.setEnabled(signed_in)
         self.menubar[5].menuAction().setEnabled(signed_in)  # "Model versions" submenu
-
         self._apply_menu_bar_theme(signed_in)
-
-        # The Account toolbar button (top-right, next to Advanced) must be
-        # re-enabled the moment a session starts — previously nothing called
-        # this on sign-in, so it stayed disabled (built disabled, before any
-        # session existed) until a *second* launch happened to start with an
-        # already-valid session from the prior run.
         self.ui1.refresh_user_button_state()
 
     def _apply_menu_bar_theme(self, signed_in: bool) -> None:
@@ -1753,8 +1804,7 @@ class _BorderlessActionButton(QtWidgets.QPushButton):
             "neutral": "rgba(60, 78, 96, 230)",
             "primary": "rgba(20, 120, 180, 235)",
         }.get(tone, "rgba(60, 78, 96, 230)")
-        self.setStyleSheet(
-            f"""
+        self.setStyleSheet(f"""
             QPushButton {{
                 border: none;
                 background: transparent;
@@ -1774,8 +1824,7 @@ class _BorderlessActionButton(QtWidgets.QPushButton):
                 color: rgba(120, 135, 150, 120);
                 background: transparent;
             }}
-            """
-        )
+            """)
 
 
 class _FieldStateAction:
@@ -3139,9 +3188,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.lid_pogo_delay_field.valueChanged.connect(
             lambda v, action=self.lid_pogo_delay_action: self.on_text_edit(str(v), action)
         )
-        self.lid_pogo_delay_dot = _make_dot(
-            self.lid_pogo_delay_action, self.lid_pogo_delay_field
-        )
+        self.lid_pogo_delay_dot = _make_dot(self.lid_pogo_delay_action, self.lid_pogo_delay_field)
 
         self.lid_pogo_default = _BorderlessActionButton("Default")
         self.lid_pogo_default.clicked.connect(self.on_lid_pogo_default)
@@ -3335,6 +3382,7 @@ class UIControls:  # QtWidgets.QMainWindow
             target.__class__.__name__ + " { border: 1px solid rgba(240,170,50,230); "
             "border-radius: 12px; }"
         )
+
         # Simple 3-blink using timers so we don't depend on a QSS property anim.
         def _on():
             target.setStyleSheet(base_qss + amber)
