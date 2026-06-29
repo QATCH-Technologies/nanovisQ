@@ -4243,7 +4243,7 @@ FASTRUN void pogo_button_ISR(void)
  * @param init When true, perform startup initialization (move from POS_INIT to POS_OPENED).
  *             When false, handle a normal button-triggered toggle between opened and closed.
  *
- * @note This function must not be called from an ISR — call it from loop() after
+ * @note This function must not be called from an ISR - call it from loop() after
  *       debouncing. It performs delays and blocks while sweeping the servo.
  */
 void pogo_button_pressed(bool init)

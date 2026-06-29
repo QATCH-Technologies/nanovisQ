@@ -66,19 +66,14 @@ from QATCH.processors.InterpTemps import (
 )
 from QATCH.ui.popUp import PopUp, QueryComboBox
 
-from QATCH.ui.workers import (
-    TECWorker,
-    ExtractWorker,
-    RenameOutputFilesWorker,
-    WorkerSnapshot
-)
+from QATCH.ui.workers import TECWorker, ExtractWorker, RenameOutputFilesWorker, WorkerSnapshot
 from QATCH.ui.objects import (
     ControlsWindow,
     PlotsWindow,
     LoggerWindow,
     InfoWindow,
     LoginWindow,
-    _MainWindow
+    _MainWindow,
 )
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -109,7 +104,7 @@ class RoundedProgressBar(QtWidgets.QWidget):
     """A progress bar with guaranteed rounded corners at every fill level.
 
     Qt5's CSS engine does not reliably apply border-radius to the start-edge
-    (left side) of ``QProgressBar::chunk`` at partial fill values—the corner
+    (left side) of ``QProgressBar::chunk`` at partial fill values-the corner
     either clips to a square or flickers on rapid value changes. This widget
     bypasses the CSS paint path entirely by drawing the track and fill directly
     with ``QPainter``, ensuring both ends stay rounded from 0% to 100%.
@@ -821,7 +816,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if chk3 != self.ControlsWin.chk3.isChecked():
             self.ControlsWin.toggle_temperature()
         if chk4 != self.ControlsWin.chk4.isChecked():
-            self.ControlsWin.toggle_RandD()
+            self.ControlsWin.toggle_resonance_dissipation()
 
     def parse_ports_from_file(self, path_to_plate_config: str = r"plate-config.json"):
         """
@@ -2873,7 +2868,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
             finally:
                 # Re-enable updates. This fires one consolidated repaint reflecting
-                # the final dim state—avoiding any in-between frame flickering.
+                # the final dim state-avoiding any in-between frame flickering.
                 for w in _all_tiles:
                     w.setUpdatesEnabled(True)
 
@@ -3329,13 +3324,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # ── Fill brush: frosted area under the curve ──
         brush_color = QtGui.QColor(color)
-        brush_color.setAlpha(65)  # ~11% — lighter than before for cleaner glass feel
+        brush_color.setAlpha(65)  # ~11% - lighter than before for cleaner glass feel
         brush = pg.mkBrush(brush_color)
 
         return pen, brush
 
     def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.08) -> None:
-        """Apply minimal glass axis styling — no spines, no ticks, floating labels."""
+        """Apply minimal glass axis styling - no spines, no ticks, floating labels."""
         _text_pen = pg.mkPen(color=(35, 48, 68, 140))  # cool charcoal, quite light
 
         for name in ("bottom", "left", "right", "top"):
@@ -6311,7 +6306,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.toggle_console()
             self.ControlsWin.toggle_amplitude()
             self.ControlsWin.toggle_temperature()
-            self.ControlsWin.toggle_RandD()
+            self.ControlsWin.toggle_resonance_dissipation()
             Log.w("Factory Default: Reloaded UI states to sync.")
 
             # remove all keys

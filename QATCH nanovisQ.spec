@@ -71,7 +71,7 @@ upx_exclude = [
     'xgboost',
     'xgboost.dll',
 
-# Cryptography — may rely on native libcrypto
+# Cryptography - may rely on native libcrypto
     'pycryptodomex',
     'libcrypto-*.dll',
     'libssl-*.dll',

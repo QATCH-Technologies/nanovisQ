@@ -39,7 +39,7 @@ _COMBO_GLASS_QSS = """
         width: 0px;
         height: 0px;
     }
-    /* Pop-up list — transparent so the rounded container shape shows cleanly.
+    /* Pop-up list - transparent so the rounded container shape shows cleanly.
        The container (QComboBoxPrivateContainer) paints the solid rounded
        background; the view only styles its rows. */
     QComboBox QAbstractItemView {

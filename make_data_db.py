@@ -135,7 +135,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if "Protein_class_type" in df.columns:
         normalized_classes = []
         for val in df["Protein_class_type"]:
-            # Preserve NaN/null values as-is — these represent rows with no protein
+            # Preserve NaN/null values as-is - these represent rows with no protein
             # and must not be fuzzy-matched (str(NaN) == "nan" scores above cutoff
             # against enum members like "Polyclonal", producing incorrect assignments).
             if pd.isna(val):

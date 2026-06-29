@@ -378,7 +378,7 @@ class UIMain:
         toggle_layout.setContentsMargins(8, 0, 6, 0)
         toggle_layout.setSpacing(6)
 
-        # Footer copyright text — small, non-italic, clearly static.
+        # Footer copyright text - small, non-italic, clearly static.
         current_year = datetime.date.today().year
         footer_text = f"\u00a9 {current_year} QATCH Technologies. All rights reserved."
         self.copy_foot = QtWidgets.QLabel(footer_text)
@@ -492,7 +492,7 @@ class UIMain:
         outer_v.setContentsMargins(0, 0, 0, 0)
         # No spacing: any gap here exposes centralwidget's own background,
         # which only matches the dimmed signed-out look approximately (it's
-        # a flat color, not the blurred snapshot) — better to have no seam.
+        # a flat color, not the blurred snapshot) - better to have no seam.
         outer_v.setSpacing(0)
         outer_v.addWidget(self.log_splitter, 1)  # main area over draggable logger
         outer_v.addWidget(self.log_toggle_bar)  # full-width toggle + footer bar
@@ -601,7 +601,7 @@ class UIMain:
         """Returns a copy of the icon at `path` fully painted in `color`.
 
         Uses SourceAtop composition so the tint respects the original alpha
-        channel — transparent SVG areas stay transparent.
+        channel - transparent SVG areas stay transparent.
         """
         src = QtGui.QIcon(path).pixmap(size, size)
         dst = QtGui.QPixmap(src.size())
@@ -621,7 +621,7 @@ class UIMain:
     def _update_log_toggle_bar_theme(self) -> None:
         """Updates the collapsed-console strip's color, icon, and tooltip.
 
-        Dimmed while signed out *and* collapsed — the same ~30% darkening
+        Dimmed while signed out *and* collapsed - the same ~30% darkening
         the login overlay applies to the blurred dashboard, applied to this
         strip's own light tone, so it reads as part of the same dimmed
         scene instead of a bright strip poking out from under it. Normal
@@ -639,7 +639,7 @@ class UIMain:
             )
 
         if dark:
-            # ~30% black over the strip's normal light tone — the same dim
+            # ~30% black over the strip's normal light tone - the same dim
             # level used on the blurred dashboard, not an unrelated dark color.
             self.log_toggle_bar.setStyleSheet(
                 "QWidget#logToggleBar { background: rgba(164, 168, 172, 255); }"
@@ -653,7 +653,7 @@ class UIMain:
                     font-weight: normal;
                 }
             """)
-            # The collapsed splitter handle sits directly above this strip —
+            # The collapsed splitter handle sits directly above this strip -
             # left transparent it shows centralwidget's light background
             # through, a stray bright sliver right at the resize divider.
             self.log_splitter.setStyleSheet("""
@@ -824,8 +824,8 @@ class UIMain:
         Args:
             widget (QtWidgets.QWidget): The widget whose size must settle.
             callback (Callable[[], None]): Called once settled.
-            _last_size (QtCore.QSize, optional): Internal — previous poll's size.
-            _attempts (int, optional): Internal — poll count so far.
+            _last_size (QtCore.QSize, optional): Internal - previous poll's size.
+            _attempts (int, optional): Internal - poll count so far.
         """
         current_size = widget.size()
         settled = (
@@ -864,7 +864,7 @@ class UIMain:
         if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Run mode already active. Skipping mode change request.")
             # Still re-assert the highlight: the splitter staying on runview
-            # doesn't mean the highlight was ever shown — e.g. right after
+            # doesn't mean the highlight was ever shown - e.g. right after
             # signing in, where this is the very first "Run mode" request.
             self.animate_mode_highlight(self.mode_run)
             return True if obj is None else None
@@ -938,7 +938,7 @@ class UIMain:
         # Already in Analyze mode
         if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Analyze mode already active. Skipping mode change request.")
-            # Still re-assert the highlight — see the matching comment in
+            # Still re-assert the highlight - see the matching comment in
             # _set_run_mode for why "already active" doesn't imply "already shown".
             self.animate_mode_highlight(self.mode_analyze)
             return True if obj is None else None

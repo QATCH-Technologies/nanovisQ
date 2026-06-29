@@ -408,7 +408,7 @@ class QTextEditLogger(QtCore.QObject):
 
         # Set the default filter now that every attribute apply_filter touches
         # (self._pending, self.logText, self.log_cache, self.search_input)
-        # actually exists — setting this earlier fired currentTextChanged
+        # actually exists - setting this earlier fired currentTextChanged
         # synchronously during construction, before those existed, and
         # crashed with "QTextEditLogger object has no attribute '_pending'".
         self.level_filter.setCurrentText("INFO")  # calls apply_filter
