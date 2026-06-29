@@ -20,6 +20,9 @@ from .toggle_list_widget import ToggleListWidget
 from .user_preferences_widget import UserPreferencesWidget
 from .user_profiles_manager_widget import UserProfilesManagerWidget
 from .well_plate_widget import WellPlate
+from .controls_widget import ControlsWidget
+from .saved_state_dot import SavedStateDot
+from .account_popup import AccountPopup
 
 __all__ = [
     "AdvancedMainWidget",
@@ -44,4 +47,7 @@ __all__ = [
     "UserPreferencesWidget",
     "UserProfilesManagerWidget",
     "WellPlate",
+    "ControlsWidget",
+    "SavedStateDot",
+    "AccountPopup",
 ]

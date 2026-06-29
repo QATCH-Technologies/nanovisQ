@@ -17,12 +17,12 @@ Visual mapping
 
 Variants
 --------
-  "default"        Translucent white glass — secondary actions (Audit, Refresh, Back).
-  "primary"        Vertical blue gradient — primary CTA (Add / confirm).
-  "danger"         Red-tinted glass — destructive labelled actions (Delete).
-  "danger_confirm" Solid red — delete-button confirmation state.
-  "warning"        Amber-tinted glass — cautionary icon actions (Reset Password).
-  "neutral"        Grey-tinted glass — cancel / row audit icon actions.
+  "default"        Translucent white glass - secondary actions (Audit, Refresh, Back).
+  "primary"        Vertical blue gradient - primary CTA (Add / confirm).
+  "danger"         Red-tinted glass - destructive labelled actions (Delete).
+  "danger_confirm" Solid red - delete-button confirmation state.
+  "warning"        Amber-tinted glass - cautionary icon actions (Reset Password).
+  "neutral"        Grey-tinted glass - cancel / row audit icon actions.
 
 Usage
 -----
@@ -49,9 +49,9 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 # All colour data stored as plain RGBA tuples to avoid constructing QColor
 # objects at class-definition time (before any QApplication exists).
 #
-# fills:      (normal, hover, pressed) — background RGBA tuples.
+# fills:      (normal, hover, pressed) - background RGBA tuples.
 #             None for "primary", which uses a vertical linear gradient.
-# grad:       ((top, bot) normal, hover, pressed) — used only by "primary".
+# grad:       ((top, bot) normal, hover, pressed) - used only by "primary".
 # border:     Resting border RGBA.
 # sh_accent:  Shimmer gradient wing colour RGBA  (matches GlassLineEdit).
 # sh_peak:    Shimmer gradient centre peak RGBA  (matches GlassLineEdit).
@@ -82,7 +82,7 @@ _PALETTES: dict[str, dict] = {
         sh_peak=(255, 255, 255, 240),
         text_role="light",
     ),
-    # Danger (labelled Delete button — restores here after confirmation).
+    # Danger (labelled Delete button - restores here after confirmation).
     "danger": dict(
         fills=(
             (220, 53, 69, 26),  # ~0.10
@@ -94,7 +94,7 @@ _PALETTES: dict[str, dict] = {
         sh_peak=(255, 160, 160, 240),
         text_role="danger",  # #B02A37
     ),
-    # Danger-confirm (delete button while awaiting confirmation — solid red).
+    # Danger-confirm (delete button while awaiting confirmation - solid red).
     "danger_confirm": dict(
         fills=(
             (220, 53, 69, 102),  # ~0.40  normal
@@ -106,7 +106,7 @@ _PALETTES: dict[str, dict] = {
         sh_peak=(255, 220, 220, 255),
         text_role="light",
     ),
-    # Warning (amber — Reset Password icon button).
+    # Warning (amber - Reset Password icon button).
     "warning": dict(
         fills=(
             (255, 193, 7, 31),  # ~0.12
@@ -118,7 +118,7 @@ _PALETTES: dict[str, dict] = {
         sh_peak=(255, 240, 150, 240),
         text_role="dark",
     ),
-    # Neutral (grey — Cancel / row-Audit icon button).
+    # Neutral (grey - Cancel / row-Audit icon button).
     "neutral": dict(
         fills=(
             (108, 117, 125, 31),  # ~0.12
@@ -130,13 +130,13 @@ _PALETTES: dict[str, dict] = {
         sh_peak=(200, 210, 220, 240),
         text_role="dark",
     ),
-    # Ghost: near-invisible at rest, blue-accent wash on hover — for compact
+    # Ghost: near-invisible at rest, blue-accent wash on hover - for compact
     # actions packed inside an already-bordered container (set_border_visible
     # off), where the app's blue accent reads as "interactive" more clearly
     # than a generic white opacity bump.
     "ghost": dict(
         fills=(
-            (10, 163, 230, 18),  # resting — barely-there tint
+            (10, 163, 230, 18),  # resting - barely-there tint
             (10, 163, 230, 60),  # hover
             (10, 163, 230, 100),  # pressed
         ),
@@ -157,7 +157,7 @@ _TEXT_COLORS: dict[str, QtGui.QColor] = {
 class GlassPushButton(QtWidgets.QPushButton):
     """QPushButton with glass-morphism rendering and a shimmer sweep on hover.
 
-    All fill, border, and shimmer effects are painted manually in paintEvent —
+    All fill, border, and shimmer effects are painted manually in paintEvent -
     no QSS is used for backgrounds or borders.  A minimal QSS string (padding
     and font-weight only) is applied so Qt's standard icon / text pipeline can
     render on top unimpeded.
@@ -238,7 +238,7 @@ class GlassPushButton(QtWidgets.QPushButton):
 
     def set_border_visible(self, visible: bool) -> None:
         """Hide the glass border entirely while keeping the fill + shimmer
-        hover effect — for compact actions that sit inside an already
+        hover effect - for compact actions that sit inside an already
         bordered container (e.g. the USB picker box), where drawing a border
         around the button too would be one border too many.
 
@@ -270,7 +270,7 @@ class GlassPushButton(QtWidgets.QPushButton):
     # Timer (shimmer animation)
     # ------------------------------------------------------------------
     def _tick(self) -> None:
-        """Increments shimmer progress and triggers a repaint — identical to
+        """Increments shimmer progress and triggers a repaint - identical to
         GlassLineEdit._tick."""
         self._shimmer_t = min(1.0, self._shimmer_t + 0.022)
         self.update()
@@ -281,7 +281,7 @@ class GlassPushButton(QtWidgets.QPushButton):
     # Event overrides
     # ------------------------------------------------------------------
     def enterEvent(self, event) -> None:
-        """Mouse enters: reset and start shimmer sweep — analogous to
+        """Mouse enters: reset and start shimmer sweep - analogous to
         GlassLineEdit.focusInEvent."""
         super().enterEvent(event)
         self._hovered = True
@@ -290,7 +290,7 @@ class GlassPushButton(QtWidgets.QPushButton):
         self.update()
 
     def leaveEvent(self, event) -> None:
-        """Mouse leaves: stop sweep — analogous to GlassLineEdit.focusOutEvent."""
+        """Mouse leaves: stop sweep - analogous to GlassLineEdit.focusOutEvent."""
         super().leaveEvent(event)
         self._hovered = False
         self._timer.stop()
@@ -318,7 +318,7 @@ class GlassPushButton(QtWidgets.QPushButton):
         """
         w, h = self.width(), self.height()
         if h < 4:
-            # Widget is still animating open from 0x0 — nothing to draw yet.
+            # Widget is still animating open from 0x0 - nothing to draw yet.
             super().paintEvent(event)
             return
 
@@ -383,7 +383,7 @@ class GlassPushButton(QtWidgets.QPushButton):
                 p.setPen(QtGui.QPen(settled, 1.5))
 
             else:
-                # Resting border — same as GlassLineEdit's unfocused pen
+                # Resting border - same as GlassLineEdit's unfocused pen
                 p.setPen(QtGui.QPen(self._c(pal["border"]), 1.0))
 
             p.drawRoundedRect(rect, r, r)
@@ -418,8 +418,8 @@ class GlassPushButton(QtWidgets.QPushButton):
             sp.end()
         else:
             # ── Icon + text via Qt's standard rendering pipeline ─────────
-            # CE_PushButtonLabel draws only the icon and text — no background or
-            # border — so our custom-painted glass surface is not overwritten.
+            # CE_PushButtonLabel draws only the icon and text - no background or
+            # border - so our custom-painted glass surface is not overwritten.
             sp = QtWidgets.QStylePainter(self)
             opt = QtWidgets.QStyleOptionButton()
             self.initStyleOption(opt)

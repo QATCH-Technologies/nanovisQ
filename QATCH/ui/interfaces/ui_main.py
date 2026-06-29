@@ -467,7 +467,7 @@ class UIMain:
 
         self._force_splitter_mode_set = True
         if UserProfiles.count() > 0:
-            self._set_no_user_mode(self.mode_mode)
+            self._set_no_user_mode(self.mode_mode, instant=True)
         else:
             # TODO: implement user sign in widget (show accordingly)
             self._set_run_mode(self.mode_run)
@@ -619,16 +619,23 @@ class UIMain:
         self._update_log_toggle_bar_theme()
 
     def _update_log_toggle_bar_theme(self) -> None:
-        """Updates the collapsed-console strip's color, icon, and tooltip.
+        """Updates the console panel, divider, and footer/toggle bar color.
 
-        Dimmed while signed out *and* collapsed - the same ~30% darkening
-        the login overlay applies to the blurred dashboard, applied to this
-        strip's own light tone, so it reads as part of the same dimmed
-        scene instead of a bright strip poking out from under it. Normal
-        light strip in every other state (expanded while signed out, or
-        signed in at all).
+        The logger panel's own backdrop (`log_container`, behind its glass
+        console), the drag handle dividing it from the main area, and the
+        footer/toggle bar beneath it are all tinted with the same ~30%
+        darkening the login overlay applies to the blurred dashboard
+        whenever signed out - expanded or collapsed - so the whole strip
+        reads as part of the same dimmed scene instead of bright elements
+        poking out from under it. Everything stays its normal light self
+        while signed in.
         """
-        dark = (not self._signed_in) and self._log_collapsed
+        dark = not self._signed_in
+        self.log_container.setStyleSheet(
+            "QWidget#logContainer { background: %s; }"
+            % ("rgba(164, 168, 172, 255)" if dark else "transparent")
+        )
+
         self.btnLogToggle.setToolTip("Show console" if self._log_collapsed else "Hide console")
 
         if self._log_collapsed:
@@ -653,9 +660,9 @@ class UIMain:
                     font-weight: normal;
                 }
             """)
-            # The collapsed splitter handle sits directly above this strip -
-            # left transparent it shows centralwidget's light background
-            # through, a stray bright sliver right at the resize divider.
+            # Left transparent, the splitter handle/divider shows
+            # centralwidget's light background through - a stray bright
+            # sliver right at the resize divider between the two dimmed panes.
             self.log_splitter.setStyleSheet("""
                 QSplitter#logSplitter::handle {
                     background: rgba(164, 168, 172, 255);
@@ -727,7 +734,9 @@ class UIMain:
                     return False
         return True
 
-    def _set_no_user_mode(self, obj: Optional[Any] = None) -> Optional[bool]:
+    def _set_no_user_mode(
+        self, obj: Optional[Any] = None, instant: bool = False
+    ) -> Optional[bool]:
         """
         Switches the application to 'No User' (Sign-In) mode.
 
@@ -739,6 +748,11 @@ class UIMain:
             obj (Optional[Any]): The event object triggering the mode change (e.g., QMouseEvent).
                 If None, it indicates the function was called programmatically (e.g., session timeout)
                 rather than via a UI interaction.
+            instant (bool, optional): If True, the overlay snaps straight to its
+                fully blurred/dimmed end state with no animation and no live
+                dashboard capture. Used only for the app's cold start (called
+                from `setup_ui` before the window has ever been shown), so the
+                dashboard is never visible bright/sharp even for one frame.
 
         Returns:
             Optional[bool]:
@@ -770,26 +784,41 @@ class UIMain:
         self._signed_in = False
         self._update_log_toggle_bar_theme()
 
-        session_expired = obj is None and not UserProfiles.session_info()[0]
-        session_loggedout = obj is None and not session_expired
+        if instant:
+            # Shown immediately, before the window has ever been painted, so
+            # there's nothing real to snapshot yet - starts on the fallback
+            # gradient, already fully blurred/dimmed (no flash of the bright
+            # dashboard). Once the window settles at its real size, swap in
+            # an actual blurred snapshot of it, still fully dimmed, so the
+            # backdrop isn't a generic gradient forever.
+            login.reveal_signed_out(instant=True)
 
-        def _do_reveal() -> None:
-            login.reveal_signed_out(self.main_area)
-            if session_expired:
-                self.parent.LoginWin.ui5.error_expired()
-            elif session_loggedout:
-                self.parent.LoginWin.ui5.error_loggedout()
+            def _refresh_backdrop() -> None:
+                login.refresh_backdrop_instant(self.main_area)
 
-        def _reveal() -> None:
-            # Deferred so the very first cold-start call (made before the
-            # window is ever shown/the event loop is running) grabs a real
-            # frame instead of an unlaid-out blank one; imperceptible on the
-            # warm paths (sign out / session expiry) where the event loop is
-            # already running. The error/logout badge is shown only once the
-            # card is actually visible, so it anchors correctly.
-            self._wait_for_stable_size(self.main_area, _do_reveal)
+            def _wait_then_refresh() -> None:
+                self._wait_for_stable_size(self.main_area, _refresh_backdrop)
 
-        QtCore.QTimer.singleShot(0, _reveal)
+            QtCore.QTimer.singleShot(0, _wait_then_refresh)
+        else:
+            session_expired = obj is None and not UserProfiles.session_info()[0]
+            session_loggedout = obj is None and not session_expired
+
+            def _do_reveal() -> None:
+                login.reveal_signed_out(self.main_area)
+                if session_expired:
+                    self.parent.LoginWin.ui5.error_expired()
+                elif session_loggedout:
+                    self.parent.LoginWin.ui5.error_loggedout()
+
+            def _reveal() -> None:
+                # Deferred so a sign-out/session-expiry call (the event loop
+                # is already running) grabs a real frame instead of an
+                # unlaid-out blank one. The error/logout badge is shown only
+                # once the card is actually visible, so it anchors correctly.
+                self._wait_for_stable_size(self.main_area, _do_reveal)
+
+            QtCore.QTimer.singleShot(0, _reveal)
 
         self.parent.viewTutorialPage([1, 2, 0])
 

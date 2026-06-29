@@ -67,14 +67,14 @@ from QATCH.processors.InterpTemps import (
 from QATCH.ui.popUp import PopUp, QueryComboBox
 
 from QATCH.ui.workers import TECWorker, ExtractWorker, RenameOutputFilesWorker, WorkerSnapshot
-from QATCH.ui.objects import (
-    ControlsWindow,
+from QATCH.ui.interfaces import (
     PlotsWindow,
     LoggerWindow,
     InfoWindow,
     LoginWindow,
     _MainWindow,
 )
+from QATCH.ui.windows import ControlsWindow
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 from QATCH.processors.drying_detector import DryingDetection

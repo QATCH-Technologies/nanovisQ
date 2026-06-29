@@ -168,7 +168,7 @@ class _PerspectiveStage(QtWidgets.QWidget):
     (index 1) live side-by-side inside a single inner strip that is twice the
     viewport width. Switching perspectives animates the strip's horizontal
     offset so the advanced content slides left and reveals the device content
-    as part of the SAME surface — not as a separate popup window sliding in as
+    as part of the SAME surface - not as a separate popup window sliding in as
     an overlay.
 
     The viewport sizes itself to the *currently active* perspective's size hint

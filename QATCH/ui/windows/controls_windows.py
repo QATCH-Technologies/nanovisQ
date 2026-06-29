@@ -1,0 +1,870 @@
+import os
+import sys
+import subprocess
+from typing import Optional, Any, cast, TYPE_CHECKING
+from PyQt5 import QtCore, QtGui, QtWidgets
+from contextlib import suppress
+from QATCH.common.architecture import Architecture, OSType
+from QATCH.common.logger import Logger as Log
+from QATCH.core.constants import Constants, UserRoles
+from QATCH.ui.popUp import PopUp
+from QATCH.common.userProfiles import UserProfiles
+from QATCH.common.deviceFingerprint import DeviceFingerprint
+from QATCH.common.findDevices import Discovery
+from QATCH.ui.widgets import (
+    DataManagementWidget,
+    UserPreferencesWidget,
+    UserProfilesManagerWidget,
+)
+from QATCH.ui.interfaces import UIControls
+
+if TYPE_CHECKING:
+    from QATCH.ui.mainWindow import MainWindow
+
+TAG = "[ControlsWindow]"
+
+
+class ControlsWindow(QtWidgets.QMainWindow):
+    def __init__(
+        self,
+        parent: "MainWindow",
+        samples: int = Constants.argument_default_samples,
+    ) -> None:
+        """Initializes the main widget and its child components.
+
+        Sets up the user interface controls, user preferences, and initializes
+        the internal timer. Also ensures any previous user sessions are ended.
+
+        Args:
+            parent: The parent widget or window that owns this instance.
+            samples: The initial sample data or configuration. Defaults to
+                `Constants.argument_default_samples`.
+
+        Attributes:k
+            parent (MainWindow): Reference to the parent UI component.
+            ui1 (UIControls): The main user interface controls object.
+            data_management_widget (Optional[DataManagementWidget]): The widget
+                handling data management operations. Initialized as None.
+            ui_preferences (UserPreferencesWidget): The widget managing user
+                settings and preferences.
+            current_timer (QtCore.QTimer): Timer for handling timed events or
+                refresh loops within the UI.
+        """
+        self.parent: "MainWindow" = parent
+        super().__init__()
+
+        self.ui1: UIControls = UIControls()
+        self.ui1.setupUi(self)
+
+        self.data_management_widget: Optional[Any] = None
+        self.ui_preferences: UserPreferencesWidget = UserPreferencesWidget(self)
+        self.current_timer: QtCore.QTimer = QtCore.QTimer()
+
+        UserProfiles().session_end()
+
+    def _create_menu(self, target: QtWidgets.QMainWindow) -> None:
+        """Constructs and configures the application's top-level menu bar.
+
+        This method builds the Options, Users, View, and Help menus, populates
+        them with their respective actions, and connects them to internal methods.
+        It also restores user view preferences from application settings and applies
+        custom visual styling to the menus.
+
+        Args:
+            target (QtWidgets.QMainWindow): The window or widget that
+                owns and displays the menu bar.
+
+        Attributes:
+            _menu_target (Any): Reference to the target hosting the menu.
+            menubar (List[QtWidgets.QMenu]): Collection of the primary top-level
+                menus added to the target's menu bar.
+            act_analyze_data (QtWidgets.QAction): Action to trigger data analysis.
+            act_import_data (QtWidgets.QAction): Action to import data files.
+            act_export_data (QtWidgets.QAction): Action to export data files.
+            act_recover_data (QtWidgets.QAction): Action to recover data.
+            act_preferences (QtWidgets.QAction): Action to open user preferences.
+            act_find_devices (QtWidgets.QAction): Action to scan subnets for devices.
+            username (QtWidgets.QAction): Display action for the current user.
+            signinout (QtWidgets.QAction): Action to toggle user sign in/out.
+            act_select_directory (QtWidgets.QAction): Action to set working directory.
+            manage (QtWidgets.QAction): Action to open the user profile manager.
+            userrole (int/Enum): The current user's role/permission level.
+            modebar (QtWidgets.QMenu): Sub-menu for selecting application modes.
+            chk1 (QtWidgets.QAction): Toggle action for the Console view.
+            chk2 (QtWidgets.QAction): Toggle action for the Amplitude view.
+            chk3 (QtWidgets.QAction): Toggle action for the Temperature view.
+            chk4 (QtWidgets.QAction): Toggle action for the Resonance/Dissipation view.
+            chk5 (QtWidgets.QAction): Action to view tutorials.
+            act_check_updates (QtWidgets.QAction): Action to check for software updates.
+            q_version_v1 (QtWidgets.QAction): Toggle for ModelData v1 prediction model.
+            q_version_v4 (QtWidgets.QAction): Toggle for QModel Fusion v4 prediction model.
+            q_version_v6 (QtWidgets.QAction): Toggle for QModel YOLO v6 prediction model.
+        """
+        self._menu_target = target  # real menu bar lives on MainWin, not here
+        self.menubar = []
+        menu_bar = target.menuBar()
+        if menu_bar is None:
+            Log.e(TAG, "Error mounting menubar to main window.  Menubar is `None`")
+            raise
+        self.menubar.append(menu_bar.addMenu("&Options"))
+        self.act_analyze_data = self.menubar[0].addAction("&Analyze Data", self.analyze_data)
+        self.act_import_data = self.menubar[0].addAction("&Import Data", self.import_data)
+        self.act_export_data = self.menubar[0].addAction("&Export Data", self.export_data)
+        self.act_recover_data = self.menubar[0].addAction("&Recover Data", self.recover_data)
+        self.act_preferences = self.menubar[0].addAction("&Preferences", self.preferences)
+        self.act_find_devices = self.menubar[0].addAction("&Find Devices", self.scan_subnets)
+        self.menubar[0].addAction("E&xit", self.close)
+        self.menubar.append(menu_bar.addMenu("&Users"))
+        self.username = self.menubar[1].addAction("User: [NONE]")
+        self.username.setEnabled(False)
+        self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
+        self.act_select_directory = self.menubar[1].addAction(
+            "Select &directory...", self.set_working_directory
+        )
+        self.manage = self.menubar[1].addAction("&Manage Users...", self.manage_user_profiles)
+        self.userrole = UserRoles.NONE
+        self.menubar.append(menu_bar.addMenu("&View"))
+        self.modebar = self.menubar[2].addMenu("&Mode")
+        self.modebar.addAction("&1: Run", lambda: self.parent.MainWin.ui0._set_run_mode(None))
+        self.modebar.addAction(
+            "&2: Analyze", lambda: self.parent.MainWin.ui0._set_analyze_mode(None)
+        )
+        if Constants.show_visQ_in_R_builds:
+            self.modebar.addAction(
+                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0._set_learn_mode(None)
+            )
+        self.chk1 = self.menubar[2].addAction("&Console", self.toggle_console)
+        self.chk1.setCheckable(True)
+        self.chk1.setChecked(
+            self.parent.AppSettings.value("viewState_Console", "True").lower() == "true"
+        )
+        self.chk2 = self.menubar[2].addAction("&Amplitude", self.toggle_amplitude)
+        self.chk2.setCheckable(True)
+        self.chk2.setChecked(
+            self.parent.AppSettings.value("viewState_Amplitude", "True").lower() == "true"
+        )
+        self.chk3 = self.menubar[2].addAction("&Temperature", self.toggle_temperature)
+        self.chk3.setCheckable(True)
+        self.chk3.setChecked(
+            self.parent.AppSettings.value("viewState_Temperature", "True").lower() == "true"
+        )
+        self.chk4 = self.menubar[2].addAction(
+            "&Resonance/Dissipation", self.toggle_resonance_dissipation
+        )
+        self.chk4.setCheckable(True)
+        self.chk4.setChecked(
+            self.parent.AppSettings.value("viewState_Resonance_Dissipation", "True").lower()
+            == "true"
+        )
+        self.menubar.append(menu_bar.addMenu("&Help"))
+        self.chk5 = self.menubar[3].addAction("View &Tutorials", self.view_tutorials)
+        self.chk5.setCheckable(False)
+        self.menubar.append(self.menubar[3].addMenu("View &Documentation"))
+        self.menubar[4].addAction("&Release Notes", self.release_notes)
+        self.menubar[4].addAction("&FW Change Log", self.fw_change_log)
+        self.menubar[4].addAction("&SW Change Log", self.sw_change_log)
+        self.menubar[3].addAction("View &License", self.view_license)
+        self.menubar[3].addAction("View &User Guide", self.view_user_guide)
+        self.act_check_updates = self.menubar[3].addAction(
+            "&Check for Updates", self.check_for_updates
+        )
+        self.menubar[3].addSeparator()
+        from QATCH.models.ModelData import __release__ as model_data_release
+        from QATCH.models.ModelData import __version__ as model_data_version
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+            __release__ as qmodel4_release,
+        )
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+            __version__ as qmodel4_version,
+        )
+        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+            __release__ as qmodel6_release,
+        )
+        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+            __version__ as qmodel6_version,
+        )
+
+        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (3 available)")
+        self.menubar.append(qmodel_versions_menu)
+        self.q_version_v1 = self.menubar[5].addAction(
+            "ModelData v{} ({})".format(model_data_version, model_data_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[0]
+            ),
+        )
+        self.q_version_v1.setCheckable(True)
+        self.q_version_v4 = self.menubar[5].addAction(
+            "QModel Fusion v{} ({})".format(qmodel4_version, qmodel4_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[1]
+            ),
+        )
+        self.q_version_v4.setCheckable(True)
+        self.q_version_v6 = self.menubar[5].addAction(
+            "QModel YOLO26 v{} ({})".format(qmodel6_version, qmodel6_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[2]
+            ),
+        )
+        self.q_version_v6.setCheckable(True)
+        if Constants.QModel6_predict:
+            self.q_version_v6.setChecked(True)
+        elif Constants.QModel4_predict:
+            self.q_version_v4.setChecked(True)
+        elif Constants.ModelData_predict:
+            self.q_version_v1.setChecked(True)
+        else:
+            Log.w(TAG, "No model selected on startup")
+        self.menubar[3].addSeparator()
+        sw_version = self.menubar[3].addAction(
+            "SW {}_{} ({})".format(
+                Constants.app_version,
+                "exe" if getattr(sys, "frozen", False) else "py",
+                Constants.app_date,
+            )
+        )
+        sw_version.setEnabled(False)
+        fingerprint_txt = DeviceFingerprint.get_key()
+        if fingerprint_txt is not None:
+            self.menubar[3].addSeparator()
+            fingerprint_action = self.menubar[3].addAction(fingerprint_txt)
+            fingerprint_action.setToolTip("Click to copy to clipboard")
+            fingerprint_action.triggered.connect(
+                lambda: cast(QtGui.QClipboard, QtWidgets.QApplication.clipboard()).setText(
+                    fingerprint_txt
+                )
+            )
+
+        # update application UI states to reflect viewStates from AppSettings
+        if not self.chk1.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_console)
+        if not self.chk2.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_amplitude)
+        if not self.chk3.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_temperature)
+        if not self.chk4.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_resonance_dissipation)
+
+        for menu in (*self.menubar, self.modebar):
+            menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, False)
+            menu.setWindowFlag(QtCore.Qt.WindowType.NoDropShadowWindowHint, True)
+            menu.aboutToShow.connect(lambda m=menu: self._mask_menu_to_rounded_rect(m))
+
+    @staticmethod
+    def _mask_menu_to_rounded_rect(menu: QtWidgets.QMenu, radius: int = 10) -> None:
+        """Applies a rounded-rectangle mask to a menu after it is rendered.
+
+        Because a widget's geometry is often calculated or adjusted by the window
+        manager after the `aboutToShow` event, this method defers the masking
+        operation until the next event loop iteration. This ensures the menu
+        has achieved its final dimensions before the clipping region is applied.
+
+        Args:
+            menu (QtWidgets.QMenu): The menu widget to which the rounded
+                mask will be applied.
+            radius (int, optional): The corner radius of the mask in pixels.
+                Defaults to 10.
+        """
+
+        def _apply() -> None:
+            if not menu.isVisible():
+                return
+            rect = menu.rect()
+            path = QtGui.QPainterPath()
+            path.addRoundedRect(QtCore.QRectF(rect), radius, radius)
+            menu.setMask(QtGui.QRegion(path.toFillPolygon().toPolygon()))
+
+        QtCore.QTimer.singleShot(0, _apply)
+
+    def set_signed_in_menu_state(self, signed_in: bool) -> None:
+        """Locks down the menu bar while no user is signed in.
+
+        The glass login overlay is the supported sign-in gate, so while it's
+        showing, Options/Users/View are restricted to bare essentials
+        (Options keeps only Exit). Help stays available for read-only
+        reference, except update-checking and switching prediction model
+        versions, which are treated as operator actions.
+
+        Args:
+            signed_in (bool): True to restore full menu access, False to
+                lock it down to the signed-out subset.
+        """
+        # Options: only Exit stays enabled while signed out.
+        for action in (
+            self.act_analyze_data,
+            self.act_import_data,
+            self.act_export_data,
+            self.act_recover_data,
+            self.act_preferences,
+            self.act_find_devices,
+        ):
+            action.setEnabled(signed_in)
+
+        # Users: fully disabled while signed out.
+        self.signinout.setEnabled(signed_in)
+        self.act_select_directory.setEnabled(signed_in)
+        self.manage.setEnabled(signed_in)
+
+        # View: fully disabled while signed out.
+        self.modebar.menuAction().setEnabled(signed_in)
+        self.chk1.setEnabled(signed_in)
+        self.chk2.setEnabled(signed_in)
+        self.chk3.setEnabled(signed_in)
+        self.chk4.setEnabled(signed_in)
+
+        # Help: enabled regardless, except updates and model-version switching.
+        self.act_check_updates.setEnabled(signed_in)
+        self.menubar[5].menuAction().setEnabled(signed_in)  # "Model versions" submenu
+        self._apply_menu_bar_theme(signed_in)
+        self.ui1.refresh_user_button_state()
+
+    def _apply_menu_bar_theme(self, signed_in: bool) -> None:
+        """Tints the native menu bar and its dropdowns to match the glass
+        theme instead of the stark native default. While the sign-in gate
+        is up, this applies the same ~30% dimming the login overlay
+        applies to the blurred dashboard to the bar's own light tone - not
+        an unrelated dark color - so it reads as part of the same dimmed
+        scene. The normal light/glass tone returns once signed in.
+
+        QMenu (the dropdowns) is styled in the *same* stylesheet as
+        QMenuBar - a QMenu created via addMenu() is a logical child of the
+        bar in Qt's object tree, so it inherits this stylesheet too, even
+        though it pops up as its own top-level window.
+
+        Args:
+            signed_in (bool): Which palette to apply.
+        """
+        target: QtWidgets.QMainWindow | None = getattr(self, "_menu_target", None)
+        if target is None:
+            return
+
+        menu_bar = target.menuBar()
+        if menu_bar is None:
+            return
+
+        if signed_in:
+            menu_bar.setStyleSheet("""
+                QMenuBar {
+                    background: rgba(233, 239, 244, 255);
+                    color: rgba(50, 60, 70, 230);
+                    border: none;
+                }
+                QMenuBar::item { background: transparent; padding: 4px 10px; }
+                QMenuBar::item:selected { background: rgba(10, 163, 230, 60); border-radius: 4px; }
+                QMenuBar::item:disabled { color: rgba(120, 130, 140, 140); }
+
+                QMenu {
+                    background: rgb(233, 239, 244);
+                    border: 1px solid rgba(255, 255, 255, 230);
+                    border-radius: 10px;
+                    padding: 6px;
+                }
+                QMenu::item {
+                    background: transparent;
+                    color: rgba(50, 60, 70, 230);
+                    padding: 6px 26px 6px 14px;
+                    border-radius: 6px;
+                }
+                QMenu::item:selected { background: rgba(10, 163, 230, 60); }
+                QMenu::item:disabled { color: rgba(120, 130, 140, 140); }
+                QMenu::separator {
+                    height: 1px;
+                    background: rgba(120, 130, 140, 70);
+                    margin: 4px 10px;
+                }
+                QMenu::indicator { width: 14px; height: 14px; }
+            """)
+        else:
+            menu_bar.setStyleSheet("""
+                QMenuBar {
+                    background: rgba(163, 167, 171, 255);
+                    color: rgba(40, 48, 56, 235);
+                    border: none;
+                }
+                QMenuBar::item { background: transparent; padding: 4px 10px; }
+                QMenuBar::item:selected { background: rgba(255, 255, 255, 60); border-radius: 4px; }
+                QMenuBar::item:disabled { color: rgba(90, 98, 106, 150); }
+
+                QMenu {
+                    background: rgb(163, 167, 171);
+                    border: 1px solid rgba(255, 255, 255, 90);
+                    border-radius: 10px;
+                    padding: 6px;
+                }
+                QMenu::item {
+                    background: transparent;
+                    color: rgba(40, 48, 56, 235);
+                    padding: 6px 26px 6px 14px;
+                    border-radius: 6px;
+                }
+                QMenu::item:selected { background: rgba(255, 255, 255, 60); }
+                QMenu::item:disabled { color: rgba(90, 98, 106, 150); }
+                QMenu::separator {
+                    height: 1px;
+                    background: rgba(255, 255, 255, 80);
+                    margin: 4px 10px;
+                }
+                QMenu::indicator { width: 14px; height: 14px; }
+            """)
+
+    def _data_overlay_parent(self) -> QtWidgets.QWidget:
+        """Determines the appropriate parent for UI data overlays.
+
+        This ensures overlays are anchored to the full application window
+        (`MainWin`) rather than the controls window, preventing the overlay
+        from being clipped or restricted to the controls bar area.
+
+        Returns:
+            QtWidgets.QWidget: The central widget of the main window if available,
+                otherwise the main window itself or the current object.
+        """
+        if hasattr(self.parent, "MainWin"):
+            return self.parent.MainWin.centralWidget() or self.parent.MainWin
+        return self.centralWidget() or self
+
+    def _open_data_management(self, mode: str) -> None:
+        """Initializes and displays the data management widget overlay.
+
+        This method ensures the data management widget is properly parented
+        to the main application window. It recreates the widget if it has not
+        been initialized or if the parent has changed. It also pre-sizes the
+        widget to match the parent's geometry before opening the specified mode
+        to prevent visual "snapping" or resizing artifacts.
+
+        Args:
+            mode (str): The operational mode to initialize within the
+                `DataManagementWidget`.
+        """
+        parent = self._data_overlay_parent()
+        if self.data_management_widget is None or self.data_management_widget.parent is not parent:
+            self.data_management_widget = DataManagementWidget(parent=parent)
+        with suppress(Exception):
+            self.data_management_widget.setGeometry(parent.rect())
+        self.data_management_widget.open_mode(mode)
+
+    def analyze_data(self) -> None:
+        """Sets the application to analysis mode.
+
+        Triggers the main UI controller to switch the workspace to the analysis
+        view, allowing the user to inspect and interpret processed data.
+        """
+        self.parent.MainWin.ui0._set_analyze_mode(self)
+
+    def import_data(self) -> None:
+        """Opens the data management interface in 'import' mode."""
+        self._open_data_management("import")
+
+    def export_data(self) -> None:
+        """Opens the data management interface in 'export' mode."""
+        self._open_data_management("export")
+
+    def recover_data(self) -> None:
+        """Opens the data management interface in 'recover' mode."""
+        self._open_data_management("recover")
+
+    def preferences(self) -> None:
+        """Displays the user preferences dialog.
+
+        Ensures the preferences widget is visible and restored to normal state
+        for user configuration.
+        """
+        self.ui_preferences.showNormal(0)
+
+    def scan_subnets(self) -> None:
+        """Initiates a network scan for connected devices and refreshes the port list.
+
+        This method triggers the discovery service to identify active hardware on
+        subnets and subsequently updates the parent application's view of available
+        communication ports.
+        """
+        Discovery().scanSubnets()
+        self.parent._port_list_refresh()
+
+    def set_working_directory(self) -> None:
+        """Prompts the user to select a new working directory and updates preferences.
+
+        This method synchronizes global preferences, enforces a read/write
+        synchronization state, and opens a file dialog for directory selection.
+        If a valid selection is made and the interface is ready, it triggers
+        an automatic save by programmatically clicking the submit button.
+        """
+        # Loads global/user preferences
+        self.ui_preferences.toggle_global_preferences()
+        self.ui_preferences.sync_write_with_load.setChecked(True)
+        result = self.ui_preferences.open_load_file_dialog()
+        if result and self.ui_preferences.submit_button.isEnabled():
+            self.ui_preferences.submit_button.click()
+        else:
+            Log.w(TAG, "Working directory not changed.")
+
+    def set_user_profile(self) -> None:
+        """Toggles the application user session state between signed-in and signed-out.
+
+        This method manages the transition between authentication states:
+        - If signing in: Prompts the user to select a profile. If no profiles exist,
+        it redirects to the user management interface. Updates UI elements and
+        permissions upon a successful login.
+        - If signing out: Ensures the application state allows for sign-out (e.g.,
+        no unsaved changes in Analyze mode), resets user-specific UI labels,
+        and clears the current session.
+
+        Attributes:
+            userrole (UserRoles): Updated based on the authenticated user's role.
+        """
+        action = self.signinout.text().lower().replace("&", "")
+        if action == "sign in":
+            # Handle first-time login where no profiles exist
+            if UserProfiles().count() == 0:
+                self.manage_user_profiles()
+                return
+            name, init, role = UserProfiles.change()
+            if name is not None:
+                self.username.setText(f"User: {name}")
+                self.userrole = UserRoles(role)
+                self.signinout.setText("&Sign Out")
+                self.ui1.tool_User.setText(name)
+                self.parent.AnalyzeProc.tool_User.setText(name)
+
+                # Update management action context
+                if self.userrole != UserRoles.ADMIN:
+                    self.manage.setText("&Change Password...")
+        else:  # Action is "Sign Out"
+            if self.parent.MainWin.ui0._set_no_user_mode(None):
+                UserProfiles().session_end()
+                name = self.username.text()[6:]
+                Log.i(f"Goodbye, {name}! You have been signed out.")
+
+                # Reset UI to anonymous state
+                self.username.setText("User: [NONE]")
+                self.userrole = UserRoles.NONE
+                self.signinout.setText("&Sign In")
+                self.manage.setText("&Manage Users...")
+                self.ui1.tool_User.setText("Anonymous")
+                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
+            else:
+                Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
+
+    def manage_user_profiles(self):
+        """Handles the user profile management workflow.
+
+        This method verifies if the application state allows for user modifications
+        (i.e., checking for unsaved changes). It handles two primary flows:
+        password changes for non-admin users, and the full management interface
+        for administrators. It also manages the transition of the application UI
+        state if a user is modified or removed during the management session.
+
+        Attributes:
+            user_manager (UserProfilesManagerWidget): The overlay
+                widget used for managing user profiles.
+        """
+        # Disallow user management if the current mode is busy or has unsaved changes
+        if not self.parent.MainWin.ui0._check_mode_change_allowed():
+            Log.d("User has unsaved changes in Analyze mode. Manage users aborted.")
+            return
+
+        # Handle password change for non-admin users
+        if self.userrole != UserRoles.ADMIN and self.userrole != UserRoles.NONE:
+            name = self.username.text()[6:]
+            found, filename = UserProfiles.find(name, None)
+            if filename is not None:
+                UserProfiles.change_password(filename)
+                return
+            else:
+                Log.e("Attempted to change password, but user was not found!")
+
+        name = self.username.text()[6:]
+        allow, admin = UserProfiles().manage(name, self.userrole)
+
+        # Handle session cleanup if user was deleted
+        if admin is None and not UserProfiles.session_info()[0]:
+            if name != "[NONE]":
+                Log.i(f"Goodbye, {name}! You have been signed out.")
+            self.username.setText("User: [NONE]")
+            self.userrole = UserRoles.NONE
+            self.signinout.setText("&Sign In")
+            self.manage.setText("&Manage Users...")
+            self.ui1.tool_User.setText("Anonymous")
+            self.parent.AnalyzeProc.tool_User.setText("Anonymous")
+            self.parent.MainWin.ui0._set_no_user_mode(None)
+
+        # Update UI if user information changed
+        if admin != name and admin is not None:
+            Log.d("User name changed. Changing sign-in user info.")
+            self.username.setText(f"User: {admin}")
+            self.userrole = UserRoles.ADMIN
+            self.signinout.setText("&Sign Out")
+            self.manage.setText("&Manage Users...")
+            self.ui1.tool_User.setText(admin)
+            self.parent.AnalyzeProc.tool_User.setText(admin)
+
+        # Display the management overlay
+        if allow:
+            if hasattr(self.parent, "MainWin"):
+                overlay_parent = self.parent.MainWin.centralWidget() or self.parent.MainWin
+            else:
+                overlay_parent = self.centralWidget() or self
+            self.user_manager = UserProfilesManagerWidget(parent=overlay_parent, admin_name=admin)
+            with suppress(Exception):
+                self.user_manager.setGeometry(overlay_parent.rect())
+            self.user_manager.show()
+
+    def toggle_console(self) -> None:
+        """Toggles the visibility of the application console/log view.
+
+        This method updates the visibility state of the console widget based on
+        the checkbox state, stops any active background timers to prevent
+        rendering conflicts during the toggle, and persists the user's view
+        preference to the application settings.
+        """
+        if self.current_timer.isActive():
+            self.current_timer.stop()
+
+        is_visible: bool = self.chk1.isChecked()
+
+        if not is_visible:
+            self.parent.MainWin.ui0.logview.setVisible(False)
+        else:
+            self.parent.MainWin.ui0.logview.setVisible(True)
+        self.parent.AppSettings.setValue("viewState_Console", is_visible)
+
+    def toggle_amplitude(self) -> None:
+        """Toggles the visibility of the Amplitude plots.
+
+        This method manages the display state of a collection of amplitude plots.
+        It synchronizes the `setVisible` state across the plot array, handles
+        the visibility of top-level plot containers, and persists the user's
+        view preference to the application settings.
+        """
+        # Capture state of top-level plot containers
+        tc = self.show_top_plot()
+        is_visible: bool = self.chk2.isChecked()
+        # Update visibility for each plot in the array
+        for i, p in enumerate(self.parent._plt0_arr):
+            if p is None:
+                continue
+            p.setVisible(is_visible)
+            self.parent._plt0_arr[i] = p
+
+        # Restore container layout
+        self.hide_top_plot(tc)
+        self.parent.AppSettings.setValue("viewState_Amplitude", is_visible)
+
+    def toggle_temperature(self) -> None:
+        """Toggles the visibility of the temperature plot.
+
+        This method manages the display state of the temperature visualization widget.
+        It wraps the toggle logic with top-plot container handlers to ensure layout
+        consistency and persists the user's preference to application settings.
+        """
+        # Capture state of top-level plot containers
+        tc = self.show_top_plot()
+        is_visible: bool = self.chk3.isChecked()
+        if self.parent._plt4 is not None:
+            self.parent._plt4.setVisible(is_visible)
+        else:
+            Log.e(TAG, "Cannot toggle temperature plot, temperature plot is `None`.")
+        # Restore container layout
+        self.hide_top_plot(tc)
+        self.parent.AppSettings.setValue("viewState_Temperature", is_visible)
+
+    def toggle_resonance_dissipation(self) -> None:
+        """Toggles the visibility of the Resonance/Dissipation plots.
+
+        This method manages the display state of the Resonance/Dissipation
+        visualization widget. It stops any active background timers to avoid
+        rendering conflicts, updates the visibility of the plot component,
+        and persists the user's view preference to application settings.
+        """
+        # Ensure background tasks are paused to avoid UI conflicts during resize/hide
+        if self.current_timer.isActive():
+            self.current_timer.stop()
+
+        is_visible: bool = self.chk4.isChecked()
+
+        if not is_visible:
+            self.parent.PlotsWin.ui2.pltB.setVisible(False)
+        else:
+            self.parent.PlotsWin.ui2.pltB.setVisible(True)
+        self.parent.AppSettings.setValue("viewState_Resonance_Dissipation", is_visible)
+
+    def show_top_plot(self) -> bool:
+        """Ensures the top-level plot container is visible.
+
+        This method checks if any amplitude or temperature plots are enabled. If
+        they are, it ensures the primary plot container (`plt`) is visible. It
+        returns a flag indicating whether it had to manually toggle the visibility,
+        which is used to restore the original state later.
+
+        Returns:
+            bool: True if the plot container was previously hidden and was
+                manually enabled by this method, False otherwise.
+        """
+        toggle_console: bool = False
+
+        # Check if any associated plots require the top container to be visible
+        if self.chk2.isChecked() or self.chk3.isChecked():
+            toggle_console = self.parent.PlotsWin.ui2.plt.isVisible() is False
+            self.parent.PlotsWin.ui2.plt.setVisible(True)
+        return toggle_console
+
+    def hide_top_plot(self, toggle_console: bool) -> None:
+        """Restores the visibility state of the top-level plot container.
+
+        This method complements `show_top_plot`. If the container was toggled
+        visible to accommodate a child plot, this method checks if that container
+        can now be hidden, or triggers a layout update to ensure the UI remains
+        properly aligned after a visibility change.
+
+        Args:
+            toggle_console (bool): A flag indicating whether this method was
+                responsible for originally showing the plot container.
+        """
+        if self.chk2.isChecked() or self.chk3.isChecked():
+            if toggle_console:
+                layout = self.parent.PlotsWin.layout()
+                if layout is not None:
+                    layout.activate()
+        else:
+            self.parent.PlotsWin.ui2.plt.setVisible(False)
+
+    def view_tutorials(self) -> None:
+        """Toggles the visibility of the tutorials window.
+
+        This method synchronizes the visibility state of the tutorial window
+        with its current display status and updates the associated menu checkbox
+        to reflect whether the window is currently visible to the user.
+        """
+        # Toggle the visibility of the tutorials window
+        is_visible: bool = self.parent.TutorialWin.isVisible()
+        self.parent.TutorialWin.setVisible(not is_visible)
+        self.chk5.setChecked(self.parent.TutorialWin.isVisible())
+
+    def open_file(self, filepath: str, relative_to_cwd: bool = True) -> None:
+        """Opens a file or directory using the operating system's default handler.
+
+        This method detects the current host OS and delegates the file opening
+        process to the appropriate system command.
+
+        Args:
+            filepath (str): The path to the file or directory to be opened.
+            relative_to_cwd (bool, optional): If True, joins the path with the
+                architecture's base directory. Defaults to True.
+        """
+        fullpath: str = filepath
+        try:
+            if relative_to_cwd:
+                fullpath = os.path.join(Architecture.get_path(), filepath)
+            os_type = Architecture.get_os()
+            if os_type == OSType.macosx:  # macOS
+                subprocess.call(("open", fullpath))
+            elif os_type == OSType.windows:  # Windows
+                os.startfile(fullpath)
+            elif os_type == OSType.linux:  # Linux
+                subprocess.call(("xdg-open", fullpath))
+            else:  # Fallback for unknown variants
+                Log.w(f"Unknown OS Type: {os_type}")
+                Log.w("Assuming Linux variant...")
+                subprocess.call(("xdg-open", fullpath))
+        except Exception as e:
+            filename = os.path.split(fullpath)[1]
+            Log.e(TAG, f'ERROR: Cannot open "{filename}": {str(e)}')
+
+    def release_notes(self) -> None:
+        """Opens the PDF release notes for the current application version."""
+        rn_path = os.path.join("docs", f"Release Notes {Constants.app_version}.pdf")
+        self.open_file(rn_path)
+
+    def fw_change_log(self) -> None:
+        """Opens the firmware change control document for the active firmware version."""
+        fw_change_log_path = os.path.join(
+            f"QATCH_Q-1_FW_py_{Constants.best_fw_version}", "FW Change Control Doc.pdf"
+        )
+        self.open_file(fw_change_log_path)
+
+    def sw_change_log(self) -> None:
+        """Opens the software change control document."""
+        sw_change_log_path = os.path.join("QATCH", "SW Change Control Doc.pdf")
+        self.open_file(sw_change_log_path)
+
+    def view_license(self) -> None:
+        """Opens the GPL license and the primary application LICENSE file.
+
+        This method sequentially triggers the operating system's default
+        handler to open both the GPL text file and the application-specific
+        LICENSE document.
+        """
+        gpl_path = os.path.join("docs", "gpl.txt")
+        license_path = os.path.join("docs", "LICENSE.txt")
+        self.open_file(gpl_path)
+        self.open_file(license_path)
+
+    def view_user_guide(self):
+        """Opens the application user guide in the default PDF viewer."""
+        user_guide_path = os.path.join("docs", "userguide.pdf")
+        self.open_file(user_guide_path)
+
+    def check_for_updates(self) -> None:
+        """Initiates an application update check.
+
+        This method clears existing download URLs, triggers a license refresh
+        if the license manager is available, and executes a download check
+        via the parent application. It then evaluates the status returned by the
+        parent and displays appropriate feedback to the user via pop-up notifications.
+        """
+        # Clean up existing download context
+        if hasattr(self.parent, "url_download"):
+            delattr(self.parent, "url_download")
+
+        # Refresh license status if applicable
+        if hasattr(self.parent, "_license_manager"):
+            lm: Any = self.parent._license_manager
+            if hasattr(lm, "refresh_license") and callable(lm.refresh_license):
+                lm.refresh_license()
+
+        # Initiate update check
+        color, status = self.parent.start_download(True)
+
+        # Handle error scenarios
+        if color == "#ff0000":
+            if status == "ERROR":
+                PopUp.warning(self, "Check for Updates", "An error occurred checking for updates.")
+            elif status == "OFFLINE":
+                PopUp.warning(self, "Check for Updates", "Unable to check online for updates.")
+
+        # Handle up-to-date scenarios (non-error, non-success-update colors)
+        elif color != "#00ff00":
+            technicality: str = " available " if color == "#00c600" else " supported "
+            PopUp.information(
+                self,
+                "Check for Updates",
+                f"You are running the latest{technicality}version.",
+            )
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
+        """Handles the application close event with an optional confirmation dialog.
+
+        This method intercepts the standard window close event. If the attribute
+        `close_no_confirm` exists on the instance, it bypasses the confirmation
+        dialog. Otherwise, it prompts the user to confirm the exit. If confirmed,
+        the application terminates; if canceled, the event is ignored to keep
+        the application running.
+
+        Args:
+            event (QtGui.QCloseEvent): The event object triggered by the
+                window closing action.
+        """
+        # Determine if we should bypass the confirmation dialog
+        if hasattr(self, "close_no_confirm"):
+            res: bool = True
+        else:
+            # Prompt the user to confirm if they really want to quit
+            res = PopUp.question(
+                self,
+                Constants.app_title,
+                "Are you sure you want to quit QATCH Q-1 application now?",
+                True,
+            )
+        if res:
+            QtWidgets.QApplication.quit()
+        else:
+            event.ignore()

@@ -1,4 +1,4 @@
-"""Import mode — select a folder/ZIP source and import runs into local data.
+"""Import mode - select a folder/ZIP source and import runs into local data.
 
 PORT FROM export_widget.Ui_Export:
     build()                  <- tab1 (source folder/ZIP, existing-files policy,
@@ -41,7 +41,7 @@ from QATCH.ui.components import GlassPushButton, GlassOptionCard, GlassOptionCar
 
 TAG = "[DataImport]"
 
-# Existing-files policy ids — preserved from the original btnGroup4.
+# Existing-files policy ids - preserved from the original btnGroup4.
 POLICY_REPLACE = 1
 POLICY_MERGE = 2
 POLICY_SKIP = 3
@@ -247,7 +247,7 @@ class _PopEffect(QtWidgets.QGraphicsEffect):
     layout already having computed a correct rect (not guaranteed before
     the panel's first real layout pass) and can briefly hand the chip's
     internal row layout surplus space with nowhere defined to put it. This
-    effect instead scales the already-rendered widget at paint time only —
+    effect instead scales the already-rendered widget at paint time only -
     the widget's actual (layout-managed) geometry is never touched, so a
     bouncy overshoot (QEasingCurve.OutBack) is perfectly safe here.
     """
@@ -312,7 +312,7 @@ class ImportMode(DataModeWidget):
         # ---- Source card ----------------------------------------------
         src_card = self._card(
             "Import Source",
-            "Drop a folder or a .zip — the type is detected automatically.",
+            "Drop a folder or a .zip - the type is detected automatically.",
         )
         src_lay = src_card.layout()
         # Tighten this section so it doesn't dominate the widget height.
@@ -343,14 +343,14 @@ class ImportMode(DataModeWidget):
         src_lay.addLayout(head_row)
 
         # Sources appear as removable "chips" flowing left-to-right directly
-        # in the card (no bordered container) — matches the wireframe, which
+        # in the card (no bordered container) - matches the wireframe, which
         # shows staged sources as a simple row of boxes under the drop zone.
         self._sources_host = QtWidgets.QWidget()
         self._sources_host.setStyleSheet("background: transparent;")
         self._sources_flow = _FlowLayout(self._sources_host, margin=0, spacing=8)
 
         self.sources_placeholder = QtWidgets.QLabel(
-            "No sources yet — drop a folder or .zip above, or click Browse…"
+            "No sources yet - drop a folder or .zip above, or click Browse…"
         )
         self.sources_placeholder.setStyleSheet(
             "QLabel { color: rgba(60, 72, 88, 140); font-size: 12px; "
@@ -464,7 +464,7 @@ class ImportMode(DataModeWidget):
         self.archive_tree.itemChanged.connect(self._on_tree_item_changed)
 
         # Placeholder shown in place of the tree until at least one source
-        # has been added — mirrors the sources placeholder above.
+        # has been added - mirrors the sources placeholder above.
         self.tree_placeholder = QtWidgets.QWidget()
         self.tree_placeholder.setStyleSheet("background: transparent;")
         ph_lay = QtWidgets.QVBoxLayout(self.tree_placeholder)
@@ -480,7 +480,7 @@ class ImportMode(DataModeWidget):
             ph_lay.addWidget(self.tree_placeholder_icon, 0, QtCore.Qt.AlignCenter)
 
         ph_text = QtWidgets.QLabel(
-            "Nothing to import yet — add a folder or .zip above to preview its runs here."
+            "Nothing to import yet - add a folder or .zip above to preview its runs here."
         )
         ph_text.setWordWrap(True)
         ph_text.setAlignment(QtCore.Qt.AlignCenter)
@@ -492,8 +492,8 @@ class ImportMode(DataModeWidget):
 
         self.tree_stack = QtWidgets.QStackedWidget()
         self.tree_stack.setMinimumHeight(160)
-        self.tree_stack.addWidget(self.tree_placeholder)  # index 0 — empty state
-        self.tree_stack.addWidget(self.archive_tree)  # index 1 — populated
+        self.tree_stack.addWidget(self.tree_placeholder)  # index 0 - empty state
+        self.tree_stack.addWidget(self.archive_tree)  # index 1 - populated
         prev_lay.addWidget(self.tree_stack)
         self._update_tree_placeholder()
 
@@ -530,7 +530,7 @@ class ImportMode(DataModeWidget):
         flay.setContentsMargins(0, 4, 0, 0)
         flay.setSpacing(8)
 
-        # Slim determinate progress bar — matches the Export page's footer bar.
+        # Slim determinate progress bar - matches the Export page's footer bar.
         self.import_progress = QtWidgets.QProgressBar()
         self.import_progress.setObjectName("importProgress")
         self.import_progress.setRange(0, 100)
@@ -659,7 +659,7 @@ class ImportMode(DataModeWidget):
         self.status_label.setText(label)
 
     # ------------------------------------------------------------------
-    #  Source selection — one "Add Source" picker; backend detects type
+    #  Source selection - one "Add Source" picker; backend detects type
     # ------------------------------------------------------------------
     def _start_dir(self):
         if self._sources:
@@ -712,7 +712,7 @@ class ImportMode(DataModeWidget):
 
     def _add_sources(self, paths):
         """Append new sources (folder or ZIP), de-dup. Only the newly added
-        sources are touched — existing chips and tree branches (and their
+        sources are touched - existing chips and tree branches (and their
         expand/checkbox state) are left completely alone."""
         new_paths = []
         for p in paths:
@@ -723,7 +723,7 @@ class ImportMode(DataModeWidget):
             if kind is None:
                 Log.w(TAG, f"Ignoring unsupported source (not a folder or ZIP): {p}")
                 self.status_label.setText(
-                    f"Skipped “{os.path.basename(p)}” — only folders and ZIP archives are supported."
+                    f"Skipped “{os.path.basename(p)}” - only folders and ZIP archives are supported."
                 )
                 continue
             self._sources.append(p)
@@ -751,7 +751,7 @@ class ImportMode(DataModeWidget):
         Log.i(TAG, f"Removed import source: {path}")
         self._sources.remove(path)
 
-        # Remove just this source's branch — sibling sources keep their
+        # Remove just this source's branch - sibling sources keep their
         # expand/checkbox state untouched (no full tree rebuild).
         root_item = self._source_root_items.pop(path, None)
         if root_item is not None:
@@ -789,7 +789,7 @@ class ImportMode(DataModeWidget):
         self.btn_clear_sources.setEnabled(True)
 
     def _clear_chips(self):
-        """Bulk-clear every chip instantly (deliberate "Clear" action — no
+        """Bulk-clear every chip instantly (deliberate "Clear" action - no
         per-chip pop, unlike single removal)."""
         while self._sources_flow.count():
             item = self._sources_flow.takeAt(0)
@@ -805,7 +805,7 @@ class ImportMode(DataModeWidget):
         """Bouncy scale + fade "pop", anchored on the chip's own center.
 
         Uses ``_PopEffect`` (paint-time scale, not real geometry) so the
-        chip's actual layout-managed size/position is never touched —
+        chip's actual layout-managed size/position is never touched -
         animating that directly is what caused the earlier bugs.
         """
         eff = _PopEffect(chip)
@@ -867,7 +867,7 @@ class ImportMode(DataModeWidget):
         row.setSpacing(8)
 
         # Both labels are capped at their own sizeHint (never Expanding) so
-        # they can't be stretched into filling leftover space — relevant
+        # they can't be stretched into filling leftover space - relevant
         # while the chip's own geometry is mid pop-in/out animation.
         label = QtWidgets.QLabel(name)
         label.setToolTip(path)
@@ -911,7 +911,7 @@ class ImportMode(DataModeWidget):
         return chip
 
     # ------------------------------------------------------------------
-    #  Archive preview (one source's branch at a time — never a full rebuild)
+    #  Archive preview (one source's branch at a time - never a full rebuild)
     # ------------------------------------------------------------------
     def _append_source_to_tree(self, path):
         """Build and append ONE source's branch to the tree. Sibling sources'
@@ -947,7 +947,7 @@ class ImportMode(DataModeWidget):
             self._set_status_tint("b")
         else:
             self._set_status_tint("r")
-            self.status_label.setText(f"“{src_label}” can't be imported — see warning below.")
+            self.status_label.setText(f"“{src_label}” can't be imported - see warning below.")
 
     def _set_status_tint(self, color):
         fg = {
@@ -971,7 +971,7 @@ class ImportMode(DataModeWidget):
                         return False, "ZIP archive is corrupt."
                     names = sorted(n for n in f.namelist() if n.split("/")[0] != "__MACOSX")
                     if not names:
-                        return False, "Archive is empty — nothing to import."
+                        return False, "Archive is empty - nothing to import."
                     if not any(n.lower().endswith(".xml") for n in names):
                         return False, "No run info (.xml) found in this archive."
                     self._populate_from_paths(names, parent=src_root)
@@ -982,7 +982,7 @@ class ImportMode(DataModeWidget):
                 before = src_root.childCount()
                 self._walk_folder(path, src_root)
                 if src_root.childCount() == before:
-                    return False, "Folder is empty — nothing to import."
+                    return False, "Folder is empty - nothing to import."
                 if not self._subtree_has_runinfo(src_root):
                     return False, "No run info (.xml) found in this folder."
                 return True, None
@@ -1010,7 +1010,7 @@ class ImportMode(DataModeWidget):
         src_root.addChild(self._make_warning_item(msg))
 
     # ------------------------------------------------------------------
-    #  Run-level checkboxes — a "run" is a folder whose direct children
+    #  Run-level checkboxes - a "run" is a folder whose direct children
     #  include capture.zip (same definition the Export pipeline uses).
     # ------------------------------------------------------------------
     def _mark_run_nodes(self, parent_item):
@@ -1105,7 +1105,7 @@ class ImportMode(DataModeWidget):
         """Build tree items (folders AND files) from a flat list of archive paths.
 
         ``parent`` is the per-source root node; paths nest beneath it. Files are
-        always included — visibility is governed by tree expansion, not a toggle.
+        always included - visibility is governed by tree expansion, not a toggle.
         """
         roots = {}  # path-tuple -> QTreeWidgetItem
         for name in names:

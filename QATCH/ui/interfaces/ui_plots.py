@@ -33,7 +33,7 @@ from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 
 # ============================================================
-#  PlotsWindow  (outer QMainWindow shell — API unchanged)
+#  PlotsWindow  (outer QMainWindow shell - API unchanged)
 # ============================================================
 
 
@@ -57,7 +57,7 @@ class PlotsWindow(QtWidgets.QMainWindow):
 
 
 # ============================================================
-#  _SectionMenuRow  — one row inside the glass dropdown
+#  _SectionMenuRow  - one row inside the glass dropdown
 # ============================================================
 
 
@@ -180,7 +180,7 @@ class _SectionMenuRow(QtWidgets.QWidget):
 
 
 # ============================================================
-#  _SectionHeaderRow  — non-interactive section label
+#  _SectionHeaderRow  - non-interactive section label
 # ============================================================
 
 
@@ -351,7 +351,7 @@ class GlassContainer(QtWidgets.QWidget):
 
         return menu
 
-    # ── Paint — frosted glass card ────────────────────────────────
+    # ── Paint - frosted glass card ────────────────────────────────
     def paintEvent(self, ev: QtGui.QPaintEvent) -> None:
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
@@ -603,7 +603,7 @@ def _make_plot_widget(parent: QtWidgets.QWidget) -> GraphicsLayoutWidget:
 
 
 # ============================================================
-#  UIPlots  — consumed by PlotsWindow
+#  UIPlots  - consumed by PlotsWindow
 # ============================================================
 
 
@@ -638,13 +638,13 @@ class UIPlots:
         self.main_splitter.setHandleWidth(6)
         self.main_splitter.setStyleSheet("QSplitter::handle { background: transparent; }")
 
-        # LEFT — Integrated glass tabs (Dissipation / Resonance Freq)
+        # LEFT - Integrated glass tabs (Dissipation / Resonance Freq)
         self.left_pane = GlassTabContainer(parent=self.main_splitter)
         self.pltB = _make_plot_widget(self.left_pane)
         self.pltB.setObjectName("pltB")
         self.left_pane.add_device("Device 1", self.pltB, QtGui.QColor(72, 190, 120))
 
-        # RIGHT — stacked splitter for Amp & Temp
+        # RIGHT - stacked splitter for Amp & Temp
         self.right_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical, self.main_splitter)
         self.right_splitter.setHandleWidth(6)
         self.right_splitter.setStyleSheet("QSplitter::handle { background: transparent; }")
@@ -709,7 +709,7 @@ class UIPlots:
 
         Smoothness strategy
         ───────────────────
-        1. A QTimer fires at ~60 fps (every 16 ms) — finer-grained than
+        1. A QTimer fires at ~60 fps (every 16 ms) - finer-grained than
            QVariantAnimation's default repaint scheduling.
         2. Before each animation, viewport updates are frozen on all three
            pyqtgraph widgets so OpenGL/QPainter doesn't redraw mid-resize.
@@ -775,7 +775,7 @@ class UIPlots:
         step_counter = [0]
 
         def _ease_in_out_quart(t: float) -> float:
-            """Quartic ease — snappy acceleration, smooth landing."""
+            """Quartic ease - snappy acceleration, smooth landing."""
             if t < 0.5:
                 return 8.0 * t * t * t * t
             t -= 1.0

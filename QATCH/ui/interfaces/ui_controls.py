@@ -14,1093 +14,42 @@ Date:
 """
 
 import os
-import sys
 from time import monotonic
-import subprocess
-from typing import Optional, Any, cast, TYPE_CHECKING
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QDesktopWidget
-from contextlib import suppress
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants, OperationType, UserRoles
 from QATCH.ui.popUp import PopUp
 from QATCH.common.userProfiles import UserProfiles
-from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileStorage import FileStorage
-from QATCH.common.findDevices import Discovery
 from QATCH.processors.Device import serial
 from QATCH.ui.widgets import (
     WellPlate,
-    DataManagementWidget,
-    UserPreferencesWidget,
     UserProfilesManagerWidget,
     AdvancedMainWidget,
+    ControlsWidget,
+    SavedStateDot,
 )
 from QATCH.ui.components import (
     AnimatedDoubleSpinBox,
     AnimatedComboBox,
+    BorderlessActionButton,
     GlassToggle,
     RunControls,
     NumberIconButton,
     GlassPushButton,
 )
-
-if TYPE_CHECKING:
-    from QATCH.ui.mainWindow import MainWindow
-
-TAG = "[ControlsWindow]"
-
-
-class ControlsWindow(QtWidgets.QMainWindow):
-    def __init__(
-        self,
-        parent: "MainWindow",
-        samples: int = Constants.argument_default_samples,
-    ) -> None:
-        """Initializes the main widget and its child components.
-
-        Sets up the user interface controls, user preferences, and initializes
-        the internal timer. Also ensures any previous user sessions are ended.
-
-        Args:
-            parent: The parent widget or window that owns this instance.
-            samples: The initial sample data or configuration. Defaults to
-                `Constants.argument_default_samples`.
-
-        Attributes:k
-            parent (MainWindow): Reference to the parent UI component.
-            ui1 (UIControls): The main user interface controls object.
-            data_management_widget (Optional[DataManagementWidget]): The widget
-                handling data management operations. Initialized as None.
-            ui_preferences (UserPreferencesWidget): The widget managing user
-                settings and preferences.
-            current_timer (QtCore.QTimer): Timer for handling timed events or
-                refresh loops within the UI.
-        """
-        self.parent: "MainWindow" = parent
-        super().__init__()
-
-        self.ui1: UIControls = UIControls()
-        self.ui1.setupUi(self)
-
-        self.data_management_widget: Optional[Any] = None
-        self.ui_preferences: UserPreferencesWidget = UserPreferencesWidget(self)
-        self.current_timer: QtCore.QTimer = QtCore.QTimer()
-
-        UserProfiles().session_end()
-
-    def _create_menu(self, target: QtWidgets.QMainWindow) -> None:
-        """Constructs and configures the application's top-level menu bar.
-
-        This method builds the Options, Users, View, and Help menus, populates
-        them with their respective actions, and connects them to internal methods.
-        It also restores user view preferences from application settings and applies
-        custom visual styling to the menus.
-
-        Args:
-            target (QtWidgets.QMainWindow): The window or widget that
-                owns and displays the menu bar.
-
-        Attributes:
-            _menu_target (Any): Reference to the target hosting the menu.
-            menubar (List[QtWidgets.QMenu]): Collection of the primary top-level
-                menus added to the target's menu bar.
-            act_analyze_data (QtWidgets.QAction): Action to trigger data analysis.
-            act_import_data (QtWidgets.QAction): Action to import data files.
-            act_export_data (QtWidgets.QAction): Action to export data files.
-            act_recover_data (QtWidgets.QAction): Action to recover data.
-            act_preferences (QtWidgets.QAction): Action to open user preferences.
-            act_find_devices (QtWidgets.QAction): Action to scan subnets for devices.
-            username (QtWidgets.QAction): Display action for the current user.
-            signinout (QtWidgets.QAction): Action to toggle user sign in/out.
-            act_select_directory (QtWidgets.QAction): Action to set working directory.
-            manage (QtWidgets.QAction): Action to open the user profile manager.
-            userrole (int/Enum): The current user's role/permission level.
-            modebar (QtWidgets.QMenu): Sub-menu for selecting application modes.
-            chk1 (QtWidgets.QAction): Toggle action for the Console view.
-            chk2 (QtWidgets.QAction): Toggle action for the Amplitude view.
-            chk3 (QtWidgets.QAction): Toggle action for the Temperature view.
-            chk4 (QtWidgets.QAction): Toggle action for the Resonance/Dissipation view.
-            chk5 (QtWidgets.QAction): Action to view tutorials.
-            act_check_updates (QtWidgets.QAction): Action to check for software updates.
-            q_version_v1 (QtWidgets.QAction): Toggle for ModelData v1 prediction model.
-            q_version_v4 (QtWidgets.QAction): Toggle for QModel Fusion v4 prediction model.
-            q_version_v6 (QtWidgets.QAction): Toggle for QModel YOLO v6 prediction model.
-        """
-        self._menu_target = target  # real menu bar lives on MainWin, not here
-        self.menubar = []
-        menu_bar = target.menuBar()
-        if menu_bar is None:
-            Log.e(TAG, "Error mounting menubar to main window.  Menubar is `None`")
-            raise
-        self.menubar.append(menu_bar.addMenu("&Options"))
-        self.act_analyze_data = self.menubar[0].addAction("&Analyze Data", self.analyze_data)
-        self.act_import_data = self.menubar[0].addAction("&Import Data", self.import_data)
-        self.act_export_data = self.menubar[0].addAction("&Export Data", self.export_data)
-        self.act_recover_data = self.menubar[0].addAction("&Recover Data", self.recover_data)
-        self.act_preferences = self.menubar[0].addAction("&Preferences", self.preferences)
-        self.act_find_devices = self.menubar[0].addAction("&Find Devices", self.scan_subnets)
-        self.menubar[0].addAction("E&xit", self.close)
-        self.menubar.append(menu_bar.addMenu("&Users"))
-        self.username = self.menubar[1].addAction("User: [NONE]")
-        self.username.setEnabled(False)
-        self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
-        self.act_select_directory = self.menubar[1].addAction(
-            "Select &directory...", self.set_working_directory
-        )
-        self.manage = self.menubar[1].addAction("&Manage Users...", self.manage_user_profiles)
-        self.userrole = UserRoles.NONE
-        self.menubar.append(menu_bar.addMenu("&View"))
-        self.modebar = self.menubar[2].addMenu("&Mode")
-        self.modebar.addAction("&1: Run", lambda: self.parent.MainWin.ui0._set_run_mode(None))
-        self.modebar.addAction(
-            "&2: Analyze", lambda: self.parent.MainWin.ui0._set_analyze_mode(None)
-        )
-        if Constants.show_visQ_in_R_builds:
-            self.modebar.addAction(
-                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0._set_learn_mode(None)
-            )
-        self.chk1 = self.menubar[2].addAction("&Console", self.toggle_console)
-        self.chk1.setCheckable(True)
-        self.chk1.setChecked(
-            self.parent.AppSettings.value("viewState_Console", "True").lower() == "true"
-        )
-        self.chk2 = self.menubar[2].addAction("&Amplitude", self.toggle_amplitude)
-        self.chk2.setCheckable(True)
-        self.chk2.setChecked(
-            self.parent.AppSettings.value("viewState_Amplitude", "True").lower() == "true"
-        )
-        self.chk3 = self.menubar[2].addAction("&Temperature", self.toggle_temperature)
-        self.chk3.setCheckable(True)
-        self.chk3.setChecked(
-            self.parent.AppSettings.value("viewState_Temperature", "True").lower() == "true"
-        )
-        self.chk4 = self.menubar[2].addAction(
-            "&Resonance/Dissipation", self.toggle_resonance_dissipation
-        )
-        self.chk4.setCheckable(True)
-        self.chk4.setChecked(
-            self.parent.AppSettings.value("viewState_Resonance_Dissipation", "True").lower()
-            == "true"
-        )
-        self.menubar.append(menu_bar.addMenu("&Help"))
-        self.chk5 = self.menubar[3].addAction("View &Tutorials", self.view_tutorials)
-        self.chk5.setCheckable(False)
-        self.menubar.append(self.menubar[3].addMenu("View &Documentation"))
-        self.menubar[4].addAction("&Release Notes", self.release_notes)
-        self.menubar[4].addAction("&FW Change Log", self.fw_change_log)
-        self.menubar[4].addAction("&SW Change Log", self.sw_change_log)
-        self.menubar[3].addAction("View &License", self.view_license)
-        self.menubar[3].addAction("View &User Guide", self.view_user_guide)
-        self.act_check_updates = self.menubar[3].addAction(
-            "&Check for Updates", self.check_for_updates
-        )
-        self.menubar[3].addSeparator()
-        from QATCH.models.ModelData import __release__ as model_data_release
-        from QATCH.models.ModelData import __version__ as model_data_version
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
-            __release__ as qmodel4_release,
-        )
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
-            __version__ as qmodel4_version,
-        )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
-            __release__ as qmodel6_release,
-        )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
-            __version__ as qmodel6_version,
-        )
-
-        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (3 available)")
-        self.menubar.append(qmodel_versions_menu)
-        self.q_version_v1 = self.menubar[5].addAction(
-            "ModelData v{} ({})".format(model_data_version, model_data_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[0]
-            ),
-        )
-        self.q_version_v1.setCheckable(True)
-        self.q_version_v4 = self.menubar[5].addAction(
-            "QModel Fusion v{} ({})".format(qmodel4_version, qmodel4_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[1]
-            ),
-        )
-        self.q_version_v4.setCheckable(True)
-        self.q_version_v6 = self.menubar[5].addAction(
-            "QModel YOLO26 v{} ({})".format(qmodel6_version, qmodel6_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[2]
-            ),
-        )
-        self.q_version_v6.setCheckable(True)
-        if Constants.QModel6_predict:
-            self.q_version_v6.setChecked(True)
-        elif Constants.QModel4_predict:
-            self.q_version_v4.setChecked(True)
-        elif Constants.ModelData_predict:
-            self.q_version_v1.setChecked(True)
-        else:
-            Log.w(TAG, "No model selected on startup")
-        self.menubar[3].addSeparator()
-        sw_version = self.menubar[3].addAction(
-            "SW {}_{} ({})".format(
-                Constants.app_version,
-                "exe" if getattr(sys, "frozen", False) else "py",
-                Constants.app_date,
-            )
-        )
-        sw_version.setEnabled(False)
-        fingerprint_txt = DeviceFingerprint.get_key()
-        if fingerprint_txt is not None:
-            self.menubar[3].addSeparator()
-            fingerprint_action = self.menubar[3].addAction(fingerprint_txt)
-            fingerprint_action.setToolTip("Click to copy to clipboard")
-            fingerprint_action.triggered.connect(
-                lambda: cast(QtGui.QClipboard, QtWidgets.QApplication.clipboard()).setText(
-                    fingerprint_txt
-                )
-            )
-
-        # update application UI states to reflect viewStates from AppSettings
-        if not self.chk1.isChecked():
-            QtCore.QTimer.singleShot(100, self.toggle_console)
-        if not self.chk2.isChecked():
-            QtCore.QTimer.singleShot(100, self.toggle_amplitude)
-        if not self.chk3.isChecked():
-            QtCore.QTimer.singleShot(100, self.toggle_temperature)
-        if not self.chk4.isChecked():
-            QtCore.QTimer.singleShot(100, self.toggle_resonance_dissipation)
-
-        for menu in (*self.menubar, self.modebar):
-            menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, False)
-            menu.setWindowFlag(QtCore.Qt.WindowType.NoDropShadowWindowHint, True)
-            menu.aboutToShow.connect(lambda m=menu: self._mask_menu_to_rounded_rect(m))
-
-    @staticmethod
-    def _mask_menu_to_rounded_rect(menu: QtWidgets.QMenu, radius: int = 10) -> None:
-        """Applies a rounded-rectangle mask to a menu after it is rendered.
-
-        Because a widget's geometry is often calculated or adjusted by the window
-        manager after the `aboutToShow` event, this method defers the masking
-        operation until the next event loop iteration. This ensures the menu
-        has achieved its final dimensions before the clipping region is applied.
-
-        Args:
-            menu (QtWidgets.QMenu): The menu widget to which the rounded
-                mask will be applied.
-            radius (int, optional): The corner radius of the mask in pixels.
-                Defaults to 10.
-        """
-
-        def _apply() -> None:
-            if not menu.isVisible():
-                return
-            rect = menu.rect()
-            path = QtGui.QPainterPath()
-            path.addRoundedRect(QtCore.QRectF(rect), radius, radius)
-            menu.setMask(QtGui.QRegion(path.toFillPolygon().toPolygon()))
-
-        QtCore.QTimer.singleShot(0, _apply)
-
-    def set_signed_in_menu_state(self, signed_in: bool) -> None:
-        """Locks down the menu bar while no user is signed in.
-
-        The glass login overlay is the supported sign-in gate, so while it's
-        showing, Options/Users/View are restricted to bare essentials
-        (Options keeps only Exit). Help stays available for read-only
-        reference, except update-checking and switching prediction model
-        versions, which are treated as operator actions.
-
-        Args:
-            signed_in (bool): True to restore full menu access, False to
-                lock it down to the signed-out subset.
-        """
-        # Options: only Exit stays enabled while signed out.
-        for action in (
-            self.act_analyze_data,
-            self.act_import_data,
-            self.act_export_data,
-            self.act_recover_data,
-            self.act_preferences,
-            self.act_find_devices,
-        ):
-            action.setEnabled(signed_in)
-
-        # Users: fully disabled while signed out.
-        self.signinout.setEnabled(signed_in)
-        self.act_select_directory.setEnabled(signed_in)
-        self.manage.setEnabled(signed_in)
-
-        # View: fully disabled while signed out.
-        self.modebar.menuAction().setEnabled(signed_in)
-        self.chk1.setEnabled(signed_in)
-        self.chk2.setEnabled(signed_in)
-        self.chk3.setEnabled(signed_in)
-        self.chk4.setEnabled(signed_in)
-
-        # Help: enabled regardless, except updates and model-version switching.
-        self.act_check_updates.setEnabled(signed_in)
-        self.menubar[5].menuAction().setEnabled(signed_in)  # "Model versions" submenu
-        self._apply_menu_bar_theme(signed_in)
-        self.ui1.refresh_user_button_state()
-
-    def _apply_menu_bar_theme(self, signed_in: bool) -> None:
-        """Tints the native menu bar and its dropdowns to match the glass
-        theme instead of the stark native default. While the sign-in gate
-        is up, this applies the same ~30% dimming the login overlay
-        applies to the blurred dashboard to the bar's own light tone - not
-        an unrelated dark color - so it reads as part of the same dimmed
-        scene. The normal light/glass tone returns once signed in.
-
-        QMenu (the dropdowns) is styled in the *same* stylesheet as
-        QMenuBar - a QMenu created via addMenu() is a logical child of the
-        bar in Qt's object tree, so it inherits this stylesheet too, even
-        though it pops up as its own top-level window.
-
-        Args:
-            signed_in (bool): Which palette to apply.
-        """
-        target: QtWidgets.QMainWindow | None = getattr(self, "_menu_target", None)
-        if target is None:
-            return
-
-        menu_bar = target.menuBar()
-        if menu_bar is None:
-            return
-
-        if signed_in:
-            menu_bar.setStyleSheet("""
-                QMenuBar {
-                    background: rgba(233, 239, 244, 255);
-                    color: rgba(50, 60, 70, 230);
-                    border: none;
-                }
-                QMenuBar::item { background: transparent; padding: 4px 10px; }
-                QMenuBar::item:selected { background: rgba(10, 163, 230, 60); border-radius: 4px; }
-                QMenuBar::item:disabled { color: rgba(120, 130, 140, 140); }
-
-                QMenu {
-                    background: rgb(233, 239, 244);
-                    border: 1px solid rgba(255, 255, 255, 230);
-                    border-radius: 10px;
-                    padding: 6px;
-                }
-                QMenu::item {
-                    background: transparent;
-                    color: rgba(50, 60, 70, 230);
-                    padding: 6px 26px 6px 14px;
-                    border-radius: 6px;
-                }
-                QMenu::item:selected { background: rgba(10, 163, 230, 60); }
-                QMenu::item:disabled { color: rgba(120, 130, 140, 140); }
-                QMenu::separator {
-                    height: 1px;
-                    background: rgba(120, 130, 140, 70);
-                    margin: 4px 10px;
-                }
-                QMenu::indicator { width: 14px; height: 14px; }
-            """)
-        else:
-            menu_bar.setStyleSheet("""
-                QMenuBar {
-                    background: rgba(163, 167, 171, 255);
-                    color: rgba(40, 48, 56, 235);
-                    border: none;
-                }
-                QMenuBar::item { background: transparent; padding: 4px 10px; }
-                QMenuBar::item:selected { background: rgba(255, 255, 255, 60); border-radius: 4px; }
-                QMenuBar::item:disabled { color: rgba(90, 98, 106, 150); }
-
-                QMenu {
-                    background: rgb(163, 167, 171);
-                    border: 1px solid rgba(255, 255, 255, 90);
-                    border-radius: 10px;
-                    padding: 6px;
-                }
-                QMenu::item {
-                    background: transparent;
-                    color: rgba(40, 48, 56, 235);
-                    padding: 6px 26px 6px 14px;
-                    border-radius: 6px;
-                }
-                QMenu::item:selected { background: rgba(255, 255, 255, 60); }
-                QMenu::item:disabled { color: rgba(90, 98, 106, 150); }
-                QMenu::separator {
-                    height: 1px;
-                    background: rgba(255, 255, 255, 80);
-                    margin: 4px 10px;
-                }
-                QMenu::indicator { width: 14px; height: 14px; }
-            """)
-
-    def _data_overlay_parent(self) -> QtWidgets.QWidget:
-        """Determines the appropriate parent for UI data overlays.
-
-        This ensures overlays are anchored to the full application window
-        (`MainWin`) rather than the controls window, preventing the overlay
-        from being clipped or restricted to the controls bar area.
-
-        Returns:
-            QtWidgets.QWidget: The central widget of the main window if available,
-                otherwise the main window itself or the current object.
-        """
-        if hasattr(self.parent, "MainWin"):
-            return self.parent.MainWin.centralWidget() or self.parent.MainWin
-        return self.centralWidget() or self
-
-    def _open_data_management(self, mode: str) -> None:
-        """Initializes and displays the data management widget overlay.
-
-        This method ensures the data management widget is properly parented
-        to the main application window. It recreates the widget if it has not
-        been initialized or if the parent has changed. It also pre-sizes the
-        widget to match the parent's geometry before opening the specified mode
-        to prevent visual "snapping" or resizing artifacts.
-
-        Args:
-            mode (str): The operational mode to initialize within the
-                `DataManagementWidget`.
-        """
-        parent = self._data_overlay_parent()
-        if self.data_management_widget is None or self.data_management_widget.parent is not parent:
-            self.data_management_widget = DataManagementWidget(parent=parent)
-        with suppress(Exception):
-            self.data_management_widget.setGeometry(parent.rect())
-        self.data_management_widget.open_mode(mode)
-
-    def analyze_data(self) -> None:
-        """Sets the application to analysis mode.
-
-        Triggers the main UI controller to switch the workspace to the analysis
-        view, allowing the user to inspect and interpret processed data.
-        """
-        self.parent.MainWin.ui0._set_analyze_mode(self)
-
-    def import_data(self) -> None:
-        """Opens the data management interface in 'import' mode."""
-        self._open_data_management("import")
-
-    def export_data(self) -> None:
-        """Opens the data management interface in 'export' mode."""
-        self._open_data_management("export")
-
-    def recover_data(self) -> None:
-        """Opens the data management interface in 'recover' mode."""
-        self._open_data_management("recover")
-
-    def preferences(self) -> None:
-        """Displays the user preferences dialog.
-
-        Ensures the preferences widget is visible and restored to normal state
-        for user configuration.
-        """
-        self.ui_preferences.showNormal(0)
-
-    def scan_subnets(self) -> None:
-        """Initiates a network scan for connected devices and refreshes the port list.
-
-        This method triggers the discovery service to identify active hardware on
-        subnets and subsequently updates the parent application's view of available
-        communication ports.
-        """
-        Discovery().scanSubnets()
-        self.parent._port_list_refresh()
-
-    def set_working_directory(self) -> None:
-        """Prompts the user to select a new working directory and updates preferences.
-
-        This method synchronizes global preferences, enforces a read/write
-        synchronization state, and opens a file dialog for directory selection.
-        If a valid selection is made and the interface is ready, it triggers
-        an automatic save by programmatically clicking the submit button.
-        """
-        # Loads global/user preferences
-        self.ui_preferences.toggle_global_preferences()
-        self.ui_preferences.sync_write_with_load.setChecked(True)
-        result = self.ui_preferences.open_load_file_dialog()
-        if result and self.ui_preferences.submit_button.isEnabled():
-            self.ui_preferences.submit_button.click()
-        else:
-            Log.w(TAG, "Working directory not changed.")
-
-    def set_user_profile(self) -> None:
-        """Toggles the application user session state between signed-in and signed-out.
-
-        This method manages the transition between authentication states:
-        - If signing in: Prompts the user to select a profile. If no profiles exist,
-        it redirects to the user management interface. Updates UI elements and
-        permissions upon a successful login.
-        - If signing out: Ensures the application state allows for sign-out (e.g.,
-        no unsaved changes in Analyze mode), resets user-specific UI labels,
-        and clears the current session.
-
-        Attributes:
-            userrole (UserRoles): Updated based on the authenticated user's role.
-        """
-        action = self.signinout.text().lower().replace("&", "")
-        if action == "sign in":
-            # Handle first-time login where no profiles exist
-            if UserProfiles().count() == 0:
-                self.manage_user_profiles()
-                return
-            name, init, role = UserProfiles.change()
-            if name is not None:
-                self.username.setText(f"User: {name}")
-                self.userrole = UserRoles(role)
-                self.signinout.setText("&Sign Out")
-                self.ui1.tool_User.setText(name)
-                self.parent.AnalyzeProc.tool_User.setText(name)
-
-                # Update management action context
-                if self.userrole != UserRoles.ADMIN:
-                    self.manage.setText("&Change Password...")
-        else:  # Action is "Sign Out"
-            if self.parent.MainWin.ui0._set_no_user_mode(None):
-                UserProfiles().session_end()
-                name = self.username.text()[6:]
-                Log.i(f"Goodbye, {name}! You have been signed out.")
-
-                # Reset UI to anonymous state
-                self.username.setText("User: [NONE]")
-                self.userrole = UserRoles.NONE
-                self.signinout.setText("&Sign In")
-                self.manage.setText("&Manage Users...")
-                self.ui1.tool_User.setText("Anonymous")
-                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
-            else:
-                Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
-
-    def manage_user_profiles(self):
-        """Handles the user profile management workflow.
-
-        This method verifies if the application state allows for user modifications
-        (i.e., checking for unsaved changes). It handles two primary flows:
-        password changes for non-admin users, and the full management interface
-        for administrators. It also manages the transition of the application UI
-        state if a user is modified or removed during the management session.
-
-        Attributes:
-            user_manager (UserProfilesManagerWidget): The overlay
-                widget used for managing user profiles.
-        """
-        # Disallow user management if the current mode is busy or has unsaved changes
-        if not self.parent.MainWin.ui0._check_mode_change_allowed():
-            Log.d("User has unsaved changes in Analyze mode. Manage users aborted.")
-            return
-
-        # Handle password change for non-admin users
-        if self.userrole != UserRoles.ADMIN and self.userrole != UserRoles.NONE:
-            name = self.username.text()[6:]
-            found, filename = UserProfiles.find(name, None)
-            if filename is not None:
-                UserProfiles.change_password(filename)
-                return
-            else:
-                Log.e("Attempted to change password, but user was not found!")
-
-        name = self.username.text()[6:]
-        allow, admin = UserProfiles().manage(name, self.userrole)
-
-        # Handle session cleanup if user was deleted
-        if admin is None and not UserProfiles.session_info()[0]:
-            if name != "[NONE]":
-                Log.i(f"Goodbye, {name}! You have been signed out.")
-            self.username.setText("User: [NONE]")
-            self.userrole = UserRoles.NONE
-            self.signinout.setText("&Sign In")
-            self.manage.setText("&Manage Users...")
-            self.ui1.tool_User.setText("Anonymous")
-            self.parent.AnalyzeProc.tool_User.setText("Anonymous")
-            self.parent.MainWin.ui0._set_no_user_mode(None)
-
-        # Update UI if user information changed
-        if admin != name and admin is not None:
-            Log.d("User name changed. Changing sign-in user info.")
-            self.username.setText(f"User: {admin}")
-            self.userrole = UserRoles.ADMIN
-            self.signinout.setText("&Sign Out")
-            self.manage.setText("&Manage Users...")
-            self.ui1.tool_User.setText(admin)
-            self.parent.AnalyzeProc.tool_User.setText(admin)
-
-        # Display the management overlay
-        if allow:
-            if hasattr(self.parent, "MainWin"):
-                overlay_parent = self.parent.MainWin.centralWidget() or self.parent.MainWin
-            else:
-                overlay_parent = self.centralWidget() or self
-            self.user_manager = UserProfilesManagerWidget(parent=overlay_parent, admin_name=admin)
-            with suppress(Exception):
-                self.user_manager.setGeometry(overlay_parent.rect())
-            self.user_manager.show()
-
-    def toggle_console(self) -> None:
-        """Toggles the visibility of the application console/log view.
-
-        This method updates the visibility state of the console widget based on
-        the checkbox state, stops any active background timers to prevent
-        rendering conflicts during the toggle, and persists the user's view
-        preference to the application settings.
-        """
-        if self.current_timer.isActive():
-            self.current_timer.stop()
-
-        is_visible: bool = self.chk1.isChecked()
-
-        if not is_visible:
-            self.parent.MainWin.ui0.logview.setVisible(False)
-        else:
-            self.parent.MainWin.ui0.logview.setVisible(True)
-        self.parent.AppSettings.setValue("viewState_Console", is_visible)
-
-    def toggle_amplitude(self) -> None:
-        """Toggles the visibility of the Amplitude plots.
-
-        This method manages the display state of a collection of amplitude plots.
-        It synchronizes the `setVisible` state across the plot array, handles
-        the visibility of top-level plot containers, and persists the user's
-        view preference to the application settings.
-        """
-        # Capture state of top-level plot containers
-        tc = self.show_top_plot()
-        is_visible: bool = self.chk2.isChecked()
-        # Update visibility for each plot in the array
-        for i, p in enumerate(self.parent._plt0_arr):
-            if p is None:
-                continue
-            p.setVisible(is_visible)
-            self.parent._plt0_arr[i] = p
-
-        # Restore container layout
-        self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue("viewState_Amplitude", is_visible)
-
-    def toggle_temperature(self) -> None:
-        """Toggles the visibility of the temperature plot.
-
-        This method manages the display state of the temperature visualization widget.
-        It wraps the toggle logic with top-plot container handlers to ensure layout
-        consistency and persists the user's preference to application settings.
-        """
-        # Capture state of top-level plot containers
-        tc = self.show_top_plot()
-        is_visible: bool = self.chk3.isChecked()
-        if self.parent._plt4 is not None:
-            self.parent._plt4.setVisible(is_visible)
-        else:
-            Log.e(TAG, "Cannot toggle temperature plot, temperature plot is `None`.")
-        # Restore container layout
-        self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue("viewState_Temperature", is_visible)
-
-    def toggle_resonance_dissipation(self) -> None:
-        """Toggles the visibility of the Resonance/Dissipation plots.
-
-        This method manages the display state of the Resonance/Dissipation
-        visualization widget. It stops any active background timers to avoid
-        rendering conflicts, updates the visibility of the plot component,
-        and persists the user's view preference to application settings.
-        """
-        # Ensure background tasks are paused to avoid UI conflicts during resize/hide
-        if self.current_timer.isActive():
-            self.current_timer.stop()
-
-        is_visible: bool = self.chk4.isChecked()
-
-        if not is_visible:
-            self.parent.PlotsWin.ui2.pltB.setVisible(False)
-        else:
-            self.parent.PlotsWin.ui2.pltB.setVisible(True)
-        self.parent.AppSettings.setValue("viewState_Resonance_Dissipation", is_visible)
-
-    def show_top_plot(self) -> bool:
-        """Ensures the top-level plot container is visible.
-
-        This method checks if any amplitude or temperature plots are enabled. If
-        they are, it ensures the primary plot container (`plt`) is visible. It
-        returns a flag indicating whether it had to manually toggle the visibility,
-        which is used to restore the original state later.
-
-        Returns:
-            bool: True if the plot container was previously hidden and was
-                manually enabled by this method, False otherwise.
-        """
-        toggle_console: bool = False
-
-        # Check if any associated plots require the top container to be visible
-        if self.chk2.isChecked() or self.chk3.isChecked():
-            toggle_console = self.parent.PlotsWin.ui2.plt.isVisible() is False
-            self.parent.PlotsWin.ui2.plt.setVisible(True)
-        return toggle_console
-
-    def hide_top_plot(self, toggle_console: bool) -> None:
-        """Restores the visibility state of the top-level plot container.
-
-        This method complements `show_top_plot`. If the container was toggled
-        visible to accommodate a child plot, this method checks if that container
-        can now be hidden, or triggers a layout update to ensure the UI remains
-        properly aligned after a visibility change.
-
-        Args:
-            toggle_console (bool): A flag indicating whether this method was
-                responsible for originally showing the plot container.
-        """
-        if self.chk2.isChecked() or self.chk3.isChecked():
-            if toggle_console:
-                layout = self.parent.PlotsWin.layout()
-                if layout is not None:
-                    layout.activate()
-        else:
-            self.parent.PlotsWin.ui2.plt.setVisible(False)
-
-    def view_tutorials(self) -> None:
-        """Toggles the visibility of the tutorials window.
-
-        This method synchronizes the visibility state of the tutorial window
-        with its current display status and updates the associated menu checkbox
-        to reflect whether the window is currently visible to the user.
-        """
-        # Toggle the visibility of the tutorials window
-        is_visible: bool = self.parent.TutorialWin.isVisible()
-        self.parent.TutorialWin.setVisible(not is_visible)
-        self.chk5.setChecked(self.parent.TutorialWin.isVisible())
-
-    def open_file(self, filepath: str, relative_to_cwd: bool = True) -> None:
-        """Opens a file or directory using the operating system's default handler.
-
-        This method detects the current host OS and delegates the file opening
-        process to the appropriate system command.
-
-        Args:
-            filepath (str): The path to the file or directory to be opened.
-            relative_to_cwd (bool, optional): If True, joins the path with the
-                architecture's base directory. Defaults to True.
-        """
-        fullpath: str = filepath
-        try:
-            if relative_to_cwd:
-                fullpath = os.path.join(Architecture.get_path(), filepath)
-            os_type = Architecture.get_os()
-            if os_type == OSType.macosx:  # macOS
-                subprocess.call(("open", fullpath))
-            elif os_type == OSType.windows:  # Windows
-                os.startfile(fullpath)
-            elif os_type == OSType.linux:  # Linux
-                subprocess.call(("xdg-open", fullpath))
-            else:  # Fallback for unknown variants
-                Log.w(f"Unknown OS Type: {os_type}")
-                Log.w("Assuming Linux variant...")
-                subprocess.call(("xdg-open", fullpath))
-        except Exception as e:
-            filename = os.path.split(fullpath)[1]
-            Log.e(TAG, f'ERROR: Cannot open "{filename}": {str(e)}')
-
-    def release_notes(self) -> None:
-        """Opens the PDF release notes for the current application version."""
-        rn_path = os.path.join("docs", f"Release Notes {Constants.app_version}.pdf")
-        self.open_file(rn_path)
-
-    def fw_change_log(self) -> None:
-        """Opens the firmware change control document for the active firmware version."""
-        fw_change_log_path = os.path.join(
-            f"QATCH_Q-1_FW_py_{Constants.best_fw_version}", "FW Change Control Doc.pdf"
-        )
-        self.open_file(fw_change_log_path)
-
-    def sw_change_log(self) -> None:
-        """Opens the software change control document."""
-        sw_change_log_path = os.path.join("QATCH", "SW Change Control Doc.pdf")
-        self.open_file(sw_change_log_path)
-
-    def view_license(self) -> None:
-        """Opens the GPL license and the primary application LICENSE file.
-
-        This method sequentially triggers the operating system's default
-        handler to open both the GPL text file and the application-specific
-        LICENSE document.
-        """
-        gpl_path = os.path.join("docs", "gpl.txt")
-        license_path = os.path.join("docs", "LICENSE.txt")
-        self.open_file(gpl_path)
-        self.open_file(license_path)
-
-    def view_user_guide(self):
-        """Opens the application user guide in the default PDF viewer."""
-        user_guide_path = os.path.join("docs", "userguide.pdf")
-        self.open_file(user_guide_path)
-
-    def check_for_updates(self) -> None:
-        """Initiates an application update check.
-
-        This method clears existing download URLs, triggers a license refresh
-        if the license manager is available, and executes a download check
-        via the parent application. It then evaluates the status returned by the
-        parent and displays appropriate feedback to the user via pop-up notifications.
-        """
-        # Clean up existing download context
-        if hasattr(self.parent, "url_download"):
-            delattr(self.parent, "url_download")
-
-        # Refresh license status if applicable
-        if hasattr(self.parent, "_license_manager"):
-            lm: Any = self.parent._license_manager
-            if hasattr(lm, "refresh_license") and callable(lm.refresh_license):
-                lm.refresh_license()
-
-        # Initiate update check
-        color, status = self.parent.start_download(True)
-
-        # Handle error scenarios
-        if color == "#ff0000":
-            if status == "ERROR":
-                PopUp.warning(self, "Check for Updates", "An error occurred checking for updates.")
-            elif status == "OFFLINE":
-                PopUp.warning(self, "Check for Updates", "Unable to check online for updates.")
-
-        # Handle up-to-date scenarios (non-error, non-success-update colors)
-        elif color != "#00ff00":
-            technicality: str = " available " if color == "#00c600" else " supported "
-            PopUp.information(
-                self,
-                "Check for Updates",
-                f"You are running the latest{technicality}version.",
-            )
-
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
-        """Handles the application close event with an optional confirmation dialog.
-
-        This method intercepts the standard window close event. If the attribute
-        `close_no_confirm` exists on the instance, it bypasses the confirmation
-        dialog. Otherwise, it prompts the user to confirm the exit. If confirmed,
-        the application terminates; if canceled, the event is ignored to keep
-        the application running.
-
-        Args:
-            event (QtGui.QCloseEvent): The event object triggered by the
-                window closing action.
-        """
-        # Determine if we should bypass the confirmation dialog
-        if hasattr(self, "close_no_confirm"):
-            res: bool = True
-        else:
-            # Prompt the user to confirm if they really want to quit
-            res = PopUp.question(
-                self,
-                Constants.app_title,
-                "Are you sure you want to quit QATCH Q-1 application now?",
-                True,
-            )
-        if res:
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
-
-
-class GlassControlsWidget(QtWidgets.QWidget):
-    """Frosted-glass container that provides the toolbar's gradient backdrop.
-
-    Renders the same cool-blue gradient palette used by GlassCard in
-    ui_login when no live backdrop is available, overlaid with the standard
-    white-tint, shimmer, and dual-border glass language.
-    """
-
-    _RADIUS: float = 10.0
-
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        super().__init__(parent)
-        self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        p = QtGui.QPainter(self)
-        p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
-
-        rect_f = QtCore.QRectF(self.rect())
-
-        # Clip to rounded rectangle
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
-        p.setClipPath(clip)
-
-        # Frosted base - identical to GlassContainer
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 160))
-        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 18))
-
-        # Top shimmer - three-stop, 40px (matches GlassContainer)
-        shimmer = QtGui.QLinearGradient(0, 0, 0, 40)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 100))
-        shimmer.setColorAt(0.5, QtGui.QColor(255, 255, 255, 20))
-        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
-        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        # Bottom vignette (was missing)
-        vg = QtGui.QLinearGradient(0, self.height() - 30, 0, self.height())
-        vg.setColorAt(0.0, QtGui.QColor(200, 218, 240, 0))
-        vg.setColorAt(1.0, QtGui.QColor(200, 218, 240, 18))
-        p.fillRect(self.rect(), QtGui.QBrush(vg))
-
-        # Borders - outer bright rim + inner cool-grey inset
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(190, 210, 235, 70), 1.0))
-        p.drawRoundedRect(
-            rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
-            self._RADIUS - 1.5,
-            self._RADIUS - 1.5,
-        )
-
-        p.end()
-
-
-class GlassHeaderLabel(QtWidgets.QLabel):
-    """Section-header label rendered as a brand-blue glass panel.
-
-    Replaces the legacy solid ``background: #008EC0`` headers.  The
-    hand-painted background carries the same shimmer/border pipeline as
-    GlassCard while maintaining the QATCH cool-blue identity.
-    """
-
-    _RADIUS: float = 4.0
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        # Text colour and padding only - background handled in paintEvent
-        self.setStyleSheet(
-            "QLabel { color: rgba(255, 255, 255, 230); "
-            "padding: 2px 6px; font-weight: bold; background: transparent; }"
-        )
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        p = QtGui.QPainter(self)
-        p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
-
-        rect_f = QtCore.QRectF(self.rect())
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
-        p.setClipPath(clip)
-
-        # Brand-blue gradient base
-        grad = QtGui.QLinearGradient(0, 0, self.width(), self.height())
-        grad.setColorAt(0.0, QtGui.QColor(0, 118, 174))
-        grad.setColorAt(1.0, QtGui.QColor(0, 158, 210))
-        p.fillRect(self.rect(), QtGui.QBrush(grad))
-
-        # Glass tints
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 45))
-        p.fillRect(self.rect(), QtGui.QColor(180, 220, 245, 30))
-
-        # Top shimmer
-        shimmer = QtGui.QLinearGradient(0, 0, 0, self.height() * 0.65)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 55))
-        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
-        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        # Borders
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(80, 160, 215, 130), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 130), 1.0))
-        p.drawRoundedRect(
-            rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
-            self._RADIUS - 1.5,
-            self._RADIUS - 1.5,
-        )
-
-        p.end()
-        # Render text via base class (respects alignment, QSS color)
-        super().paintEvent(event)
-
-
-class GlassStatusLabel(QtWidgets.QLabel):
-    """Frosted-white glass panel for status and info displays.
-
-    Replaces the legacy ``background: white; border: 1px solid #cccccc``
-    status labels with a translucent glass treatment that integrates
-    seamlessly with GlassControlsWidget.
-    """
-
-    _RADIUS: float = 5.0
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        self.setStyleSheet(
-            "QLabel { color: rgba(28, 40, 52, 210); " "padding: 2px 6px; background: transparent; }"
-        )
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        p = QtGui.QPainter(self)
-        p.setRenderHints(QtGui.QPainter.Antialiasing)
-
-        rect_f = QtCore.QRectF(self.rect())
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
-        p.setClipPath(clip)
-
-        # Frosted white glass base
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 155))
-        p.fillRect(self.rect(), QtGui.QColor(210, 225, 240, 40))
-
-        # Top shimmer
-        shimmer = QtGui.QLinearGradient(0, 0, 0, 36)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 80))
-        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
-        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        # Borders
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(120, 160, 200, 110), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 160), 1.0))
-        p.drawRoundedRect(
-            rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
-            self._RADIUS - 1.5,
-            self._RADIUS - 1.5,
-        )
-
-        p.end()
-        super().paintEvent(event)
-
-
-# ---------------------------------------------------------------------------
-# Shared QSS fragments
-# ---------------------------------------------------------------------------
-
-_GLASS_BUTTON_QSS = """
-    QPushButton {{
-        background: transparent;
-        color: rgba(30, 40, 55, 200);
-        border: 1px solid transparent;
-        border-radius: 4px;
-        padding: {padding};
-        font-size: 12px;
-    }}
-    QPushButton:hover {{
-        background: rgba(229, 229, 229, 150);
-        border: 1px solid transparent;
-    }}
-    QPushButton:pressed {{
-        background: rgba(229, 229, 229, 200);
-        border: 1px solid transparent;
-    }}
-    QPushButton:disabled {{
-        color: rgba(30, 40, 55, 90);
-        background: transparent;
-        border: 1px solid transparent;
-    }}
-"""
-
-_GLASS_TOOLBAR_QSS = """
+from QATCH.ui.labels import (
+    DeviceConfigLabel,
+    HeaderLabel,
+    SectionHeader,
+    StatusLabel,
+    TemperatureLabel,
+)
+from QATCH.ui.widgets.account_popup import AccountPopup
+
+_TOOLBAR_QSS = """
     QToolBar {
         background: transparent;
         border: none;
@@ -1139,7 +88,7 @@ _GLASS_TOOLBAR_QSS = """
     }
 """
 
-_GLASS_PROGRESSBAR_QSS = """
+_PROGRESSBAR_QSS = """
     QProgressBar {
         border: 1px solid rgba(0, 0, 0, 25);
         border-radius: 4px;
@@ -1158,7 +107,7 @@ _GLASS_PROGRESSBAR_QSS = """
     }
 """
 
-_GLASS_TEMP_CONTROLLER_QSS = """
+_TEMP_CONTROLLER_QSS = """
     QWidget#tempController {
         background: rgba(229, 229, 229, 80);
         border: none;
@@ -1214,785 +163,23 @@ _GLASS_TEMP_CONTROLLER_QSS = """
 """
 
 
-# ---------------------------------------------------------------------------
-# Account dropdown - glass popup showing current user info
-# ---------------------------------------------------------------------------
-
-
-class _AvatarLabel(QtWidgets.QWidget):
-    """Circular avatar rendered with QATCH brand-blue gradient + user initials."""
-
-    def __init__(self, initials: str, parent=None) -> None:
-        super().__init__(parent)
-        self._initials = initials[:2].upper() if initials else "?"
-        self.setAutoFillBackground(False)
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        p = QtGui.QPainter(self)
-        p.setRenderHints(QtGui.QPainter.Antialiasing)
-        r = min(self.width(), self.height()) - 2
-        x = (self.width() - r) / 2
-        y = (self.height() - r) / 2
-        rect = QtCore.QRectF(x, y, r, r)
-
-        grad = QtGui.QRadialGradient(rect.center(), r / 2)
-        grad.setColorAt(0.0, QtGui.QColor(0, 158, 210))
-        grad.setColorAt(1.0, QtGui.QColor(0, 100, 160))
-        p.setBrush(QtGui.QBrush(grad))
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 90), 1.5))
-        p.drawEllipse(rect)
-
-        # Shimmer half-circle
-        shimmer = QtGui.QLinearGradient(0, float(rect.top()), 0, float(rect.center().y()))
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 55))
-        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
-        p.setBrush(QtGui.QBrush(shimmer))
-        p.setPen(QtCore.Qt.NoPen)
-        p.drawEllipse(rect)
-
-        font = QtGui.QFont()
-        font.setPointSize(13)
-        font.setBold(True)
-        p.setFont(font)
-        p.setPen(QtGui.QColor(255, 255, 255, 235))
-        p.drawText(rect.toRect(), QtCore.Qt.AlignmentFlag.AlignCenter, self._initials)
-        p.end()
-
-
-class _GlassAccountInnerPanel(QtWidgets.QWidget):
-    """Inner glass-morphism panel for the account popup.
-
-    Paints the frosted-glass background with rounded corners.  The outer
-    :class:`GlassAccountPopup` applies a :class:`QGraphicsDropShadowEffect`
-    to this widget so the shadow follows the painted alpha mask, producing
-    a soft, rounded drop shadow.  This mirrors the pattern used by
-    ``RecoveryFilterWidget`` to avoid the rectangular OS popup outline.
-    """
-
-    _RADIUS: float = 10.0
-
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        super().__init__(parent)
-        self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        p = QtGui.QPainter(self)
-        p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
-
-        rect_f = QtCore.QRectF(self.rect())
-        _R = self._RADIUS
-
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, _R, _R)
-        p.setClipPath(clip)
-
-        # Frosted white base - slightly higher alpha than before because the
-        # outer widget is fully transparent (no manual shadow underlay)
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 235))
-        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 28))
-
-        # Top shimmer
-        shimmer = QtGui.QLinearGradient(0, 0, 0, 44)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 80))
-        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
-        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        # Dual borders (outer warm white, inner cool grey)
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 220), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), _R, _R)
-        p.setPen(QtGui.QPen(QtGui.QColor(200, 210, 220, 90), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(1.5, 1.5, -1.5, -1.5), _R - 1.5, _R - 1.5)
-
-        p.end()
-
-
-class GlassAccountPopup(QtWidgets.QWidget):
-    """Frosted-glass dropdown panel for the Account toolbar button.
-
-    Displays the active user's avatar, full name, and role badge.  Admin users
-    additionally see a "Manage Users…" shortcut.  The popup uses ``Qt.Popup``
-    so it closes automatically on any outside click.
-
-    Implementation notes
-    --------------------
-    The popup is built as a transparent outer ``QWidget`` (this class) wrapping
-    an inner :class:`_GlassAccountInnerPanel`.  The outer widget reserves margin
-    space around the inner panel so a :class:`QGraphicsDropShadowEffect` applied
-    to the inner panel renders a soft, rounded shadow that follows the panel's
-    border-radius - exactly the trick used by ``RecoveryFilterWidget`` to fix
-    the sharp shadow corners produced by manual painted shadows.
-
-    The popup also tracks its main window: when the main window is resized or
-    moved, the popup closes itself so it never floats outside the application.
-    """
-
-    # Margins reserved around the inner panel for the drop shadow.  Bottom is
-    # larger to accommodate the shadow's positive Y offset.
-    _SHADOW_MARGIN_L = 22
-    _SHADOW_MARGIN_T = 18
-    _SHADOW_MARGIN_R = 22
-    _SHADOW_MARGIN_B = 26
-
-    def __init__(
-        self,
-        open_manager_cb=None,
-        sign_out_cb=None,
-        parent: Optional[QtWidgets.QWidget] = None,
-    ) -> None:
-        super().__init__(
-            parent,
-            QtCore.Qt.WindowType.Popup
-            | QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowType.NoDropShadowWindowHint,
-        )
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        self.setAutoFillBackground(False)
-
-        self._open_manager_cb = open_manager_cb
-        self._sign_out_cb = sign_out_cb
-        self._main_window: Optional[QtWidgets.QWidget] = None  # set by show_anchored_to
-
-        # -- outer container with shadow margins --
-        self._panel = _GlassAccountInnerPanel(self)
-        self._panel.setObjectName("AccountPopupInner")
-
-        outer_layout = QtWidgets.QVBoxLayout(self)
-        outer_layout.setContentsMargins(
-            self._SHADOW_MARGIN_L,
-            self._SHADOW_MARGIN_T,
-            self._SHADOW_MARGIN_R,
-            self._SHADOW_MARGIN_B,
-        )
-        outer_layout.setSpacing(0)
-        outer_layout.addWidget(self._panel)
-
-        # Soft drop shadow that follows the inner panel's painted alpha mask
-        shadow = QtWidgets.QGraphicsDropShadowEffect(self._panel)
-        shadow.setBlurRadius(28)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QtGui.QColor(0, 20, 40, 110))
-        self._panel.setGraphicsEffect(shadow)
-
-        # -- entrance animation (matches the advanced menu) --
-        # Fade the whole popup window in (setWindowOpacity, NOT a graphics
-        # effect - an opacity effect on this panel would clash with the drop
-        # shadow above and cause the same ghosting seen in the advanced panel),
-        # paired with a brief downward slide so it eases out from the anchor.
-        self._enter_fade = QtCore.QVariantAnimation(self)
-        self._enter_fade.setDuration(200)
-        self._enter_fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self._enter_fade.setStartValue(0.0)
-        self._enter_fade.setEndValue(1.0)
-        self._enter_fade.valueChanged.connect(lambda v: self.setWindowOpacity(float(v)))
-        self._enter_fade.finished.connect(lambda: self.setWindowOpacity(1.0))
-
-        self._enter_slide = QtCore.QPropertyAnimation(self, b"pos", self)
-        self._enter_slide.setDuration(220)
-        self._enter_slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-
-        # -- resolve current session info (lazy import avoids circular deps) --
-        # session_info() returns: [name, initials, role.name, created, modified, accessed]
-        accessed: Optional[str] = None
-        try:
-            from QATCH.common.userProfiles import UserProfiles, UserRoles  # noqa: PLC0415
-
-            is_valid, user_info = UserProfiles.session_info()
-            if is_valid and user_info:
-                name = user_info[0] or "Unknown"
-                initials = user_info[1] or "?"
-                role_name = user_info[2] or "NONE"
-                # Index 5 = "accessed" timestamp ("Today, HH:MM:SS" or "YYYY-MM-DD HH:MM:SS")
-                accessed = user_info[5] if len(user_info) > 5 else None
-            else:
-                name, initials, role_name = "Anonymous", "?", "NONE"
-            is_admin = role_name == UserRoles.ADMIN.name
-            is_signed_in = is_valid
-        except Exception:
-            name, initials, role_name = "Anonymous", "?", "NONE"
-            is_admin = False
-            is_signed_in = False
-
-        # -- inner panel layout (all visible content lives here) --
-        layout = QtWidgets.QVBoxLayout(self._panel)
-        layout.setContentsMargins(14, 14, 14, 12)
-        layout.setSpacing(8)
-
-        # Avatar + name/role column
-        header_row = QtWidgets.QHBoxLayout()
-        header_row.setSpacing(12)
-
-        avatar = _AvatarLabel(initials)
-        avatar.setFixedSize(44, 44)
-        header_row.addWidget(avatar, 0, QtCore.Qt.AlignTop)
-
-        info_col = QtWidgets.QVBoxLayout()
-        info_col.setSpacing(3)
-        info_col.setContentsMargins(0, 1, 0, 0)
-
-        name_lbl = QtWidgets.QLabel(name)
-        name_lbl.setStyleSheet(
-            "color: rgba(28,40,52,235); font-weight: bold; font-size: 13px; "
-            "background: transparent; border: none;"
-        )
-        info_col.addWidget(name_lbl)
-
-        # Subtle initials line under the name
-        initials_lbl = QtWidgets.QLabel(f"Initials: {initials}")
-        initials_lbl.setStyleSheet(
-            "color: rgba(70, 90, 110, 180); font-size: 10px; "
-            "background: transparent; border: none;"
-        )
-        info_col.addWidget(initials_lbl)
-
-        _role_palette = {
-            "ADMIN": ("rgba(0,118,174,215)", "white"),
-            "OPERATE": ("rgba(40,155,75,200)", "white"),
-            "ANALYZE": ("rgba(130,80,200,200)", "white"),
-            "CAPTURE": ("rgba(200,125,0,200)", "white"),
-        }
-        bg, fg = _role_palette.get(role_name, ("rgba(140,150,160,160)", "rgba(28,40,52,180)"))
-        role_badge = QtWidgets.QLabel(role_name)
-        role_badge.setFixedHeight(17)
-        role_badge.setStyleSheet(
-            f"background: {bg}; color: {fg}; border-radius: 3px; "
-            "padding: 1px 6px; font-size: 10px; font-weight: bold; border: none;"
-        )
-        # Wrap the badge so it doesn't stretch to full column width
-        role_row = QtWidgets.QHBoxLayout()
-        role_row.setContentsMargins(0, 2, 0, 0)
-        role_row.setSpacing(0)
-        role_row.addWidget(role_badge)
-        role_row.addStretch()
-        info_col.addLayout(role_row)
-
-        header_row.addLayout(info_col, 1)
-        layout.addLayout(header_row)
-
-        # Last sign-in / status line
-        if is_signed_in and accessed:
-            last_lbl = QtWidgets.QLabel(f"Last access: {accessed}")
-            last_lbl.setStyleSheet(
-                "color: rgba(70, 90, 110, 175); font-size: 10px; "
-                "background: transparent; border: none; padding-left: 1px;"
-            )
-            layout.addWidget(last_lbl)
-        elif not is_signed_in:
-            status_lbl = QtWidgets.QLabel("No active session")
-            status_lbl.setStyleSheet(
-                "color: rgba(140, 90, 30, 200); font-size: 10px; font-style: italic; "
-                "background: transparent; border: none; padding-left: 1px;"
-            )
-            layout.addWidget(status_lbl)
-
-        show_manage = is_admin
-        show_sign_out = is_signed_in
-        if show_manage or show_sign_out:
-            # Hairline divider
-            divider = QtWidgets.QFrame()
-            divider.setFrameShape(QtWidgets.QFrame.HLine)
-            divider.setStyleSheet(
-                "QFrame { background: rgba(200,210,220,130); border: none; max-height: 1px; }"
-            )
-            layout.addWidget(divider)
-
-        if show_manage:
-            icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "user-circle.svg")
-            manage_btn = GlassPushButton(" Manage Users…")
-            manage_btn.setIcon(QtGui.QIcon(icon_path))
-            manage_btn.setIconSize(QtCore.QSize(16, 16))
-            manage_btn.setStyleSheet("""
-                QPushButton {
-                    background: rgba(0, 118, 174, 18);
-                    color: rgba(0, 118, 174, 230);
-                    border: 1px solid rgba(0, 118, 174, 55);
-                    border-radius: 5px;
-                    padding: 8px 14px 8px 12px;
-                    text-align: left;
-                    font-size: 12px;
-                    font-weight: bold;
-                }
-                QPushButton:hover  {
-                    background: rgba(0, 142, 192, 35);
-                    border: 1px solid rgba(0, 118, 174, 110);
-                }
-                QPushButton:pressed {
-                    background: rgba(0, 118, 174, 70);
-                    border: 1px solid rgba(0, 118, 174, 160);
-                }
-            """)
-            manage_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-            manage_btn.clicked.connect(self._on_manage_users)
-            layout.addWidget(manage_btn)
-
-        if show_sign_out:
-            icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "sign-out.svg")
-            sign_out_btn = GlassPushButton(" Sign Out")
-            if os.path.exists(icon_path):
-                sign_out_btn.setIcon(QtGui.QIcon(icon_path))
-                sign_out_btn.setIconSize(QtCore.QSize(16, 16))
-            sign_out_btn.setStyleSheet("""
-                QPushButton {
-                    background: rgba(200, 70, 40, 16);
-                    color: rgba(170, 55, 30, 235);
-                    border: 1px solid rgba(200, 70, 40, 60);
-                    border-radius: 5px;
-                    padding: 8px 14px 8px 12px;
-                    text-align: left;
-                    font-size: 12px;
-                    font-weight: bold;
-                }
-                QPushButton:hover  {
-                    background: rgba(210, 80, 45, 38);
-                    border: 1px solid rgba(200, 70, 40, 120);
-                }
-                QPushButton:pressed {
-                    background: rgba(200, 70, 40, 75);
-                    border: 1px solid rgba(200, 70, 40, 170);
-                }
-            """)
-            sign_out_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-            sign_out_btn.clicked.connect(self._on_sign_out)
-            layout.addWidget(sign_out_btn)
-
-        self._panel.setMinimumWidth(230)
-
-    # -- public API -----------------------------------------------------------
-
-    def show_anchored_to(
-        self,
-        anchor: QtWidgets.QWidget,
-        main_window: Optional[QtWidgets.QWidget] = None,
-    ) -> None:
-        """Show the popup pinned to ``anchor`` and constrained to ``main_window``.
-
-        The popup's *visible* right edge aligns with the anchor button's right
-        edge; the visible top edge sits 2 px below the anchor's bottom.  If the
-        popup would extend past the main window's frame, its position is clamped
-        so the visible panel stays inside the main window.  When the main window
-        is later resized or moved while the popup is open, the popup closes
-        itself to avoid floating outside the application.
-        """
-        self._main_window = main_window
-        self.adjustSize()
-
-        size = self.sizeHint()
-        popup_w, popup_h = size.width(), size.height()
-
-        # Anchor at the bottom-right corner of the button (in screen coords)
-        anchor_br = anchor.mapToGlobal(QtCore.QPoint(anchor.width(), anchor.height()))
-
-        # Position so the *visible* panel right edge aligns with the button's
-        # right edge, 2 px below the button.  Account for the transparent
-        # shadow margins on the outer widget.
-        x = anchor_br.x() + self._SHADOW_MARGIN_R - popup_w
-        y = anchor_br.y() + 2 - self._SHADOW_MARGIN_T
-
-        # Clamp so the visible panel stays inside the main window
-        x, y = self._clamp_to_main_window(x, y, popup_w, popup_h, anchor)
-
-        # Track resize/move events on the main window so the popup never
-        # ends up floating outside the application after a resize.
-        if self._main_window is not None:
-            self._main_window.installEventFilter(self)
-
-        # Entrance animation: start slightly above the final position and fade
-        # in as it slides down to (x, y) - same feel as the advanced menu.
-        final_pos = QtCore.QPoint(x, y)
-        start_pos = QtCore.QPoint(x, y - 12)
-        self.move(start_pos)
-        self.setWindowOpacity(0.0)
-        self.show()
-
-        self._enter_slide.stop()
-        self._enter_slide.setStartValue(start_pos)
-        self._enter_slide.setEndValue(final_pos)
-        self._enter_slide.start()
-
-        self._enter_fade.stop()
-        self._enter_fade.start()
-
-    # -- positioning helpers --------------------------------------------------
-
-    def _visible_rect_for(self, x: int, y: int, w: int, h: int) -> QtCore.QRect:
-        """Return the *visible* panel rect for an outer-widget position.
-
-        The outer widget reserves transparent shadow margins, so the visible
-        rect is the outer rect minus those margins.
-        """
-        return QtCore.QRect(
-            x + self._SHADOW_MARGIN_L,
-            y + self._SHADOW_MARGIN_T,
-            w - self._SHADOW_MARGIN_L - self._SHADOW_MARGIN_R,
-            h - self._SHADOW_MARGIN_T - self._SHADOW_MARGIN_B,
-        )
-
-    def _clamp_to_main_window(
-        self,
-        x: int,
-        y: int,
-        popup_w: int,
-        popup_h: int,
-        anchor: QtWidgets.QWidget,
-    ) -> tuple:
-        """Adjust ``(x, y)`` so the visible panel stays inside the main window.
-
-        Falls back to the anchor's screen geometry if no main window is set.
-        """
-        # Prefer the anchor widget's own top-level window (content geometry, screen
-        # coords) so the popup is always clamped against the window that actually
-        # contains the button - regardless of which QWidget was passed as
-        # main_window.  Fall back to main_window, then the screen.
-        top_level = anchor.window() if anchor is not None else None
-        if top_level is not None:
-            bounds = top_level.geometry()
-        elif self._main_window is not None:
-            bounds = self._main_window.geometry()
-        else:
-            screen = QtWidgets.QApplication.screenAt(anchor.mapToGlobal(QtCore.QPoint(0, 0)))
-            bounds = screen.availableGeometry() if screen is not None else QtCore.QRect()
-
-        if bounds.isNull():
-            return x, y
-
-        visible = self._visible_rect_for(x, y, popup_w, popup_h)
-
-        # Horizontal clamp
-        if visible.right() > bounds.right():
-            x -= visible.right() - bounds.right()
-            visible = self._visible_rect_for(x, y, popup_w, popup_h)
-        if visible.left() < bounds.left():
-            x += bounds.left() - visible.left()
-            visible = self._visible_rect_for(x, y, popup_w, popup_h)
-
-        # Vertical clamp - if the popup spills off the bottom, flip it above
-        # the anchor button.
-        if visible.bottom() > bounds.bottom():
-            anchor_top = anchor.mapToGlobal(QtCore.QPoint(0, 0)).y()
-            y_above = anchor_top - 2 - popup_h + self._SHADOW_MARGIN_B
-            visible_above = self._visible_rect_for(x, y_above, popup_w, popup_h)
-            if visible_above.top() >= bounds.top():
-                y = y_above
-            else:
-                # Neither orientation fits - just clamp to the bottom edge
-                y -= visible.bottom() - bounds.bottom()
-
-        return x, y
-
-    # -- event handling -------------------------------------------------------
-
-    def eventFilter(  # noqa: N802 - Qt naming
-        self, watched: QtCore.QObject, event: QtCore.QEvent
-    ) -> bool:
-        """Close the popup if the main window is resized or moved.
-
-        The popup is positioned in screen coordinates against the anchor at the
-        time of show.  Re-anchoring on every resize would race the layout
-        engine, so the safer behaviour is to dismiss the popup and let the user
-        re-open it once the new window geometry has settled.
-        """
-        if watched is self._main_window and event.type() in (
-            QtCore.QEvent.Type.Resize,
-            QtCore.QEvent.Type.Move,
-            QtCore.QEvent.Type.WindowStateChange,
-        ):
-            self.close()
-        return super().eventFilter(watched, event)
-
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 - Qt naming
-        if self._main_window is not None:
-            try:
-                self._main_window.removeEventFilter(self)
-            except Exception:
-                pass
-            self._main_window = None
-        super().closeEvent(event)
-
-    # -- slots ----------------------------------------------------------------
-
-    def _on_manage_users(self) -> None:
-        self.close()
-        if self._open_manager_cb:
-            self._open_manager_cb()
-
-    def _on_sign_out(self) -> None:
-        self.close()
-        if self._sign_out_cb:
-            self._sign_out_cb()
-
-
-# ---------------------------------------------------------------------------
-# Temperature label - emits textUpdated so the display panel can react
-# ---------------------------------------------------------------------------
-
-
-class TemperatureLabel(QtWidgets.QLabel):
-    """QLabel that fires textUpdated whenever setText() is called.
-
-    Keeps full backward compatibility (callers use setText as normal) while
-    letting the new split-display panel observe changes without polling.
-    """
-
-    textUpdated = QtCore.pyqtSignal(str)
-
-    def setText(self, text: str) -> None:
-        super().setText(text)
-        self.textUpdated.emit(text)
-
-
-# ---------------------------------------------------------------------------
-# Helpers for glass toggles (label + switch rows, radio-group compatibility)
-# ---------------------------------------------------------------------------
-
-
-class _SectionHeader(QtWidgets.QLabel):
-    """Soft, muted section header mirroring the account dropdown's typography.
-
-    Replaces the heavy blue GlassHeaderLabel pills inside the advanced panel
-    with quiet uppercase gray text, so the panel reads as clean grouped
-    sections rather than a grid of competing colored bars.
-    """
-
-    def __init__(self, text: str = "", parent=None) -> None:
-        super().__init__(text.upper(), parent)
-        self.setStyleSheet(
-            "QLabel { color: rgba(70, 90, 110, 200); font-size: 10px; "
-            "font-weight: bold; letter-spacing: 1px; background: transparent; "
-            "border: none; padding: 0px 1px; }"
-        )
-
-
 def _hairline() -> QtWidgets.QFrame:
-    """A 1px divider matching the account dropdown's hairline separators."""
+    """Creates a 1px divider matching the account dropdown's hairline separators.
+
+    This factory function generates a horizontal `QFrame` styled as a subtle
+    divider. It is designed to be used for visually grouping elements within
+    the UI while maintaining a clean, minimalist aesthetic.
+
+    Returns:
+        QtWidgets.QFrame: A configured frame object representing the hairline.
+    """
     line = QtWidgets.QFrame()
     line.setFrameShape(QtWidgets.QFrame.HLine)
+    # Using a transparent rgba color ensures the line is soft and non-intrusive
     line.setStyleSheet(
         "QFrame { background: rgba(200, 210, 220, 130); border: none; max-height: 1px; }"
     )
     return line
-
-
-class _DeviceConfigTitle(QtWidgets.QLabel):
-    """Title label for the device-config perspective that stays banner-compatible.
-
-    The device perspective replaced the old ``GlassWarningLabel`` banner with a
-    clean left-aligned title. External code (mainWindow.py) still drives that
-    former banner through ``.text()`` / ``.setText()`` to stamp the connected
-    device handle onto it (e.g. ``"Configuration Editor for Device 1A"`` and a
-    later ``.endswith(dev_handle)`` check).
-
-    To keep that contract intact while showing a tidy title, this widget stores
-    the raw banner string verbatim - ``text()`` returns exactly what was set, so
-    every existing string operation behaves as before - but the VISIBLE text is
-    a friendlier rendering: ``"Device Configuration"`` plus the trailing handle
-    when one is present.
-    """
-
-    _PREFIX = "Configuration Editor for Device"
-    _DISPLAY_BASE = "Device Configuration"
-
-    def __init__(self, text: str = "", parent=None) -> None:
-        super().__init__(parent)
-        self._raw_text = ""
-        self.setText(text)
-
-    def setText(self, text: str) -> None:  # noqa: N802 (Qt override)
-        self._raw_text = text if text is not None else ""
-        super().setText(self._render(self._raw_text))
-
-    def text(self) -> str:  # noqa: N802 (Qt override)
-        # Return the raw banner string so external endswith()/split() logic
-        # keeps operating on the same value the old banner exposed.
-        return self._raw_text
-
-    def _render(self, raw: str) -> str:
-        """Map a raw banner string to the friendly visible title.
-
-        Anything trailing the legacy prefix (the device handle) is rendered as a
-        small themed "chip" (bordered, filled, colored) so it reads clearly as
-        the connected device's name rather than plain trailing text. Without a
-        handle, just the base title is shown.
-        """
-        handle = ""
-        if raw.startswith(self._PREFIX):
-            handle = raw[len(self._PREFIX) :].strip()
-        base = (
-            f"<span style='color: rgba(28,40,52,235); font-size:14px; "
-            f"font-weight:bold;'>{self._DISPLAY_BASE}</span>"
-        )
-        if handle:
-            chip = (
-                "<span style='"
-                "background: rgba(10,163,230,38); "
-                "color: rgba(12,110,160,255); "
-                "border: 1px solid rgba(10,163,230,120); "
-                "border-radius: 7px; "
-                "padding: 1px 7px; "
-                "font-size: 12px; font-weight: bold; "
-                "letter-spacing: 0.5px;"
-                f"'>&nbsp;{handle}&nbsp;</span>"
-            )
-            # The em-space keeps a small gap between the title and the chip.
-            return f"{base}&#8195;{chip}"
-        return base
-
-
-class _SavedStateDot(QtWidgets.QWidget):
-    """A small glowing status dot that reflects a field's save state.
-
-    States, each a themed color with a soft outer glow:
-        * ``"querying"`` - red, pulsing (waiting on the device for a value)
-        * ``"blank"``    - quiet gray (no pending change, no value yet)
-        * ``"unsaved"``  - amber, gently pulsing to draw the eye
-        * ``"saved"``    - green, steady
-
-    The dot is purely visual; the authoritative state still lives on the
-    paired field action's ``iconText()`` (so all existing save/reset logic
-    keeps working). Call :meth:`set_state` whenever that text changes.
-
-    A one-shot :meth:`flash` pulse is used to nag the user about an unsaved
-    field when they try to leave the device view.
-    """
-
-    _COLORS = {
-        "blank": QtGui.QColor(150, 165, 180),
-        "unsaved": QtGui.QColor(240, 170, 50),
-        "saved": QtGui.QColor(60, 190, 120),
-        "querying": QtGui.QColor(228, 70, 70),
-    }
-    # States that should pulse continuously.
-    _PULSING = ("unsaved", "querying")
-    _SIZE = 14
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setFixedSize(self._SIZE, self._SIZE)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self._state = "blank"
-        self._glow = 0.0  # 0..1 animated glow strength (pulsing when active)
-        self._flash = 0.0  # 0..1 one-shot attention flash overlay
-
-        # Continuous gentle pulse used while in a pulsing state.
-        self._pulse = QtCore.QVariantAnimation(self)
-        self._pulse.setStartValue(0.25)
-        self._pulse.setEndValue(1.0)
-        self._pulse.setDuration(900)
-        self._pulse.setEasingCurve(QtCore.QEasingCurve.InOutSine)
-        self._pulse.setLoopCount(-1)
-        self._pulse.valueChanged.connect(self._on_pulse)
-
-        # One-shot attention flash (used by flash()).
-        self._flash_anim = QtCore.QVariantAnimation(self)
-        self._flash_anim.setStartValue(1.0)
-        self._flash_anim.setEndValue(0.0)
-        self._flash_anim.setDuration(520)
-        self._flash_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self._flash_anim.valueChanged.connect(self._on_flash)
-
-    def state(self) -> str:
-        return self._state
-
-    def set_state(self, state: str) -> None:
-        if state not in self._COLORS:
-            state = "blank"
-        if state == self._state:
-            return  # idempotent: avoid restarting the pulse on repeat calls
-        self._state = state
-        if state in self._PULSING:
-            self._pulse.stop()
-            self._pulse.start()
-        else:
-            self._pulse.stop()
-            self._glow = 1.0 if state == "saved" else 0.0
-        self.update()
-
-    def flash(self, times: int = 3) -> None:
-        """Play a brief attention pulse (used to nag about unsaved changes)."""
-        # Restart the one-shot flash; if not already unsaved-pulsing, this still
-        # reads as a distinct nudge because of the brighter overlay.
-        self._flash_anim.stop()
-        self._flash_anim.setLoopCount(max(1, times))
-        self._flash_anim.start()
-
-    def _on_pulse(self, v) -> None:
-        self._glow = float(v)
-        self.update()
-
-    def _on_flash(self, v) -> None:
-        self._flash = float(v)
-        self.update()
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
-        p = QtGui.QPainter(self)
-        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
-        c = QtGui.QColor(self._COLORS[self._state])
-        cx, cy = self.width() / 2.0, self.height() / 2.0
-
-        # Outer glow halo (strength driven by pulse / flash).
-        glow = max(self._glow, self._flash)
-        if glow > 0.01:
-            halo = QtGui.QColor(c)
-            halo.setAlphaF(0.35 * glow)
-            radius = 4.0 + 3.0 * glow
-            grad = QtGui.QRadialGradient(cx, cy, radius)
-            grad.setColorAt(0.0, halo)
-            transparent = QtGui.QColor(c)
-            transparent.setAlpha(0)
-            grad.setColorAt(1.0, transparent)
-            p.setBrush(QtGui.QBrush(grad))
-            p.setPen(QtCore.Qt.PenStyle.NoPen)
-            p.drawEllipse(QtCore.QPointF(cx, cy), radius, radius)
-
-        # Core dot.
-        core_r = 3.4
-        p.setBrush(QtGui.QBrush(c))
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 170), 1.0))
-        p.drawEllipse(QtCore.QPointF(cx, cy), core_r, core_r)
-        p.end()
-
-
-class _BorderlessActionButton(QtWidgets.QPushButton):
-    """A flat, borderless text button that lightens on hover.
-
-    Used for the per-field Save / Reset / Default actions so they read as quiet
-    inline links rather than heavy glass pills. No border or fill at rest; a
-    subtle translucent gray wash appears on hover and deepens on press.
-    """
-
-    def __init__(self, text: str = "", parent=None, *, tone: str = "neutral") -> None:
-        super().__init__(text, parent)
-        self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.setFlat(True)
-        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        # Tones let "Save" read a touch more primary than Reset/Default.
-        _text_color = {
-            "neutral": "rgba(60, 78, 96, 230)",
-            "primary": "rgba(20, 120, 180, 235)",
-        }.get(tone, "rgba(60, 78, 96, 230)")
-        self.setStyleSheet(f"""
-            QPushButton {{
-                border: none;
-                background: transparent;
-                color: {_text_color};
-                font-size: 12px;
-                font-weight: 600;
-                padding: 4px 10px;
-                border-radius: 7px;
-            }}
-            QPushButton:hover {{
-                background: rgba(120, 140, 160, 45);
-            }}
-            QPushButton:pressed {{
-                background: rgba(120, 140, 160, 80);
-            }}
-            QPushButton:disabled {{
-                color: rgba(120, 135, 150, 120);
-                background: transparent;
-            }}
-            """)
 
 
 class _FieldStateAction:
@@ -2172,20 +359,6 @@ _RANGE_SLIDER_QSS = """
     QSlider::sub-page:horizontal {
         background: rgba(10, 163, 230, 140);
         border-radius: 2px;
-    }
-"""
-
-_RANGE_SPIN_QSS = """
-    QSpinBox {
-        background: rgba(255, 255, 255, 60);
-        border: 1px solid rgba(255, 255, 255, 120);
-        border-radius: 12px;
-        padding: 4px 8px;
-        color: rgba(30, 40, 55, 220);
-    }
-    QSpinBox:focus {
-        background: rgba(255, 255, 255, 180);
-        border: 1px solid rgba(0, 120, 215, 150);
     }
 """
 
@@ -2467,7 +640,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.chBox_correctNoise, 5, 1, 1, 3)
 
         # Cartridge Auto-Lock -------------------------------------------------
-        self.l9 = GlassHeaderLabel("Cartridge Auto-Lock")
+        self.l9 = HeaderLabel("Cartridge Auto-Lock")
         if USE_FULLSCREEN:
             self.l9.setFixedHeight(50)
         self.Layout_controls.addWidget(self.l9, 1, 4, 1, 1)
@@ -2616,25 +789,25 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.pTemp, 4, 4, 1, 1)
 
         # Control Buttons ------------------------------------------------------
-        self.l = GlassHeaderLabel("Control Buttons")
+        self.l = HeaderLabel("Control Buttons")
         if USE_FULLSCREEN:
             self.l.setFixedHeight(50)
         self.Layout_controls.addWidget(self.l, 1, 5, 1, 2)
 
         # Operation Mode -------------------------------------------------------
-        self.l0 = GlassHeaderLabel("Operation Mode")
+        self.l0 = HeaderLabel("Operation Mode")
         if USE_FULLSCREEN:
             self.l0.setFixedHeight(50)
         self.Layout_controls.addWidget(self.l0, 1, 0, 1, 1)
 
         # Resonance Frequency / Quartz Sensor ---------------------------------
-        self.l2 = GlassHeaderLabel("Resonance Frequency / Quartz Sensor")
+        self.l2 = HeaderLabel("Resonance Frequency / Quartz Sensor")
         if USE_FULLSCREEN:
             self.l2.setFixedHeight(50)
         self.Layout_controls.addWidget(self.l2, 3, 1, 1, 3)
 
         # Serial COM Port -----------------------------------------------------
-        self.l1 = GlassHeaderLabel("Serial COM Port")
+        self.l1 = HeaderLabel("Serial COM Port")
         if USE_FULLSCREEN:
             self.l1.setFixedHeight(50)
         self.Layout_controls.addWidget(self.l1, 1, 1, 1, 3)
@@ -2695,13 +868,13 @@ class UIControls:  # QtWidgets.QMainWindow
         )
 
         # Save file / TEC Temperature Control header --------------------------
-        self.infosave = GlassHeaderLabel("TEC Temperature Control")
+        self.infosave = HeaderLabel("TEC Temperature Control")
         if USE_FULLSCREEN:
             self.infosave.setFixedHeight(50)
         self.Layout_controls.addWidget(self.infosave, 1, 4, 1, 1)
 
         # Program Status standby ----------------------------------------------
-        self.infostatus = GlassStatusLabel()
+        self.infostatus = StatusLabel()
         self.infostatus.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.infostatus.setText("Program Status Standby")
         if USE_FULLSCREEN:
@@ -2711,7 +884,7 @@ class UIControls:  # QtWidgets.QMainWindow
         # Infobar -------------------------------------------------------------
         self.infobar = QtWidgets.QLineEdit()
         self.infobar.setReadOnly(True)
-        self.infobar_label = GlassStatusLabel()
+        self.infobar_label = StatusLabel()
         self.infobar.textChanged.connect(self.infobar_label.setText)
         if SHOW_SIMPLE_CONTROLS:
             self.infobar.textChanged.connect(self._update_progress_text)
@@ -2720,7 +893,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.Layout_controls.addWidget(self.infobar_label, 0, 0, 1, 7)
 
         # Multiplex -----------------------------------------------------------
-        self.lmp = GlassHeaderLabel("Multiplex Mode")
+        self.lmp = HeaderLabel("Multiplex Mode")
         if USE_FULLSCREEN:
             self.lmp.setFixedHeight(50)
         self.Layout_controls.addWidget(self.lmp, 3, 0, 1, 1)
@@ -2760,7 +933,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.run_progress_bar = QtWidgets.QProgressBar()
         self.run_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
         self.run_progress_bar.setObjectName("progressBar")
-        self.run_progress_bar.setStyleSheet(_GLASS_PROGRESSBAR_QSS)
+        self.run_progress_bar.setStyleSheet(_PROGRESSBAR_QSS)
 
         if USE_FULLSCREEN:
             self.run_progress_bar.setFixedHeight(50)
@@ -2787,7 +960,7 @@ class UIControls:  # QtWidgets.QMainWindow
 
         self.tool_bar = QtWidgets.QToolBar()
         self.tool_bar.setIconSize(QtCore.QSize(50, 30))
-        self.tool_bar.setStyleSheet(_GLASS_TOOLBAR_QSS)
+        self.tool_bar.setStyleSheet(_TOOLBAR_QSS)
 
         self.tool_NextPortRow = NumberIconButton()
         self.tool_NextPortRow.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
@@ -2868,7 +1041,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tempController.leaveEvent = self.action_tempcontrol_warn_stop
         self.tempController.setMinimumWidth(0)
         self.tempController.setMaximumWidth(0)  # collapsed until activated
-        self.tempController.setStyleSheet(_GLASS_TEMP_CONTROLLER_QSS)
+        self.tempController.setStyleSheet(_TEMP_CONTROLLER_QSS)
 
         # Status banner - coloured background + descriptive text. Sits ABOVE the
         # slider on the left side of the panel, matching the wireframe.
@@ -2925,13 +1098,13 @@ class UIControls:  # QtWidgets.QMainWindow
         self._set_temp_arrow(expand=False)
 
         # Wire live temperature updates to the display panel
-        self.lTemp.textUpdated.connect(self._update_temp_display)
+        self.lTemp.text_updated.connect(self._update_temp_display)
 
         self.toolBar.addStretch()
 
         self.tool_bar_2 = QtWidgets.QToolBar()
         self.tool_bar_2.setIconSize(QtCore.QSize(50, 30))
-        self.tool_bar_2.setStyleSheet(_GLASS_TOOLBAR_QSS)
+        self.tool_bar_2.setStyleSheet(_TOOLBAR_QSS)
 
         icon_advanced = QtGui.QIcon()
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
@@ -2964,7 +1137,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.toolBar.setContentsMargins(8, 4, 8, 4)
 
         # Glass container for the entire toolbar row --------------------------
-        self.toolBarWidget = GlassControlsWidget()
+        self.toolBarWidget = ControlsWidget()
         self.toolBarWidget.setLayout(self.toolBar)
 
         self.toolLayout.addWidget(self.toolBarWidget)
@@ -3070,7 +1243,7 @@ class UIControls:  # QtWidgets.QMainWindow
         # _DeviceConfigTitle stores that raw banner string verbatim (so
         # ``.text()`` / ``.endswith(dev_handle)`` keep working) while DISPLAYING
         # a clean, left-aligned title with the handle appended.
-        self.device_config_title = _DeviceConfigTitle("Configuration Editor for Device")
+        self.device_config_title = DeviceConfigLabel("Configuration Editor for Device")
         self.device_config_title.setStyleSheet(
             "QLabel { color: rgba(28, 40, 52, 235); font-size: 14px; "
             "font-weight: bold; background: transparent; border: none; }"
@@ -3183,7 +1356,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self._dot_sync_timer.start()
 
         def _make_dot(action, widget):
-            dot = _SavedStateDot()
+            dot = SavedStateDot()
             self._field_dots[action] = dot
             self._field_widgets[action] = widget
             return dot
@@ -3214,11 +1387,11 @@ class UIControls:  # QtWidgets.QMainWindow
         )
         self.device_pid_dot = _make_dot(self.device_pid_action, self.device_pid_input)
 
-        self.device_config_default = _BorderlessActionButton("Default")
+        self.device_config_default = BorderlessActionButton("Default")
         self.device_config_default.clicked.connect(self.on_device_config_default)
-        self.device_config_save = _BorderlessActionButton("Save", tone="primary")
+        self.device_config_save = BorderlessActionButton("Save", tone="primary")
         self.device_config_save.clicked.connect(self.on_device_config_save)
-        self.device_config_reset = _BorderlessActionButton("Reset")
+        self.device_config_reset = BorderlessActionButton("Reset")
         self.device_config_reset.clicked.connect(self.on_device_config_reset)
 
         # Row 1L: Constant Temperature Calibration
@@ -3281,11 +1454,11 @@ class UIControls:  # QtWidgets.QMainWindow
             self.temp_cal_measure_action, self.temp_cal_measure_input
         )
 
-        self.temp_cal_default = _BorderlessActionButton("Default")
+        self.temp_cal_default = BorderlessActionButton("Default")
         self.temp_cal_default.clicked.connect(self.on_temp_cal_default)
-        self.temp_cal_save = _BorderlessActionButton("Save", tone="primary")
+        self.temp_cal_save = BorderlessActionButton("Save", tone="primary")
         self.temp_cal_save.clicked.connect(self.on_temp_cal_save)
-        self.temp_cal_reset = _BorderlessActionButton("Reset")
+        self.temp_cal_reset = BorderlessActionButton("Reset")
         self.temp_cal_reset.clicked.connect(self.on_temp_cal_reset)
 
         # Row 2L: Lid Pogo Distance (Servo Steps) - range slider + number box.
@@ -3358,23 +1531,23 @@ class UIControls:  # QtWidgets.QMainWindow
         )
         self.lid_pogo_delay_dot = _make_dot(self.lid_pogo_delay_action, self.lid_pogo_delay_field)
 
-        self.lid_pogo_default = _BorderlessActionButton("Default")
+        self.lid_pogo_default = BorderlessActionButton("Default")
         self.lid_pogo_default.clicked.connect(self.on_lid_pogo_default)
-        self.lid_pogo_save = _BorderlessActionButton("Save", tone="primary")
+        self.lid_pogo_save = BorderlessActionButton("Save", tone="primary")
         self.lid_pogo_save.clicked.connect(self.on_lid_pogo_save)
-        self.lid_pogo_reset = _BorderlessActionButton("Reset")
+        self.lid_pogo_reset = BorderlessActionButton("Reset")
         self.lid_pogo_reset.clicked.connect(self.on_lid_pogo_reset)
 
         # --- Sectioned layout (mirrors the Advanced perspective) ---
         # The device perspective uses the SAME visual language as the advanced
-        # view: quiet uppercase _SectionHeader labels, hairline dividers, and
+        # view: quiet uppercase SectionHeader labels, hairline dividers, and
         # consistent spacing. Each editable field carries a glowing status dot
         # (gray → amber → green) reflecting its save state.
         def dev_section(title, *rows):
             col = QtWidgets.QVBoxLayout()
             col.setContentsMargins(0, 0, 0, 0)
             col.setSpacing(6)
-            col.addWidget(_SectionHeader(title))
+            col.addWidget(SectionHeader(title))
             col.addWidget(_hairline())
             for row in rows:
                 if isinstance(row, QtWidgets.QLayout):
@@ -3465,11 +1638,11 @@ class UIControls:  # QtWidgets.QMainWindow
         # --- Global action buttons (Default All / Reset All / Save All) ---
         # These operate across every section at once; the per-section buttons
         # remain for targeted edits.
-        self.device_default_all = _BorderlessActionButton("Default All")
+        self.device_default_all = BorderlessActionButton("Default All")
         self.device_default_all.clicked.connect(self.on_device_default_all)
-        self.device_reset_all = _BorderlessActionButton("Reset All")
+        self.device_reset_all = BorderlessActionButton("Reset All")
         self.device_reset_all.clicked.connect(self.on_device_reset_all)
-        self.device_save_all = _BorderlessActionButton("Save All", tone="primary")
+        self.device_save_all = BorderlessActionButton("Save All", tone="primary")
         self.device_save_all.clicked.connect(self.on_device_save_all)
 
         all_btn_row = QtWidgets.QHBoxLayout()
@@ -4287,7 +2460,7 @@ class UIControls:  # QtWidgets.QMainWindow
         else:
             plain_text = "Status: {}".format(plain_text)
         self.run_progress_bar.setFormat(plain_text)
-        styleBar = _GLASS_PROGRESSBAR_QSS.replace(
+        styleBar = _PROGRESSBAR_QSS.replace(
             "color: #1a3050;", "color: {COLOR}; font-weight: bold;"
         ).replace("{COLOR}", color)
         self.run_progress_bar.setStyleSheet(styleBar)
@@ -4588,7 +2761,7 @@ class UIControls:  # QtWidgets.QMainWindow
             col = QtWidgets.QVBoxLayout()
             col.setContentsMargins(0, 0, 0, 0)
             col.setSpacing(6)
-            col.addWidget(_SectionHeader(title))
+            col.addWidget(SectionHeader(title))
             col.addWidget(_hairline())
             for row in rows:
                 if isinstance(row, QtWidgets.QLayout):
@@ -4805,7 +2978,7 @@ class UIControls:  # QtWidgets.QMainWindow
             except Exception:
                 pass
 
-        self._account_popup = GlassAccountPopup(
+        self._account_popup = AccountPopup(
             open_manager_cb=self._open_user_manager,
             sign_out_cb=self._sign_out_current_user,
         )

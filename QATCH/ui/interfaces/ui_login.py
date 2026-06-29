@@ -142,7 +142,7 @@ class CardPopEffect(QtWidgets.QGraphicsEffect):
 
     A single custom QGraphicsEffect rather than QGraphicsOpacityEffect plus
     some separate scale mechanism, so the card can visually zoom (the "Deep
-    Focus" pop/push) without reflowing its real child widgets — QLineEdit,
+    Focus" pop/push) without reflowing its real child widgets - QLineEdit,
     QPushButton, etc. keep their normal layout-driven geometry; only the
     rendered pixmap is transformed.
     """
@@ -208,7 +208,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
 
         # "Deep Focus" backdrop state: both 0.0 (dashboard sharp/bright, the
         # signed-in look) -> 1.0 (dashboard blurred/dimmed, the signed-out
-        # look). Applied via QPainter in paintEvent — deliberately NOT a
+        # look). Applied via QPainter in paintEvent - deliberately NOT a
         # QGraphicsEffect. An ancestor-level QGraphicsOpacityEffect was tried
         # first, but it doesn't reliably cascade through the card's deep,
         # real-widget subtree (native inputs, WA_TranslucentBackground
@@ -218,7 +218,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
         self._dim_frac: float = 0.0
         self._backdrop_anim: Optional[QtCore.QVariantAnimation] = None
 
-        # The card fades/scales independently via its own CardPopEffect —
+        # The card fades/scales independently via its own CardPopEffect -
         # see register_dismissable_card().
         self._card: Optional["GlassCard"] = None
         self._card_effect: Optional[CardPopEffect] = None
@@ -227,7 +227,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
 
         # NOTE: deliberately NOT WA_OpaquePaintEvent. That hint tells Qt this
         # widget always fully overwrites its area, so Qt skips repainting
-        # whatever is underneath first — fine at rest, but once paintEvent
+        # whatever is underneath first - fine at rest, but once paintEvent
         # blends with reduced opacity during a transition, the blend needs
         # the *live* parent content underneath, not a stale, skipped-repaint
         # backing store.
@@ -304,27 +304,73 @@ class LoginCentralWidget(QtWidgets.QWidget):
         self._dim_frac = 0.0
         self.update()
 
+    def refresh_backdrop_instant(self, source: QtWidgets.QWidget) -> None:
+        """Swaps in a real snapshot of `source` without leaving the fully
+        blurred/dimmed "instant" state `reveal_signed_out(instant=True)`
+        left us in.
+
+        Cold start calls `reveal_signed_out(instant=True)` before the window
+        has ever been shown, so there's nothing meaningful to snapshot yet -
+        it falls back to the plain gradient. Once the window has actually
+        settled at its real size, this re-captures the (now real) dashboard
+        and keeps it fully blurred/dimmed - swapping the picture behind the
+        frost+dim layers rather than animating sharp/bright in then back out.
+
+        Args:
+            source (QtWidgets.QWidget): The widget to grab for the backdrop.
+        """
+        self.capture_backdrop(source)
+        self._blur_frac = 1.0
+        self._dim_frac = 1.0
+        self.update()
+
     def reveal_signed_out(
         self,
         backdrop_source: Optional[QtWidgets.QWidget] = None,
         blur_duration: int = 400,
         card_duration: int = 500,
         border_delay: int = 100,
+        instant: bool = False,
     ) -> None:
         """Plays the "Deep Focus" sign-out reveal.
 
-        The dashboard pulls out of focus — blurring and dimming in behind
-        the glass — while the login card pops into the foreground with a
+        The dashboard pulls out of focus - blurring and dimming in behind
+        the glass - while the login card pops into the foreground with a
         slight overshoot, its emphasis border catching up shortly after.
 
         Args:
             backdrop_source (QtWidgets.QWidget, optional): If given, a fresh
                 `capture_backdrop()` is taken from this widget before showing.
+                Ignored when `instant` is True - there's no live dashboard
+                worth snapshotting before the window has ever been shown, so
+                the plain fallback gradient is used instead.
             blur_duration (int, optional): Background blur/dim duration (ms).
             card_duration (int, optional): Card pop duration (ms).
             border_delay (int, optional): Delay before the card border starts
                 fading in (ms), relative to the start of the card pop.
+            instant (bool, optional): If True, skips the crossfade/pop
+                animations and any backdrop capture entirely, snapping
+                straight to the fully blurred/dimmed, fully-popped end state.
+                Used on the app's cold start so the dashboard is never
+                visible bright/sharp, even for a single frame.
         """
+        if instant:
+            self._stop_backdrop_anim()
+            self._stop_card_anim()
+            self._stop_border_anim()
+            self._refit_to_parent()
+            self._blur_frac = 1.0
+            self._dim_frac = 1.0
+            if self._card_effect is not None:
+                self._card_effect.setScale(1.0)
+                self._card_effect.setOpacity(1.0)
+            if self._card is not None:
+                self._card.set_border_frac(1.0)
+            self.update()
+            self.show()
+            self.raise_()
+            return
+
         if backdrop_source is not None:
             self.capture_backdrop(backdrop_source)
 
@@ -369,8 +415,8 @@ class LoginCentralWidget(QtWidgets.QWidget):
     def dismiss_for_signin(self, card_duration: int = 250, blur_duration: int = 400) -> None:
         """Plays the "Deep Focus" sign-in dismissal.
 
-        The login card snaps back and fades quickly — as if pushed past the
-        lens — while the dashboard pulls back into sharp, bright focus over
+        The login card snaps back and fades quickly - as if pushed past the
+        lens - while the dashboard pulls back into sharp, bright focus over
         a slightly longer beat. The overlay fully tears down once the
         background finishes resolving.
 
@@ -419,7 +465,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
         """Applies the card's scale + opacity for the current pop progress.
 
         `t` ranges 0.0 (hidden, 90% size) -> 1.0 (shown, 100% size), and may
-        briefly exceed 1.0 during an OutBack overshoot — CardPopEffect clamps
+        briefly exceed 1.0 during an OutBack overshoot - CardPopEffect clamps
         opacity but lets scale overshoot, which is the intended bounce.
         """
         if self._card_effect is None:
@@ -447,7 +493,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
         Called once the background finishes resolving to sharp/bright.
         Beyond hiding, this drops the (potentially full-screen-sized)
         blurred/raw snapshots so no stale frame and no image memory linger
-        while signed in — the next `reveal_signed_out()` always starts from
+        while signed in - the next `reveal_signed_out()` always starts from
         a fresh `capture_backdrop()`.
         """
         self.hide()
@@ -563,7 +609,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
             grad.setColorAt(1.0, QtGui.QColor(0xEE, 0xF4, 0xF8))
             p.fillRect(rect, QtGui.QBrush(grad))
 
-        # Constant light glass frost — the identity of the card, independent
+        # Constant light glass frost - the identity of the card, independent
         # of how dimmed the scene currently is.
         p.fillRect(rect, QtGui.QColor(238, 243, 247, 62))
 
@@ -803,7 +849,7 @@ class SlidingPanel(QtWidgets.QWidget):
         # Stop existing animation to prevent conflicting positional updates.
         # DeleteWhenStopped (below) deletes the underlying C++ object once a
         # previous animation finishes naturally, but leaves this Python
-        # reference dangling — touching it then raises RuntimeError.
+        # reference dangling - touching it then raises RuntimeError.
         if self._anim is not None:
             try:
                 if self._anim.state() == QtCore.QPropertyAnimation.Running:
@@ -1011,7 +1057,7 @@ class UILogin:
         self.togglepasswordAction.triggered.connect(self.on_toggle_password_Action)
         si.addWidget(self.user_password)
 
-        # Caps Lock indicator — always occupies its row; text is blank when off
+        # Caps Lock indicator - always occupies its row; text is blank when off
         self.caps_indicator = QtWidgets.QLabel("")
         self.caps_indicator.setObjectName("capsIndicator")
         self.caps_indicator.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -1164,7 +1210,7 @@ class UILogin:
         self.loginCard.setObjectName("loginCard")
         self.loginCard.setAttribute(QtCore.Qt.WA_StyledBackground, False)
         self.loginCard.setContentsMargins(0, 0, 0, 0)
-        # NOTE: intentionally no QGraphicsDropShadowEffect here — the card
+        # NOTE: intentionally no QGraphicsDropShadowEffect here - the card
         # gets its own CardPopEffect below (via register_dismissable_card,
         # for the sign-out/sign-in pop), and Qt doesn't compose two graphics
         # effects on the same widget. The card's own manual border painting
@@ -1190,7 +1236,7 @@ class UILogin:
             os.path.join(Architecture.get_path(), "QATCH", "icons", "clear.svg"),
         )
 
-        # user_info proxy — legacy code calls .user_info.clear() / .setText(); route to badge
+        # user_info proxy - legacy code calls .user_info.clear() / .setText(); route to badge
         self.user_info = _UserInfoProxy(self.floating_badge, self.loginCard)
 
         self._sessionTimer = QtCore.QTimer()
@@ -1480,7 +1526,7 @@ class UILogin:
         authenticated, filename, params = UserProfiles.auth(username, pwd, UserRoles.ANY)
 
         if authenticated:
-            # Animated, not an instant clear() — slides/fades out in sync
+            # Animated, not an instant clear() - slides/fades out in sync
             # with the card's "Deep Focus" dismissal below.
             self.floating_badge.slide_out()
             self.user_info.suppress = True

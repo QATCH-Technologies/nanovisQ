@@ -1,4 +1,4 @@
-"""History mode — view and clear the import/export history log.
+"""History mode - view and clear the import/export history log.
 
 PORT FROM export_widget.Ui_Export:
     build()            <- tab3 construction (history view, clearAllHistory)
@@ -38,7 +38,7 @@ TAG = "[DataHistory]"
 
 
 class _ClickableRow(QtWidgets.QFrame):
-    """A transparent row container that emits ``clicked`` on a left click —
+    """A transparent row container that emits ``clicked`` on a left click -
     used as the always-visible header of an expandable history row."""
 
     clicked = QtCore.pyqtSignal()
@@ -66,7 +66,7 @@ class HistoryMode(DataModeWidget):
         self._page_entries = []  # full filtered/sorted list backing the list
         self._visible_count = 0  # how many of _page_entries are rendered
         self._last_group = None  # date-group header most recently rendered
-        self._end_label = None  # "— End of history —" marker, once shown
+        self._end_label = None  # "- End of history -" marker, once shown
         self._loading_more = False  # reentrancy guard for the scroll handler
 
         heading = QtWidgets.QLabel("Import / Export History")
@@ -237,7 +237,7 @@ class HistoryMode(DataModeWidget):
         self.on_enter()
 
     # ------------------------------------------------------------------
-    #  Parsing — turn the raw HTML log into structured records
+    #  Parsing - turn the raw HTML log into structured records
     # ------------------------------------------------------------------
     def _parse_entries(self, raw):
         """Split the log into entries and pull out structured fields.
@@ -302,7 +302,7 @@ class HistoryMode(DataModeWidget):
         return m.group(1).strip() if m else None
 
     # ------------------------------------------------------------------
-    #  Rendering — date-grouped, compact expandable rows
+    #  Rendering - date-grouped, compact expandable rows
     # ------------------------------------------------------------------
     PAGE_SIZE = 50  # rows rendered per page; long logs stay responsive
 
@@ -351,11 +351,11 @@ class HistoryMode(DataModeWidget):
             self._show_end_label()
 
     def _show_end_label(self):
-        """Append an "end of history" cue — only once pagination actually
+        """Append an "end of history" cue - only once pagination actually
         happened (a single page's worth of entries needs no such marker)."""
         if self._end_label is not None or len(self._page_entries) <= self.PAGE_SIZE:
             return
-        label = QtWidgets.QLabel("— End of history —")
+        label = QtWidgets.QLabel("- End of history -")
         label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         label.setStyleSheet(
             "QLabel { color: rgba(60, 72, 88, 150); font-size: 11px; "
@@ -542,7 +542,7 @@ class HistoryMode(DataModeWidget):
     def _go_to_export(self):
         """Jump to the Export step so the user can set up a similar export.
 
-        Settings aren't replayed automatically — the logged text ("All Runs,
+        Settings aren't replayed automatically - the logged text ("All Runs,
         CSV Report, Append existing") is free-form and lossy to re-parse
         reliably, so this is a shortcut to the wizard, not an auto-repeat.
         """

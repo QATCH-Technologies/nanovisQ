@@ -5,7 +5,7 @@ Animated toggle switch that matches the glass-morphism aesthetic of
 GlassLineEdit and GlassPushButton.
 
 Track colour interpolates from a soft grey (off) to the primary blue
-accent (on) — the same blue used by GlassPushButton's "primary" variant
+accent (on) - the same blue used by GlassPushButton's "primary" variant
 (rgba 45, 165, 250).  A white thumb slides left / right with an
 OutCubic easing over 150 ms.
 
@@ -29,7 +29,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class GlassToggle(QtWidgets.QAbstractButton):
     """Pill-shaped animated toggle switch.
 
-    Inherits ``toggled(bool)`` from ``QAbstractButton`` — a drop-in
+    Inherits ``toggled(bool)`` from ``QAbstractButton`` - a drop-in
     replacement for ``QCheckBox`` wherever only the checked state matters.
 
     Attributes:
@@ -41,7 +41,7 @@ class GlassToggle(QtWidgets.QAbstractButton):
     _TRACK_H: int = 22
     _THUMB_D: int = 16  # diameter; margin = (_TRACK_H - _THUMB_D) / 2 = 3 px
 
-    # ── Colours (plain tuples — QColor constructed at paint time) ─────
+    # ── Colours (plain tuples - QColor constructed at paint time) ─────
     # Track: off = muted glass grey, on = primary-button blue
     _TRACK_OFF = (180, 185, 195, 140)
     _TRACK_ON = (45, 165, 250, 200)
@@ -86,7 +86,7 @@ class GlassToggle(QtWidgets.QAbstractButton):
     # ------------------------------------------------------------------
     def setChecked(self, checked: bool) -> None:
         # Snap anim_t so the thumb appears in the correct position
-        # immediately — avoids a jarring mid-paint initial frame.
+        # immediately - avoids a jarring mid-paint initial frame.
         self._anim_t = 1.0 if checked else 0.0
         super().setChecked(checked)
 
@@ -100,7 +100,7 @@ class GlassToggle(QtWidgets.QAbstractButton):
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
         t = self._anim_t
         w, h = self.width(), self.height()
-        r = h / 2.0  # track corner radius — full pill
+        r = h / 2.0  # track corner radius - full pill
 
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
