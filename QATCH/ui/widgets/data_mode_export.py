@@ -50,27 +50,25 @@ copytree with existing-files policy + date filtering, nested-folder flattening,
 and the export-history log entry.
 """
 
-import os
 import csv
+import datetime
+import os
 import shutil
 import zipfile
-import datetime
 from datetime import timezone as tz
 
 import numpy as np
-
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from QATCH.core.constants import Constants
 from QATCH.common.logger import Logger as Log
-
-from QATCH.ui.widgets.data_mode_base import DataModeWidget
+from QATCH.core.constants import Constants
 from QATCH.ui.components import (
-    GlassPushButton,
     GlassLineEdit,
     GlassOptionCard,
     GlassOptionCardGroup,
+    GlassPushButton,
 )
+from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 # Parser for reading run capture archives when building the CSV report. Imported
 # lazily-safe: if VisQAI isn't importable at layout time, CSV export degrades to
@@ -1285,13 +1283,13 @@ class ExportMode(DataModeWidget):
 
         old_lbl = QtWidgets.QLabel(clip)
         old_lbl.setPixmap(old_pix)
-        old_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        old_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         old_lbl.setGeometry(QtCore.QRect(rest, size))
         old_lbl.show()
 
         new_lbl = QtWidgets.QLabel(clip)
         new_lbl.setPixmap(new_pix)
-        new_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        new_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         new_lbl.setGeometry(QtCore.QRect(new_start, size))
         new_lbl.show()
         new_lbl.raise_()

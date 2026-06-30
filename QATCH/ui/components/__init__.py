@@ -6,7 +6,7 @@ from .glass_option_card import GlassOptionCard, GlassOptionCardGroup
 from .glass_push_button import GlassPushButton
 from .glass_toggle import GlassToggle
 from .glass_warning_label import GlassWarningLabel
-from .number_icon_button import NumberIconButton
+from .number_icon_button import FLUXControl, NumberIconButton
 from .run_controls_button import RunControls
 
 __all__ = [
@@ -22,4 +22,5 @@ __all__ = [
     "GlassWarningLabel",
     "NumberIconButton",
     "RunControls",
+    "FLUXControl",
 ]

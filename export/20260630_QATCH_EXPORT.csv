@@ -1,0 +1,11 @@
+Run Name,Average Viscosity,Std Dev,Viscosity Profile,Temperature,Formulation_Protein,Formulation_Stabilizer,Formulation_Buffer,Formulation_Surfactant,Formulation_Salt,Formulation_Excipient,Notes
+M250505W14_102CP_G2_,80.08,15.56,"[110.25, 79.43, 71.84, 71.06, 67.82]",25.22,,,,,,,
+TEST1_,11.63,2.08,"[12.27, 12.75, 12.74, 12.92, 7.49]",25.48,,,,,,,
+TEST2_,6.10,0.06,"[6.16, 6.16, 5.99, 6.08, 6.1]",25.75,,,,,,,
+TEST3_,12.18,3.53,"[14.18, 14.53, 14.25, 12.69, 5.24]",25.50,150.0 mg/mL poly-hIgG,,20.0 mM Acetate,,,,
+TEST4_,11.78,2.62,"[13.18, 13.12, 13.43, 12.63, 6.56]",25.65,150.0 mg/mL poly-hIgG,,20.0 mM Acetate,,,,
+TEST5_,9.78,3.68,"[11.45, 12.07, 12.15, 10.74, 2.5]",25.57,90.0 mg/mL poly-hIgG,,20.0 mM Acetate,,,,
+TEST6_,4.32,0.31,"[4.69, 4.43, 4.4, 4.33, 3.75]",25.50,50.0 mg/mL poly-hIgG,,20.0 mM Acetate,,,,
+test2_,nan,nan,[],25.00,,,,,,,
+test3_,nan,nan,[],25.00,,,,,,,
+test_,nan,nan,[],25.00,,,,,,,

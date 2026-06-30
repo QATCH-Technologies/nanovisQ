@@ -14,19 +14,25 @@ Things that I need to update:
 - Optional: pretty print creation dates, access dates and audit logs
 """
 
-import os
-import hashlib
 import datetime as dt
+import hashlib
+import os
 from xml.dom import minidom
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from QATCH.common.logger import Logger as Log
-from QATCH.common.fileManager import FileManager
-from QATCH.core.constants import Constants, UserRoles
-from QATCH.ui.popUp import PopUp
-from QATCH.common.userProfiles import UserProfiles, UserConstants
 from QATCH.common.architecture import Architecture
-from QATCH.ui.components import GlassToggle, GlassPushButton, GlassLineEdit, AnimatedComboBox
+from QATCH.common.fileManager import FileManager
+from QATCH.common.logger import Logger as Log
+from QATCH.common.userProfiles import UserConstants, UserProfiles
+from QATCH.core.constants import Constants, UserRoles
+from QATCH.ui.components import (
+    AnimatedComboBox,
+    GlassLineEdit,
+    GlassPushButton,
+    GlassToggle,
+)
+from QATCH.ui.popUp import PopUp
 from QATCH.ui.widgets.reset_password_widget import ResetPasswordWidget
 
 TAG = "[UserProfilesManager]"
@@ -576,7 +582,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             clip = QtWidgets.QFrame(self.glass_frame)
             clip.setObjectName("slideClip")
             clip.setStyleSheet("QFrame#slideClip { background: transparent; border: none; }")
-            clip.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+            clip.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             clip.setGeometry(tbl_geo)
             clip.setAttribute(QtCore.Qt.WA_StyledBackground, True)
             # Force hard clipping of child widgets to the wrapper's rect.
@@ -597,13 +603,13 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
             old_overlay = QtWidgets.QLabel(clip)
             old_overlay.setPixmap(old_pixmap)
-            old_overlay.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+            old_overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             old_overlay.setGeometry(QtCore.QRect(rest_pos, tbl_geo.size()))
             old_overlay.show()
 
             new_overlay = QtWidgets.QLabel(clip)
             new_overlay.setPixmap(new_pixmap)
-            new_overlay.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+            new_overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             new_overlay.setGeometry(QtCore.QRect(new_start, tbl_geo.size()))
             new_overlay.show()
             new_overlay.raise_()
@@ -2006,7 +2012,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             overlay = QtWidgets.QWidget(vp)
             overlay.setGeometry(row_rect)
             overlay.setStyleSheet("background: rgba(220, 53, 69, 50);")
-            overlay.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+            overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             overlay.show()
             overlay.raise_()
             self._delete_overlays.append((overlay, row))

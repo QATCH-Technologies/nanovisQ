@@ -13,14 +13,13 @@ import os
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
-from QATCH.common.logger import Logger as Log
-
 from QATCH.common.data_service import DataServices
-from QATCH.ui.widgets.data_mode_import import ImportMode
-from QATCH.ui.widgets.data_mode_export import ExportMode
-from QATCH.ui.widgets.data_mode_recover import RecoverMode
+from QATCH.common.logger import Logger as Log
 from QATCH.ui.widgets.data_mode_advanced import AdvancedMode
+from QATCH.ui.widgets.data_mode_export import ExportMode
 from QATCH.ui.widgets.data_mode_history import HistoryMode
+from QATCH.ui.widgets.data_mode_import import ImportMode
+from QATCH.ui.widgets.data_mode_recover import RecoverMode
 
 TAG = "[DataManagement]"
 
@@ -532,13 +531,13 @@ class DataManagementWidget(QtWidgets.QWidget):
 
         old_lbl = QtWidgets.QLabel(clip)
         old_lbl.setPixmap(old_pix)
-        old_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        old_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         old_lbl.setGeometry(QtCore.QRect(rest, size))
         old_lbl.show()
 
         new_lbl = QtWidgets.QLabel(clip)
         new_lbl.setPixmap(new_pix)
-        new_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        new_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         new_lbl.setGeometry(QtCore.QRect(new_start, size))
         new_lbl.show()
         new_lbl.raise_()
@@ -868,7 +867,7 @@ class DataManagementWidget(QtWidgets.QWidget):
 
         proxy = QtWidgets.QLabel(self)
         proxy.setObjectName("closeFadeProxy")
-        proxy.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        proxy.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         proxy.setPixmap(pix)
         proxy.setGeometry(geo)
         proxy.show()

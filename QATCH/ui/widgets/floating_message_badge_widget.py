@@ -241,7 +241,7 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
             elif self.isVisible() and event_type in (
                 QtCore.QEvent.Type.Move,
                 QtCore.QEvent.Type.Resize,
-                QtCore.QEvent.Show,
+                QtCore.QEvent.Type.Show,
                 QtCore.QEvent.Type.WindowStateChange,
             ):
                 # Reposition synchronously to eliminate drag lag

@@ -139,6 +139,7 @@ class ColorTokens(TypedDict):
     ctrl_temp_heating_bg: RGBA
     ctrl_temp_heating_text: RGBA
     ctrl_temp_cooling_bg: RGBA
+    ctrl_temp_cooling_text: RGBA
     # Controls UI — amber pulse border (unsaved field highlight)
     ctrl_pulse_border: RGBA
     # Controls UI — infobar readout label
@@ -281,6 +282,7 @@ LIGHT: ColorTokens = {
     "ctrl_temp_heating_bg": (240, 190, 0, 220),
     "ctrl_temp_heating_text": (30, 20, 0, 200),
     "ctrl_temp_cooling_bg": (240, 140, 0, 220),
+    "ctrl_temp_cooling_text": (30, 20, 0, 200),
     # Controls UI — amber pulse border
     "ctrl_pulse_border": (240, 170, 50, 230),
     # Controls UI — infobar readout
@@ -422,6 +424,7 @@ DARK: ColorTokens = {
     "ctrl_temp_heating_bg": (220, 170, 0, 220),
     "ctrl_temp_heating_text": (255, 240, 180, 200),
     "ctrl_temp_cooling_bg": (220, 120, 0, 220),
+    "ctrl_temp_cooling_text": (255, 220, 170, 200),
     # Controls UI — amber pulse border
     "ctrl_pulse_border": (255, 190, 70, 230),
     # Controls UI — infobar readout

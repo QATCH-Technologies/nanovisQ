@@ -53,7 +53,7 @@ class GlassWarningLabel(QtWidgets.QWidget):
 
         # Leading icon slot populated when an icon path is provided.
         self.icon_lbl = QtWidgets.QLabel(self)
-        self.icon_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self.icon_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.icon_lbl.setStyleSheet("background: transparent; border: none;")
         self.icon_lbl.setFixedSize(16, 16)
         self.icon_lbl.setScaledContents(True)
@@ -64,7 +64,7 @@ class GlassWarningLabel(QtWidgets.QWidget):
         row.addWidget(self.icon_lbl, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         self.text_lbl = QtWidgets.QLabel(text, self)
-        self.text_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self.text_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.text_lbl.setStyleSheet(
             "QLabel { color: rgba(45, 75, 105, 220); font-size: 11px; "
             "font-weight: normal; background: transparent; border: none; }"

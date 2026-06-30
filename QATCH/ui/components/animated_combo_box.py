@@ -84,7 +84,7 @@ class AnimatedComboBox(QtWidgets.QComboBox):
 
         # --- Arrow Icon Setup ---
         self.arrow_lbl = QtWidgets.QLabel(self)
-        self.arrow_lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self.arrow_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.arrow_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.arrow_lbl.setStyleSheet("background: transparent; border: none;")
 

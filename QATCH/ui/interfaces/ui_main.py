@@ -1,7 +1,9 @@
 import datetime
 import os
-from typing import Optional, Any, Callable
+from typing import Any, Callable, Optional
+
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
@@ -9,8 +11,8 @@ from QATCH.core.constants import Constants, UserRoles
 from QATCH.tools.donnan_gibbs_calculator import DonnanCalculatorModule
 from QATCH.tools.injection_force_calculator import InjectionForceCalculatorModule
 from QATCH.ui.popUp import PopUp
-from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
 from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
 
 
 class _MainWindow(QtWidgets.QMainWindow):
@@ -134,7 +136,9 @@ class UIMain:
         # Sliding Highlight Widget
         self.active_highlight = QtWidgets.QWidget(modewidget)
         self.active_highlight.setObjectName("activeHighlight")
-        self.active_highlight.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+        self.active_highlight.setAttribute(
+            QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         self.active_highlight.hide()
 
         # Logo
@@ -379,7 +383,7 @@ class UIMain:
         footer_text = f"\u00a9 {current_year} QATCH Technologies. All rights reserved."
         self.copy_foot = QtWidgets.QLabel(footer_text)
         self.copy_foot.setObjectName("footerLabel")
-        self.copy_foot.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+        self.copy_foot.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.copy_foot.setFocusPolicy(QtCore.Qt.NoFocus)
         self.copy_foot.setCursor(QtCore.Qt.ArrowCursor)
         self.copy_foot.setStyleSheet("""
@@ -457,9 +461,7 @@ class UIMain:
         # Re-tint the dim strip/divider if the user flips light/dark mode
         # while signed out (otherwise it'd keep the old theme's dim color
         # until the next sign-in/out toggle re-triggers a repaint).
-        ThemeManager.instance().themeChanged.connect(
-            lambda _: self._update_log_toggle_bar_theme()
-        )
+        ThemeManager.instance().themeChanged.connect(lambda _: self._update_log_toggle_bar_theme())
 
         # Animate the splitter sizes for the smooth open/close slide.
         self._log_anim = QtCore.QVariantAnimation(self.centralwidget)
@@ -653,9 +655,7 @@ class UIMain:
         if dark:
             # ~30% black over the strip's normal light tone - the same dim
             # level used on the blurred dashboard, not an unrelated dark color.
-            self.log_toggle_bar.setStyleSheet(
-                "QWidget#logToggleBar { background: %s; }" % dim_css
-            )
+            self.log_toggle_bar.setStyleSheet("QWidget#logToggleBar { background: %s; }" % dim_css)
             self.copy_foot.setStyleSheet("""
                 QLabel#footerLabel {
                     background: transparent;
@@ -739,9 +739,7 @@ class UIMain:
                     return False
         return True
 
-    def _set_no_user_mode(
-        self, obj: Optional[Any] = None, instant: bool = False
-    ) -> Optional[bool]:
+    def _set_no_user_mode(self, obj: Optional[Any] = None, instant: bool = False) -> Optional[bool]:
         """
         Switches the application to 'No User' (Sign-In) mode.
 

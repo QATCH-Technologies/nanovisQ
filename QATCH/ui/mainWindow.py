@@ -1180,7 +1180,7 @@ class MainWindow(QtWidgets.QMainWindow):
             export_enabled=self.ControlsWin.ui1.chBox_export.isChecked(),
             freq_hopping=self.ControlsWin.ui1.chBox_freqHop.isChecked(),
             reconstruct=self.ControlsWin.ui1.chBox_correctNoise.isChecked(),
-            lid_auto=(self.ControlsWin.ui1.rCartridgeMode.checkedId() == 1),
+            lid_auto=self.ControlsWin.ui1.toggle_Cartridge.isChecked(),
         )
 
         # Check for firmware updates (only if not yet checked this instance)
@@ -1535,8 +1535,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.cBox_MultiMode.setEnabled(enabled)
         self.ControlsWin.ui1.pButton_PlateConfig.setEnabled(enabled)
         self.ControlsWin.ui1.chBox_MultiAuto.setEnabled(enabled)
-        self.ControlsWin.ui1.rButton_Automatic.setEnabled(enabled)
-        self.ControlsWin.ui1.rButton_Manual.setEnabled(enabled)
+        self.ControlsWin.ui1.toggle_Cartridge.setEnabled(enabled)
         self.ControlsWin.ui1.pButton_ResetApp.setEnabled(enabled)
         # self.ControlsWin.ui1.lTemp.setEnabled(enabled)
         self.ControlsWin.ui1.slTemp.setEnabled(enabled)
