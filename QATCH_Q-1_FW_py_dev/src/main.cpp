@@ -579,9 +579,10 @@ long stepperOffset = -110;          // position of Port 1 relative to L1 switch
 // Circular Rotary Stepper settings
 const bool stepperHomingDir = false; // forwards
 long stepSize = 133;                 // assumes equal step sizes
-long stepperOffset = 52;             // position of Port 1 relative to L1 switch
+long stepperOffset = 62;             // position of Port 1 relative to L1 switch
 #endif
 long stepperPositions[6] = {0, stepSize, 2 * stepSize, 3 * stepSize, 4 * stepSize, 5 * stepSize};
+long stepperTweaks[6] = {-5, 0, -15, 0, 0, 0};  // adjust stepper positions by given +/- offset
 void stepper_home(); // prototype
 #endif
 
@@ -1187,8 +1188,9 @@ void stepper_home()
     client->println("Stepper: Failed to find home!");
     return; // Don't move to position without valid home
   }
-  client->printf("Stepper: Moving to position %i\n", stepperPositions[0]);
-  stepper.moveTo(stepperPositions[0]);
+  long position = stepperPositions[0] + stepperTweaks[0];
+  client->printf("Stepper: Moving to position %i\n", position);
+  stepper.moveTo(position);
 }
 #endif
 
@@ -2547,18 +2549,18 @@ void QATCH_loop()
           stepper_home();
           return;
         } // home
-        else if (cmd_value == 1)
-          position = stepperPositions[0];
-        else if (cmd_value == 2)
-          position = stepperPositions[1];
-        else if (cmd_value == 3)
-          position = stepperPositions[2];
-        else if (cmd_value == 4)
-          position = stepperPositions[3];
-        else if (cmd_value == 5)
-          position = stepperPositions[4];
-        else if (cmd_value == 6)
-          position = stepperPositions[5];
+        else if (cmd_value >= 1 && cmd_value <= 6)
+          position = stepperPositions[cmd_value - 1] + stepperTweaks[cmd_value - 1];
+        // else if (cmd_value == 2)
+        //   position = stepperPositions[1];
+        // else if (cmd_value == 3)
+        //   position = stepperPositions[2];
+        // else if (cmd_value == 4)
+        //   position = stepperPositions[3];
+        // else if (cmd_value == 5)
+        //   position = stepperPositions[4];
+        // else if (cmd_value == 6)
+        //   position = stepperPositions[5];
         // catch-all: negative offsets, or greater than 6
         else
           position = stepper.currentPosition() + cmd_value;

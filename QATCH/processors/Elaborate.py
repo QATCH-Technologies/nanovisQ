@@ -362,7 +362,7 @@ class ElaborateProcess(multiprocessing.Process):
                 Constants.csv_sweeps_filename, self._overtone_name, self._count)
             path = "{}_{}".format(
                 Constants.csv_sweeps_export_path, self._overtone_name)
-            path = FileStorage.DEV_populate_path(path, 0)
+            path = FileStorage.DEV_populate_path(path, 0, 0)
             if not phase is None:
                 FileStorage.TXT_sweeps_save(
                     0, filename, path, self._readFREQ, filtered_mag, phase, appendNameToPath=False)

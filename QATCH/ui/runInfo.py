@@ -3071,7 +3071,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 # Get time of last cal - based on file timestamp
                 cal_file_path = Constants.cvs_peakfrequencies_path
                 cal_file_path = FileStorage.DEV_populate_path(
-                    cal_file_path, self.run_idx + 1
+                    cal_file_path, self.run_idx + 1, self.parent.get_active_multi_port()
                 )
                 timestamp = os.path.getmtime(cal_file_path)
                 last_modified = dt.datetime.fromtimestamp(timestamp)

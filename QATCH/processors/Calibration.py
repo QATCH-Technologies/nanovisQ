@@ -371,6 +371,7 @@ class CalibrationProcess(multiprocessing.Process):
         self,
         port,
         pid,
+        portnum,
         lid_auto,
         speed=Constants.serial_default_QCS,
         timeout=Constants.serial_timeout_ms,
@@ -423,6 +424,7 @@ class CalibrationProcess(multiprocessing.Process):
             is_open = False  # no ports available
 
         self._pid = pid
+        self._portnum = portnum
         self._lid_auto = lid_auto
 
         return is_open
@@ -1176,8 +1178,8 @@ class CalibrationProcess(multiprocessing.Process):
                         k += 1
                     else:
                         k = self._pid
-                    path = FileStorage.DEV_populate_path(path, k)
-                    path_calib = FileStorage.DEV_populate_path(path_calib, k)
+                    path = FileStorage.DEV_populate_path(path, k, self._portnum)
+                    path_calib = FileStorage.DEV_populate_path(path_calib, k, 0)
 
                     try:
                         if os.path.exists(path):

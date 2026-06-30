@@ -401,8 +401,8 @@ class FW_Updater:
     # Parent informs self to check again on next run (port changed)
     ###########################################################################
 
-    def checkAgain(self):
-        self._check = True
+    def checkAgain(self, check=True):
+        self._check = check
 
     ###########################################################################
     # Checks the current version and indicates whether an update is Recommended

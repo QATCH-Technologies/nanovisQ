@@ -63,6 +63,7 @@ class Worker:
         QCS_on=None,
         port=None,
         pid=None,
+        portnum=0,
         speed=Constants.serial_default_overtone,
         samples=Constants.argument_default_samples,
         source=OperationType.measurement,
@@ -122,6 +123,7 @@ class Worker:
         # overtones (str) if 'serial' is called
         # QCS (str) if 'calibration' is called
         self._pid = pid
+        self._portnum = portnum
         self._speed = speed
         self._samples = samples
         self._source = source
@@ -181,7 +183,7 @@ class Worker:
             )
 
         port_and_peak_check = self._acquisition_process.open(
-            port=self._port, speed=self._speed, pid=self._pid, lid_auto=self._lid_auto
+            port=self._port, speed=self._speed, pid=self._pid, portnum=self._portnum, lid_auto=self._lid_auto
         )
         if port_and_peak_check == 1:
             if self._source == OperationType.measurement:
@@ -585,13 +587,13 @@ class Worker:
     ###########################################################################
 
     @staticmethod
-    def get_source_speeds(source, i=0):
+    def get_source_speeds(source, i=0, j=0):
         """
         :param source: Source to get available speeds :type source: OperationType.
         :return: List of available speeds :rtype: str list.
         """
         if source == OperationType.measurement:
-            return SerialProcess.get_speeds(i)
+            return SerialProcess.get_speeds(i, j)
         elif source == OperationType.calibration:
             return CalibrationProcess.get_speeds()
         else:

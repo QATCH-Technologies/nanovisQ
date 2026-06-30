@@ -548,8 +548,14 @@ class FileStorage:
     ###########################################################################
 
     @staticmethod
-    def DEV_populate_path(path, i):
-        return path.replace(Constants.tbd_active_device_name_path, FileStorage.DEV_get_active(i))
+    def DEV_populate_path(path, i, portnum=0):
+        return path.replace(
+            Constants.tbd_active_device_name_path, 
+            FileStorage.DEV_get_active(i)
+        ).replace(
+            ".txt", 
+            ".txt" if portnum == 0 else f"_{portnum}.txt"
+        )
 
     ###########################################################################
     # Get Device List of all folders found in the config folder

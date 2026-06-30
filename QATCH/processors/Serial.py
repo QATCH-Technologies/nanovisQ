@@ -146,6 +146,7 @@ class SerialProcess(multiprocessing.Process):
         self,
         port,
         pid,
+        portnum,
         lid_auto,
         speed=Constants.serial_default_overtone,
         timeout=Constants.serial_timeout_ms,
@@ -158,6 +159,7 @@ class SerialProcess(multiprocessing.Process):
         :param writetTimeout: Sets current write timeout :type writeTimeout: float (seconds).
         :return: True if the port is available :rtype: bool.
         """
+        self._portnum = portnum
 
         self._serial.clear()
         for i in range(len(port)):
@@ -193,7 +195,7 @@ class SerialProcess(multiprocessing.Process):
                 # Loads frequencies from file
                 peaks_mag, _, _, _, _ = self.load_frequencies_file(j)
                 all_peaks_mag.append(peaks_mag)
-        except:
+        except Exception as e:
             Log.w("No peak magnitudes found. Rerun Initialize.")
             return -1
 
@@ -981,7 +983,7 @@ class SerialProcess(multiprocessing.Process):
                                                 self._overtone_name,
                                             )
                                             path = FileStorage.DEV_populate_path(
-                                                path, i + 1
+                                                path, i + 1, self._portnum
                                             )
                                             if not phase is None:
                                                 FileStorage.TXT_sweeps_save(
@@ -1983,12 +1985,12 @@ class SerialProcess(multiprocessing.Process):
     ###########################################################################
 
     @staticmethod
-    def get_speeds(i):
+    def get_speeds(i, j):
         # :return: List of the Overtones :rtype: str list.
         # Loads frequencies from  file (path: 'common\')
         try:
             path = Constants.cvs_peakfrequencies_path
-            path = FileStorage.DEV_populate_path(path, i)
+            path = FileStorage.DEV_populate_path(path, i, j)
             data = loadtxt(path)
             peaks_mag = data[:, 0]
             reversed_peaks_mag = peaks_mag[::-1]
@@ -2333,7 +2335,7 @@ class SerialProcess(multiprocessing.Process):
 
     def load_frequencies_file(self, i):
         path = Constants.cvs_peakfrequencies_path
-        path = FileStorage.DEV_populate_path(path, i)
+        path = FileStorage.DEV_populate_path(path, i, self._portnum)
         data = loadtxt(path)
         peaks_mag = data[:, 0]
         peaks_phase = data[:, 1]  # unused at the moment
@@ -2392,7 +2394,7 @@ class SerialProcess(multiprocessing.Process):
             )
             filename = Constants.csv_calibration_path
 
-        filename = FileStorage.DEV_populate_path(filename, i)
+        filename = FileStorage.DEV_populate_path(filename, i, 0)
 
         data = loadtxt(filename)
         freq_all = data[:, 0]

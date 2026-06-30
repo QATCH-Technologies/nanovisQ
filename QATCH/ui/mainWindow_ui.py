@@ -1964,7 +1964,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         results = []
         for i in range(4):  # i = 0..3
             path = Constants.cvs_peakfrequencies_path
-            path = FileStorage.DEV_populate_path(path, i + 1)  # PIDs 1..4
+            path = FileStorage.DEV_populate_path(path, i + 1, self.parent.parent.get_active_multi_port())  # PIDs 1..4
             results.append(os.path.isfile(path))
         self.cal_multiport_results.append(results)
         return results
@@ -2088,6 +2088,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             self.pButton_Refresh.clicked.emit()
         self.infostatus.setStyleSheet("background: white; padding: 1px; border: 1px solid #cccccc")
         self.infostatus.setText("<font color=#333333 > Program Status Standby </font>")
+        
+        # Reset portnum flag to zero (inactive)
+        self.cal_multiport_portnum = 0
 
         self.cal_initialized = False
         if hasattr(self, "run_controls"):
@@ -3186,21 +3189,23 @@ class FLUXControl(QtCore.QThread):
 
             probe = str(next_port_num)
 
-            # MUX map the cam wheel for re-ordered ports (due to shorter wires in OT-2)
-            if step == 0:
-                step = 0  # rehome, then step 1 (which is really 5)
-            if step == 1:
-                step = 5  # happens after homing, below
-            elif step == 2:
-                step = 6
-            elif step == 3:
-                step = 3
-            elif step == 4:
-                step = 4
-            elif step == 5:
-                step = 1
-            elif step == 6:
-                step = 2
+            REMAP_CAM_WHEEL_PORTS = False
+            if REMAP_CAM_WHEEL_PORTS:
+                # MUX map the cam wheel for re-ordered ports (due to shorter wires in OT-2)
+                if step == 0:
+                    step = 0  # rehome, then step 1 (which is really 5)
+                if step == 1:
+                    step = 5  # happens after homing, below
+                elif step == 2:
+                    step = 6
+                elif step == 3:
+                    step = 3
+                elif step == 4:
+                    step = 4
+                elif step == 5:
+                    step = 1
+                elif step == 6:
+                    step = 2
 
             # NOTE: The stepper is interrupted in FW by pending serial
             #       so the STEP command must be last in the order sent
@@ -3224,7 +3229,7 @@ class FLUXControl(QtCore.QThread):
                 if waiting > 0:
                     flux_reply += FLUX_serial.read(waiting).decode(errors="replace")
 
-            if step == 0:
+            if REMAP_CAM_WHEEL_PORTS and step == 0:
                 # Read and show the TEC temp status from the device
                 FLUX_serial.write("STEP 5\n".encode())
                 timeoutAt = time() + Constants.stepper_timeout_sec
