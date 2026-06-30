@@ -31,6 +31,14 @@ from pyqtgraph import GraphicsLayoutWidget
 from QATCH.common.architecture import Architecture
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
+from QATCH.ui.styles.theme_manager import ThemeManager
+
+
+def _tok_css(rgba: tuple) -> str:
+    r, g, b, a = rgba
+    if a == 255:
+        return f"#{r:02X}{g:02X}{b:02X}"
+    return f"rgba({r}, {g}, {b}, {a})"
 
 # ============================================================
 #  PlotsWindow  (outer QMainWindow shell - API unchanged)
@@ -100,10 +108,7 @@ class _SectionMenuRow(QtWidgets.QWidget):
 
         # ── Label ─────────────────────────────────────────────────
         self._lbl = QtWidgets.QLabel(label)
-        self._lbl.setStyleSheet(
-            "color: rgba(30,40,55,210); font-size: 11px;"
-            " font-weight: 500; background: transparent;"
-        )
+        self._lbl.setObjectName("PlotMenuItemLabel")
 
         # ── Show / Hide toggle ────────────────────────────────────
         self._eye = QtWidgets.QToolButton()
@@ -115,13 +120,16 @@ class _SectionMenuRow(QtWidgets.QWidget):
         self._eye.clicked.connect(self._toggle_visibility)
         self._apply_eye_style()
 
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
         lay.addWidget(self._swatch)
         lay.addWidget(self._lbl, 1)
         lay.addWidget(self._eye)
 
     # ── Row hover ─────────────────────────────────────────────────
     def enterEvent(self, _event):
-        self.setStyleSheet("background: rgba(46,155,218,28); border-radius: 6px;")
+        hover = _tok_css(ThemeManager.instance().tokens()["plot_menu_row_hover"])
+        self.setStyleSheet(f"background: {hover}; border-radius: 6px;")
 
     def leaveEvent(self, _event):
         self.setStyleSheet("background: transparent;")
@@ -129,29 +137,39 @@ class _SectionMenuRow(QtWidgets.QWidget):
     # ── Style helpers ─────────────────────────────────────────────
     def _apply_swatch_style(self) -> None:
         c = self._color
+        tok = ThemeManager.instance().tokens()
+        br = tok["plot_swatch_border"]
+        border = _tok_css(br)
+        border_full = _tok_css((*br[:3], 255))
         self._swatch.setStyleSheet(f"""
             QToolButton {{
                 background-color: rgb({c.red()},{c.green()},{c.blue()});
-                border: 1.5px solid rgba(255,255,255,210);
+                border: 1.5px solid {border};
                 border-radius: 8px;
             }}
             QToolButton:hover {{
-                border: 2px solid rgba(255,255,255,255);
+                border: 2px solid {border_full};
             }}
         """)
 
     def _apply_eye_style(self) -> None:
         symbol = "◉" if self._visible else "○"
-        alpha = 200 if self._visible else 80
+        tok = ThemeManager.instance().tokens()
+        text_color = _tok_css(tok["plot_text_normal"] if self._visible else (*tok["plot_text_normal"][:3], 80))
+        hover_bg = _tok_css(tok["plot_tab_bg_hover"])
         self._eye.setText(symbol)
         self._eye.setStyleSheet(f"""
             QToolButton {{
                 background: transparent; border: none;
-                color: rgba(30,40,55,{alpha}); font-size: 13px;
+                color: {text_color}; font-size: 13px;
                 border-radius: 4px;
             }}
-            QToolButton:hover {{ background: rgba(255,255,255,130); }}
+            QToolButton:hover {{ background: {hover_bg}; }}
         """)
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_swatch_style()
+        self._apply_eye_style()
 
     # ── Actions ───────────────────────────────────────────────────
     def _pick_color(self) -> None:
@@ -192,10 +210,7 @@ class _SectionHeaderRow(QtWidgets.QWidget):
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(10, 4, 10, 0)
         lbl = QtWidgets.QLabel(text.upper())
-        lbl.setStyleSheet(
-            "color: rgba(30,40,55,110); font-size: 8px; font-weight: 700;"
-            " letter-spacing: 1.2px; background: transparent;"
-        )
+        lbl.setObjectName("PlotMenuSectionHeader")
         lay.addWidget(lbl)
 
 
@@ -250,7 +265,7 @@ class GlassContainer(QtWidgets.QWidget):
 
             if title:
                 lbl = QtWidgets.QLabel(title)
-                lbl.setStyleSheet("color:rgba(30,40,55,200);font-size:10px;font-weight:600;")
+                lbl.setObjectName("PlotGlassTitle")
                 h_layout.addWidget(lbl, 1)
             else:
                 h_layout.addStretch(1)
@@ -268,6 +283,8 @@ class GlassContainer(QtWidgets.QWidget):
 
         layout.addWidget(plot_widget, 1)
 
+        ThemeManager.instance().themeChanged.connect(self.update)
+
     # ── Round icon button factory (circular hover) ────────────────
     def _make_icon_button(self, icon_name: str, tooltip: str) -> QtWidgets.QToolButton:
         btn = QtWidgets.QToolButton()
@@ -277,30 +294,14 @@ class GlassContainer(QtWidgets.QWidget):
         btn.setFixedSize(24, 24)
         btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         btn.setToolTip(tooltip)
-        btn.setStyleSheet("""
-            QToolButton {
-                background: transparent;
-                border: none;
-                border-radius: 12px;
-            }
-            QToolButton:hover {
-                background: rgba(255, 255, 255, 160);
-                border: 1px solid rgba(255, 255, 255, 200);
-            }
-            QToolButton:pressed {
-                background: rgba(180, 215, 255, 190);
-            }
-        """)
+        btn.setObjectName("PlotIconBtn")
         return btn
 
     # ── Menu builder ──────────────────────────────────────────────
     def _build_menu(self) -> QtWidgets.QToolButton:
         menu_btn = self._make_icon_button("gear.svg", "Plot Options")
+        menu_btn.setObjectName("PlotMenuBtn")
         menu_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
-        # Remove the default dropdown arrow
-        menu_btn.setStyleSheet(
-            menu_btn.styleSheet() + "\nQToolButton::menu-indicator { image: none; }"
-        )
 
         self.plot_menu = self._build_glass_menu(menu_btn)
         menu_btn.setMenu(self.plot_menu)
@@ -308,29 +309,13 @@ class GlassContainer(QtWidgets.QWidget):
 
     def _build_glass_menu(self, parent_widget: QtWidgets.QWidget) -> QtWidgets.QMenu:
         menu = QtWidgets.QMenu(parent_widget)
+        menu.setObjectName("PlotGlassMenu")
         menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         menu.setWindowFlags(
             menu.windowFlags()
             | QtCore.Qt.WindowType.FramelessWindowHint
             | QtCore.Qt.WindowType.NoDropShadowWindowHint
         )
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: rgba(232, 242, 252, 248);
-                border: 1px solid rgba(255, 255, 255, 230);
-                border-radius: 10px;
-                padding: 5px 0px;
-            }
-            QMenu::item {
-                padding: 0px;
-                margin: 0px;
-            }
-            QMenu::separator {
-                height: 1px;
-                background: rgba(175, 200, 228, 90);
-                margin: 4px 12px;
-            }
-        """)
 
         if self._sections:
             for i, (key, label, color) in enumerate(self._sections):
@@ -353,6 +338,7 @@ class GlassContainer(QtWidgets.QWidget):
 
     # ── Paint - frosted glass card ────────────────────────────────
     def paintEvent(self, ev: QtGui.QPaintEvent) -> None:
+        tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
         rf = QtCore.QRectF(self.rect())
@@ -361,34 +347,34 @@ class GlassContainer(QtWidgets.QWidget):
         p.setClipPath(path)
 
         # Frosted base
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 160))
-        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 18))
+        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_base"]))
+        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_overlay"]))
 
         # Top shimmer
         sh = QtGui.QLinearGradient(0, 0, 0, 40)
-        sh.setColorAt(0, QtGui.QColor(255, 255, 255, 100))
-        sh.setColorAt(0.5, QtGui.QColor(255, 255, 255, 20))
-        sh.setColorAt(1, QtGui.QColor(255, 255, 255, 0))
+        sh.setColorAt(0, QtGui.QColor(*tok["plot_glass_shimmer_top"]))
+        sh.setColorAt(0.5, QtGui.QColor(*tok["plot_glass_shimmer_mid"]))
+        sh.setColorAt(1, QtGui.QColor(0, 0, 0, 0))
         p.fillRect(self.rect(), QtGui.QBrush(sh))
 
         # Bottom vignette
         vg = QtGui.QLinearGradient(0, self.height() - 30, 0, self.height())
-        vg.setColorAt(0, QtGui.QColor(200, 218, 240, 0))
-        vg.setColorAt(1, QtGui.QColor(200, 218, 240, 18))
+        vg.setColorAt(0, QtGui.QColor(0, 0, 0, 0))
+        vg.setColorAt(1, QtGui.QColor(*tok["plot_glass_vignette_end"]))
         p.fillRect(self.rect(), QtGui.QBrush(vg))
 
         p.setClipping(False)
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
         # Outer bright rim
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 1.0))
+        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_rim"]), 1.0))
         p.drawRoundedRect(rf.adjusted(0.5, 0.5, -0.5, -0.5), self._R, self._R)
-        # Inner cool-grey inset
-        p.setPen(QtGui.QPen(QtGui.QColor(190, 210, 235, 70), 1.0))
+        # Inner inset
+        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_inset"]), 1.0))
         p.drawRoundedRect(rf.adjusted(1.5, 1.5, -1.5, -1.5), self._R - 1.5, self._R - 1.5)
 
         if self.has_header:
-            p.setPen(QtGui.QPen(QtGui.QColor(195, 215, 238, 70), 1.0))
+            p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_header_line"]), 1.0))
             y_line = self._HEADER_H + self._M
             p.drawLine(0, y_line, self.width(), y_line)
 
@@ -405,21 +391,20 @@ class GlassTabContainer(GlassContainer):
 
     deviceColorRequested = QtCore.pyqtSignal(int)  # Legacy: emits active device index
 
-    # Sections shown in the main plot's dropdown
-    _MAIN_SECTIONS: List[Tuple[str, str, QtGui.QColor]] = [
-        ("dissipation", "Dissipation", QtGui.QColor(46, 155, 218)),
-        ("resonance_freq", "Resonance Frequency", QtGui.QColor(240, 100, 53)),
-    ]
-
     def __init__(self, parent: QtWidgets.QWidget = None) -> None:
         dummy = QtWidgets.QWidget()
+        tok = ThemeManager.instance().tokens()
+        main_sections = [
+            ("dissipation", "Dissipation", QtGui.QColor(*tok["plot_data_primary"][:3])),
+            ("resonance_freq", "Resonance Frequency", QtGui.QColor(*tok["plot_data_secondary"][:3])),
+        ]
         # Pass sections so _build_glass_menu picks them up
         super().__init__(
             plot_widget=dummy,
             title=None,
             parent=parent,
             show_menu=False,
-            sections=self._MAIN_SECTIONS,
+            sections=main_sections,
         )
 
         self.has_header = True
@@ -463,14 +448,7 @@ class GlassTabContainer(GlassContainer):
         self._anim_timer = QtCore.QTimer(self)
         self._anim_timer.timeout.connect(self._animate_icons)
         self._device_states: dict[int, str] = {}
-
-        self._state_colors = {
-            "idle": QtGui.QColor(220, 53, 69),
-            "error": QtGui.QColor(220, 53, 69),
-            "init": QtGui.QColor(255, 193, 7),
-            "success": QtGui.QColor(40, 167, 69),
-            "recording": QtGui.QColor(40, 167, 69),
-        }
+        self._valid_states = {"idle", "error", "init", "success", "recording"}
 
     # ── Tab creation ──────────────────────────────────────────────
     def add_device(
@@ -485,32 +463,7 @@ class GlassTabContainer(GlassContainer):
         btn.setCheckable(True)
         btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         btn.setFixedHeight(20)
-        # Glassmorphic pill tabs
-        btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 55);
-                border: 1px solid rgba(255, 255, 255, 110);
-                border-radius: 10px;
-                color: rgba(30, 40, 55, 155);
-                font-size: 10px;
-                font-weight: 600;
-                padding: 2px 10px;
-                text-align: center;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 130);
-                border: 1px solid rgba(255, 255, 255, 200);
-                color: rgba(30, 40, 55, 200);
-            }
-            QPushButton:checked {
-                background: rgba(255, 255, 255, 215);
-                border: 1.5px solid rgba(255, 255, 255, 255);
-                color: rgba(30, 40, 55, 235);
-            }
-            QPushButton:checked:hover {
-                background: rgba(255, 255, 255, 240);
-            }
-        """)
+        btn.setObjectName("PlotDeviceTab")
 
         self.btn_group.addButton(btn, index)
         self.tabs_layout.addWidget(btn)
@@ -528,7 +481,7 @@ class GlassTabContainer(GlassContainer):
         Sets the activity state for a device tab.
         Valid states: 'idle', 'error', 'init', 'success', 'recording'.
         """
-        if index not in self._device_states or state not in self._state_colors:
+        if index not in self._device_states or state not in self._valid_states:
             return
 
         self._device_states[index] = state
@@ -558,7 +511,15 @@ class GlassTabContainer(GlassContainer):
         if not btn:
             return
 
-        color = QtGui.QColor(self._state_colors[state])
+        tok = ThemeManager.instance().tokens()
+        state_tok = {
+            "idle": tok["danger"],
+            "error": tok["danger"],
+            "init": tok["warning"],
+            "success": tok["success"],
+            "recording": tok["success"],
+        }
+        color = QtGui.QColor(*state_tok.get(state, tok["danger"])[:3])
 
         if state == "init":
             alpha = 255 if (int(time.time() * 2) % 2 == 0) else 60
@@ -633,21 +594,21 @@ class UIPlots:
         root.setContentsMargins(0, 8, 0, 0)
         root.setSpacing(6)
 
+        tok = ThemeManager.instance().tokens()
+
         # Main horizontal splitter ────────────────────────────────────
         self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self.centralwidget)
         self.main_splitter.setHandleWidth(6)
-        self.main_splitter.setStyleSheet("QSplitter::handle { background: transparent; }")
 
         # LEFT - Integrated glass tabs (Dissipation / Resonance Freq)
         self.left_pane = GlassTabContainer(parent=self.main_splitter)
         self.pltB = _make_plot_widget(self.left_pane)
         self.pltB.setObjectName("pltB")
-        self.left_pane.add_device("Device 1", self.pltB, QtGui.QColor(72, 190, 120))
+        self.left_pane.add_device("Device 1", self.pltB, QtGui.QColor(*tok["plot_data_device_accent"][:3]))
 
         # RIGHT - stacked splitter for Amp & Temp
         self.right_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical, self.main_splitter)
         self.right_splitter.setHandleWidth(6)
-        self.right_splitter.setStyleSheet("QSplitter::handle { background: transparent; }")
 
         # Amplitude pane
         self.plt = _make_plot_widget(self.right_splitter)
@@ -655,10 +616,10 @@ class UIPlots:
         self.amp_glass = GlassContainer(
             plot_widget=self.plt,
             title="Amplitude (dB)",
-            accent_color=QtGui.QColor(46, 155, 218),
+            accent_color=QtGui.QColor(*tok["plot_data_primary"][:3]),
             parent=self.right_splitter,
             sections=[
-                ("amplitude", "Amplitude", QtGui.QColor(46, 155, 218)),
+                ("amplitude", "Amplitude", QtGui.QColor(*tok["plot_data_primary"][:3])),
             ],
         )
         self.right_splitter.addWidget(self.amp_glass)
@@ -669,10 +630,10 @@ class UIPlots:
         self.temp_glass = GlassContainer(
             plot_widget=self.plt_temp,
             title="Temperature °C",
-            accent_color=QtGui.QColor(240, 156, 53),
+            accent_color=QtGui.QColor(*tok["plot_data_temperature"][:3]),
             parent=self.right_splitter,
             sections=[
-                ("temperature", "Temperature", QtGui.QColor(240, 156, 53)),
+                ("temperature", "Temperature", QtGui.QColor(*tok["plot_data_temperature"][:3])),
             ],
         )
         self.right_splitter.addWidget(self.temp_glass)

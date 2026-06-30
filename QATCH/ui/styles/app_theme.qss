@@ -1,0 +1,590 @@
+/* app_theme.qss
+   Tokenized replacement for the old static ui_main_theme.qss. Placeholders
+   like {{BG_GRADIENT_START}} are substituted by QATCH.ui.styles.theme_manager
+   .ThemeManager with the active light/dark palette before this is applied
+   app-wide via QApplication.setStyleSheet(). See QATCH/ui/styles/tokens.py
+   for what each token resolves to. */
+
+/* MAIN WINDOW BACKGROUND */
+#centralwidget {
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 1,
+        stop: 0 {{BG_GRADIENT_START}}, stop: 1 {{BG_GRADIENT_END}}
+    );
+}
+
+/* SCROLL AREAS */
+#modeMenuScrollArea, #runview, #analyze, #learn_ui, #logview {
+    background: {{SURFACE}};
+    border: 1px solid {{SURFACE_BORDER}};
+    border-radius: 12px;
+}
+#runview {
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+}
+#logview {
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+}
+#modeMenuScrollArea > QWidget > QWidget,
+#runview > QWidget > QWidget,
+#analyze > QWidget > QWidget,
+#learn_ui > QWidget > QWidget,
+#logview > QWidget > QWidget {
+    background: transparent;
+}
+
+/* MODE MENU ITEMS */
+#menuItem {
+    padding: 10px;
+    padding-left: 15px;
+    background: transparent;
+    border-radius: 4px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+}
+
+#menuItem[active="false"]:hover {
+    background: {{MENU_ITEM_HOVER}};
+}
+
+#footerLabel {
+    color: {{TEXT_SECONDARY}};
+    font-size: 11px;
+}
+
+/* ACTIVE HIGHLIGHT SLIDER */
+#activeHighlight {
+    background-color: {{ACCENT_TRANSLUCENT}};
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+    border-left: 4px solid {{ACCENT}};
+}
+
+/* SPLITTER */
+QSplitter::handle {
+    background: transparent;
+}
+
+/* SCROLLBARS */
+QScrollBar:horizontal {
+    border: none;
+    background: transparent;
+    height: 10px;
+    margin: 0px 10px 0px 10px;
+}
+QScrollBar:vertical {
+    border: none;
+    background: transparent;
+    width: 10px;
+    margin: 10px 0px 10px 0px;
+}
+
+QScrollBar::handle:horizontal,
+QScrollBar::handle:vertical {
+    background: {{SCROLLBAR_HANDLE}};
+    border-radius: 5px;
+}
+
+QScrollBar::handle:horizontal:hover,
+QScrollBar::handle:vertical:hover {
+    background: {{SCROLLBAR_HANDLE_HOVER}};
+}
+
+QScrollBar::handle:horizontal { min-width: 20px; }
+QScrollBar::handle:vertical { min-height: 20px; }
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    width: 0px; height: 0px; background: none;
+}
+
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   LOG CONSOLE
+   All rules are scoped under #ConsoleContainer so they
+   cannot bleed into the rest of the application.
+   ═══════════════════════════════════════════════════════ */
+
+/* ---- Main Container ---- */
+#ConsoleContainer {
+    background: {{LOG_SURFACE}};
+    border: 1px solid {{LOG_SURFACE_BORDER}};
+    border-radius: 8px;
+}
+
+/* ---- Level Filter (AnimatedComboBox) ---- */
+#ConsoleContainer QComboBox#LevelFilter {
+    background: {{LOG_CONTROL_BG}};
+    border: 1px solid {{LOG_CONTROL_BORDER}};
+    border-radius: 14px;
+    padding-left: 14px;
+    padding-right: 30px;
+    color: {{TEXT_PRIMARY}};
+    font-weight: bold;
+}
+#ConsoleContainer QComboBox#LevelFilter:hover {
+    background: {{LOG_CONTROL_BG_HOVER}};
+    border: 1px solid {{LOG_CONTROL_BORDER_HOVER}};
+}
+#ConsoleContainer QComboBox#LevelFilter:on,
+#ConsoleContainer QComboBox#LevelFilter:focus {
+    background: {{LOG_CONTROL_BG_FOCUS}};
+    border: 1px solid {{ACCENT}};
+}
+#ConsoleContainer QComboBox#LevelFilter::drop-down {
+    border: none;
+    background: transparent;
+    width: 0px;
+}
+#ConsoleContainer QComboBox#LevelFilter::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+/* Popup list — Qt resolves this relative to the ComboBox, not the widget tree,
+   so ancestor scoping is intentionally omitted here. */
+QComboBox#LevelFilter QAbstractItemView {
+    background-color: {{LOG_DROPDOWN_BG}};
+    border: 1px solid {{LOG_DROPDOWN_BORDER}};
+    border-radius: 8px;
+    color: {{TEXT_PRIMARY}};
+    padding: 4px;
+    selection-background-color: {{ACCENT_TRANSLUCENT}};
+    selection-color: {{ACCENT}};
+    outline: none;
+}
+QComboBox#LevelFilter QAbstractItemView::item {
+    min-height: 24px;
+    border-radius: 6px;
+    padding-left: 8px;
+}
+
+/* ---- Search Bar ---- */
+#ConsoleContainer QLineEdit#SearchBar {
+    background: {{LOG_CONTROL_BG}};
+    border: 1px solid {{LOG_CONTROL_BORDER}};
+    border-radius: 14px;
+    padding: 0px 8px;
+    color: {{TEXT_PRIMARY}};
+    font-weight: bold;
+}
+#ConsoleContainer QLineEdit#SearchBar:hover {
+    background: {{LOG_CONTROL_BG_HOVER}};
+    border: 1px solid {{LOG_CONTROL_BORDER_HOVER}};
+}
+#ConsoleContainer QLineEdit#SearchBar:focus {
+    background: {{LOG_CONTROL_BG_FOCUS}};
+    border: 1px solid {{ACCENT}};
+}
+
+/* ---- Separators ---- */
+#ConsoleContainer QFrame#ToolbarSeparator {
+    border: none;
+    background: {{LOG_SEPARATOR}};
+    max-height: 1px;
+    min-height: 1px;
+}
+#ConsoleContainer QFrame#ToolbarVLineSep {
+    color: {{LOG_SEPARATOR}};
+    max-height: 20px;
+}
+
+/* ---- Match Counter ---- */
+#ConsoleContainer QLabel#MatchCounter {
+    color: {{TEXT_SECONDARY}};
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 11px;
+    padding: 0px 2px;
+}
+#ConsoleContainer QLabel#MatchCounter[state="nomatch"] {
+    color: {{DANGER}};
+}
+
+/* ---- Clear Button ---- */
+#ConsoleContainer QPushButton#ClearBtn {
+    background: transparent;
+    border: none;
+    padding: 0px 12px;
+    color: {{TEXT_PRIMARY}};
+    font-weight: bold;
+}
+#ConsoleContainer QPushButton#ClearBtn:hover {
+    color: {{TEXT_SECONDARY}};
+}
+#ConsoleContainer QPushButton#ClearBtn:pressed {
+    color: {{TEXT_SECONDARY}};
+}
+
+/* ---- Search Navigation Buttons ---- */
+#ConsoleContainer QPushButton#SearchPrevBtn,
+#ConsoleContainer QPushButton#SearchNextBtn {
+    background: transparent;
+    border: none;
+    border-radius: 14px;
+}
+#ConsoleContainer QPushButton#SearchPrevBtn:hover,
+#ConsoleContainer QPushButton#SearchNextBtn:hover {
+    background: {{LOG_BTN_HOVER}};
+}
+#ConsoleContainer QPushButton#SearchPrevBtn:pressed,
+#ConsoleContainer QPushButton#SearchNextBtn:pressed {
+    background: {{LOG_BTN_PRESSED}};
+}
+
+/* ---- Log Text Area ---- */
+#ConsoleContainer QTextEdit {
+    background: transparent;
+    border: none;
+    color: {{LOG_TEXT}};
+    selection-background-color: {{LOG_MATCH_HIGHLIGHT}};
+    selection-color: {{TEXT_PRIMARY}};
+    padding: 2px 4px;
+}
+
+/* ---- Scrollbars (console-scoped, 8 px narrow) ---- */
+#ConsoleContainer QScrollBar:vertical {
+    border: none;
+    background: transparent;
+    width: 8px;
+    margin: 4px 0px 4px 0px;
+}
+#ConsoleContainer QScrollBar:horizontal {
+    border: none;
+    background: transparent;
+    height: 8px;
+    margin: 0px 4px 0px 4px;
+}
+#ConsoleContainer QScrollBar::handle:vertical,
+#ConsoleContainer QScrollBar::handle:horizontal {
+    background: {{SCROLLBAR_HANDLE}};
+    border-radius: 4px;
+    min-height: 16px;
+    min-width: 16px;
+}
+#ConsoleContainer QScrollBar::handle:vertical:hover,
+#ConsoleContainer QScrollBar::handle:horizontal:hover {
+    background: {{SCROLLBAR_HANDLE_HOVER}};
+}
+#ConsoleContainer QScrollBar::add-line:vertical,
+#ConsoleContainer QScrollBar::sub-line:vertical,
+#ConsoleContainer QScrollBar::add-line:horizontal,
+#ConsoleContainer QScrollBar::sub-line:horizontal,
+#ConsoleContainer QScrollBar::add-page:vertical,
+#ConsoleContainer QScrollBar::sub-page:vertical,
+#ConsoleContainer QScrollBar::add-page:horizontal,
+#ConsoleContainer QScrollBar::sub-page:horizontal {
+    width: 0px; height: 0px; background: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   PLOT GLASS CARDS
+   Icon buttons, menus, device tabs, and labels are all
+   targeted by objectName so rules cannot bleed globally.
+   paintEvent colors are resolved in Python via tokens.
+   ═══════════════════════════════════════════════════════ */
+
+/* ---- Glass card title ---- */
+QLabel#PlotGlassTitle {
+    color: {{PLOT_TEXT_NORMAL}};
+    font-size: 10px;
+    font-weight: 600;
+    background: transparent;
+}
+
+/* ---- Icon buttons (fullscreen + gear) ---- */
+QToolButton#PlotIconBtn,
+QToolButton#PlotMenuBtn {
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+}
+QToolButton#PlotIconBtn:hover,
+QToolButton#PlotMenuBtn:hover {
+    background: {{PLOT_ICON_BTN_HOVER_BG}};
+    border: 1px solid {{PLOT_ICON_BTN_HOVER_BORDER}};
+}
+QToolButton#PlotIconBtn:pressed,
+QToolButton#PlotMenuBtn:pressed {
+    background: {{PLOT_ICON_BTN_PRESSED_BG}};
+}
+QToolButton#PlotMenuBtn::menu-indicator {
+    image: none;
+}
+
+/* ---- Glass dropdown menu ---- */
+QMenu#PlotGlassMenu {
+    background-color: {{PLOT_MENU_BG}};
+    border: 1px solid {{PLOT_MENU_BORDER}};
+    border-radius: 10px;
+    padding: 5px 0px;
+}
+QMenu#PlotGlassMenu::item {
+    padding: 0px;
+    margin: 0px;
+}
+QMenu#PlotGlassMenu::separator {
+    height: 1px;
+    background: {{PLOT_MENU_SEPARATOR}};
+    margin: 4px 12px;
+}
+
+/* ---- Menu row labels ---- */
+QLabel#PlotMenuItemLabel {
+    color: {{PLOT_TEXT_NORMAL}};
+    font-size: 11px;
+    font-weight: 500;
+    background: transparent;
+}
+QLabel#PlotMenuSectionHeader {
+    color: {{PLOT_TEXT_DIM}};
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    background: transparent;
+}
+
+/* ---- Device tab pill buttons ---- */
+QPushButton#PlotDeviceTab {
+    background: {{PLOT_TAB_BG}};
+    border: 1px solid {{PLOT_TAB_BORDER}};
+    border-radius: 10px;
+    color: {{PLOT_TEXT_MUTED}};
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 10px;
+    text-align: center;
+}
+QPushButton#PlotDeviceTab:hover {
+    background: {{PLOT_TAB_BG_HOVER}};
+    border: 1px solid {{PLOT_ICON_BTN_HOVER_BORDER}};
+    color: {{PLOT_TEXT_NORMAL}};
+}
+QPushButton#PlotDeviceTab:checked {
+    background: {{PLOT_TAB_BG_ACTIVE}};
+    border: 1.5px solid {{PLOT_TAB_BORDER_ACTIVE}};
+    color: {{PLOT_TEXT_BRIGHT}};
+}
+QPushButton#PlotDeviceTab:checked:hover {
+    background: {{PLOT_TAB_BG_ACTIVE_HOVER}};
+}
+
+/* ═══════════════════════════════════════════════════════
+   CONTROLS UI
+   Toolbar, progress bar, temperature controller, sliders,
+   glass inputs, and labels — all scoped by objectName.
+   Dynamic temp-status colours are applied in Python via
+   ThemeManager tokens; paintEvent colours likewise.
+   ═══════════════════════════════════════════════════════ */
+
+/* ---- Toolbar ---- */
+QToolBar#CtrlToolBar {
+    background: transparent;
+    border: none;
+    spacing: 2px;
+}
+QToolBar#CtrlToolBar QToolButton {
+    background: transparent;
+    color: {{PLOT_TEXT_NORMAL}};
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12px;
+}
+QToolBar#CtrlToolBar QToolButton:hover {
+    background: {{MENU_ITEM_HOVER}};
+    border: 1px solid transparent;
+}
+QToolBar#CtrlToolBar QToolButton:pressed {
+    background: {{CTRL_TOOLBAR_BTN_PRESSED_BG}};
+    border: 1px solid transparent;
+}
+QToolBar#CtrlToolBar QToolButton:checked {
+    background: transparent;
+    border: 1px solid transparent;
+}
+QToolBar#CtrlToolBar QToolButton:disabled {
+    color: {{CTRL_TOOLBAR_BTN_DISABLED_TEXT}};
+    background: transparent;
+    border: 1px solid transparent;
+}
+QToolBar#CtrlToolBar::separator {
+    background: {{CTRL_TOOLBAR_SEPARATOR}};
+    width: 1px;
+    margin: 5px 4px;
+}
+
+/* ---- Progress bar ---- */
+QProgressBar#progressBar {
+    border: 1px solid {{CTRL_PROGRESS_BORDER}};
+    border-radius: 4px;
+    text-align: center;
+    color: {{PLOT_TEXT_NORMAL}};
+    background: {{LOG_SURFACE}};
+    font-weight: bold;
+}
+QProgressBar#progressBar::chunk {
+    background: qlineargradient(
+        spread:pad, x1:0, y1:0, x2:1, y2:0,
+        stop:0 {{CTRL_PROGRESS_CHUNK_START}},
+        stop:1 {{CTRL_PROGRESS_CHUNK_END}}
+    );
+    border-radius: 3px;
+}
+
+/* ---- Temperature controller panel ---- */
+QWidget#tempController {
+    background: {{CTRL_TEMP_CTRL_BG}};
+    border: none;
+    border-radius: 6px;
+}
+QFrame#tempPidInfo {
+    background: {{LOG_SURFACE}};
+    border: 1px solid {{LOG_SURFACE_BORDER}};
+    border-radius: 5px;
+}
+QLabel#tempPidHeader {
+    background: transparent;
+    border: none;
+    color: {{CTRL_TEMP_PID_HEADER_TEXT}};
+    font-weight: bold;
+    font-size: 8pt;
+    letter-spacing: 0.4px;
+}
+QLabel#tempStatusBanner {
+    background: {{CTRL_TEMP_STATUS_OFFLINE_BG}};
+    color: {{CTRL_TEMP_STATUS_OFFLINE_TEXT}};
+    border: 1px solid {{CTRL_TEMP_STATUS_BORDER}};
+    border-radius: 3px;
+    padding: 0 6px;
+    font-weight: bold;
+}
+QWidget#tempController QLabel {
+    background: transparent;
+    border: none;
+    color: {{PLOT_TEXT_NORMAL}};
+}
+QLabel#TempPidValue {
+    background: transparent;
+    border: none;
+    color: {{PLOT_TEXT_NORMAL}};
+}
+QWidget#tempController QSlider::groove:horizontal {
+    height: 4px;
+    background: {{CTRL_SLIDER_GROOVE}};
+    border-radius: 2px;
+}
+QWidget#tempController QSlider::handle:horizontal {
+    background: {{ACCENT}};
+    border: 1px solid {{CTRL_SLIDER_HANDLE_BORDER}};
+    width: 12px;
+    height: 12px;
+    margin: -4px 0;
+    border-radius: 6px;
+}
+QWidget#tempController QSlider::sub-page:horizontal {
+    background: {{CTRL_SLIDER_TRACK}};
+    border-radius: 2px;
+}
+QWidget#tempController QSlider::handle:horizontal:disabled {
+    background: {{CTRL_SLIDER_DISABLED_HANDLE}};
+    border: 1px solid {{CTRL_SLIDER_GROOVE}};
+}
+
+/* ---- Range sliders (Lid POGO config) ---- */
+QSlider#RangeSlider::groove:horizontal {
+    height: 4px;
+    background: {{CTRL_SLIDER_GROOVE}};
+    border-radius: 2px;
+}
+QSlider#RangeSlider::handle:horizontal {
+    background: {{ACCENT}};
+    border: 1px solid {{CTRL_SLIDER_HANDLE_BORDER}};
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+QSlider#RangeSlider::handle:horizontal:hover {
+    background: {{CTRL_SLIDER_HANDLE_HOVER}};
+}
+QSlider#RangeSlider::sub-page:horizontal {
+    background: {{CTRL_SLIDER_TRACK}};
+    border-radius: 2px;
+}
+
+/* ---- Hairline divider ---- */
+QFrame#CtrlHairline {
+    background: {{CTRL_HAIRLINE}};
+    border: none;
+    max-height: 1px;
+}
+
+/* ---- Toggle row labels ---- */
+QLabel#CtrlToggleLabel {
+    background: transparent;
+    border: none;
+    color: {{CTRL_TOGGLE_LABEL_TEXT}};
+}
+
+/* ---- Device config back button ---- */
+QPushButton#DeviceBackBtn {
+    background: {{CTRL_BACK_BTN_BG}};
+    border: 1px solid {{CTRL_BACK_BTN_BORDER}};
+    border-radius: 16px;
+}
+QPushButton#DeviceBackBtn:hover {
+    background: {{CTRL_BACK_BTN_HOVER_BG}};
+    border: 1px solid {{CTRL_BACK_BTN_HOVER_BORDER}};
+}
+QPushButton#DeviceBackBtn:pressed {
+    background: {{CTRL_BACK_BTN_BG}};
+}
+
+/* ---- Device config title ---- */
+QLabel#DeviceConfigTitle {
+    color: {{PLOT_TEXT_BRIGHT}};
+    font-size: 14px;
+    font-weight: bold;
+    background: transparent;
+    border: none;
+}
+
+/* ---- Glass icon QLineEdit (save-state indicator square) ---- */
+QLineEdit#CtrlIconBox {
+    background: {{CTRL_INPUT_BG}};
+    border: 1px solid {{CTRL_INPUT_BORDER}};
+    border-radius: 6px;
+    padding: 4px 8px;
+    color: {{CTRL_INPUT_TEXT}};
+}
+
+/* ---- Glass pill QLineEdit (device name / PID inputs) ---- */
+QLineEdit#CtrlInputPill {
+    background: {{CTRL_INPUT_BG}};
+    border: 1px solid {{CTRL_INPUT_BORDER}};
+    border-radius: 14px;
+    padding: 5px 12px;
+    color: {{CTRL_INPUT_TEXT}};
+}
+QLineEdit#CtrlInputPill:focus {
+    background: {{CTRL_INPUT_FOCUS_BG}};
+    border: 1px solid {{CTRL_INPUT_FOCUS_BORDER}};
+}
+
+/* ---- Infobar readout ---- */
+QLabel#infobarReadout {
+    color: {{CTRL_INFOBAR_TEXT}};
+    font-size: 10px;
+    background: transparent;
+    border: none;
+    padding: 0px 2px;
+}

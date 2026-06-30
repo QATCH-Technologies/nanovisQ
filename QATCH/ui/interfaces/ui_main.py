@@ -10,6 +10,7 @@ from QATCH.tools.donnan_gibbs_calculator import DonnanCalculatorModule
 from QATCH.tools.injection_force_calculator import InjectionForceCalculatorModule
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
+from QATCH.ui.styles.theme_manager import ThemeManager
 
 
 class _MainWindow(QtWidgets.QMainWindow):
@@ -113,14 +114,9 @@ class UIMain:
         main_window.setMinimumSize(QtCore.QSize(1331, 711))
         self.centralwidget = QtWidgets.QWidget(main_window)
         self.centralwidget.setObjectName("centralwidget")
-        qss_file_path = os.path.join(
-            Architecture.get_path(), "QATCH", "ui", "styles", "ui_main_theme.qss"
-        )
-        try:
-            with open(qss_file_path, "r") as style_file:
-                self.centralwidget.setStyleSheet(style_file.read())
-        except FileNotFoundError:
-            Log.e(f"Could not find the stylesheet at: {qss_file_path}")
+        # Styling for #centralwidget and friends now comes from the app-wide
+        # stylesheet applied by QATCH.ui.styles.theme_manager.ThemeManager at
+        # startup (see app.py), not a per-widget QSS load.
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
         layout_h = QtWidgets.QHBoxLayout()
         layout_h.setSpacing(10)
@@ -458,6 +454,12 @@ class UIMain:
 
         self._signed_in = True
         self._update_log_toggle_bar_theme()  # also sets the splitter handle style
+        # Re-tint the dim strip/divider if the user flips light/dark mode
+        # while signed out (otherwise it'd keep the old theme's dim color
+        # until the next sign-in/out toggle re-triggers a repaint).
+        ThemeManager.instance().themeChanged.connect(
+            lambda _: self._update_log_toggle_bar_theme()
+        )
 
         # Animate the splitter sizes for the smooth open/close slide.
         self._log_anim = QtCore.QVariantAnimation(self.centralwidget)
@@ -631,9 +633,12 @@ class UIMain:
         while signed in.
         """
         dark = not self._signed_in
+        # The same "overlay_dim" token the login overlay's blurred dashboard
+        # dims to (QATCH.ui.styles.tokens) - keeps this strip's dim tone in
+        # sync with the active light/dark theme instead of a fixed literal.
+        dim_css = "rgba(%d, %d, %d, %d)" % ThemeManager.instance().tokens()["overlay_dim"]
         self.log_container.setStyleSheet(
-            "QWidget#logContainer { background: %s; }"
-            % ("rgba(164, 168, 172, 255)" if dark else "transparent")
+            "QWidget#logContainer { background: %s; }" % (dim_css if dark else "transparent")
         )
 
         self.btnLogToggle.setToolTip("Show console" if self._log_collapsed else "Hide console")
@@ -649,7 +654,7 @@ class UIMain:
             # ~30% black over the strip's normal light tone - the same dim
             # level used on the blurred dashboard, not an unrelated dark color.
             self.log_toggle_bar.setStyleSheet(
-                "QWidget#logToggleBar { background: rgba(164, 168, 172, 255); }"
+                "QWidget#logToggleBar { background: %s; }" % dim_css
             )
             self.copy_foot.setStyleSheet("""
                 QLabel#footerLabel {
@@ -665,12 +670,12 @@ class UIMain:
             # sliver right at the resize divider between the two dimmed panes.
             self.log_splitter.setStyleSheet("""
                 QSplitter#logSplitter::handle {
-                    background: rgba(164, 168, 172, 255);
+                    background: %s;
                 }
                 QSplitter#logSplitter::handle:hover {
                     background: rgba(140, 145, 150, 255);
                 }
-            """)
+            """ % dim_css)
         else:
             self.log_toggle_bar.setStyleSheet("QWidget#logToggleBar { background: transparent; }")
             self.copy_foot.setStyleSheet("""

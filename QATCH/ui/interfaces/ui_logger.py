@@ -22,170 +22,15 @@ from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.components import AnimatedComboBox
+from QATCH.ui.styles.theme_manager import ThemeManager
 
-_LOGGER_GLASS_QSS = """
-    /* ---- Main Container ---- */
-    QWidget#ConsoleContainer {
-        background: rgba(255, 255, 255, 120);
-        border: 1px solid rgba(255, 255, 255, 200);
-        border-radius: 8px;
-    }
 
-    /* ---- Animated ComboBox ----
-       Scoped to AnimatedComboBox via #LevelFilter so the native arrow
-       region and the custom QLabel arrow don't fight over the same zone. */
-    QComboBox#LevelFilter {
-        background: rgba(255, 255, 255, 160);
-        border: 1px solid rgba(120, 130, 145, 160);   /* clear, visible outline */
-        border-radius: 14px;          /* pill for 28px height */
-        padding-left: 14px;
-        padding-right: 30px;          /* reserve room for the spinning arrow */
-        color: rgb(51, 51, 51);
-        font-weight: bold;
-    }
-    QComboBox#LevelFilter:hover {
-        background: rgba(255, 255, 255, 200);
-        border: 1px solid rgba(90, 100, 115, 200);
-    }
-    QComboBox#LevelFilter:on,
-    QComboBox#LevelFilter:focus {
-        background: rgba(255, 255, 255, 220);
-        border: 1px solid rgba(10, 163, 230, 200);
-    }
-    /* The custom QLabel arrow lives here, so kill the native drop-down box
-       entirely instead of letting it draw a second arrow underneath. */
-    QComboBox#LevelFilter::drop-down {
-        border: none;
-        background: transparent;
-        width: 0px;
-    }
-    QComboBox#LevelFilter::down-arrow {
-        image: none;
-        width: 0px;
-        height: 0px;
-    }
-
-    /* Drop-down menu list styling */
-    QComboBox#LevelFilter QAbstractItemView {
-        background-color: rgb(245, 247, 250);
-        border: 1px solid rgba(200, 200, 200, 180);
-        border-radius: 8px;
-        color: rgb(51, 51, 51);
-        padding: 4px;
-        selection-background-color: rgba(10, 163, 230, 40);
-        selection-color: #0AA3E6;
-        outline: none;
-    }
-    QComboBox#LevelFilter QAbstractItemView::item {
-        min-height: 24px;
-        border-radius: 6px;
-        padding-left: 8px;
-    }
-
-    /* ---- Search Bar ---- */
-    QLineEdit#SearchBar {
-        background: rgba(255, 255, 255, 160);
-        border: 1px solid rgba(120, 130, 145, 160);   /* clear, visible outline */
-        border-radius: 14px;
-        padding: 0px 8px;
-        color: rgb(51, 51, 51);
-        font-weight: bold;
-    }
-    QLineEdit#SearchBar:hover {
-        background: rgba(255, 255, 255, 200);
-        border: 1px solid rgba(90, 100, 115, 200);
-    }
-    QLineEdit#SearchBar:focus {
-        background: rgba(255, 255, 255, 220);
-        border: 1px solid rgba(10, 163, 230, 200);
-    }
-
-    /* ---- Toolbar / log separator ---- */
-    QFrame#ToolbarSeparator {
-        border: none;
-        background: rgba(120, 130, 145, 110);
-        max-height: 1px;
-        min-height: 1px;
-    }
-
-    /* ---- Match counter label ---- */
-    QLabel#MatchCounter {
-        color: rgba(80, 90, 105, 220);
-        font-family: Consolas, "Courier New", monospace;
-        font-size: 11px;
-        padding: 0px 2px;
-    }
-    QLabel#MatchCounter[state="nomatch"] {
-        color: #C62828;
-    }
-
-    /* ---- Clear (text-only, no outline) ---- */
-    QPushButton#ClearBtn {
-        background: transparent;
-        border: none;
-        padding: 0px 12px;
-        color: rgba(51, 51, 51, 230);
-        font-weight: bold;
-    }
-    QPushButton#ClearBtn:hover {
-        color: rgba(51, 51, 51, 150);   /* slightly lighter on hover */
-    }
-    QPushButton#ClearBtn:pressed {
-        color: rgba(51, 51, 51, 110);
-    }
-
-    /* ---- Icon-Only Buttons (Search Nav) ---- */
-    QPushButton#SearchPrevBtn, QPushButton#SearchNextBtn {
-        background: transparent;
-        border: none;
-        border-radius: 14px;
-    }
-    QPushButton#SearchPrevBtn:hover, QPushButton#SearchNextBtn:hover {
-        background: rgba(255, 255, 255, 180);
-    }
-    QPushButton#SearchPrevBtn:pressed, QPushButton#SearchNextBtn:pressed {
-        background: rgba(255, 255, 255, 220);
-    }
-
-    /* ---- Log text area ---- */
-    QTextEdit {
-        background: transparent;
-        border: none;
-        color: rgba(30, 40, 55, 200);
-        selection-background-color: rgba(10, 163, 230, 60);
-        selection-color: rgba(0, 0, 0, 220);
-        padding: 2px 4px;
-    }
-
-    /* ---- Scrollbars ---- */
-    QScrollBar:vertical {
-        border: none;
-        background: transparent;
-        width: 8px;
-        margin: 4px 0px 4px 0px;
-    }
-    QScrollBar:horizontal {
-        border: none;
-        background: transparent;
-        height: 8px;
-        margin: 0px 4px 0px 4px;
-    }
-    QScrollBar::handle:vertical,
-    QScrollBar::handle:horizontal {
-        background: rgba(130, 130, 130, 100);
-        border-radius: 4px;
-    }
-    QScrollBar::handle:vertical:hover,
-    QScrollBar::handle:horizontal:hover {
-        background: rgba(130, 130, 130, 180);
-    }
-    QScrollBar::add-line:vertical,  QScrollBar::sub-line:vertical,
-    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
-    QScrollBar::add-page:vertical,  QScrollBar::sub-page:vertical,
-    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-        width: 0px; height: 0px; background: none;
-    }
-"""
+def _tok_css(rgba: tuple) -> str:
+    """Convert a (r, g, b, a) token tuple to a CSS color string."""
+    r, g, b, a = rgba
+    if a == 255:
+        return f"#{r:02X}{g:02X}{b:02X}"
+    return f"rgba({r}, {g}, {b}, {a})"
 
 
 class LoggerWindow(QtWidgets.QMainWindow):
@@ -244,10 +89,8 @@ class UILogger:
 
 
 class QTextEditLogger(QtCore.QObject):
-    appendLogText = QtCore.pyqtSignal(str, int)
-
-    # Highlight color for the currently-selected search match.
-    _MATCH_FMT_COLOR = QtGui.QColor(10, 163, 230, 90)
+    # Raw record fields: (time_str, level_name, level_no, name_line, raw_msg)
+    appendLogText = QtCore.pyqtSignal(str, str, int, str, str)
 
     # UI batching / memory bounds.
     _FLUSH_INTERVAL_MS = 150  # how often pending records are rendered
@@ -259,10 +102,9 @@ class QTextEditLogger(QtCore.QObject):
 
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
-        # Main Container & Layout
+        # Main Container & Layout — styling comes from app_theme.qss via ThemeManager
         self.container = QtWidgets.QWidget(parent)
         self.container.setObjectName("ConsoleContainer")
-        self.container.setStyleSheet(_LOGGER_GLASS_QSS)
 
         main_layout = QtWidgets.QVBoxLayout(self.container)
         main_layout.setContentsMargins(8, 8, 8, 8)
@@ -347,8 +189,8 @@ class QTextEditLogger(QtCore.QObject):
         control_layout.addWidget(self.btn_find_next)
 
         sep = QtWidgets.QFrame(self.container)
+        sep.setObjectName("ToolbarVLineSep")
         sep.setFrameShape(QtWidgets.QFrame.VLine)
-        sep.setStyleSheet("color: rgba(150, 150, 150, 90);")
         sep.setFixedHeight(20)
         control_layout.addWidget(sep)
 
@@ -393,6 +235,10 @@ class QTextEditLogger(QtCore.QObject):
 
         self.appendLogText.connect(self.appendToConsole)
         self.last_record_msg = None
+
+        # Cache stores raw record tuples (time_str, level_name, level_no,
+        # name_line, raw_msg) so HTML can be rebuilt with the active theme
+        # colors whenever the theme changes or the filter is reapplied.
         self.log_cache = []
 
         # Batched UI updates: log records accumulate here and are flushed to
@@ -403,6 +249,8 @@ class QTextEditLogger(QtCore.QObject):
         self._flush_timer.setInterval(self._FLUSH_INTERVAL_MS)
         self._flush_timer.timeout.connect(self._flush_pending)
         self._flush_timer.start()
+
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
         self._update_match_ui(0, 0)
 
@@ -561,16 +409,56 @@ class QTextEditLogger(QtCore.QObject):
         self.current_filter_level = levels.get(level_text, 10)
         self._flush_pending()
 
+        tokens = ThemeManager.instance().tokens()
         self.logText.clear()
-        for html, lvl in self.log_cache:
-            if lvl >= self.current_filter_level:
-                self.logText.insertHtml(html)
+        for record in self.log_cache:
+            if record[2] >= self.current_filter_level:
+                self.logText.insertHtml(self._build_html_line(*record, tokens=tokens))
 
         self.logText.moveCursor(QtGui.QTextCursor.End)
         self.on_search_changed(self.search_input.text())
 
-    def appendToConsole(self, html, level_no):
-        self._pending.append((html, level_no))
+    def appendToConsole(self, time_str, level_name, level_no, name_line, raw_msg):
+        self._pending.append((time_str, level_name, level_no, name_line, raw_msg))
+
+    def _build_html_line(self, time_str, level_name, level_no, name_line, raw_msg, tokens=None):
+        """Render one log record as an HTML string using the active theme colors."""
+        if tokens is None:
+            tokens = ThemeManager.instance().tokens()
+
+        if level_name == "DEBUG":
+            lvl_color = _tok_css(tokens["log_debug"])
+            weight = "normal"
+        elif level_name == "INFO":
+            lvl_color = _tok_css(tokens["log_info"])
+            weight = "normal"
+        elif level_name == "WARNING":
+            lvl_color = _tok_css(tokens["log_warning"])
+            weight = "bold"
+        elif level_name in ("ERROR", "CRITICAL"):
+            lvl_color = _tok_css(tokens["log_error"])
+            weight = "bold"
+        else:
+            lvl_color = _tok_css(tokens["log_default"])
+            weight = "normal"
+
+        time_color = _tok_css(tokens["log_time"])
+        loc_color = _tok_css(tokens["log_location"])
+
+        time_html = f"<span style='color:{time_color};'>{time_str}</span>"
+        padded_level = f"{level_name:<8}".replace(" ", "&nbsp;")
+        lvl_html = f"<span style='color:{lvl_color}; font-weight:{weight};'>{padded_level}</span>"
+        loc_html = f"<span style='color:{loc_color};'>{name_line}</span>"
+        msg_html = f"<span style='color:{lvl_color}; font-weight:{weight};'>{raw_msg}</span>"
+
+        return (
+            f"<span style='font-family: Consolas, \"Courier New\", monospace;'>"
+            f"{time_html} | {lvl_html} | {loc_html} | {msg_html}</span><br>"
+        )
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        """Re-render the visible log with new theme colors when the palette switches."""
+        self.apply_filter(self.level_filter.currentText())
 
     def _flush_pending(self):
         """Render all buffered records in a single insertHtml pass."""
@@ -585,7 +473,12 @@ class QTextEditLogger(QtCore.QObject):
         if len(self.log_cache) > self._MAX_CACHE:
             del self.log_cache[: len(self.log_cache) - self._MAX_CACHE]
 
-        visible_html = "".join(html for html, lvl in batch if lvl >= self.current_filter_level)
+        tokens = ThemeManager.instance().tokens()
+        visible_html = "".join(
+            self._build_html_line(*rec, tokens=tokens)
+            for rec in batch
+            if rec[2] >= self.current_filter_level
+        )
         if not visible_html:
             return
 
@@ -607,34 +500,7 @@ class QTextEditLogger(QtCore.QObject):
         record = message.record
         level_no = record["level"].no
         level_name = record["level"].name
-
         time_str = record["time"].strftime("%Y-%m-%d %H:%M:%S")
         name_line = f"{record['name']}:{record['line']}"
-
         raw_msg = record["message"].replace("<", "&lt;").replace(">", "&gt;")
-
-        if level_name == "DEBUG":
-            lvl_color = "#78909C"
-            weight = "normal"
-        elif level_name == "INFO":
-            lvl_color = "#2E7D32"
-            weight = "normal"
-        elif level_name == "WARNING":
-            lvl_color = "#E65100"
-            weight = "bold"
-        elif level_name in ["ERROR", "CRITICAL"]:
-            lvl_color = "#C62828"
-            weight = "bold"
-        else:
-            lvl_color = "#333333"
-            weight = "normal"
-
-        time_html = f"<span style='color:#00838F;'>{time_str}</span>"
-        padded_level = f"{level_name:<8}".replace(" ", "&nbsp;")
-        lvl_html = f"<span style='color:{lvl_color}; font-weight:{weight};'>{padded_level}</span>"
-        loc_html = f"<span style='color:#8E24AA;'>{name_line}</span>"
-        msg_html = f"<span style='color:{lvl_color}; font-weight:{weight};'>{raw_msg}</span>"
-
-        html_line = f"<span style='font-family: Consolas, \"Courier New\", monospace;'>{time_html} | {lvl_html} | {loc_html} | {msg_html}</span><br>"
-
-        self.appendLogText.emit(html_line, level_no)
+        self.appendLogText.emit(time_str, level_name, level_no, name_line, raw_msg)

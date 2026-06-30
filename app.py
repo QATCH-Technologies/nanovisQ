@@ -79,6 +79,12 @@ class QATCH:
         QtCore.QCoreApplication.setApplicationName("nanovisQ")
         self._app = QApplication(argv)
 
+        # Apply the persisted light/dark theme app-wide before any window
+        # (including the pre-login sign-in screen) is constructed.
+        from QATCH.ui.styles.theme_manager import ThemeManager
+
+        ThemeManager.instance().apply_app_stylesheet(self._app)
+
     def flashSplashShow(self):
         build_info = f" {Constants.app_title}\n Version: {Constants.app_version}\n Build Date: {Constants.app_date}\n"
 

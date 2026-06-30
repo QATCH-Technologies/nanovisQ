@@ -33,6 +33,8 @@ from QATCH.core.constants import Constants, UserRoles
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.widgets.floating_message_badge_widget import FloatingMessageBadgeWidget
 from QATCH.ui.components import GlassLineEdit
+from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.tokens import ColorTokens
 
 _CARD_W: int = 320
 _INPUT_H: int = 34
@@ -233,6 +235,19 @@ class LoginCentralWidget(QtWidgets.QWidget):
         # backing store.
         self.setAutoFillBackground(False)
 
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        """Repaints with the new palette's backdrop tokens.
+
+        GlassCard samples our pixmaps/tokens directly in its own paintEvent
+        rather than inheriting our repaint, so - same as `_set_backdrop_frac`
+        - it must be nudged explicitly to stay in sync.
+        """
+        self.update()
+        for child in self.findChildren(QtWidgets.QWidget):
+            child.update()
+
     def register_dismissable_card(self, card: "GlassCard") -> None:
         """Gives `card` its own pop effect (scale + opacity) and tracks it
         for the synchronized sign-out reveal / sign-in dismiss sequences.
@@ -286,9 +301,30 @@ class LoginCentralWidget(QtWidgets.QWidget):
         Args:
             source (QtWidgets.QWidget): The widget to grab for the backdrop.
         """
-        raw: QtGui.QPixmap = source.grab()
+        # Grab from the top-level window so the full gradient background
+        # (painted by ancestor widgets like #centralwidget) is included.
+        # Then crop to the exact pixel region that `source` occupies.
+        # If this overlay is already visible (cold-start refresh), hide it
+        # first so the underlying dashboard is captured, not the overlay.
+        was_visible = self.isVisible()
+        if was_visible:
+            self.hide()
+            QtWidgets.QApplication.processEvents(
+                QtCore.QEventLoop.ExcludeUserInputEvents
+            )
 
-        if not self.size().isEmpty():
+        window = source.window()
+        window_pixmap = window.grab()
+        source_rect = QtCore.QRect(
+            source.mapTo(window, QtCore.QPoint(0, 0)), source.size()
+        )
+        raw = window_pixmap.copy(source_rect)
+
+        if was_visible:
+            self.show()
+            self.raise_()
+
+        if not self.size().isEmpty() and not raw.isNull():
             raw = raw.scaled(
                 self.size(),
                 QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
@@ -575,6 +611,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
         blurred: Optional[QtGui.QPixmap],
         blur_frac: float,
         dim_frac: float,
+        tokens: ColorTokens,
     ) -> None:
         """Paints the "Deep Focus" backdrop into `rect`: a sharp/blurred
         crossfade plus a light glass frost and a dark dimming overlay.
@@ -589,6 +626,9 @@ class LoginCentralWidget(QtWidgets.QWidget):
             blurred (QtGui.QPixmap, optional): The pre-blurred snapshot.
             blur_frac (float): 0.0 (sharp) -> 1.0 (fully blurred).
             dim_frac (float): 0.0 (bright) -> 1.0 (max dim).
+            tokens (ColorTokens): The active light/dark palette - passed in
+                rather than read from ThemeManager directly so this stays a
+                plain, testable static method.
         """
         blur_frac = max(0.0, min(1.0, blur_frac))
         dim_frac = max(0.0, min(1.0, dim_frac))
@@ -605,19 +645,21 @@ class LoginCentralWidget(QtWidgets.QWidget):
         else:
             # Fallback gradient shown during initial load/capture
             grad = QtGui.QLinearGradient(0, 0, rect.width(), rect.height())
-            grad.setColorAt(0.0, QtGui.QColor(0xD8, 0xE6, 0xF0))
-            grad.setColorAt(1.0, QtGui.QColor(0xEE, 0xF4, 0xF8))
+            grad.setColorAt(0.0, QtGui.QColor(*tokens["backdrop_fallback_start"]))
+            grad.setColorAt(1.0, QtGui.QColor(*tokens["backdrop_fallback_end"]))
             p.fillRect(rect, QtGui.QBrush(grad))
 
         # Constant light glass frost - the identity of the card, independent
         # of how dimmed the scene currently is.
-        p.fillRect(rect, QtGui.QColor(238, 243, 247, 62))
+        p.fillRect(rect, QtGui.QColor(*tokens["backdrop_frost"]))
 
-        # Dark dimming overlay: 0 -> ~0.3 alpha as the camera pulls focus
-        # toward the foreground card.
-        dim_alpha = int(76 * dim_frac)
+        # Dark dimming overlay: 0 -> the token's max alpha as the camera
+        # pulls focus toward the foreground card.
+        dim_color = QtGui.QColor(*tokens["backdrop_dim"])
+        dim_alpha = int(dim_color.alpha() * dim_frac)
         if dim_alpha > 0:
-            p.fillRect(rect, QtGui.QColor(0, 0, 0, dim_alpha))
+            dim_color.setAlpha(dim_alpha)
+            p.fillRect(rect, dim_color)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Renders the "Deep Focus" backdrop: a blur/dim crossfade.
@@ -628,7 +670,13 @@ class LoginCentralWidget(QtWidgets.QWidget):
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
         self._compose_backdrop(
-            p, self.rect(), self._raw_snapshot, self._blurred, self._blur_frac, self._dim_frac
+            p,
+            self.rect(),
+            self._raw_snapshot,
+            self._blurred,
+            self._blur_frac,
+            self._dim_frac,
+            ThemeManager.instance().tokens(),
         )
         p.end()
 
@@ -722,13 +770,20 @@ class GlassCard(QtWidgets.QFrame):
             blur_frac = getattr(self._backdrop, "_blur_frac", 0.0)
             dim_frac = getattr(self._backdrop, "_dim_frac", 0.0)
             LoginCentralWidget._compose_backdrop(
-                p, self._backdrop.rect(), sharp, blurred, blur_frac, dim_frac
+                p,
+                self._backdrop.rect(),
+                sharp,
+                blurred,
+                blur_frac,
+                dim_frac,
+                ThemeManager.instance().tokens(),
             )
             p.restore()
         else:
+            tokens = ThemeManager.instance().tokens()
             grad = QtGui.QLinearGradient(0, 0, 0, self.height())
-            grad.setColorAt(0.0, QtGui.QColor(0xD4, 0xE6, 0xF4))
-            grad.setColorAt(1.0, QtGui.QColor(0xE6, 0xF2, 0xFA))
+            grad.setColorAt(0.0, QtGui.QColor(*tokens["backdrop_fallback_start"]))
+            grad.setColorAt(1.0, QtGui.QColor(*tokens["backdrop_fallback_end"]))
             p.fillRect(self.rect(), QtGui.QBrush(grad))
 
         # Primary white glass tint

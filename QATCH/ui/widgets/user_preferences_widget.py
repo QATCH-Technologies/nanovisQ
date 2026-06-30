@@ -3,6 +3,7 @@ from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.userProfiles import UserProfiles, UserPreferences
 from QATCH.core.constants import Constants, UserRoles
+from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode
 from PyQt5.QtWidgets import (
     QMessageBox,
     QWidget,
@@ -238,10 +239,35 @@ class UserPreferencesWidget(QWidget):
 
         default_data_tab.setLayout(default_data_layout)
 
+        # Appearance tab: light/dark theme, applied immediately and
+        # persisted independently of the Save/global-preferences flow below
+        # (it's a single app-wide setting, not a per-user preference, so it
+        # also applies to the pre-login sign-in screen).
+        appearance_tab = QWidget()
+        appearance_layout = QVBoxLayout()
+
+        theme_layout = QHBoxLayout()
+        theme_label = QLabel("Theme:")
+        theme_layout.addWidget(theme_label)
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Light", "Dark"])
+        self.theme_combo.setCurrentText(ThemeManager.instance().mode().value.capitalize())
+        self.theme_combo.currentTextChanged.connect(self.change_theme)
+        theme_layout.addWidget(self.theme_combo)
+        theme_layout.addStretch()
+        appearance_layout.addLayout(theme_layout)
+
+        appearance_spacer = QWidget()
+        appearance_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        appearance_layout.addWidget(appearance_spacer)
+
+        appearance_tab.setLayout(appearance_layout)
+
         # Add tabs to the tab widget
         self.tab_widget.addTab(date_time_tab, "Date and Time Preferences")
         self.tab_widget.addTab(file_folder_tab, "File and Folder Preferences")
         self.tab_widget.addTab(default_data_tab, "Default Data Paths")
+        self.tab_widget.addTab(appearance_tab, "Appearance")
         # Connect tab change signal to handler
         self.tab_widget.currentChanged.connect(self.handle_tab_change)
 
@@ -325,6 +351,15 @@ class UserPreferencesWidget(QWidget):
             self.write_directory_input.setText(selected_directory)
             return True
         return False
+
+    def change_theme(self, theme_text: str) -> None:
+        """Switches the app-wide light/dark theme immediately.
+
+        Unlike the other tabs, this isn't staged behind "Save Preferences" -
+        ThemeManager applies and persists the change itself the moment the
+        combo box selection changes.
+        """
+        ThemeManager.instance().set_mode(ThemeMode(theme_text.lower()))
 
     def toggle_folder_sync(self, state):
         is_synced = True if (state == Qt.CheckState.Checked) else False

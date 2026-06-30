@@ -1,6 +1,8 @@
 from typing import Optional, Dict
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.styles.theme_manager import ThemeManager
+
 
 class SavedStateDot(QtWidgets.QWidget):
     """A small glowing status dot that reflects a field's save state.
@@ -13,16 +15,27 @@ class SavedStateDot(QtWidgets.QWidget):
         * ``saved``: Green, steady (confirmed state).
 
     Attributes:
-        _COLORS (Dict[str, QtGui.QColor]): Color mapping for each state.
+        _COLORS (Dict[str, Dict[str, QtGui.QColor]]): Color mapping for each
+            state, nested by theme mode ("light" / "dark") - dark variants
+            are brightened slightly so they stay visible against a
+            near-black surface.
         _PULSING (tuple): Collection of states that require active animation.
         _SIZE (int): The fixed diameter of the widget.
     """
 
-    _COLORS: Dict[str, QtGui.QColor] = {
-        "blank": QtGui.QColor(150, 165, 180),
-        "unsaved": QtGui.QColor(240, 170, 50),
-        "saved": QtGui.QColor(60, 190, 120),
-        "querying": QtGui.QColor(228, 70, 70),
+    _COLORS: Dict[str, Dict[str, QtGui.QColor]] = {
+        "light": {
+            "blank": QtGui.QColor(150, 165, 180),
+            "unsaved": QtGui.QColor(240, 170, 50),
+            "saved": QtGui.QColor(60, 190, 120),
+            "querying": QtGui.QColor(228, 70, 70),
+        },
+        "dark": {
+            "blank": QtGui.QColor(170, 180, 195),
+            "unsaved": QtGui.QColor(255, 185, 60),
+            "saved": QtGui.QColor(80, 210, 140),
+            "querying": QtGui.QColor(240, 90, 90),
+        },
     }
     _PULSING: tuple = ("unsaved", "querying")
     _SIZE: int = 14
@@ -36,6 +49,8 @@ class SavedStateDot(QtWidgets.QWidget):
         self._state: str = "blank"
         self._glow: float = 0.0
         self._flash: float = 0.0
+
+        ThemeManager.instance().themeChanged.connect(lambda _mode: self.update())
 
         # Pulse animation
         self._pulse = QtCore.QVariantAnimation(self)
@@ -65,7 +80,7 @@ class SavedStateDot(QtWidgets.QWidget):
         started. Otherwise, the animation is stopped. This method is
         idempotent to prevent unnecessary animation restarts.
         """
-        if state not in self._COLORS:
+        if state not in self._COLORS["light"]:
             state = "blank"
         if state == self._state:
             return
@@ -97,7 +112,8 @@ class SavedStateDot(QtWidgets.QWidget):
         """Renders the status dot with dynamic glow and flash overlays."""
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing, True)
-        c = QtGui.QColor(self._COLORS[self._state])
+        mode = ThemeManager.instance().mode().value
+        c = QtGui.QColor(self._COLORS[mode][self._state])
         cx, cy = self.width() / 2.0, self.height() / 2.0
 
         # Outer halo

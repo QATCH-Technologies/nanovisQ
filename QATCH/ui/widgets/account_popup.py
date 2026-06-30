@@ -1,5 +1,8 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from typing import Optional
+import os
+from QATCH.ui.components.glass_push_button import GlassPushButton
+from QATCH.common.architecture import Architecture
 
 
 class AvatarLabel(QtWidgets.QWidget):

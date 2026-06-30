@@ -47,120 +47,15 @@ from QATCH.ui.labels import (
     StatusLabel,
     TemperatureLabel,
 )
+from QATCH.ui.styles.theme_manager import ThemeManager
 from QATCH.ui.widgets.account_popup import AccountPopup
 
-_TOOLBAR_QSS = """
-    QToolBar {
-        background: transparent;
-        border: none;
-        spacing: 2px;
-    }
-    QToolButton {
-        background: transparent;
-        color: rgba(30, 40, 55, 200);
-        border: 1px solid transparent;
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        font-size: 12px;
-    }
-    QToolButton:hover {
-        background: rgba(229, 229, 229, 150);
-        border: 1px solid transparent;
-    }
-    QToolButton:pressed {
-        background: rgba(229, 229, 229, 200);
-        border: 1px solid transparent;
-    }
-    QToolButton:checked {
-        background: transparent;
-        border: 1px solid transparent;
-    }
-    QToolButton:disabled {
-        color: rgba(30, 40, 55, 90);
-        background: transparent;
-        border: 1px solid transparent;
-    }
-    QToolBar::separator {
-        background: rgba(0, 0, 0, 22);
-        width: 1px;
-        margin: 5px 4px;
-    }
-"""
 
-_PROGRESSBAR_QSS = """
-    QProgressBar {
-        border: 1px solid rgba(0, 0, 0, 25);
-        border-radius: 4px;
-        text-align: center;
-        color: rgba(30, 40, 55, 200);
-        background: rgba(255, 255, 255, 120);
-        font-weight: bold;
-    }
-    QProgressBar::chunk {
-        background: qlineargradient(
-            spread:pad, x1:0, y1:0, x2:1, y2:0,
-            stop:0 rgba(10, 163, 230, 130),
-            stop:1 rgba(10, 163, 230, 90)
-        );
-        border-radius: 3px;
-    }
-"""
-
-_TEMP_CONTROLLER_QSS = """
-    QWidget#tempController {
-        background: rgba(229, 229, 229, 80);
-        border: none;
-        border-radius: 6px;
-    }
-    QFrame#tempPidInfo {
-        background: rgba(255, 255, 255, 120);
-        border: 1px solid rgba(255, 255, 255, 200);
-        border-radius: 5px;
-    }
-    QLabel#tempPidHeader {
-        background: transparent;
-        border: none;
-        color: rgba(0, 118, 174, 220);
-        font-weight: bold;
-        font-size: 8pt;
-        letter-spacing: 0.4px;
-    }
-    QLabel#tempStatusBanner {
-        background: rgba(150, 155, 160, 120);
-        color: rgba(30, 40, 55, 160);
-        border: 1px solid rgba(255, 255, 255, 160);
-        border-radius: 3px;
-        padding: 0 6px;
-        font-weight: bold;
-    }
-    QLabel {
-        background: transparent;
-        border: none;
-        color: rgba(30, 40, 55, 200);
-    }
-    QSlider::groove:horizontal {
-        height: 4px;
-        background: rgba(0, 0, 0, 30);
-        border-radius: 2px;
-    }
-    QSlider::handle:horizontal {
-        background: #0AA3E6;
-        border: 1px solid rgba(0, 130, 200, 200);
-        width: 12px;
-        height: 12px;
-        margin: -4px 0;
-        border-radius: 6px;
-    }
-    QSlider::sub-page:horizontal {
-        background: rgba(10, 163, 230, 120);
-        border-radius: 2px;
-    }
-    QSlider::handle:horizontal:disabled {
-        background: rgba(150, 170, 190, 140);
-        border: 1px solid rgba(0, 0, 0, 30);
-    }
-"""
+def _tok_css(rgba: tuple) -> str:
+    r, g, b, a = rgba
+    if a == 255:
+        return f"#{r:02X}{g:02X}{b:02X}"
+    return f"rgba({r}, {g}, {b}, {a})"
 
 
 def _hairline() -> QtWidgets.QFrame:
@@ -175,10 +70,7 @@ def _hairline() -> QtWidgets.QFrame:
     """
     line = QtWidgets.QFrame()
     line.setFrameShape(QtWidgets.QFrame.HLine)
-    # Using a transparent rgba color ensures the line is soft and non-intrusive
-    line.setStyleSheet(
-        "QFrame { background: rgba(200, 210, 220, 130); border: none; max-height: 1px; }"
-    )
+    line.setObjectName("CtrlHairline")
     return line
 
 
@@ -242,11 +134,11 @@ class _RangeSliderField(QtWidgets.QWidget):
         self._guard = False  # re-entrancy guard for cross-updates
 
         self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider.setObjectName("RangeSlider")
         self.slider.setMinimum(minimum)
         self.slider.setMaximum(maximum)
         self.slider.setSingleStep(1)
         self.slider.setPageStep(5)
-        self.slider.setStyleSheet(_RANGE_SLIDER_QSS)
         self.slider.setMinimumWidth(120)
         self.slider.valueChanged.connect(self._on_slider)
 
@@ -338,31 +230,6 @@ class _RangeSliderField(QtWidgets.QWidget):
         self.setValue(self.slider.minimum())
 
 
-# Themed QSS for the Lid POGO range sliders + their numeric boxes.
-_RANGE_SLIDER_QSS = """
-    QSlider::groove:horizontal {
-        height: 4px;
-        background: rgba(0, 0, 0, 30);
-        border-radius: 2px;
-    }
-    QSlider::handle:horizontal {
-        background: #0AA3E6;
-        border: 1px solid rgba(0, 130, 200, 200);
-        width: 14px;
-        height: 14px;
-        margin: -5px 0;
-        border-radius: 7px;
-    }
-    QSlider::handle:horizontal:hover {
-        background: #1FB3F0;
-    }
-    QSlider::sub-page:horizontal {
-        background: rgba(10, 163, 230, 140);
-        border-radius: 2px;
-    }
-"""
-
-
 class LabeledToggle(QtWidgets.QWidget):
     """A GlassToggle paired with a text label in a horizontal row.
 
@@ -375,9 +242,7 @@ class LabeledToggle(QtWidgets.QWidget):
         super().__init__(parent)
         self.toggle = GlassToggle(self)
         self.label = QtWidgets.QLabel(text, self)
-        self.label.setStyleSheet(
-            "background: transparent; border: none; color: rgba(30, 40, 55, 215);"
-        )
+        self.label.setObjectName("CtrlToggleLabel")
         self.label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
 
         lay = QtWidgets.QHBoxLayout(self)
@@ -657,9 +522,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.lbl_lock_manual = QtWidgets.QLabel("Manual")
         self.lbl_lock_auto = QtWidgets.QLabel("Automatic")
         for _lbl in (self.lbl_lock_manual, self.lbl_lock_auto):
-            _lbl.setStyleSheet(
-                "background: transparent; border: none; color: rgba(30, 40, 55, 215);"
-            )
+            _lbl.setObjectName("CtrlToggleLabel")
             _lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
 
         self.layMode = QtWidgets.QHBoxLayout()
@@ -728,9 +591,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.lbl_plot_absolute = QtWidgets.QLabel("Absolute")
         self.lbl_plot_reference = QtWidgets.QLabel("Reference")
         for _lbl in (self.lbl_plot_absolute, self.lbl_plot_reference):
-            _lbl.setStyleSheet(
-                "background: transparent; border: none; color: rgba(30, 40, 55, 215);"
-            )
+            _lbl.setObjectName("CtrlToggleLabel")
             _lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
 
         # Alias: existing code refers to pButton_Reference for enable/check/click.
@@ -933,7 +794,6 @@ class UIControls:  # QtWidgets.QMainWindow
         self.run_progress_bar = QtWidgets.QProgressBar()
         self.run_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
         self.run_progress_bar.setObjectName("progressBar")
-        self.run_progress_bar.setStyleSheet(_PROGRESSBAR_QSS)
 
         if USE_FULLSCREEN:
             self.run_progress_bar.setFixedHeight(50)
@@ -959,8 +819,8 @@ class UIControls:  # QtWidgets.QMainWindow
         self.toolBar = QtWidgets.QHBoxLayout()
 
         self.tool_bar = QtWidgets.QToolBar()
+        self.tool_bar.setObjectName("CtrlToolBar")
         self.tool_bar.setIconSize(QtCore.QSize(50, 30))
-        self.tool_bar.setStyleSheet(_TOOLBAR_QSS)
 
         self.tool_NextPortRow = NumberIconButton()
         self.tool_NextPortRow.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
@@ -1041,7 +901,6 @@ class UIControls:  # QtWidgets.QMainWindow
         self.tempController.leaveEvent = self.action_tempcontrol_warn_stop
         self.tempController.setMinimumWidth(0)
         self.tempController.setMaximumWidth(0)  # collapsed until activated
-        self.tempController.setStyleSheet(_TEMP_CONTROLLER_QSS)
 
         # Status banner - coloured background + descriptive text. Sits ABOVE the
         # slider on the left side of the panel, matching the wireframe.
@@ -1067,9 +926,9 @@ class UIControls:  # QtWidgets.QMainWindow
         self.lSP = QtWidgets.QLabel("SP  --.--°C")
         self.lOP = QtWidgets.QLabel("OP  ----")
         for lbl in (self.lPV, self.lSP, self.lOP):
+            lbl.setObjectName("TempPidValue")
             lbl.setFont(value_font)
             lbl.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            lbl.setStyleSheet("background: transparent; border: none; color: rgba(30,40,55,210);")
 
         self.tempPidInfo = QtWidgets.QFrame()
         self.tempPidInfo.setObjectName("tempPidInfo")
@@ -1103,8 +962,8 @@ class UIControls:  # QtWidgets.QMainWindow
         self.toolBar.addStretch()
 
         self.tool_bar_2 = QtWidgets.QToolBar()
+        self.tool_bar_2.setObjectName("CtrlToolBar")
         self.tool_bar_2.setIconSize(QtCore.QSize(50, 30))
-        self.tool_bar_2.setStyleSheet(_TOOLBAR_QSS)
 
         icon_advanced = QtGui.QIcon()
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
@@ -1208,21 +1067,8 @@ class UIControls:  # QtWidgets.QMainWindow
         self.back_btn.setIconSize(QtCore.QSize(18, 18))
         self.back_btn.setFixedSize(32, 32)
         self.back_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.back_btn.setObjectName("DeviceBackBtn")
         self.back_btn.setToolTip("Back to Advanced Options")
-        self.back_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 40);
-                border: 1px solid rgba(255, 255, 255, 100);
-                border-radius: 16px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 80);
-                border: 1px solid rgba(255, 255, 255, 150);
-            }
-            QPushButton:pressed {
-                background: rgba(255, 255, 255, 30);
-            }
-        """)
         self.back_btn.clicked.connect(self.on_device_config_editor_close)
 
         # Title icon (gear, matching the advanced header's leading glyph).
@@ -1244,10 +1090,7 @@ class UIControls:  # QtWidgets.QMainWindow
         # ``.text()`` / ``.endswith(dev_handle)`` keep working) while DISPLAYING
         # a clean, left-aligned title with the handle appended.
         self.device_config_title = DeviceConfigLabel("Configuration Editor for Device")
-        self.device_config_title.setStyleSheet(
-            "QLabel { color: rgba(28, 40, 52, 235); font-size: 14px; "
-            "font-weight: bold; background: transparent; border: none; }"
-        )
+        self.device_config_title.setObjectName("DeviceConfigTitle")
         # Backwards-compatible alias for external references.
         self.ConfigBannerWidget = self.device_config_title
 
@@ -1303,41 +1146,12 @@ class UIControls:  # QtWidgets.QMainWindow
             QtCore.QRegularExpression(r"[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-4]")
         )  # 0 thru 254 ms per step
 
-        # Unified translucent style for text inputs
-        glass_icon_style = """
-            QLineEdit {
-                background: rgba(255, 255, 255, 60);
-                border: 1px solid rgba(255, 255, 255, 120);
-                border-radius: 6px;
-                padding: 4px 8px;
-                color: rgba(30, 40, 55, 220);
-            }
-        """
-        glass_input_style = glass_icon_style + """
-            QLineEdit:focus {
-                background: rgba(255, 255, 255, 180);
-                border: 1px solid rgba(0, 120, 215, 150);
-            }
-        """
-        # Pill-shaped variant (rounded ends) for the device text inputs so they
-        # match the rounded glass combos / spin boxes used elsewhere.
-        glass_pill_style = """
-            QLineEdit {
-                background: rgba(255, 255, 255, 60);
-                border: 1px solid rgba(255, 255, 255, 120);
-                border-radius: 14px;
-                padding: 5px 12px;
-                color: rgba(30, 40, 55, 220);
-            }
-            QLineEdit:focus {
-                background: rgba(255, 255, 255, 180);
-                border: 1px solid rgba(0, 120, 215, 150);
-            }
-        """
         # NOTE: the former ``glass_spinbox_style`` QSS block (which themed the
         # native QDoubleSpinBox up/down buttons) has been removed. The temp-cal
         # inputs are now AnimatedDoubleSpinBox instances, which carry their own
         # glass styling and custom animated chevrons.
+        # glass_icon_style / glass_pill_style have been moved to app_theme.qss as
+        # QLineEdit#CtrlIconBox and QLineEdit#CtrlInputPill with token colours.
 
         # Maps each field's QLineEdit "action" (the authoritative save-state
         # holder, via iconText) to its glowing status dot so the dot can mirror
@@ -1363,8 +1177,8 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # Row 0L: Device Name
         self.device_name_input = QtWidgets.QLineEdit()
+        self.device_name_input.setObjectName("CtrlInputPill")
         self.device_name_input.setValidator(self.validDeviceName)
-        self.device_name_input.setStyleSheet(glass_pill_style)
         self.device_name_input.setMinimumWidth(160)
         self.device_name_action = self.device_name_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
@@ -1376,8 +1190,8 @@ class UIControls:  # QtWidgets.QMainWindow
 
         # Row 0R: Device Position ID
         self.device_pid_input = QtWidgets.QLineEdit()
+        self.device_pid_input.setObjectName("CtrlInputPill")
         self.device_pid_input.setValidator(self.validDevicePid)
-        self.device_pid_input.setStyleSheet(glass_pill_style)
         self.device_pid_input.setMinimumWidth(160)
         self.device_pid_action = self.device_pid_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
@@ -1408,7 +1222,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_always_input.setSuffix(" °C")
         self.temp_cal_always_input.setMinimumWidth(142)
         self.temp_cal_always_icon = QtWidgets.QLineEdit()
-        self.temp_cal_always_icon.setStyleSheet(glass_icon_style)
+        self.temp_cal_always_icon.setObjectName("CtrlIconBox")
         self.temp_cal_always_icon.setFixedWidth(self.temp_cal_always_icon.sizeHint().height())
         self.temp_cal_always_icon.setReadOnly(True)
         self.temp_cal_always_action = self.temp_cal_always_icon.addAction(
@@ -1438,7 +1252,7 @@ class UIControls:  # QtWidgets.QMainWindow
         self.temp_cal_measure_input.setSuffix(" °C")
         self.temp_cal_measure_input.setMinimumWidth(142)
         self.temp_cal_measure_icon = QtWidgets.QLineEdit()
-        self.temp_cal_measure_icon.setStyleSheet(glass_icon_style)
+        self.temp_cal_measure_icon.setObjectName("CtrlIconBox")
         self.temp_cal_measure_icon.setFixedWidth(self.temp_cal_measure_icon.sizeHint().height())
         self.temp_cal_measure_icon.setReadOnly(True)
         self.temp_cal_measure_action = self.temp_cal_measure_icon.addAction(
@@ -1719,8 +1533,9 @@ class UIControls:  # QtWidgets.QMainWindow
         # its own stylesheet border via a transient amber outline.
         target = getattr(widget, "spin", widget)
         base_qss = target.styleSheet()
+        pulse_rgba = ThemeManager.instance().tokens()["ctrl_pulse_border"]
         amber = (
-            target.__class__.__name__ + " { border: 1px solid rgba(240,170,50,230); "
+            target.__class__.__name__ + f" {{ border: 1px solid {_tok_css(pulse_rgba)}; "
             "border-radius: 12px; }"
         )
 
@@ -2446,24 +2261,22 @@ class UIControls:  # QtWidgets.QMainWindow
     def _update_progress_text(self):
         # get innerText from HTML in infobar
         plain_text = self.infobar.text()
-        color = plain_text[plain_text.rindex("color=") + 6 : plain_text.rindex("color=") + 6 + 7]
-        plain_text = plain_text[plain_text.index(">") + 1 :]
-        plain_text = plain_text[plain_text.index(">") + 1 :]
-        plain_text = plain_text[plain_text.index(">") + 1 :]
-        plain_text = plain_text[0 : plain_text.rindex("<")]
-        # remove any formatting tags: <b>, <i>, <u>
-        while plain_text.rfind("<") != plain_text.find("<"):
-            plain_text = plain_text[0 : plain_text.rindex("<")]
+        try:
             plain_text = plain_text[plain_text.index(">") + 1 :]
+            plain_text = plain_text[plain_text.index(">") + 1 :]
+            plain_text = plain_text[plain_text.index(">") + 1 :]
+            plain_text = plain_text[0 : plain_text.rindex("<")]
+            # remove any formatting tags: <b>, <i>, <u>
+            while plain_text.rfind("<") != plain_text.find("<"):
+                plain_text = plain_text[0 : plain_text.rindex("<")]
+                plain_text = plain_text[plain_text.index(">") + 1 :]
+        except (ValueError, IndexError):
+            plain_text = ""
         if len(plain_text) == 0:
             plain_text = "Progress: Not Started"
         else:
             plain_text = "Status: {}".format(plain_text)
         self.run_progress_bar.setFormat(plain_text)
-        styleBar = _PROGRESSBAR_QSS.replace(
-            "color: #1a3050;", "color: {COLOR}; font-weight: bold;"
-        ).replace("{COLOR}", color)
-        self.run_progress_bar.setStyleSheet(styleBar)
 
     def _update_progress_value(self):
         if self.cBox_Source.currentIndex() == OperationType.measurement.value:
@@ -2669,31 +2482,33 @@ class UIControls:  # QtWidgets.QMainWindow
         self.lOP.setText(f"OP  {op_str}")
 
         # Determine status colour and descriptive label
+        tok = ThemeManager.instance().tokens()
         try:
             pv = float(pv_str.rstrip("C"))
             sp = float(sp_str.rstrip("C"))
             if abs(pv - sp) <= 0.5:
                 status_text = "Ready"
-                bg_colour = "rgba(60, 200, 90, 220)"
-                text_colour = "rgba(255, 255, 255, 230)"
+                bg_rgba = tok["ctrl_temp_ready_bg"]
+                text_rgba = tok["ctrl_temp_ready_text"]
             elif pv < sp:
                 status_text = "Heating to setpoint..."
-                bg_colour = "rgba(240, 190, 0, 220)"
-                text_colour = "rgba(30, 20, 0, 200)"
+                bg_rgba = tok["ctrl_temp_heating_bg"]
+                text_rgba = tok["ctrl_temp_heating_text"]
             else:
                 status_text = "Cooling to setpoint..."
-                bg_colour = "rgba(240, 140, 0, 220)"
-                text_colour = "rgba(30, 20, 0, 200)"
+                bg_rgba = tok["ctrl_temp_cooling_bg"]
+                text_rgba = tok["ctrl_temp_heating_text"]
         except ValueError:
             status_text = "Offline"
-            bg_colour = "rgba(150, 155, 160, 120)"
-            text_colour = "rgba(30, 40, 55, 160)"
+            bg_rgba = tok["ctrl_temp_status_offline_bg"]
+            text_rgba = tok["ctrl_temp_status_offline_text"]
 
+        border_rgba = tok["ctrl_temp_status_border"]
         self.tempStatusBar.setText(status_text)
         self.tempStatusBar.setStyleSheet(
             "QLabel { "
-            f"background: {bg_colour}; color: {text_colour}; "
-            "border: 1px solid rgba(255, 255, 255, 160); "
+            f"background: {_tok_css(bg_rgba)}; color: {_tok_css(text_rgba)}; "
+            f"border: 1px solid {_tok_css(border_rgba)}; "
             "border-radius: 3px; padding: 0 6px; font-weight: bold; }"
         )
 
@@ -2853,10 +2668,6 @@ class UIControls:  # QtWidgets.QMainWindow
         # readout line at the foot of the panel (icon-free, borderless, muted).
         self.infobar_readout = QtWidgets.QLabel()
         self.infobar_readout.setObjectName("infobarReadout")
-        self.infobar_readout.setStyleSheet(
-            "QLabel#infobarReadout { color: rgba(70, 90, 110, 190); font-size: 10px; "
-            "background: transparent; border: none; padding: 0px 2px; }"
-        )
         self.infobar_readout.setAlignment(
             QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignLeft
         )

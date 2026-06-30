@@ -44,10 +44,21 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.styles.theme_manager import ThemeManager
+
 # ---------------------------------------------------------------------------
 # Colour palettes
 # All colour data stored as plain RGBA tuples to avoid constructing QColor
 # objects at class-definition time (before any QApplication exists).
+#
+# Nested one level by theme mode ("light" / "dark") - see
+# QATCH.ui.styles.tokens for the app-wide palette this mirrors. A variant's
+# `text_role` name is mode-agnostic; what color it actually resolves to is
+# looked up in _TEXT_COLORS[mode], so most variants below keep identical
+# fill/border/shimmer values across modes (translucent overlays already read
+# fine on either background) - only "default"/"neutral"/"ghost" (low-alpha
+# washes that need a touch more presence on a near-black surface) and
+# "primary" (brightened slightly for vibrancy) actually differ.
 #
 # fills:      (normal, hover, pressed) - background RGBA tuples.
 #             None for "primary", which uses a vertical linear gradient.
@@ -55,9 +66,9 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 # border:     Resting border RGBA.
 # sh_accent:  Shimmer gradient wing colour RGBA  (matches GlassLineEdit).
 # sh_peak:    Shimmer gradient centre peak RGBA  (matches GlassLineEdit).
-# text_role:  Key into _TEXT_COLORS for QPalette.ButtonText.
+# text_role:  Key into _TEXT_COLORS[mode] for QPalette.ButtonText.
 # ---------------------------------------------------------------------------
-_PALETTES: dict[str, dict] = {
+_LIGHT_PALETTES: dict[str, dict] = {
     "default": dict(
         fills=(
             (255, 255, 255, 58),  # normal
@@ -147,10 +158,78 @@ _PALETTES: dict[str, dict] = {
     ),
 }
 
-_TEXT_COLORS: dict[str, QtGui.QColor] = {
-    "light": QtGui.QColor(255, 255, 255),
-    "dark": QtGui.QColor(51, 51, 51),  # #333
-    "danger": QtGui.QColor(176, 42, 55),  # #B02A37
+# Dark-mode variants. Saturated washes (danger/danger_confirm/warning) carry
+# enough presence on their own and are reused as-is from _LIGHT_PALETTES
+# below; only the low-alpha neutral-tone washes ("default"/"neutral"/
+# "ghost") get a touch more fill/border alpha so they stay perceivable
+# against a near-black surface, and "primary"'s gradient is brightened
+# slightly for vibrancy. text_role names are unchanged - see _TEXT_COLORS.
+_DARK_PALETTES: dict[str, dict] = {
+    "default": dict(
+        fills=(
+            (255, 255, 255, 70),  # normal
+            (255, 255, 255, 115),  # hover
+            (255, 255, 255, 155),  # pressed
+        ),
+        border=(255, 255, 255, 130),
+        sh_accent=(185, 218, 248, 130),
+        sh_peak=(255, 255, 255, 245),
+        text_role="dark",
+    ),
+    "primary": dict(
+        fills=None,
+        grad=(
+            ((55, 175, 255, 220), (20, 130, 215, 200)),  # normal
+            ((75, 195, 255, 245), (30, 150, 235, 230)),  # hover
+            ((20, 120, 205, 230), (10, 100, 165, 210)),  # pressed
+        ),
+        border=(255, 255, 255, 120),
+        sh_accent=(185, 218, 248, 170),
+        sh_peak=(255, 255, 255, 245),
+        text_role="light",
+    ),
+    "danger": _LIGHT_PALETTES["danger"],
+    "danger_confirm": _LIGHT_PALETTES["danger_confirm"],
+    "warning": _LIGHT_PALETTES["warning"],
+    "neutral": dict(
+        fills=(
+            (140, 148, 156, 40),  # normal
+            (140, 148, 156, 85),  # hover
+            (140, 148, 156, 130),  # pressed
+        ),
+        border=(140, 148, 156, 135),
+        sh_accent=(140, 148, 156, 175),
+        sh_peak=(210, 218, 226, 245),
+        text_role="dark",
+    ),
+    "ghost": dict(
+        fills=(
+            (45, 175, 240, 24),  # resting - barely-there tint
+            (45, 175, 240, 70),  # hover
+            (45, 175, 240, 115),  # pressed
+        ),
+        border=(45, 175, 240, 165),
+        sh_accent=(185, 218, 248, 155),
+        sh_peak=(255, 255, 255, 245),
+        text_role="dark",
+    ),
+}
+
+_PALETTES: dict[str, dict[str, dict]] = {"light": _LIGHT_PALETTES, "dark": _DARK_PALETTES}
+
+_TEXT_COLORS: dict[str, dict[str, QtGui.QColor]] = {
+    "light": {
+        "light": QtGui.QColor(255, 255, 255),
+        "dark": QtGui.QColor(51, 51, 51),  # #333
+        "danger": QtGui.QColor(176, 42, 55),  # #B02A37
+    },
+    "dark": {
+        "light": QtGui.QColor(255, 255, 255),
+        # "dark" role here means "not light, not danger" - on a dark
+        # surface that has to be a light color too, not literal dark text.
+        "dark": QtGui.QColor(225, 230, 235),
+        "danger": QtGui.QColor(255, 140, 140),
+    },
 }
 
 
@@ -211,6 +290,14 @@ class GlassPushButton(QtWidgets.QPushButton):
         self.setAttribute(QtCore.Qt.WA_Hover, True)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        """Re-applies text color for the now-active mode and repaints with
+        the matching light/dark fill/border/shimmer palette."""
+        self._apply_text_color(self._variant)
+        self.update()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -254,9 +341,18 @@ class GlassPushButton(QtWidgets.QPushButton):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _active_palettes() -> dict:
+        """Returns the variant->palette dict for the currently active
+        light/dark theme."""
+        return _PALETTES[ThemeManager.instance().mode().value]
+
     def _apply_text_color(self, variant: str) -> None:
-        role = _PALETTES.get(variant, _PALETTES["default"]).get("text_role", "dark")
-        color = _TEXT_COLORS.get(role, _TEXT_COLORS["dark"])
+        mode = ThemeManager.instance().mode().value
+        palettes = self._active_palettes()
+        role = palettes.get(variant, palettes["default"]).get("text_role", "dark")
+        text_colors = _TEXT_COLORS[mode]
+        color = text_colors.get(role, text_colors["dark"])
         pal = self.palette()
         pal.setColor(QtGui.QPalette.ButtonText, color)
         self.setPalette(pal)
@@ -322,7 +418,8 @@ class GlassPushButton(QtWidgets.QPushButton):
             super().paintEvent(event)
             return
 
-        pal = _PALETTES.get(self._variant, _PALETTES["default"])
+        palettes = self._active_palettes()
+        pal = palettes.get(self._variant, palettes["default"])
         # Pill radius: height/2 − 1 px inset, identical to GlassLineEdit
         r = (h / 2.0) - 1.0
         rect = QtCore.QRectF(1.0, 1.0, w - 2.0, h - 2.0)
