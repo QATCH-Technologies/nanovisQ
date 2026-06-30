@@ -303,7 +303,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         con_vbox.addWidget(self.scroll_area)
         layout.addWidget(grp_con)
 
-        # Footer — Add Target | Add Constraint ——stretch—— Optimize
+        # Footer - Add Target | Add Constraint --stretch-- Optimize
         layout.addSpacing(5)
         footer = QtWidgets.QHBoxLayout()
         footer.setSpacing(8)

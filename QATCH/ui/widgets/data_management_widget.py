@@ -1,4 +1,4 @@
-"""DataManagementWidget — glassmorphic overlay container.
+"""DataManagementWidget - glassmorphic overlay container.
 
 Owns the overlay lifecycle (open/close, fade, fullscreen, click-outside
 dismiss) and the shared ``DataServices``. Links in the five mode submodules and
@@ -157,7 +157,7 @@ class GlassSegmentedControl(QtWidgets.QFrame):
     def set_active(self, key):
         # NOTE: the glow used to be a QGraphicsDropShadowEffect applied to the
         # checked QToolButton. Combining a graphics effect with a stylesheet
-        # background/border on a QToolButton is a known Qt gotcha — the
+        # background/border on a QToolButton is a known Qt gotcha - the
         # button can render fully blank (icon, text, and background all
         # gone) depending on platform/paint timing. The QSS-only halo below
         # (a wider, low-alpha border standing in for "glow") gets the same
@@ -179,13 +179,13 @@ class GlassSegmentedControl(QtWidgets.QFrame):
 
 
 class _GlassPanel(QtWidgets.QFrame):
-    """The overlay's main frosted panel — background/border/radius are
+    """The overlay's main frosted panel - background/border/radius are
     painted directly instead of via QSS.
 
     The fullscreen toggle animates alpha/border-width/radius every frame.
     Driving that through ``setStyleSheet()`` (the original approach) means a
     full CSS reparse + repolish of this frame AND its entire child tree
-    (header, sidebar, the active mode's whole widget tree) on every tick —
+    (header, sidebar, the active mode's whole widget tree) on every tick -
     cheap when this panel was simple, but the per-mode content has since
     grown a lot heavier (chips, option cards, scroll areas...), and that
     repolish cascade is what showed up as animation stutter. Painting these
@@ -318,7 +318,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         """Returns a copy of the icon at *path* fully painted in *color*.
 
         Uses SourceAtop composition so the tint respects the original alpha
-        channel — transparent SVG areas stay transparent.
+        channel - transparent SVG areas stay transparent.
         """
         src = QtGui.QIcon(path).pixmap(size, size)
         dst = QtGui.QPixmap(src.size())
@@ -358,7 +358,7 @@ class DataManagementWidget(QtWidgets.QWidget):
                 border-radius: 16px;
             }
         """)
-        # NOTE: no QGraphicsDropShadowEffect here — the glass frame now carries a
+        # NOTE: no QGraphicsDropShadowEffect here - the glass frame now carries a
         # QGraphicsOpacityEffect for fading, and Qt doesn't compose nested
         # widget graphics effects reliably. The border provides the separation.
 
@@ -445,7 +445,7 @@ class DataManagementWidget(QtWidgets.QWidget):
             self.content_stack.setCurrentWidget(mode)
             self._current_key = key
             # When the overlay isn't visible yet (e.g. open_mode set the tab
-            # before the fade), DON'T populate here — heavy on_enter work would
+            # before the fade), DON'T populate here - heavy on_enter work would
             # block the open animation. The reveal calls on_enter after the fade
             # has started. Only populate inline if we're already visible.
             if self._revealed and self.isVisible():
@@ -463,7 +463,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         QAbstractAnimation.stop() does NOT emit finished(), so the _finish
         callback never runs on an interrupted slide. Without this, the proxy
         clip (and its captured page pixmaps) stay parented to the glass frame
-        and keep painting over the live stack for the rest of the session —
+        and keep painting over the live stack for the rest of the session -
         the persistent "ghost of the previous mode" bug.
         """
         group = self._slide_group
@@ -496,7 +496,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         geo = stack.geometry()  # in glass_frame coords
         size = geo.size()
         if size.width() <= 0 or size.height() <= 0:
-            # Layout not settled — fall back to instant.
+            # Layout not settled - fall back to instant.
             stack.setCurrentWidget(new_mode)
             self._current_key = key
             new_mode.on_enter()
@@ -611,7 +611,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         # margins. _apply_margin_frac (called below) repositions btn_close/
         # btn_fullscreen, and those buttons have an eventFilter installed on
         # them, so every animation frame's button move re-enters here via a
-        # Move event — without this guard it would snap the margins to the
+        # Move event - without this guard it would snap the margins to the
         # final _is_fullscreen state on every tick, defeating the animation.
         if self._fs_anim is not None and self._fs_anim.state() == QtCore.QAbstractAnimation.Running:
             return
@@ -770,7 +770,7 @@ class DataManagementWidget(QtWidgets.QWidget):
             self._glass_opacity.setOpacity(frac)
 
     # ------------------------------------------------------------------
-    #  Animation driver — ONE reusable QVariantAnimation, never accumulate.
+    #  Animation driver - ONE reusable QVariantAnimation, never accumulate.
     # ------------------------------------------------------------------
     def _stop_anim(self):
         """Stop and fully tear down any running fade so it can't keep firing."""
@@ -786,14 +786,22 @@ class DataManagementWidget(QtWidgets.QWidget):
             self._fade_anim = None
 
     def _run_fade(
-        self, scrim_from, scrim_to, op_from, op_to, duration, easing, on_done=None, opacity_effect=None
+        self,
+        scrim_from,
+        scrim_to,
+        op_from,
+        op_to,
+        duration,
+        easing,
+        on_done=None,
+        opacity_effect=None,
     ):
         """Animate the scrim alpha (cheap paintEvent) and an opacity effect
         (composited) from fixed endpoints. No per-frame stylesheet.
 
         ``opacity_effect`` defaults to the live glass_frame's own effect
         (the open fade). The close fade passes a lightweight effect on a
-        static pixmap proxy instead — see ``_animate_close``.
+        static pixmap proxy instead - see ``_animate_close``.
         """
         self._stop_anim()
         effect = opacity_effect if opacity_effect is not None else self._glass_opacity
@@ -843,13 +851,13 @@ class DataManagementWidget(QtWidgets.QWidget):
 
     def _animate_close(self):
         # Snapshot the panel once and fade a flat pixmap proxy instead of
-        # leaving the live QGraphicsOpacityEffect on glass_frame — that
+        # leaving the live QGraphicsOpacityEffect on glass_frame - that
         # effect forces Qt to re-render the ENTIRE live widget tree (header,
         # sidebar, and whatever the active mode's full content is) into an
         # offscreen buffer on every single animation frame. That per-frame
         # full-subtree recomposite is what showed up as close-animation
         # stutter once the per-mode content grew heavier. A static pixmap
-        # has nothing left to re-render — fading it is just "blit one image
+        # has nothing left to re-render - fading it is just "blit one image
         # at a lower alpha," every frame, regardless of how complex the
         # live content underneath is.
         self._teardown_close_fade_proxy()
@@ -866,7 +874,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         proxy.show()
         proxy.raise_()
         # Keep the window-control buttons (siblings of glass_frame, drawn
-        # above it) on top of the new proxy too — raise_() puts the proxy
+        # above it) on top of the new proxy too - raise_() puts the proxy
         # at the top of self's stacking order, which would otherwise cover
         # them for the duration of the close fade.
         self.btn_close.raise_()

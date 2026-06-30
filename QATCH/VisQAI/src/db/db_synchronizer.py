@@ -20,7 +20,6 @@ Version:
 import sqlite3
 from pathlib import Path
 
-
 try:
     TAG = "[DBSync (HEADLESS)]"
     from db import Database
@@ -217,7 +216,7 @@ class DatabaseSynchronizer:
                     Log.w(
                         TAG,
                         f"Column '{col_name}' in '{table_name}' is a PRIMARY KEY; "
-                        "SQLite cannot add PRIMARY KEY via ALTER TABLE — skipping PK constraint.",
+                        "SQLite cannot add PRIMARY KEY via ALTER TABLE - skipping PK constraint.",
                     )
 
                 col_def = f"{col_name} {col_type}"
@@ -244,7 +243,7 @@ class DatabaseSynchronizer:
                     Log.w(
                         TAG,
                         f"Column '{col_name}' in '{table_name}' is NOT NULL but has no "
-                        "DEFAULT; SQLite disallows adding NOT NULL columns without a DEFAULT — "
+                        "DEFAULT; SQLite disallows adding NOT NULL columns without a DEFAULT - "
                         "omitting NOT NULL constraint.",
                     )
 
@@ -300,7 +299,7 @@ class DatabaseSynchronizer:
             "SELECT * FROM bundled.ingredient WHERE enc_id < 8000;"
         )
 
-        # Derive subclass tables dynamically — any table with an ingredient_id FK
+        # Derive subclass tables dynamically - any table with an ingredient_id FK
         c.execute(
             "SELECT name FROM bundled.sqlite_master WHERE type='table' "
             "AND name NOT LIKE 'sqlite_%' AND name != 'ingredient' "

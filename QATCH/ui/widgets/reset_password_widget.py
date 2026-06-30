@@ -9,7 +9,7 @@ the same x close / → submit button conventions.
 
 Signal
 ------
-  password_confirmed(str)  — emitted with the validated plaintext password
+  password_confirmed(str)  - emitted with the validated plaintext password
                              before the close animation starts.
 
 Usage
@@ -38,10 +38,10 @@ from QATCH.common.architecture import Architecture
 from QATCH.ui.components.glass_line_edit import GlassLineEdit
 
 # ---------------------------------------------------------------------------
-# Constants — kept in sync with create_user_widget.py
+# Constants - kept in sync with create_user_widget.py
 # ---------------------------------------------------------------------------
 _INPUT_H: int = 34
-_CARD_W: int = 420  # slightly narrower than CreateUserWidget (440) — fewer fields
+_CARD_W: int = 420  # slightly narrower than CreateUserWidget (440) - fewer fields
 
 
 class ResetPasswordWidget(QtWidgets.QWidget):
@@ -49,7 +49,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
     Sits on top of UserProfilesManagerWidget's glass panel.  The admin sees
     the target user's profile card, two disabled placeholder fields (email /
-    username — backend not yet implemented), and the two live password inputs.
+    username - backend not yet implemented), and the two live password inputs.
 
     Attributes:
         is_accepted (bool):  True if the admin submitted a valid new password.
@@ -590,7 +590,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
     def _on_anim_frame(self, progress: float) -> None:
         """Drives both the scrim fade and the card slide-up."""
-        # Slightly lower max alpha (100 vs 130) — this overlay sits on top of
+        # Slightly lower max alpha (100 vs 130) - this overlay sits on top of
         # the manager's own scrim so the combined darkness stays comfortable.
         self._bg_alpha = int(100 * progress)
         offset = int(50 * (1.0 - progress))

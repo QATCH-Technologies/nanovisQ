@@ -3,6 +3,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.logger import Logger as Log
 from QATCH.processors.Device import serial  # real device hardware
+from QATCH.ui.styles.theme_manager import ThemeManager
 
 
 class NumberIconButton(QtWidgets.QToolButton):
@@ -18,6 +19,7 @@ class NumberIconButton(QtWidgets.QToolButton):
 
         self.updateIcon()
         self.clicked.connect(self.advance)
+        ThemeManager.instance().themeChanged.connect(lambda _: self.updateIcon())
 
     def advance(self):
         self._value += 1
@@ -99,7 +101,9 @@ class NumberIconButton(QtWidgets.QToolButton):
         self.painter.begin(device)
         self.painter.setRenderHint(QtGui.QPainter.Antialiasing)
 
-        pen = QtGui.QPen(QtGui.QColor("#444444" if enabled else "#888888"), 2)
+        tok = ThemeManager.instance().tokens()
+        color = QtGui.QColor(*tok["plot_text_normal" if enabled else "plot_text_dim"])
+        pen = QtGui.QPen(color, 2)
         self.painter.setPen(pen)
 
         font = QtGui.QFont(self.font())

@@ -263,7 +263,7 @@ class Sampler:
         This method identifies the next formulation to evaluate by searching the design
         space through a two-pronged approachof global exploration and local exploitation.
 
-        The selection is guided by an acquisition function—either Upper Confidence
+        The selection is guided by an acquisition function-either Upper Confidence
         Bound (UCB), which balances predicted viscosity against uncertainty, or
         pure uncertainty maximization.
 
@@ -482,8 +482,8 @@ class Sampler:
         """Constructs a ViscosityProfile object from a set of predicted values.
 
         This helper method acts as the final step in the prediction pipeline.
-        It maps a raw numerical array of viscosities—typically extracted from
-        the predictor—back to a structured `ViscosityProfile`.
+        It maps a raw numerical array of viscosities-typically extracted from
+        the predictor-back to a structured `ViscosityProfile`.
 
         The shear rates are fixed to a standard five-point log-scale profile
         ranging from low shear (100 s 1/s) to ultra-high shear (1.5e7 1/s).

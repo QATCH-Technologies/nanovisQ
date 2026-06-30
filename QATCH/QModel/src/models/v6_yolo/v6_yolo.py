@@ -543,8 +543,8 @@ class QModelV6YOLO:
         Lazy loads the learned SpacingPrior used by the configuration decode.
 
         The path is taken from `model_assets["spacing_prior"]` (a JSON file
-        produced by fit_prior.py). Returns None — and the decode path becomes
-        a no-op — if the decode modules or the prior file are unavailable, so
+        produced by fit_prior.py). Returns None - and the decode path becomes
+        a no-op - if the decode modules or the prior file are unavailable, so
         enabling `decode_config` can never break a deployment that lacks the
         asset.
 
@@ -937,7 +937,7 @@ class QModelV6YOLO:
                 same in-distribution slice each detector sees, and attach them to
                 the output dict under the reserved key "_candidates" as
                 {POI_NAME: [{"time","conf","index"}, ...]}. This does NOT change
-                cuts or predictions — the cascade proceeds on the greedy pick
+                cuts or predictions - the cascade proceeds on the greedy pick
                 exactly as in production; harvesting only observes the runners-up
                 for the downstream configuration-prior decode. Defaults to False.
             decode_config (bool, optional): If True (implies harvesting), runs the
@@ -1022,7 +1022,7 @@ class QModelV6YOLO:
             # cut at the LATEST harvested candidate of each stage instead of
             # the greedy pick. Rationale: if the greedy pick is too early, the
             # production cut excises the true downstream event before its
-            # detector ever sees it — a candidate that is never generated can
+            # detector ever sees it - a candidate that is never generated can
             # never be recovered by the decoder, silently capping oracle
             # recall. Cutting at the latest candidate keeps the harvest slice
             # a superset of the production slice (slightly wider than the

@@ -3,7 +3,7 @@ glass_option_card.py
 
 A selectable "card" control: a frosted glass panel with a bold title and a
 smaller description line beneath it. Cards are grouped via
-``GlassOptionCardGroup`` for exclusive (radio-style) selection — used wherever
+``GlassOptionCardGroup`` for exclusive (radio-style) selection - used wherever
 a wireframe shows a labelled option instead of a plain segmented control
 (e.g. Import's "When a run already exists" policy, Export's Destination
 USB/Folder choice).
@@ -156,7 +156,7 @@ class GlassOptionCardGroup(QtCore.QObject):
     previously read a QButtonGroup don't need to change shape.
     """
 
-    toggled = QtCore.pyqtSignal(object, bool)  # (card, checked) — fires for the newly checked card
+    toggled = QtCore.pyqtSignal(object, bool)  # (card, checked) - fires for the newly checked card
 
     def __init__(self, parent=None):
         super().__init__(parent)

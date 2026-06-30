@@ -632,8 +632,8 @@ class Optimizer:
         (x-axis) and viscosity (y-axis), the optimizer treats a 10% error at
         1 cP with the same mathematical weight as a 10% error at 100 cP.
 
-        The method interpolates the predicted values—which are generated at
-        fixed shear rates—onto the specific log-shear rates of the target
+        The method interpolates the predicted values-which are generated at
+        fixed shear rates-onto the specific log-shear rates of the target
         profile before calculating the squared error and applying importance
         weights.
 

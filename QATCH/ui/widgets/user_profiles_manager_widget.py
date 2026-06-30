@@ -127,7 +127,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.all_selected = False
 
         # --- Overlay / glassmorphic setup ---
-        # WA_TranslucentBackground is top-level windows only — on a child widget
+        # WA_TranslucentBackground is top-level windows only - on a child widget
         # it makes the whole widget invisible. For child widgets the correct
         # approach is to disable Qt's auto-fill so our paintEvent draws the scrim
         # directly over the parent's backing store.
@@ -155,7 +155,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 border-radius: 12px;
             }
         """)
-        # NOTE: intentionally no _apply_shadow here — QGraphicsDropShadowEffect on
+        # NOTE: intentionally no _apply_shadow here - QGraphicsDropShadowEffect on
         # a parent frame causes native QComboBox popups to render with a square clip
         # shadow. The border above provides sufficient visual separation.
 
@@ -188,7 +188,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 border-radius: 27px;
             }
         """)
-        # NOTE: no QGraphicsDropShadowEffect here — glass_frame (an ancestor)
+        # NOTE: no QGraphicsDropShadowEffect here - glass_frame (an ancestor)
         # carries a QGraphicsOpacityEffect for fading, and Qt doesn't compose
         # nested widget graphics effects reliably (see data_management_widget.py).
         # The border above provides sufficient visual separation.
@@ -280,7 +280,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         button_size = 28
         icon_size = QtCore.QSize(14, 14)
 
-        # Fullscreen Toggle (Transparent icon button — matches create_user_widget btn_close style)
+        # Fullscreen Toggle (Transparent icon button - matches create_user_widget btn_close style)
         _FS_NORMAL = QtGui.QColor(110, 120, 130, 190)
         _FS_HOVER = QtGui.QColor(185, 190, 200, 230)
         self._fs_normal_icon = self._tinted_icon(self.ICON_EXPAND, _FS_NORMAL, size=14)
@@ -298,7 +298,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.btn_fullscreen.installEventFilter(self)
         self.btn_fullscreen.clicked.connect(self.toggle_fullscreen)
 
-        # Close Window (Transparent icon button — matches create_user_widget btn_close style)
+        # Close Window (Transparent icon button - matches create_user_widget btn_close style)
         self.btn_close = QtWidgets.QPushButton("x", self)
         self.btn_close.setFixedSize(button_size, button_size)
         self.btn_close.setToolTip("Close")
@@ -317,7 +317,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.btn_close.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_close.clicked.connect(self.close)
         self.btn_close.raise_()
-        # Assemble taskbar — add, audit, refresh, delete (no close; panel click-outside handles dismiss)
+        # Assemble taskbar - add, audit, refresh, delete (no close; panel click-outside handles dismiss)
         self.top_section_layout = QtWidgets.QVBoxLayout()
         self.top_section_layout.setSpacing(10)
 
@@ -377,7 +377,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             }}
         """)
 
-        # Inline expiry label — shown only when dev mode is active
+        # Inline expiry label - shown only when dev mode is active
         expiry_text = ""
         expiry_color = "#D32F2F" if error else "#388E3C"
         if enabled and expires:
@@ -411,12 +411,12 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         """)
 
         # ── Assemble ─────────────────────────────────────────────────
-        # Dev mode group — absorbs all leftover space so the admin group
+        # Dev mode group - absorbs all leftover space so the admin group
         # stays pinned to the right regardless of expiry label visibility.
         # Parent these grouping widgets to glass_frame at construction. A
         # parentless QWidget is a top-level window, and setting
         # WA_TranslucentBackground on a top-level widget forces Qt to realize its
-        # native window backing IMMEDIATELY — before the widget is reparented
+        # native window backing IMMEDIATELY - before the widget is reparented
         # into settings_layout. That momentary translucent top-level is the
         # empty window frame that flashes on open. Giving them a parent up front
         # means they are in-layout children from the start and never get a
@@ -433,9 +433,9 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         dev_layout.addWidget(self.dev_mode_label)
         dev_layout.addSpacing(6)
         dev_layout.addWidget(self.dev_expiry_label)
-        dev_layout.addStretch()  # internal stretch — soaks up excess left-side space
+        dev_layout.addStretch()  # internal stretch - soaks up excess left-side space
 
-        # Admin group — fixed to the right edge
+        # Admin group - fixed to the right edge
         admin_group = QtWidgets.QWidget(self.glass_frame)
         admin_group.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         admin_layout = QtWidgets.QHBoxLayout(admin_group)
@@ -445,7 +445,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         admin_layout.addSpacing(8)
         admin_layout.addWidget(self.reqAdminUpd_chkbox)
 
-        # Stretch factor 1 on dev_group, 0 on admin_group — dev expands,
+        # Stretch factor 1 on dev_group, 0 on admin_group - dev expands,
         # admin never moves.
         self.settings_layout.addWidget(dev_group, 1)
         self.settings_layout.addWidget(admin_group, 0)
@@ -484,7 +484,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         """Returns a copy of the icon at *path* fully painted in *color*.
 
         Uses SourceAtop composition so the tint respects the original
-        alpha channel — transparent SVG areas stay transparent.
+        alpha channel - transparent SVG areas stay transparent.
         """
         src = QtGui.QIcon(path).pixmap(size, size)
         dst = QtGui.QPixmap(src.size())
@@ -543,7 +543,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.refresh_anim.start()
 
     def _animate_table_transition(self, update_func, direction="right"):
-        """Slides the table content horizontally while swapping data — no processEvents stutter."""
+        """Slides the table content horizontally while swapping data - no processEvents stutter."""
         # Stop any in-flight transition cleanly before starting a new one
         if (
             hasattr(self, "transition_group")
@@ -560,10 +560,10 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         update_func()
 
         # 3. Defer the rest by one event-loop tick so the layout has settled.
-        #    No processEvents() — that's the source of the original stutter.
+        #    No processEvents() - that's the source of the original stutter.
         def _start():
             # Briefly show to force a layout pass + render for the grab, then hide again.
-            # This is synchronous — no paint event fires between show and hide.
+            # This is synchronous - no paint event fires between show and hide.
             self.table_container.setVisible(True)
             new_pixmap = self.table_container.grab()
             self.table_container.setVisible(False)
@@ -608,7 +608,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             new_overlay.show()
             new_overlay.raise_()
 
-            # OutQuint: fast start → smooth deceleration — no mid-animation hitching
+            # OutQuint: fast start → smooth deceleration - no mid-animation hitching
             anim_old = QtCore.QPropertyAnimation(old_overlay, b"pos")
             anim_old.setDuration(320)
             anim_old.setEasingCurve(QtCore.QEasingCurve.OutQuint)
@@ -791,7 +791,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         interpolates smoothly as the table resizes. Using uniform Stretch during
         the motion and then restoring different per-column modes at the end
         caused the visible width jump (the "snap"). Reusing the final modes here
-        means the animated state and end state are identical — no jump.
+        means the animated state and end state are identical - no jump.
         """
         self._restore_column_modes()
 
@@ -827,7 +827,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         *progress* is a normalized 0→1 value. Both the horizontal and vertical
         margins are interpolated independently between their true start and
         target pixel values (stashed in toggle_fullscreen). Deriving the
-        vertical margin from the horizontal ratio — the old approach — produced
+        vertical margin from the horizontal ratio - the old approach - produced
         non-proportional motion and the "strange resizing" on expand.
         """
         start_mx, start_my = getattr(self, "_fs_margin_start", (0, 0))
@@ -857,7 +857,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self._update_dots_position(current_m, current_m)
 
     def setVisible(self, visible):
-        """Fit to parent and keep the panel hidden until layout settles — kills
+        """Fit to parent and keep the panel hidden until layout settles - kills
         the 'tiny blank dialog' flash on open.
 
         UIControls calls .show()/.setVisible(True) on this overlay. At that
@@ -1018,11 +1018,11 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
     def _animate_close(self):
         """Fade the scrim and the glass panel out together, then perform the
-        real close. Identical whether inset or fullscreen — the panel's own
+        real close. Identical whether inset or fullscreen - the panel's own
         opacity fades along with the scrim, so no pixmap-proxy collapse is
         needed to avoid an "instant pop" at fullscreen.
         """
-        # A fullscreen expand/collapse may still be in flight — stop it cleanly.
+        # A fullscreen expand/collapse may still be in flight - stop it cleanly.
         if hasattr(self, "anim") and self.anim.state() == QtCore.QAbstractAnimation.Running:
             self.anim.stop()
 
@@ -1274,23 +1274,23 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             self.table.setCellWidget(row, 6, action_widget)
 
         header = self.table.horizontalHeader()
-        # Reset stretchLastSection unconditionally — audit mode sets it True and
+        # Reset stretchLastSection unconditionally - audit mode sets it True and
         # the column-mode calls below do not clear it, leaving col-6 stretched on return.
         header.setStretchLastSection(False)
-        # Checkbox col — fixed narrow
+        # Checkbox col - fixed narrow
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
         header.resizeSection(0, 36)
-        # Initials — snug to content
+        # Initials - snug to content
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-        # Name — takes up remaining space
+        # Name - takes up remaining space
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
-        # Role combo — fixed wide enough for text + dropdown
+        # Role combo - fixed wide enough for text + dropdown
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
         header.resizeSection(3, 155)
-        # Created / Accessed — snug to content
+        # Created / Accessed - snug to content
         header.setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeToContents)
         header.setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeToContents)
-        # Actions — fixed width for three 28px buttons + padding
+        # Actions - fixed width for three 28px buttons + padding
         header.setSectionResizeMode(6, QtWidgets.QHeaderView.Fixed)
         header.resizeSection(6, 115)
         # Comfortable row height so cell widgets breathe
@@ -1436,7 +1436,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # Pre-render the tint into the pixmap itself (same technique as
         # _tinted_icon) rather than a QGraphicsColorizeEffect: glass_frame
         # carries a QGraphicsOpacityEffect for the open/close fade, and Qt
-        # doesn't compose nested widget graphics effects reliably — every
+        # doesn't compose nested widget graphics effects reliably - every
         # role combo in the table got its own colorize effect, which spammed
         # "QPainter::begin: A paint device can only be painted by one painter
         # at a time" / "Painter not active" during the fade and corrupted the
@@ -1922,7 +1922,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 # (Because this is a brand new widget replacement, it ignores the False lock above)
                 self._install_single_delete_confirm(row, initials_list)
 
-        # Overlay the full row(s) in red — works for both single and bulk
+        # Overlay the full row(s) in red - works for both single and bulk
         self._add_delete_row_overlays(initials_list)
 
         if is_bulk:
@@ -2033,7 +2033,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         return r1.united(r2)
 
     def _reposition_delete_overlays(self):
-        """Called on table scroll — move each overlay to its row's current position."""
+        """Called on table scroll - move each overlay to its row's current position."""
         for overlay, row in getattr(self, "_delete_overlays", []):
             if self.table.isRowHidden(row):
                 overlay.setVisible(False)
@@ -2193,7 +2193,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             self._hide_single_delete_confirm()
 
     def _confirm_delete(self, initials_list):
-        """Stage 2: confirmed — instantly discard topbar UI, then run row collapse animation."""
+        """Stage 2: confirmed - instantly discard topbar UI, then run row collapse animation."""
         self._pending_delete = []
 
         if hasattr(self, "btn_cancel_bulk") and self.btn_cancel_bulk:
@@ -2248,7 +2248,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # _show_delete_confirmation provide a perfect, unbroken red tint that ignores
         # QSS overrides. We will keep them alive and animate them down to 0 height.
 
-        # Phase 2 — collapse rows and dynamically shrink the overlays
+        # Phase 2 - collapse rows and dynamically shrink the overlays
         row_height = self.table.rowHeight(affected_rows[0])
         self._delete_anims = []
         completed = [0]

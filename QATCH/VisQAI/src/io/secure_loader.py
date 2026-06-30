@@ -385,7 +385,7 @@ class SecurePackageLoader:
                 module_path.relative_to(self.root.resolve())
             except ValueError:
                 raise SecurityError(
-                    f"Module path '{filename}' escapes the package root — load rejected."
+                    f"Module path '{filename}' escapes the package root - load rejected."
                 )
             if not module_path.exists():
                 raise FileNotFoundError(f"Declared module '{filename}' not found in package.")

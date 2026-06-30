@@ -17,9 +17,20 @@ from QATCH.ui.widgets import (
     UserProfilesManagerWidget,
 )
 from QATCH.ui.interfaces import UIControls
+from QATCH.ui.styles.theme_manager import ThemeManager
 
 if TYPE_CHECKING:
     from QATCH.ui.mainWindow import MainWindow
+
+
+def _tok_css(rgba: tuple) -> str:
+    r, g, b, a = rgba
+    if a == 255:
+        return f"#{r:02X}{g:02X}{b:02X}"
+    return f"rgba({r}, {g}, {b}, {a})"
+
+
+
 
 TAG = "[ControlsWindow]"
 
@@ -245,6 +256,11 @@ class ControlsWindow(QtWidgets.QMainWindow):
         if not self.chk4.isChecked():
             QtCore.QTimer.singleShot(100, self.toggle_resonance_dissipation)
 
+        # Re-apply the menu bar theme whenever light/dark mode changes.
+        ThemeManager.instance().themeChanged.connect(
+            lambda _: self._apply_menu_bar_theme(getattr(self, "_signed_in_state", True))
+        )
+
         for menu in (*self.menubar, self.modebar):
             menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, False)
             menu.setWindowFlag(QtCore.Qt.WindowType.NoDropShadowWindowHint, True)
@@ -342,70 +358,54 @@ class ControlsWindow(QtWidgets.QMainWindow):
         if menu_bar is None:
             return
 
+        self._signed_in_state = signed_in
+        tok = ThemeManager.instance().tokens()
         if signed_in:
-            menu_bar.setStyleSheet("""
-                QMenuBar {
-                    background: rgba(233, 239, 244, 255);
-                    color: rgba(50, 60, 70, 230);
-                    border: none;
-                }
-                QMenuBar::item { background: transparent; padding: 4px 10px; }
-                QMenuBar::item:selected { background: rgba(10, 163, 230, 60); border-radius: 4px; }
-                QMenuBar::item:disabled { color: rgba(120, 130, 140, 140); }
-
-                QMenu {
-                    background: rgb(233, 239, 244);
-                    border: 1px solid rgba(255, 255, 255, 230);
-                    border-radius: 10px;
-                    padding: 6px;
-                }
-                QMenu::item {
-                    background: transparent;
-                    color: rgba(50, 60, 70, 230);
-                    padding: 6px 26px 6px 14px;
-                    border-radius: 6px;
-                }
-                QMenu::item:selected { background: rgba(10, 163, 230, 60); }
-                QMenu::item:disabled { color: rgba(120, 130, 140, 140); }
-                QMenu::separator {
-                    height: 1px;
-                    background: rgba(120, 130, 140, 70);
-                    margin: 4px 10px;
-                }
-                QMenu::indicator { width: 14px; height: 14px; }
-            """)
+            bg = _tok_css(tok["menubar_bg"])
+            text = _tok_css(tok["menubar_text"])
+            hover = _tok_css(tok["menubar_item_hover_bg"])
+            disabled = _tok_css(tok["menubar_item_disabled_text"])
+            border = _tok_css(tok["menubar_border"])
+            sep = _tok_css(tok["menubar_separator"])
         else:
-            menu_bar.setStyleSheet("""
-                QMenuBar {
-                    background: rgba(163, 167, 171, 255);
-                    color: rgba(40, 48, 56, 235);
-                    border: none;
-                }
-                QMenuBar::item { background: transparent; padding: 4px 10px; }
-                QMenuBar::item:selected { background: rgba(255, 255, 255, 60); border-radius: 4px; }
-                QMenuBar::item:disabled { color: rgba(90, 98, 106, 150); }
+            bg = _tok_css(tok["menubar_dim_bg"])
+            text = _tok_css(tok["menubar_dim_text"])
+            hover = _tok_css(tok["menubar_dim_item_hover_bg"])
+            disabled = _tok_css(tok["menubar_dim_item_disabled_text"])
+            border = _tok_css(tok["menubar_dim_border"])
+            sep = _tok_css(tok["menubar_dim_separator"])
 
-                QMenu {
-                    background: rgb(163, 167, 171);
-                    border: 1px solid rgba(255, 255, 255, 90);
-                    border-radius: 10px;
-                    padding: 6px;
-                }
-                QMenu::item {
-                    background: transparent;
-                    color: rgba(40, 48, 56, 235);
-                    padding: 6px 26px 6px 14px;
-                    border-radius: 6px;
-                }
-                QMenu::item:selected { background: rgba(255, 255, 255, 60); }
-                QMenu::item:disabled { color: rgba(90, 98, 106, 150); }
-                QMenu::separator {
-                    height: 1px;
-                    background: rgba(255, 255, 255, 80);
-                    margin: 4px 10px;
-                }
-                QMenu::indicator { width: 14px; height: 14px; }
-            """)
+        menu_bar.setStyleSheet(f"""
+            QMenuBar {{
+                background: {bg};
+                color: {text};
+                border: none;
+            }}
+            QMenuBar::item {{ background: transparent; padding: 4px 10px; }}
+            QMenuBar::item:selected {{ background: {hover}; border-radius: 4px; }}
+            QMenuBar::item:disabled {{ color: {disabled}; }}
+
+            QMenu {{
+                background: {bg};
+                border: 1px solid {border};
+                border-radius: 10px;
+                padding: 6px;
+            }}
+            QMenu::item {{
+                background: transparent;
+                color: {text};
+                padding: 6px 26px 6px 14px;
+                border-radius: 6px;
+            }}
+            QMenu::item:selected {{ background: {hover}; }}
+            QMenu::item:disabled {{ color: {disabled}; }}
+            QMenu::separator {{
+                height: 1px;
+                background: {sep};
+                margin: 4px 10px;
+            }}
+            QMenu::indicator {{ width: 14px; height: 14px; }}
+        """)
 
     def _data_overlay_parent(self) -> QtWidgets.QWidget:
         """Determines the appropriate parent for UI data overlays.

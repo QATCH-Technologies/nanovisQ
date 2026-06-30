@@ -21,7 +21,7 @@ QModelV6YOLO_SpacingPrior.composed_stat, not against the first gap's stats.
 
 It only decodes the POIs that are actually present (the fill-count gate /
 type_cls has already decided how many channels exist), so partial fills are
-handled by passing fewer POIs — no spurious late POIs are introduced.
+handled by passing fewer POIs - no spurious late POIs are introduced.
 
 Inputs / outputs are plain dicts so this drops in alongside the existing
 predictor without depending on its internals.

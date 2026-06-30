@@ -315,7 +315,7 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         """Return a complete snapshot of the current filter control values.
 
         Unlike ``emit_filter``, this method does *not* apply the "omit if all
-        selected" optimisation for ingredients — every ingredient type is
+        selected" optimisation for ingredients - every ingredient type is
         always present in the returned dict, making it suitable for
         persistence or comparison use cases.
 

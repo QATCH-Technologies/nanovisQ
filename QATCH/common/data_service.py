@@ -1,4 +1,4 @@
-"""DataServices — shared, cross-mode machinery for the data-management overlay.
+"""DataServices - shared, cross-mode machinery for the data-management overlay.
 
 This object is constructed once by ``DataManagementWidget`` and injected into
 every mode submodule. It owns the things the original ``Ui_Export`` shared
@@ -11,7 +11,7 @@ across its tabs:
   * GUI-freeze coordination (import/export enable-state moved in lockstep)
   * a cooperative task-abort flag shared by import/export/erase/eject tasks
 
-Submodules never start threads or flip the global freeze themselves — they call
+Submodules never start threads or flip the global freeze themselves - they call
 into the service and subscribe to its signals. That keeps the cross-cutting
 concurrency in exactly one place.
 
@@ -29,7 +29,7 @@ from QATCH.common.logger import Logger as Log
 
 TAG = "[DataServices]"
 
-# Progress channels — replace the old integer ``tab`` argument (0=export, 1=import).
+# Progress channels - replace the old integer ``tab`` argument (0=export, 1=import).
 CH_EXPORT = "export"
 CH_IMPORT = "import"
 
@@ -38,7 +38,7 @@ class DataServices(QtCore.QObject):
     # ---- Signals (mirror the old Ui_Export class-level signals) ----
     usb_add = QtCore.pyqtSignal()
     usb_remove = QtCore.pyqtSignal()
-    # (channel, label, pct, color)  — channel replaces the old trailing tab int
+    # (channel, label, pct, color)  - channel replaces the old trailing tab int
     progress = QtCore.pyqtSignal(str, str, int, str)
     # Broadcast freeze state so every mode toggles its controls together.
     freeze_gui = QtCore.pyqtSignal(bool)
@@ -70,7 +70,7 @@ class DataServices(QtCore.QObject):
         self._task: Optional[Thread] = None
 
     # ------------------------------------------------------------------
-    #  Lifecycle — started when the overlay opens, stopped when it closes
+    #  Lifecycle - started when the overlay opens, stopped when it closes
     # ------------------------------------------------------------------
     def start(self):
         """Spin up the background USB-detection loop (old ``mainTask``)."""
@@ -96,7 +96,7 @@ class DataServices(QtCore.QObject):
         Original responsibilities:
           - poll for USB drives, diff against last seen set
           - write the detected drive letter (or None) to ``self.usb_drive``
-            — NOT ``self.drive``, which is the user's chosen export target
+            - NOT ``self.drive``, which is the user's chosen export target
           - emit usb_add / usb_remove on change
           - exit cleanly when self._stop is set
         """
@@ -104,7 +104,7 @@ class DataServices(QtCore.QObject):
             self._stop.wait(1.0)
 
     # ------------------------------------------------------------------
-    #  Task management — one foreground-ish worker at a time, cooperative abort
+    #  Task management - one foreground-ish worker at a time, cooperative abort
     # ------------------------------------------------------------------
     def run_task(self, fn: Callable[[Event], None]):
         """Run a long task (import/export/erase) on a worker thread.

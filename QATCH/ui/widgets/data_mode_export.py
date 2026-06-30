@@ -1,4 +1,4 @@
-"""Export mode — select runs + destination (folder or USB) and export data.
+"""Export mode - select runs + destination (folder or USB) and export data.
 
 PORT FROM export_widget.Ui_Export:
     build()                  <- tab2 (groupbox1 USB, groupbox2 Folder,
@@ -25,7 +25,7 @@ LAYOUT (responsive redesign):
   minimized overlay width (~17.5% inset). This pass:
 
     * Wraps the whole page in a QScrollArea so content is ALWAYS reachable at any
-      overlay size — nothing clips or overlaps regardless of height.
+      overlay size - nothing clips or overlaps regardless of height.
     * Uses a compact "field" pattern (caption over control, packed tightly) so
       each setting takes one short row instead of two tall ones.
     * Lays the Export Settings out in a responsive grid that collapses from two
@@ -34,7 +34,7 @@ LAYOUT (responsive redesign):
     * Pins the status readout + primary actions in a footer below the scroll
       area, so the Export button is always visible.
 
-  All original semantics are preserved verbatim — only widget *arrangement*
+  All original semantics are preserved verbatim - only widget *arrangement*
   changed. The state handlers, signals, and validation are untouched:
     * USB vs Folder targets are mutually exclusive; selecting one clears the
       other; `drive` tracks the active target.
@@ -82,7 +82,7 @@ except Exception:  # pragma: no cover - optional at layout time
 
 TAG = "[DataExport]"
 
-# Existing-files policy ids — preserved from the original btnGroup2.
+# Existing-files policy ids - preserved from the original btnGroup2.
 POLICY_REPLACE = 1
 POLICY_MERGE = 2
 POLICY_SKIP = 3
@@ -185,7 +185,7 @@ class _Stepper(QtWidgets.QWidget):
         self._restyle()
 
     def reset(self):
-        """Clear "reached" progress entirely — used when the wizard itself
+        """Clear "reached" progress entirely - used when the wizard itself
         resets, so old steps don't keep showing as done/clickable."""
         self._current = 0
         self._max_reached = 0
@@ -194,7 +194,7 @@ class _Stepper(QtWidgets.QWidget):
     def _restyle(self):
         # setStyleSheet() alone can leave a stale rendered pixmap behind for
         # QSS-styled QToolButtons during rapid restyles (each step click
-        # restyles two circles at once) — an explicit unpolish/polish +
+        # restyles two circles at once) - an explicit unpolish/polish +
         # update() forces an immediate, clean repaint instead of a "ghost"
         # of the previous state lingering under the new one.
         for i, circle in enumerate(self._circles):
@@ -238,7 +238,7 @@ class _Stepper(QtWidgets.QWidget):
 
     @staticmethod
     def _caption_qss(active):
-        # Weight is constant (700) regardless of state — varying it between
+        # Weight is constant (700) regardless of state - varying it between
         # active/inactive changes the text's rendered width slightly, which
         # made the whole bar visibly jitter/resize on every step transition.
         # Only colour differentiates the active step now.
@@ -333,7 +333,7 @@ class _ToggleChip(QtWidgets.QPushButton):
     """A checkable pill used for the CSV column picker.
 
     Reads as a wrapping tag: a check mark prefix + accent fill while
-    selected, a "+" prefix + plain outline while not — so the picker's
+    selected, a "+" prefix + plain outline while not - so the picker's
     state is legible without a separate checkbox glyph competing for
     space in a tight wrapping row.
     """
@@ -421,7 +421,7 @@ class ExportMode(DataModeWidget):
 
         self.step_stack = QtWidgets.QStackedWidget()
         # Let _slide_step truly hide() the stack during a step transition
-        # (cheapest possible "don't paint this" — no compositing, no QSS,
+        # (cheapest possible "don't paint this" - no compositing, no QSS,
         # nothing to race) while it still reserves its layout space, so
         # hiding it doesn't snap the stepper/footer around it.
         stack_policy = self.step_stack.sizePolicy()
@@ -513,7 +513,7 @@ class ExportMode(DataModeWidget):
         picker_lay = QtWidgets.QHBoxLayout(picker_box)
         picker_lay.setContentsMargins(4, 4, 4, 4)
         picker_lay.setSpacing(4)
-        # USB actions — borderless (ghost variant: blue-accent hover wash,
+        # USB actions - borderless (ghost variant: blue-accent hover wash,
         # matching the app's accent colour) since they already sit inside
         # pickerBox's own frosted border; a border per-button too would be
         # one too many. Fixed size policy keeps them from being stretched by
@@ -582,14 +582,14 @@ class ExportMode(DataModeWidget):
         # --- Export name (full-width, top of the card) ------------------
         # Pulled out of the responsive grid so it reads as the first thing
         # you set before exporting, but otherwise a plain field like the
-        # rest of the page — no special highlight box.
+        # rest of the page - no special highlight box.
         self.name_field = GlassLineEdit()
         self.name_field.setMinimumHeight(34)
         lay.addWidget(self._field("Export name", self.name_field))
         lay.addSpacing(4)
 
         # The rest of the settings build as two self-contained "field" column
-        # units — Which Runs / Export As — dropped into a responsive grid
+        # units - Which Runs / Export As - dropped into a responsive grid
         # that re-flows between 1 and 2 columns. Each field stacks its cards
         # vertically rather than side-by-side, matching the wireframe.
 
@@ -612,7 +612,7 @@ class ExportMode(DataModeWidget):
         scope_cards.addWidget(self.btn_scope_all)
         scope_cards.addWidget(self.btn_scope_sel)
 
-        # Date range is a checkable sub-option of "Which runs" — nested in
+        # Date range is a checkable sub-option of "Which runs" - nested in
         # its own tinted box, only meaningful once switched on. An unchecked
         # box means "all dates" (date_filter == 0 / date_filter_max == None).
         date_box = QtWidgets.QFrame()
@@ -678,7 +678,7 @@ class ExportMode(DataModeWidget):
 
         # --- Export as: CSV / ZIP / Folder -------------------------------
         self.format_group = GlassOptionCardGroup(self)
-        self.rb_csv = GlassOptionCard("CSV Report", "A single spreadsheet — choose columns next")
+        self.rb_csv = GlassOptionCard("CSV Report", "A single spreadsheet - choose columns next")
         self.rb_zip = GlassOptionCard("ZIP Archive", "One compressed archive of raw run files")
         self.rb_folder_fmt = GlassOptionCard("Folder", "A plain folder of run files")
         self.format_group.addCard(self.rb_csv, 0)
@@ -713,7 +713,7 @@ class ExportMode(DataModeWidget):
         host, outer = self._step_host()
 
         # "Select all" / "Clear" dock into the card header, top-right, next
-        # to the title — a quick bulk action so ticking columns one-by-one
+        # to the title - a quick bulk action so ticking columns one-by-one
         # isn't the only way to set up a wide report.
         header_actions = QtWidgets.QHBoxLayout()
         header_actions.setContentsMargins(0, 0, 0, 0)
@@ -831,7 +831,7 @@ class ExportMode(DataModeWidget):
         self.review_cards_lay.setSpacing(12)
         outer.addLayout(self.review_cards_lay)
 
-        # "Ready to export" banner — restates the action in one sentence so
+        # "Ready to export" banner - restates the action in one sentence so
         # the final click is unambiguous, instead of leaving the user to
         # infer it from the cards above.
         self.review_banner = QtWidgets.QFrame()
@@ -875,7 +875,7 @@ class ExportMode(DataModeWidget):
         dest_card = self.dest_group.checkedButton()
         scope_btn = self.scope_group.checkedButton()
         scope_detail = (
-            f" — {self.btn_select_run.text().strip()}" if self.btn_scope_sel.isChecked() else ""
+            f" - {self.btn_select_run.text().strip()}" if self.btn_scope_sel.isChecked() else ""
         )
         fmt_btn = self.format_group.checkedButton()
         policy_btn = self.policy_group.checkedButton()
@@ -902,7 +902,7 @@ class ExportMode(DataModeWidget):
                 "Scope",
                 1,
                 [
-                    ("Export name", self.name_field.text() or "(none — copied directly)"),
+                    ("Export name", self.name_field.text() or "(none - copied directly)"),
                     (
                         "Runs",
                         (scope_btn.text() if scope_btn else "All runs")
@@ -1104,7 +1104,7 @@ class ExportMode(DataModeWidget):
         """)
         flay.addWidget(self.export_progress)
 
-        # Cancel sits on the left (always available — aborts a running task, or
+        # Cancel sits on the left (always available - aborts a running task, or
         # resets the wizard to step 1 when idle); Back/Next-or-Export on the
         # right, matching the wireframe's footer.
         row = QtWidgets.QHBoxLayout()
@@ -1186,7 +1186,7 @@ class ExportMode(DataModeWidget):
 
     def _reset_state(self):
         """Reset every wizard field back to its defaults and return to step
-        0 — used after a completed export, and by Cancel when idle."""
+        0 - used after a completed export, and by Cancel when idle."""
         self._source_subfolder = ""
         self.btn_select_run.setText(" Choose…")
         self.btn_select_run.setVisible(False)
@@ -1220,7 +1220,7 @@ class ExportMode(DataModeWidget):
 
     # ------------------------------------------------------------------
     #  Step slide transition (pixmap-proxy cross-slide, same technique as
-    #  DataManagementWidget._slide_to — adapted to horizontal/Next-Back).
+    #  DataManagementWidget._slide_to - adapted to horizontal/Next-Back).
     # ------------------------------------------------------------------
     def _teardown_step_slide(self):
         """Stop any running slide and destroy its proxy clip immediately, so
@@ -1258,7 +1258,7 @@ class ExportMode(DataModeWidget):
         new_widget = stack.widget(new_index)
         size = stack.size()
         if old_widget is None or new_widget is None or size.width() <= 0 or size.height() <= 0:
-            stack.setCurrentIndex(new_index)  # layout not settled — fall back to instant
+            stack.setCurrentIndex(new_index)  # layout not settled - fall back to instant
             return
 
         old_pix = old_widget.grab()
@@ -1296,16 +1296,16 @@ class ExportMode(DataModeWidget):
         new_lbl.show()
         new_lbl.raise_()
 
-        # Hide the live stack for the duration — genuinely hidden, not just
+        # Hide the live stack for the duration - genuinely hidden, not just
         # covered. Relying on "the proxies always cover it" (the previous
         # approach) left a real ghosting artifact: the live stack already
         # shows the NEW page underneath, and any imprecision (DPI scaling,
         # async layout/paint timing) let it bleed through during the slide.
-        # A plain hide() has nothing like that to go wrong — Qt simply skips
+        # A plain hide() has nothing like that to go wrong - Qt simply skips
         # painting it, which is also far cheaper than the QGraphicsOpacityEffect
         # this used to use (that one applied to a QStackedWidget full of
-        # custom-painted children — GlassOptionCard, GlassPushButton, toggle
-        # chips — and intermittently raced Qt's own paint pass, producing
+        # custom-painted children - GlassOptionCard, GlassPushButton, toggle
+        # chips - and intermittently raced Qt's own paint pass, producing
         # "QPainter::begin: a paint device can only be painted by one painter
         # at a time" spam). retainSizeWhenHidden (set once at construction)
         # keeps its layout space reserved, so the stepper/footer don't snap
@@ -1313,7 +1313,7 @@ class ExportMode(DataModeWidget):
         stack.hide()
 
         # Both animations share the EXACT same duration/curve so old and new
-        # move in lockstep — old's trailing edge and new's leading edge stay
+        # move in lockstep - old's trailing edge and new's leading edge stay
         # joined at every frame (a "push"), with no momentary gap that would
         # let the live stack (already showing the new page) flash through.
         anim_old = QtCore.QPropertyAnimation(old_lbl, b"pos", self)
@@ -1413,7 +1413,7 @@ class ExportMode(DataModeWidget):
             pass
         # pct == 100 with the "success" colour is unique to _export_task's
         # final "Exported to ..." message (cancelled/error finish at 100
-        # with "b"/"r" instead) — reset the wizard back to a clean slate
+        # with "b"/"r" instead) - reset the wizard back to a clean slate
         # once an export genuinely completes.
         if pct == 100 and color == "g":
             self._reset_state()
@@ -1434,7 +1434,7 @@ class ExportMode(DataModeWidget):
 
         # Detect/Eject are USB-only extras; Choose… stays available for both
         # destinations so there's always a manual way to set/override the
-        # target — auto-detection isn't guaranteed to find a drive. Slide
+        # target - auto-detection isn't guaranteed to find a drive. Slide
         # Detect/Eject open/closed rather than an abrupt show/hide; their
         # separators track the same state (no point separating from a
         # button that isn't there).
@@ -1449,7 +1449,7 @@ class ExportMode(DataModeWidget):
             # shared loop already found one; otherwise leave the field as-is
             # so a manually-chosen target (via Choose…) isn't clobbered.
             # NOTE: usb_drive (hardware-detected), not drive (export target)
-            # — the latter may still hold a stale Folder path here.
+            # - the latter may still hold a stale Folder path here.
             drive = getattr(self.services, "usb_drive", None)
             if drive:
                 self.target_field.setText(drive)
@@ -1463,7 +1463,7 @@ class ExportMode(DataModeWidget):
 
     def _slide_button(self, widget, show):
         """Slide a USB-only action button open (show=True) or closed
-        (show=False) by animating maximumWidth — a real QWidget property
+        (show=False) by animating maximumWidth - a real QWidget property
         that QHBoxLayout respects every frame, so siblings reflow smoothly
         as it grows/shrinks (unlike animating geometry directly, which only
         the layout itself is allowed to set)."""
@@ -1492,7 +1492,7 @@ class ExportMode(DataModeWidget):
     def _on_usb_add(self):
         # usb_drive is the hardware-detected letter; drive is the export
         # target. Mirror one into the other only while USB is the active
-        # destination — otherwise a detected stick must not clobber a
+        # destination - otherwise a detected stick must not clobber a
         # Folder destination the user already chose.
         drive = getattr(self.services, "usb_drive", None)
         if self._chk_usb:
@@ -1576,7 +1576,7 @@ class ExportMode(DataModeWidget):
             self._source_subfolder = ""
             Log.w(TAG, "Selected folder not in logged data path.")
             return
-        self.scope_group.setCheckedId(1)  # Selection — setChecked() alone wouldn't
+        self.scope_group.setCheckedId(1)  # Selection - setChecked() alone wouldn't
         # enforce exclusivity or notify the group (only the click path / setCheckedId do).
         sub = selected.replace(data_root, "").replace("/", Constants.slash)
         sub = sub.strip(Constants.slash)
@@ -1788,7 +1788,7 @@ class ExportMode(DataModeWidget):
         return cols
 
     # ------------------------------------------------------------------
-    #  Export task — full port of Ui_Export.exportTask
+    #  Export task - full port of Ui_Export.exportTask
     # ------------------------------------------------------------------
     def _export_task(self, abort, name, output_folder, date_filter, date_filter_max=None):
         """Export the selected runs to the chosen destination.
@@ -2007,7 +2007,7 @@ class ExportMode(DataModeWidget):
                 shutil.make_archive(export_path, "zip", export_path)
                 shutil.rmtree(export_path)
 
-            Log.i(TAG, f"DONE — exported {copied} run(s) to {export_path}.")
+            Log.i(TAG, f"DONE - exported {copied} run(s) to {export_path}.")
             if skipped > 0:
                 if is_csv:
                     reason = "there were errors with the analyze results"
@@ -2073,7 +2073,7 @@ class ExportMode(DataModeWidget):
             break
 
     # ------------------------------------------------------------------
-    #  CSV row builder — full port of Ui_Export.appendRunToCsvReport
+    #  CSV row builder - full port of Ui_Export.appendRunToCsvReport
     # ------------------------------------------------------------------
     def _append_run_to_csv(self, run, cols, date_filter=0, date_filter_max=None):
         """Parse one run and append a row to the open CSV report.
@@ -2274,7 +2274,7 @@ class ExportMode(DataModeWidget):
         return row
 
     # ------------------------------------------------------------------
-    #  copytree — full port of Ui_Export.copytree
+    #  copytree - full port of Ui_Export.copytree
     # ------------------------------------------------------------------
     def _copytree(self, src, dst, policy, copied=0, skipped=0, date_filter=0, date_filter_max=None):
         """Recursively copy ``src`` into ``dst`` honoring the existing-files
@@ -2427,7 +2427,7 @@ class ExportMode(DataModeWidget):
 
     @staticmethod
     def _picker_box_qss():
-        # No fill/border of its own — the thin separators between Detect,
+        # No fill/border of its own - the thin separators between Detect,
         # Eject, and Choose… (shown only while Detect/Eject are expanded)
         # are the only visual division here now.
         return "QFrame#pickerBox { background: transparent; border: none; }"

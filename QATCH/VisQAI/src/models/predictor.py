@@ -228,7 +228,7 @@ class Predictor:
 
         Args:
             df (pd.DataFrame): Input features. Must not contain target viscosity
-                columns — strip them with ``prepare_prediction_input`` first.
+                columns - strip them with ``prepare_prediction_input`` first.
 
         Returns:
             pd.DataFrame: Predicted viscosity values with one column per shear rate.
@@ -284,7 +284,7 @@ class Predictor:
         )
 
         # Normalise stats keys so callers that used the old 'lower'/'upper'
-        # names still work — expose both spellings.
+        # names still work - expose both spellings.
         stats.setdefault("lower", stats.get("lower_ci"))
         stats.setdefault("upper", stats.get("upper_ci"))
         stats.setdefault("std", stats.get("std_log10"))
@@ -571,7 +571,7 @@ class Predictor:
     ):
         """Adapt the model to a new protein group by encoding its context.
 
-        For CNP engines, delegates to the engine's encode-only ``learn()`` — no
+        For CNP engines, delegates to the engine's encode-only ``learn()`` - no
         gradient updates are performed on the model weights.  ``steps`` and ``lr``
         are accepted for backward compatibility but are ignored by CNP engines.
         Multi-draw averaging is controlled by ``n_draws`` and ``k``.

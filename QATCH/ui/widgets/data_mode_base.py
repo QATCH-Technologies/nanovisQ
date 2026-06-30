@@ -1,4 +1,4 @@
-"""DataModeWidget — base class for every data-management mode page.
+"""DataModeWidget - base class for every data-management mode page.
 
 Each mode (import, export, recover, advanced, history) subclasses this. The
 base wires up the shared ``DataServices`` connections and defines the small

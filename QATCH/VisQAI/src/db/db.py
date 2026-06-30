@@ -167,8 +167,7 @@ class Database:
         """
         c = self.conn.cursor()
         # Ingredient core table
-        c.execute(
-            rf"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS ingredient (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 enc_id INTEGER NOT NULL,
@@ -176,11 +175,9 @@ class Database:
                 type TEXT NOT NULL,
                 is_user INTEGER NOT NULL DEFAULT 0
             )
-        """
-        )
+        """)
         # Subclass tables
-        c.execute(
-            rf"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS protein (
                 ingredient_id    INTEGER PRIMARY KEY,
                 class_type       TEXT NOT NULL DEFAULT 'None'
@@ -190,50 +187,38 @@ class Database:
                 pI_range         REAL,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS buffer (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS stabilizer (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS surfactant (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS salt (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS excipient (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS formulation (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
@@ -242,11 +227,9 @@ class Database:
                 icl INTEGER DEFAULT 1,
                 last_model TEXT
             )
-        """
-        )
+        """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)")
-        c.execute(
-            rf"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS formulation_component (
                 formulation_id INTEGER NOT NULL,
                 component_type TEXT NOT NULL,
@@ -258,10 +241,8 @@ class Database:
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS viscosity_profile (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 formulation_id INTEGER NOT NULL UNIQUE,
@@ -271,8 +252,7 @@ class Database:
                 is_measured INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE
             )
-        """
-        )
+        """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)")
         self._commit()
@@ -991,7 +971,7 @@ class Database:
         This method performs a standard SQL commit on the active connection. If
         encryption is enabled, it goes a step further by performing an immediate
         persistence operation to the filesystem. To maintain data integrity during
-        the encrypted write, it safely rotates the file handle—closing the current
+        the encrypted write, it safely rotates the file handle-closing the current
         read handle, executing the save, and re-establishing the read handle.
 
         Side Effects:
@@ -1012,7 +992,7 @@ class Database:
             self.init_changes = self.conn.total_changes
 
     def flush(self) -> None:
-        """Force a commit and optional backup — call at end of bulk operations."""
+        """Force a commit and optional backup - call at end of bulk operations."""
         self.conn.commit()
         if self.use_encryption:
             if self.file_handle is not None:

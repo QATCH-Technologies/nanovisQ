@@ -321,7 +321,7 @@ class OfflineViewer(QWebEngineView):
         if success:
             self._retry_count = 0
             return
-        # Deliberately blocked navigation — not a failure.
+        # Deliberately blocked navigation - not a failure.
         if getattr(self.page(), "navigation_blocked", False):
             return
         # Transient failure (e.g. slow first load at startup): retry a few
@@ -562,7 +562,7 @@ class WebViewer(QMainWindow):
             self.loaded = True
             self.render_timer.start()
         elif self.browser._retry_count < self.browser._max_retries:
-            # Retry in progress — keep the spinner-style status, don't alarm.
+            # Retry in progress - keep the spinner-style status, don't alarm.
             self.status_label.setText("Connecting...")
         else:
             self.status_label.setText("No connection...")

@@ -1,4 +1,4 @@
-"""Advanced mode — destructive / maintenance operations.
+"""Advanced mode - destructive / maintenance operations.
 
 PORT FROM export_widget.Ui_Export:
     build()       <- tabAdv construction (erase warning notice + erase button,
@@ -19,13 +19,13 @@ Behavioural parity with the original:
 
 LAYOUT: USB Drive / Local storage / Danger zone cards (matches the wireframe).
 The USB card shows live connection status + free/total space (from
-``self.services.usb_drive`` — the hardware-detected drive letter, refreshed
+``self.services.usb_drive`` - the hardware-detected drive letter, refreshed
 on usb_add/usb_remove). This is deliberately NOT ``self.services.drive``,
 which is Export mode's *chosen target* and may be any local folder; reading
-that here was a bug — it made this card claim a plain export folder (e.g.
+that here was a bug - it made this card claim a plain export folder (e.g.
 C:\...\export) was a connected USB stick. The storage card shows a usage bar
 for locally logged run data against the host volume's capacity. Recycle Bin
-size isn't broken out separately — there's no portable way to query it
+size isn't broken out separately - there's no portable way to query it
 without extra OS-specific dependencies, so the bar reflects active local
 run data only.
 """
@@ -92,7 +92,7 @@ class AdvancedMode(DataModeWidget):
     #  Build
     # ------------------------------------------------------------------
     def build(self):
-        # Whether export happened this session — drives the erase prompt wording.
+        # Whether export happened this session - drives the erase prompt wording.
         self._exported = False
 
         heading = QtWidgets.QLabel("Advanced")
@@ -207,7 +207,7 @@ class AdvancedMode(DataModeWidget):
         )
         ddesc = QtWidgets.QLabel(
             "Removes all locally logged runs from this machine. Erased runs go to the "
-            "Recycle Bin first — empty it afterward to erase permanently."
+            "Recycle Bin first - empty it afterward to erase permanently."
         )
         ddesc.setWordWrap(True)
         ddesc.setStyleSheet(
@@ -240,7 +240,7 @@ class AdvancedMode(DataModeWidget):
         self.root.addWidget(self.status_label)
         self.root.addStretch(1)
 
-        # Live USB status — connected once; this mode instance lives for the
+        # Live USB status - connected once; this mode instance lives for the
         # app's lifetime (it's never recreated), so there's no risk of
         # accumulating duplicate connections across visits.
         self.services.usb_add.connect(self._refresh_usb_status)
@@ -264,7 +264,7 @@ class AdvancedMode(DataModeWidget):
             self.status_label.setVisible(True)
             self.status_label.setText(label)
         if pct == 100:
-            # Erase/eject finished (success, cancel, or error) — local state
+            # Erase/eject finished (success, cancel, or error) - local state
             # may have changed either way, so refresh both cards.
             self._refresh_usb_status()
             self._refresh_storage()
@@ -596,7 +596,7 @@ class AdvancedMode(DataModeWidget):
 
     def _panel(self, danger=False):
         """A frosted glass panel with an empty body layout for the caller to
-        build a custom header into (unlike ``_card``, no title is pre-added —
+        build a custom header into (unlike ``_card``, no title is pre-added -
         each card here has its own icon-swatch header row)."""
         card = QtWidgets.QFrame()
         card.setObjectName("glassPanel")

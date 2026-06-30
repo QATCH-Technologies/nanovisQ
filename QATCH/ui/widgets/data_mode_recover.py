@@ -1,4 +1,4 @@
-"""Recover mode — wraps the existing self-contained RunRecoveryDialog.
+"""Recover mode - wraps the existing self-contained RunRecoveryDialog.
 
 This mode already exists as a standalone widget; the submodule simply hosts it
 inside the mode-page contract so the container can treat it like any other mode.

@@ -8,7 +8,7 @@ viscosity predictions. Instead of traditional point-estimate tests, it treats
 the prediction's confidence interval (CI) as a 2D polygon in log-linear space
 (log10 shear rate vs. viscosity).
 
-The core metric is 'Percentage Contained'—the ratio of the CI polygon's area
+The core metric is 'Percentage Contained'-the ratio of the CI polygon's area
 that falls within user-defined bounds to its total area. This provides a
 probabilistic measure of confidence that a formulation meets specific
 rheological requirements across a range of shear rates.
@@ -144,9 +144,7 @@ class HypothesisTesting:
                 bounds=bounds,
                 shear_rates=shear_rates,
             )
-        elif (
-            hypothesis_type == "between" and bounds[0] > -np.inf and bounds[1] < np.inf
-        ):
+        elif hypothesis_type == "between" and bounds[0] > -np.inf and bounds[1] < np.inf:
             result = self._between_bound_test(
                 mean_pred=mean_pred,
                 upper_ci=upper_ci,
@@ -190,12 +188,9 @@ class HypothesisTesting:
 
         # Create CI polygon
         # Points go clockwise: upper boundary (left to right), then lower boundary (right to left)
-        upper_points = [
-            (log_shear_rates[i], upper_ci[i]) for i in range(len(shear_rates))
-        ]
+        upper_points = [(log_shear_rates[i], upper_ci[i]) for i in range(len(shear_rates))]
         lower_points = [
-            (log_shear_rates[i], lower_ci[i])
-            for i in range(len(shear_rates) - 1, -1, -1)
+            (log_shear_rates[i], lower_ci[i]) for i in range(len(shear_rates) - 1, -1, -1)
         ]
 
         try:
@@ -233,9 +228,7 @@ class HypothesisTesting:
             else:
                 clipped_area = clipped_polygon.area
 
-            pct_contained = (
-                (clipped_area / total_area * 100.0) if total_area > 0 else 0.0
-            )
+            pct_contained = (clipped_area / total_area * 100.0) if total_area > 0 else 0.0
 
             return {
                 "pct_contained": pct_contained,

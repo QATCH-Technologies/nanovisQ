@@ -143,6 +143,20 @@ class ColorTokens(TypedDict):
     ctrl_pulse_border: RGBA
     # Controls UI — infobar readout label
     ctrl_infobar_text: RGBA
+    # Controls window — menu bar signed-in (normal) state
+    menubar_bg: RGBA
+    menubar_text: RGBA
+    menubar_item_hover_bg: RGBA
+    menubar_item_disabled_text: RGBA
+    menubar_border: RGBA
+    menubar_separator: RGBA
+    # Controls window — menu bar signed-out (dimmed) state
+    menubar_dim_bg: RGBA
+    menubar_dim_text: RGBA
+    menubar_dim_item_hover_bg: RGBA
+    menubar_dim_item_disabled_text: RGBA
+    menubar_dim_border: RGBA
+    menubar_dim_separator: RGBA
 
 
 # Lifted directly from QATCH/ui/styles/app_theme.qss (formerly ui_main_theme.qss)
@@ -271,6 +285,20 @@ LIGHT: ColorTokens = {
     "ctrl_pulse_border": (240, 170, 50, 230),
     # Controls UI — infobar readout
     "ctrl_infobar_text": (70, 90, 110, 190),
+    # Controls window — menu bar signed-in (normal) state
+    "menubar_bg": (233, 239, 244, 255),
+    "menubar_text": (50, 60, 70, 230),
+    "menubar_item_hover_bg": (10, 163, 230, 60),
+    "menubar_item_disabled_text": (120, 130, 140, 140),
+    "menubar_border": (255, 255, 255, 230),
+    "menubar_separator": (120, 130, 140, 70),
+    # Controls window — menu bar signed-out (dimmed) state
+    "menubar_dim_bg": (163, 167, 171, 255),
+    "menubar_dim_text": (40, 48, 56, 235),
+    "menubar_dim_item_hover_bg": (255, 255, 255, 60),
+    "menubar_dim_item_disabled_text": (90, 98, 106, 150),
+    "menubar_dim_border": (255, 255, 255, 90),
+    "menubar_dim_separator": (255, 255, 255, 80),
 }
 
 # First-pass dark palette: dark surfaces, lightened accent/text for contrast.
@@ -398,6 +426,20 @@ DARK: ColorTokens = {
     "ctrl_pulse_border": (255, 190, 70, 230),
     # Controls UI — infobar readout
     "ctrl_infobar_text": (150, 165, 180, 190),
+    # Controls window — menu bar signed-in (normal) state
+    "menubar_bg": (35, 40, 48, 255),
+    "menubar_text": (200, 210, 220, 230),
+    "menubar_item_hover_bg": (45, 175, 240, 60),
+    "menubar_item_disabled_text": (90, 100, 110, 140),
+    "menubar_border": (70, 78, 88, 200),
+    "menubar_separator": (70, 80, 95, 80),
+    # Controls window — menu bar signed-out (dimmed) state
+    "menubar_dim_bg": (45, 50, 58, 255),
+    "menubar_dim_text": (150, 160, 170, 235),
+    "menubar_dim_item_hover_bg": (80, 90, 105, 60),
+    "menubar_dim_item_disabled_text": (80, 90, 100, 140),
+    "menubar_dim_border": (60, 68, 78, 90),
+    "menubar_dim_separator": (80, 88, 100, 80),
 }
 
 PALETTES: dict[str, ColorTokens] = {"light": LIGHT, "dark": DARK}

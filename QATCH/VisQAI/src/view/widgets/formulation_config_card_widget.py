@@ -977,7 +977,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         combo.currentTextChanged.connect(self.trigger_update)
         spin.valueChanged.connect(self.trigger_update)
 
-        # pH spinbox — Buffer rows only, replaces the delete button slot
+        # pH spinbox - Buffer rows only, replaces the delete button slot
         if ing_type == "Buffer":
             spin_ph = QtWidgets.QDoubleSpinBox()
             spin_ph.setProperty("class", "sleek")
@@ -1087,7 +1087,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                 "}"
             )
             btn_configure.setToolTip(
-                f"\u26a0 {combo.currentText()} has required fields that are not set — click to complete"
+                f"\u26a0 {combo.currentText()} has required fields that are not set - click to complete"
             )
             # Add matching error style to the combo box
             combo.setStyleSheet(

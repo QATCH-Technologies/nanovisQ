@@ -17,6 +17,15 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from QATCH.ui.styles.theme_manager import ThemeManager
+
+
+def _tok_css(rgba: tuple) -> str:
+    r, g, b, a = rgba
+    if a == 255:
+        return f"#{r:02X}{g:02X}{b:02X}"
+    return f"rgba({r}, {g}, {b}, {a})"
+
 
 class StartStopButton(QToolButton):
     """A custom Start/Stop/Progress button that displays progress and success animations.
@@ -324,13 +333,11 @@ class RunControls(QWidget):
 
         self.status_label = QLabel("Idle")
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setStyleSheet("color: #555; font-size: 12px; font-weight: bold;")
         self.status_label.setWordWrap(True)
         self.status_layout.addWidget(self.status_label)
 
         self.lbl_status = QLabel("Run Status")
         self.lbl_status.setAlignment(Qt.AlignCenter)
-        self.lbl_status.setStyleSheet("color: #333; font-size: 11px; margin-top: 2px;")
         self.status_layout.addWidget(self.lbl_status)
 
         self.layout.addWidget(self.status_container)
@@ -339,7 +346,16 @@ class RunControls(QWidget):
         self.anim.setEasingCurve(QEasingCurve.InOutQuad)
         self.anim.setDuration(1000)
 
+        self._apply_label_theme()
+        ThemeManager.instance().themeChanged.connect(lambda _: self._apply_label_theme())
         self.stopRequested.connect(self._stopped)
+
+    def _apply_label_theme(self) -> None:
+        tok = ThemeManager.instance().tokens()
+        normal = _tok_css(tok["plot_text_normal"])
+        dim = _tok_css(tok["plot_text_dim"])
+        self.status_label.setStyleSheet(f"color: {normal}; font-size: 12px; font-weight: bold;")
+        self.lbl_status.setStyleSheet(f"color: {dim}; font-size: 11px; margin-top: 2px;")
 
     def setEnabled(self, enabled):
         """Sets the enabled state of the control and its sub-widgets.

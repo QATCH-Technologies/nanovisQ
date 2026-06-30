@@ -1,6 +1,8 @@
 from typing import Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.styles.theme_manager import ThemeManager
+
 
 class ControlsWidget(QtWidgets.QWidget):
     """Container that provides the toolbar's gradient backdrop.
@@ -31,6 +33,7 @@ class ControlsWidget(QtWidgets.QWidget):
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        ThemeManager.instance().themeChanged.connect(lambda _: self.update())
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
         """Performs custom painting to render the frosted-glass toolbar background.
@@ -42,6 +45,7 @@ class ControlsWidget(QtWidgets.QWidget):
         Args:
             event (QtGui.QPaintEvent): The paint event provided by the system.
         """
+        tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
 
@@ -53,28 +57,28 @@ class ControlsWidget(QtWidgets.QWidget):
         p.setClipPath(clip)
 
         # Base
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 160))
-        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 18))
+        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_base"]))
+        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_overlay"]))
 
         # Top shimmer
         shimmer = QtGui.QLinearGradient(0, 0, 0, 40)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 100))
-        shimmer.setColorAt(0.5, QtGui.QColor(255, 255, 255, 20))
-        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
+        shimmer.setColorAt(0.0, QtGui.QColor(*tok["plot_glass_shimmer_top"]))
+        shimmer.setColorAt(0.5, QtGui.QColor(*tok["plot_glass_shimmer_mid"]))
+        shimmer.setColorAt(1.0, QtGui.QColor(*tok["plot_glass_shimmer_mid"][:3], 0))
         p.fillRect(self.rect(), QtGui.QBrush(shimmer))
 
         # Bottom vignette
         vg = QtGui.QLinearGradient(0, self.height() - 30, 0, self.height())
-        vg.setColorAt(0.0, QtGui.QColor(200, 218, 240, 0))
-        vg.setColorAt(1.0, QtGui.QColor(200, 218, 240, 18))
+        vg.setColorAt(0.0, QtGui.QColor(*tok["plot_glass_vignette_end"][:3], 0))
+        vg.setColorAt(1.0, QtGui.QColor(*tok["plot_glass_vignette_end"]))
         p.fillRect(self.rect(), QtGui.QBrush(vg))
 
         # Borders
         p.setClipping(False)
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 1.0))
+        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_rim"]), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(190, 210, 235, 70), 1.0))
+        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_inset"]), 1.0))
         p.drawRoundedRect(
             rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
             self._RADIUS - 1.5,

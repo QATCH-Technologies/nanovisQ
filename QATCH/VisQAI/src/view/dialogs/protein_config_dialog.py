@@ -77,8 +77,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
         self.resize(400, 420)
         self.setModal(True)
 
-        self.setStyleSheet(
-            """
+        self.setStyleSheet("""
             QDialog { background-color: #ffffff; }
             QLabel { color: #333; }
             QLineEdit, QDoubleSpinBox, QComboBox { 
@@ -95,8 +94,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
                 background-color: #f3f4f6;
                 color: #6b7280;
             }
-        """
-        )
+        """)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setSpacing(15)
@@ -127,7 +125,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
         form_layout.addRow("Name*:", self.edit_name)
 
         self.combo_class = QtWidgets.QComboBox()
-        self.combo_class.addItem("—  Required", None)
+        self.combo_class.addItem("-  Required", None)
         self.combo_class.addItems(
             [s for s in ProteinClass.all_strings() if s.lower() not in ("none", "")]
         )
@@ -155,9 +153,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
 
         layout.addLayout(form_layout)
 
-        self.spin_mw.valueChanged.connect(
-            lambda v: self._on_numeric_changed(self.spin_mw, v)
-        )
+        self.spin_mw.valueChanged.connect(lambda v: self._on_numeric_changed(self.spin_mw, v))
         self.spin_pi_mean.valueChanged.connect(
             lambda v: self._on_numeric_changed(self.spin_pi_mean, v)
         )
@@ -180,8 +176,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
 
         btn_save = QtWidgets.QPushButton("Save")
         btn_save.setDefault(True)
-        btn_save.setStyleSheet(
-            """
+        btn_save.setStyleSheet("""
             QPushButton {
                 background-color: #00adee;
                 color: white;
@@ -193,8 +188,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
             QPushButton:hover {
                 background-color: #0096d1;
             }
-        """
-        )
+        """)
         btn_save.clicked.connect(self.save_and_accept)
         btn_layout.addWidget(btn_save)
 
@@ -272,9 +266,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
             if not self.has_incomplete_fields():
                 self.lbl_incomplete.setVisible(False)
 
-    def _on_numeric_changed(
-        self, widget: QtWidgets.QDoubleSpinBox, value: float
-    ) -> None:
+    def _on_numeric_changed(self, widget: QtWidgets.QDoubleSpinBox, value: float) -> None:
         """Validates numeric input as the user types.
 
         Args:
