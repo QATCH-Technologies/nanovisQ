@@ -425,6 +425,14 @@ class _PerspectiveAnimator(QtCore.QObject):
         super().__init__(container)
         self._container = container
 
+        # Guard flag: ensures only one _begin_slide is ever scheduled per show
+        # event cycle.  Multiple ShowEvents can fire on the container during a
+        # single open (e.g. from set_page's show() and set_advanced_perspective's
+        # show()), particularly on the first open when the container transitions
+        # from a hidden top-level widget.  Without this guard the animation
+        # starts twice, producing the "doubly renders and animates" glitch.
+        self._start_pending: bool = False
+
         # Slide the whole popup window DOWN into place (start 12px above the
         # final position), matching the account menu. Animating the inner
         # top-margin instead made content rise up from the bottom, which read
@@ -495,13 +503,23 @@ class _PerspectiveAnimator(QtCore.QObject):
             True if the event was handled, otherwise the base class result.
         """
         if obj is self._container and event.type() == QtCore.QEvent.Type.Show:
-            self._fade.stop()
-            self._fade.start()
-            QtCore.QTimer.singleShot(0, self._begin_slide)
+            # Deduplicate: only schedule _begin_slide once per open cycle.
+            # The fade is NOT started here — _begin_slide starts both animations
+            # together after the popup window is confirmed visible, preventing
+            # the fade from running ahead of the slide (and ahead of show()).
+            if not self._start_pending:
+                self._start_pending = True
+                QtCore.QTimer.singleShot(0, self._begin_slide)
         return super().eventFilter(obj, event)
 
     def _begin_slide(self) -> None:
-        """Calculates start/end positions and initiates the slide animation."""
+        """Calculates start/end positions and starts both fade and slide animations.
+
+        Called once per open cycle via a zero-delay singleShot, after all
+        queued ShowEvents have been processed.  Resets the _start_pending
+        guard so the next open cycle can arm again.
+        """
+        self._start_pending = False
         win = self._container.window()
         if win is None or not win.isVisible():
             return
@@ -509,6 +527,8 @@ class _PerspectiveAnimator(QtCore.QObject):
         self._slide_to = QtCore.QPoint(final_pos)
         self._slide_from = QtCore.QPoint(final_pos.x(), final_pos.y() - self._slide_offset)
         win.move(self._slide_from)
+        self._fade.stop()
+        self._fade.start()
         self._slide.stop()
         self._slide.start()
 

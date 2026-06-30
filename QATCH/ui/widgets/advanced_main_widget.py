@@ -567,6 +567,10 @@ class AdvancedMainWidget(QtWidgets.QWidget):
 
         x, y = self._compute_anchored_pos(anchor)
         self.move(x, y)
+        # Pre-hide so the window is invisible until the fade animation begins.
+        # Without this the window flashes at full opacity for one frame before
+        # _PerspectiveAnimator._begin_slide gets its zero-delay singleShot callback.
+        self.setWindowOpacity(0.0)
         if self._main_window is not None:
             self._main_window.installEventFilter(self)
         self.show()
