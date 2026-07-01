@@ -119,7 +119,7 @@ class GlassSegmentedControl(QtWidgets.QFrame):
         so transparent SVG areas stay transparent)."""
         src = QtGui.QIcon(path).pixmap(size, size)
         dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.transparent)
+        dst.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(dst)
         p.drawPixmap(0, 0, src)
         p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
@@ -321,7 +321,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         """
         src = QtGui.QIcon(path).pixmap(size, size)
         dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.transparent)
+        dst.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(dst)
         p.drawPixmap(0, 0, src)
         p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)

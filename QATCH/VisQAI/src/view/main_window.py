@@ -376,7 +376,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         super(VisQAIWindow, self).__init__(parent)
 
         # import typing here to avoid circularity
-        from QATCH.ui.mainWindow import MainWindow
+        from QATCH.ui.main_window import MainWindow
 
         self.parent: MainWindow = parent
         self.setWindowTitle("VisQ.AI")
@@ -456,10 +456,10 @@ class VisQAIWindow(BaseVisQAIWindow):
         layout_sign = QtWidgets.QVBoxLayout()
         layout_curr = QtWidgets.QHBoxLayout()
         signedInAs = QtWidgets.QLabel("Signed in as: ")
-        signedInAs.setAlignment(QtCore.Qt.AlignLeft)
+        signedInAs.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         layout_curr.addWidget(signedInAs)
         self.signedInAs = QtWidgets.QLabel("[NONE]")
-        self.signedInAs.setAlignment(QtCore.Qt.AlignRight)
+        self.signedInAs.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         layout_curr.addWidget(self.signedInAs)
         layout_sign.addLayout(layout_curr)
         line_sep = QtWidgets.QFrame()
@@ -615,7 +615,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                 self.parent.ControlsWin.username.setText(f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.ControlsWin.ui.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
                     self.parent.ControlsWin.manage.setText("&Change Password...")
@@ -630,7 +630,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                 self.parent.ControlsWin.userrole = UserRoles.NONE
                 self.parent.ControlsWin.signinout.setText("&Sign In")
                 self.parent.ControlsWin.manage.setText("&Manage Users...")
-                self.parent.ControlsWin.ui1.tool_User.setText("Anonymous")
+                self.parent.ControlsWin.ui.tool_User.setText("Anonymous")
                 self.parent.AnalyzeProc.tool_User.setText("Anonymous")
                 PopUp.warning(
                     self,
@@ -642,7 +642,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                 self.parent.ControlsWin.username.setText(f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.ControlsWin.ui.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
                     self.parent.ControlsWin.manage.setText("&Change Password...")
@@ -662,10 +662,10 @@ class VisQAIWindow(BaseVisQAIWindow):
             Log.w("Database closed: backup failed")
 
         # Check if MainWin exists before accessing to prevent startup crash!
-        if hasattr(self.parent, "MainWin") and self.parent.MainWin is not None:
+        if hasattr(self.parent, "MainWin") and self.parent.ModeWin is not None:
             try:
                 # Highlight the selected toolkit item in the floating menu
-                self.parent.MainWin.ui0.floating_widget.setActiveItem(index)
+                self.parent.ModeWin.ui.floating_widget.setActiveItem(index)
             except Exception as e:
                 Log.e(
                     tag=self.TAG,
@@ -767,10 +767,10 @@ class VisQAIWindow(BaseVisQAIWindow):
             Log.d(tag=self.TAG, msg="Database objects disabled on VisQ.AI not enabled.")
 
             # Check if MainWin exists before accessing to prevent startup crash!
-            if hasattr(self.parent, "MainWin") and self.parent.MainWin is not None:
+            if hasattr(self.parent, "MainWin") and self.parent.ModeWin is not None:
                 try:
                     # Remove highlighted tool item from floating menu widget
-                    self.parent.MainWin.ui0.floating_widget.setActiveItem(-1)
+                    self.parent.ModeWin.ui.floating_widget.setActiveItem(-1)
                 except Exception as e:
                     Log.e(
                         tag=self.TAG,

@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import os
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -44,6 +44,22 @@ class ThemeMode(Enum):
 def _css_rgba(rgba) -> str:
     """Formats an (r, g, b, a) tuple as a literal CSS rgba(...) string."""
     r, g, b, a = rgba
+    return f"rgba({r}, {g}, {b}, {a})"
+
+
+def tok_css(rgba: Tuple[int, int, int, int]) -> str:
+    """Converts an RGBA token tuple to a valid CSS color string.
+
+    Args:
+        rgba (Tuple[int, int, int, int]): A tuple representing Red, Green, Blue,
+            and Alpha values (0-255).
+
+    Returns:
+        str: A CSS-compatible color string (either HEX or rgba).
+    """
+    r, g, b, a = rgba
+    if a == 255:
+        return f"#{r:02X}{g:02X}{b:02X}"
     return f"rgba({r}, {g}, {b}, {a})"
 
 
@@ -118,9 +134,7 @@ class ThemeManager(QtCore.QObject):
         Args:
             app (QtWidgets.QApplication): The running application instance.
         """
-        token_placeholders = {
-            key.upper(): _css_rgba(value) for key, value in self.tokens().items()
-        }
+        token_placeholders = {key.upper(): _css_rgba(value) for key, value in self.tokens().items()}
         self._loader.set_tokens(token_placeholders)
         try:
             app.setStyleSheet(self._loader.get_stylesheet(use_cache=False))

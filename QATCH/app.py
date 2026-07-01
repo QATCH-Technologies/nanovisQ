@@ -6,7 +6,7 @@ import time
 from multiprocessing import freeze_support
 
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtGui import QPixmap, QColor
+from PyQt5.QtGui import QColor, QPixmap
 from PyQt5.QtWidgets import QApplication
 
 from QATCH.common.architecture import Architecture, OSType
@@ -74,9 +74,7 @@ class QATCH:
                 Constants.app_date,
             )  # arbitrary string, required for Windows Toolbar to display QATCH icon
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-            ctypes.windll.kernel32.SetConsoleTitleW(
-                "QATCH Q-1 Real-Time GUI - command line"
-            )
+            ctypes.windll.kernel32.SetConsoleTitleW("QATCH Q-1 Real-Time GUI - command line")
         self._args = self._init_logger()
         self._app = QApplication(argv)
 
@@ -86,10 +84,7 @@ class QATCH:
         if USE_PYI_SPLASH:
             # Update the text on the splash screen
             build_info = "\n".join(
-                [
-                    f"                                          {s}"
-                    for s in build_info.split("\n")
-                ]
+                [f"                                          {s}" for s in build_info.split("\n")]
             )
             pyi_splash.update_text(build_info)
         else:
@@ -138,11 +133,9 @@ class QATCH:
         #     if hWnd:
         #         user32.ShowWindow(hWnd, SW_HIDE)
 
-        self.win.MainWin.showMaximized()
-        self.win.MainWin.activateWindow()
+        self.win.ModeWin.showMaximized()
+        self.win.ModeWin.activateWindow()
 
-        if hasattr(self.win, "ask_for_update") and self.win.ask_for_update:
-            self.win.start_download()
         ##
 
     ###########################################################################
@@ -150,14 +143,12 @@ class QATCH:
     ###########################################################################
     def run(self):
         # lazy load imports
-        from QATCH.ui import mainWindow
+        from QATCH.ui import main_window
 
-        if Architecture.is_python_version(
-            MinimalPython.major, minor=MinimalPython.minor
-        ):
+        if Architecture.is_python_version(MinimalPython.major, minor=MinimalPython.minor):
             Log.i(TAG, "Application started")
 
-            self.win = mainWindow.MainWindow(samples=self._args.get_user_samples())
+            self.win = main_window.MainWindow(samples=self._args.get_user_samples())
             # win.setWindowTitle("{} - {}".format(Constants.app_title, Constants.app_version))
             # win.move(500, 20) #GUI position (x,y) on the screen
             # win.show()

@@ -14,13 +14,13 @@ Date:
     2026-06-17
 """
 
-from datetime import date
 import hashlib
 import logging
 import multiprocessing
 import os
+from datetime import date
 from time import localtime, strftime
-from typing import List, Any
+from typing import Any, List
 
 import pyzipper
 from PyQt5 import QtCore, QtWidgets
@@ -35,9 +35,9 @@ from QATCH.processors.InterpTemps import (
     InterpTempsProcess,
     QueueCommandFormat,
 )
+from QATCH.ui.popUp import PopUp
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 from QATCH.ui.widgets.run_info_widget import RunInfoWindow
-from QATCH.ui.popUp import PopUp
 
 
 class RenameOutputFilesWorker(QtCore.QObject):
@@ -122,7 +122,7 @@ class RenameOutputFilesWorker(QtCore.QObject):
         """
         if self.main_window and hasattr(self.main_window, "ControlsWin"):
             text = f"<font color=#0000ff> Infobar </font><font color={color_err}>{labelbar}</font>"
-            self.main_window.ControlsWin.ui1.infobar.setText(text)
+            self.main_window.ControlsWin.ui.infobar.setText(text)
 
     def interp_temps(self, new_files: List[str]) -> None:
         """Starts the temperature interpolation process for the given files.

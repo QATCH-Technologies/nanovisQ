@@ -13,8 +13,8 @@ from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
-from QATCH.ui.widgets.collapsible_box_widget import CollapsibleBox
 from QATCH.ui.popUp import PopUp
+from QATCH.ui.widgets.collapsible_box_widget import CollapsibleBox
 from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.models.ingredient import (
@@ -26,7 +26,6 @@ from QATCH.VisQAI.src.models.ingredient import (
     Surfactant,
 )
 from QATCH.VisQAI.src.utils.list_utils import ListUtils
-from QATCH.common.userProfiles import UserProfiles
 
 TAG = "[QueryRunInfoWidget]"
 
@@ -662,10 +661,10 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         layout_sign = QtWidgets.QVBoxLayout()
         layout_curr = QtWidgets.QHBoxLayout()
         signedInAs = QtWidgets.QLabel("Signed in as: ")
-        signedInAs.setAlignment(QtCore.Qt.AlignLeft)
+        signedInAs.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         layout_curr.addWidget(signedInAs)
         self.signedInAs = QtWidgets.QLabel("[NONE]")
-        self.signedInAs.setAlignment(QtCore.Qt.AlignRight)
+        self.signedInAs.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         layout_curr.addWidget(self.signedInAs)
         layout_sign.addLayout(layout_curr)
         line_sep = QtWidgets.QFrame()
@@ -1270,7 +1269,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.parent.ControlsWin.username.setText(f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.ControlsWin.ui.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
                     self.parent.ControlsWin.manage.setText("&Change Password...")
@@ -1285,7 +1284,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.parent.ControlsWin.userrole = UserRoles.NONE
                 self.parent.ControlsWin.signinout.setText("&Sign In")
                 self.parent.ControlsWin.manage.setText("&Manage Users...")
-                self.parent.ControlsWin.ui1.tool_User.setText("Anonymous")
+                self.parent.ControlsWin.ui.tool_User.setText("Anonymous")
                 self.parent.AnalyzeProc.tool_User.setText("Anonymous")
                 PopUp.warning(
                     self,
@@ -1297,7 +1296,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.parent.ControlsWin.username.setText(f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.ControlsWin.ui.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
                     self.parent.ControlsWin.manage.setText("&Change Password...")

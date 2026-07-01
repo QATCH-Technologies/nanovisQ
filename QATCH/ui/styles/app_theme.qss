@@ -54,11 +54,16 @@
 
 #menuSectionHeader {
     color: {{TEXT_SECONDARY}};
+    padding: 10px;
+    padding-top: 15px;
 }
 
 #footerLabel {
-    color: {{TEXT_SECONDARY}};
-    font-size: 11px;
+    background: transparent;
+    border: none;
+    color: {{MODE_FOOTER_TEXT}};
+    font-size: 9px;
+    font-weight: normal;
 }
 
 /* ACTIVE HIGHLIGHT SLIDER */
@@ -381,6 +386,18 @@ QPushButton#PlotDeviceTab:checked:hover {
     background: {{PLOT_TAB_BG_ACTIVE_HOVER}};
 }
 
+/* ---- Menu row hover (QWidgetAction payload) ---- */
+QWidget#SectionMenuRow:hover {
+    background: {{PLOT_MENU_ROW_HOVER}};
+    border-radius: 6px;
+}
+
+/* ---- Plot viewport widgets ---- */
+#pltB, #plt, #plt_temp {
+    border: 0px;
+    background: transparent;
+}
+
 /* ═══════════════════════════════════════════════════════
    CONTROLS UI
    Toolbar, progress bar, temperature controller, sliders,
@@ -592,4 +609,162 @@ QLabel#infobarReadout {
     background: transparent;
     border: none;
     padding: 0px 2px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   MODE WINDOW  ════════════════════════════════════════ */
+
+/* Logo image in the mode-select sidebar. */
+QLabel#nanovisqLogo {
+    padding-bottom: 10px;
+    background: transparent;
+}
+
+/* Log-console toggle button tucked into the footer bar. */
+QToolButton#logToggleBtn {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+}
+QToolButton#logToggleBtn:hover {
+    background: {{MODE_TOGGLE_BTN_HOVER}};
+}
+QToolButton#logToggleBtn:pressed {
+    background: {{MODE_TOGGLE_BTN_PRESSED}};
+}
+
+/* ═══════════════════════════════════════════════════════
+   LOGIN UI
+   Font family scoped to the login window; transparent
+   container overrides use higher specificity to avoid
+   inheriting the main window's #centralwidget gradient.
+   ═══════════════════════════════════════════════════════ */
+
+/* ---- Typography ---- */
+QMainWindow#LoggerWindow QWidget {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* ---- Transparent container overrides ---- */
+QMainWindow#LoggerWindow #centralwidget { background: transparent; border: none; }
+#slidingPanel { background: transparent; border: none; }
+#loginCard    { background: transparent; border: none; }
+
+/* ---- Card titles (Sign In + Reset Password headings) ---- */
+QLabel#cardTitle,
+QLabel#recoverTitle {
+    color: {{LOGIN_TITLE_TEXT}};
+    font-size: 12pt;
+    font-weight: 700;
+}
+
+/* ---- Caps Lock indicator ---- */
+QLabel#capsIndicator {
+    color: {{LOGIN_CAPS_WARNING}};
+    font-size: 7.5pt;
+    font-weight: 600;
+}
+
+/* ---- Remember Me checkbox ---- */
+QCheckBox#rememberMe {
+    color: {{LOGIN_CHECKBOX_TEXT}};
+    font-size: 9pt;
+    font-weight: 500;
+    spacing: 8px;
+}
+QCheckBox#rememberMe::indicator {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid {{LOGIN_CHECKBOX_BORDER}};
+    background: {{LOGIN_CHECKBOX_BG}};
+}
+QCheckBox#rememberMe::indicator:hover {
+    border: 1px solid {{LOGIN_CHECKBOX_HOVER_BORDER}};
+}
+QCheckBox#rememberMe::indicator:checked {
+    background: {{LOGIN_CHECKBOX_CHECKED_BG}};
+    border: 1px solid {{LOGIN_CHECKBOX_CHECKED_BORDER}};
+}
+
+/* ---- Primary action buttons (Sign In, Send Reset Link) ---- */
+QPushButton#signInBtn,
+QPushButton#sendResetBtn {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{LOGIN_PRIMARY_BTN_TOP}},
+        stop:1 {{LOGIN_PRIMARY_BTN_BOTTOM}}
+    );
+    border-top:    1px solid rgba(255, 255, 255, 100);
+    border-left:   1px solid rgba(255, 255, 255, 50);
+    border-right:  1px solid rgba(0, 80, 150, 50);
+    border-bottom: 1px solid rgba(0, 80, 150, 80);
+    border-radius: 16px;
+    color: rgba(255, 255, 255, 255);
+    font-size: 9.5pt;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+QPushButton#signInBtn:hover,
+QPushButton#sendResetBtn:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{LOGIN_PRIMARY_BTN_HOVER_TOP}},
+        stop:1 {{LOGIN_PRIMARY_BTN_HOVER_BOTTOM}}
+    );
+    border-top: 1px solid rgba(255, 255, 255, 140);
+}
+QPushButton#signInBtn:pressed,
+QPushButton#sendResetBtn:pressed {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{LOGIN_PRIMARY_BTN_PRESSED_TOP}},
+        stop:1 {{LOGIN_PRIMARY_BTN_PRESSED_BOTTOM}}
+    );
+    border-top: 1px solid rgba(255, 255, 255, 40);
+    border-bottom: 1px solid rgba(255, 255, 255, 20);
+}
+QPushButton#signInBtn:disabled,
+QPushButton#sendResetBtn:disabled {
+    background: {{LOGIN_PRIMARY_BTN_DISABLED_BG}};
+    color: rgba(255, 255, 255, 150);
+    border: 1px solid rgba(255, 255, 255, 40);
+}
+
+/* ---- Forgot Password link ---- */
+QLabel#forgotPassword {
+    color: {{LOGIN_LINK_TEXT}};
+    font-size: 9pt;
+    font-weight: 500;
+}
+QLabel#forgotPassword:hover {
+    color: {{LOGIN_LINK_TEXT_HOVER}};
+    text-decoration: underline;
+}
+
+/* ---- Back navigation button ---- */
+QPushButton#backBtn {
+    background: transparent;
+    color: {{LOGIN_BACK_BTN_TEXT}};
+    border: none;
+    font-size: 8.5pt;
+    font-weight: 600;
+    text-align: left;
+    padding-left: 2px;
+}
+QPushButton#backBtn:hover {
+    color: {{LOGIN_BACK_BTN_TEXT_HOVER}};
+    text-decoration: underline;
+}
+
+/* ---- Recover page body text ---- */
+QLabel#recoverInfo {
+    color: {{LOGIN_BODY_TEXT}};
+    font-size: 8.5pt;
+}
+
+/* ---- Recover status label (color applied dynamically via ThemeManager tokens) ---- */
+QLabel#recoverStatus {
+    font-size: 8.5pt;
+    font-weight: 500;
 }

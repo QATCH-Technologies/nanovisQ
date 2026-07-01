@@ -1,22 +1,24 @@
-from QATCH.ui.popUp import PopUp
-from QATCH.core.constants import Constants, UserRoles
-from QATCH.common.userProfiles import UserProfiles
-from QATCH.common.tyUpdater import QATCH_TyUpdater
-from QATCH.common.logger import Logger as Log
-from QATCH.common.fileStorage import FileStorage
-from QATCH.common.architecture import Architecture, OSType
-from serial import serialutil
-from PyQt5 import QtCore, QtWidgets, QtGui
-from enum import IntEnum, unique
-from time import time, sleep
-from subprocess import Popen, PIPE
-from datetime import datetime
 import mmap
 import os
 import shlex
 import shutil
 import stat
+from datetime import datetime
+from enum import IntEnum, unique
+from subprocess import PIPE, Popen
+from time import sleep, time
+
 import requests
+from PyQt5 import QtCore, QtGui, QtWidgets
+from serial import serialutil
+
+from QATCH.common.architecture import Architecture, OSType
+from QATCH.common.fileStorage import FileStorage
+from QATCH.common.logger import Logger as Log
+from QATCH.common.tyUpdater import QATCH_TyUpdater
+from QATCH.common.userProfiles import UserProfiles
+from QATCH.core.constants import Constants, UserRoles
+from QATCH.ui.popUp import PopUp
 
 USE_PROGRESS_BAR_MODULE = False
 if USE_PROGRESS_BAR_MODULE:
@@ -58,7 +60,12 @@ class HW_TYPE(IntEnum):
 ###############################################################################
 # Handles checking and updating an QATCH device firmware on Teensy 3.6 boards
 ###############################################################################
-class FW_Updater:
+class FW_Updater(QtCore.QObject):
+
+    # Emitted after each checkUpdate() call: (port, FW_UPDATE int value).
+    # Listeners use this to update the firmware status icon without waiting
+    # for a blocking popup.
+    fw_status_changed = QtCore.pyqtSignal(str, int)
 
     _check = True
     _serial = serial.Serial()
@@ -72,10 +79,26 @@ class FW_Updater:
     # Errors are suppressed in error popup but collected for Device Info.
     transient_err_cnt = 0
 
+    def __init__(self) -> None:
+        super().__init__()
+
+    ###########################################################################
+    # Show the update dialog on demand (called when the user clicks the icon).
+    ###########################################################################
+    def request_update_dialog(self, parent) -> bool:
+        """Re-run the firmware check and show the update dialog for all ports.
+
+        Resets the internal check flag so the version query runs again, then
+        delegates to :meth:`run` with the popup enabled. Called when the user
+        explicitly clicks the firmware-status icon.
+        """
+        self.checkAgain()
+        return self.run(parent, askPermission=True, suppress_optional_popup=False)
+
     ###########################################################################
     # Check for firmware update and (if user agrees) push update to the device
     ###########################################################################
-    def run(self, parent, askPermission=True):
+    def run(self, parent, askPermission=True, suppress_optional_popup=False):
         """
         :param port: Serial port name :type port: str.
         """
@@ -104,6 +127,23 @@ class FW_Updater:
                     return FW_UPDATE.RESULT_FAILED
 
                 result, version, target, written, abort = self.checkUpdate(parent, port)
+
+                # Notify UI icon of the current firmware state for this port.
+                if result != FW_UPDATE.RESULT_FAILED:
+                    self.fw_status_changed.emit(str(port), int(result))
+
+                # Skip the optional-update dialog when the caller requested it.
+                # RESULT_REQUIRED is never suppressed — it must block.
+                if suppress_optional_popup and result in (
+                    FW_UPDATE.RESULT_OUTDATED,
+                    FW_UPDATE.RESULT_UNKNOWN,
+                ):
+                    self.close()
+                    if written:
+                        parent._refresh_ports()
+                    if abort:
+                        return False
+                    continue
 
                 if not result == FW_UPDATE.RESULT_FAILED:
                     if not result == FW_UPDATE.RESULT_UPTODATE:
@@ -160,13 +200,13 @@ class FW_Updater:
                             doUpdate = parent.ReadyToShow
 
                         if doUpdate:
-                            parent.ControlsWin.ui1.infobar.setText(
+                            parent.ControlsWin.ui.infobar.setText(
                                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
                                     "#333333",
                                     "Programming device firmware... please wait...",
                                 )
                             )
-                            parent.ControlsWin.ui1.infobar.repaint()
+                            parent.ControlsWin.ui.infobar.repaint()
 
                             # # They said "YES" or we did not ask, attempt the update
                             multistep = f" ({i} of {num_ports})" if num_ports > 1 else ""
@@ -240,7 +280,7 @@ class FW_Updater:
                                 self._port_changed = False
                                 self._port = port
 
-                            parent.ControlsWin.ui1.infobar.setText(
+                            parent.ControlsWin.ui.infobar.setText(
                                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
                                     "#333333", ""
                                 )
@@ -880,8 +920,8 @@ class UpdaterTask(QtCore.QThread):
             #     PopUp.warning(parent, "Unknown Teensy HW Type", "Unknown hardware device. Cannot proceed.\nPlease check HW type and try again.")
             #     return result, output, error
 
-        # parent.ControlsWin.ui1.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333","Programming device firmware... please wait..."))
-        # parent.ControlsWin.ui1.infobar.repaint()
+        # parent.ControlsWin.ui.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333","Programming device firmware... please wait..."))
+        # parent.ControlsWin.ui.infobar.repaint()
 
         if self._serial.is_open == True or port == None:
             # NOTE: LEGACY UPDATES NO LONGER SUPPORTED (FLASHERX BOOTLOADER REQUIRED)
@@ -1193,7 +1233,7 @@ class UpdaterTask(QtCore.QThread):
                 # Log.d("GUI: Normal repaint events")
                 # Log.d("GUI: Toggle progress mode")
 
-        # parent.ControlsWin.ui1.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333",""))
+        # parent.ControlsWin.ui.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333",""))
 
         # Append results to the log file
         path_to_log = os.path.join(os.getcwd(), Constants.log_export_path)
@@ -1366,7 +1406,7 @@ class UpdaterTask(QtCore.QThread):
             finally:
                 self.close()
 
-        parent.ControlsWin.ui1.infobar.setText(
+        parent.ControlsWin.ui.infobar.setText(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333", "")
         )
 

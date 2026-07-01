@@ -74,7 +74,9 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self.label = QtWidgets.QLabel("")
         self.label.setObjectName("floatingMessageText")
         self.label.setProperty("messageType", "info")
-        self.label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignLeft)
+        self.label.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft
+        )
         self.label.setWordWrap(True)
         self.label.setMaximumWidth(420)
         panel_layout.addWidget(self.label, 1, QtCore.Qt.AlignmentFlag.AlignVCenter)
@@ -86,7 +88,7 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self.close_button.setAccessibleName("Close message")
         self.close_button.setFixedSize(22, 22)
         self.close_button.clicked.connect(self.clear)
-        panel_layout.addWidget(self.close_button, 0, QtCore.Qt.AlignTop | QtCore.Qt.AlignRight)
+        panel_layout.addWidget(self.close_button, 0, QtCore.Qt.AlignTop | QtCore.Qt.AlignmentFlag.AlignRight)
 
         shadow = QtWidgets.QGraphicsDropShadowEffect(self.panel)
         shadow.setBlurRadius(34)

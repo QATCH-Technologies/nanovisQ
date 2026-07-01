@@ -32,18 +32,17 @@ run data only.
 
 import os
 import shutil
-import time
 import subprocess
+import time
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from QATCH.core.constants import Constants
-from QATCH.common.logger import Logger as Log
 from QATCH.common.architecture import Architecture
-from QATCH.ui.popUp import PopUp
-
-from QATCH.ui.widgets.data_mode_base import DataModeWidget
+from QATCH.common.logger import Logger as Log
+from QATCH.core.constants import Constants
 from QATCH.ui.components import GlassPushButton
+from QATCH.ui.popUp import PopUp
+from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 try:
     import send2trash
@@ -576,7 +575,7 @@ class AdvancedMode(DataModeWidget):
             return None
         src = QtGui.QIcon(path).pixmap(icon_size, icon_size)
         dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.transparent)
+        dst.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(dst)
         p.drawPixmap(0, 0, src)
         p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)

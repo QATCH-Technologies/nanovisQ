@@ -1,41 +1,67 @@
+"""controls_windows.py
+
+Defines `ControlsWindow`, the top-level `QMainWindow` that hosts the QATCH
+control bar and owns all application-level menus, user session management, and
+view-toggle logic.
+
+`ControlsWindow` composes `UIControls` via the Qt Designer mixin pattern:
+`UIControls.setup_ui` is called once during construction to build the control
+bar widgets, and the remaining methods on this class implement the menu actions,
+session workflow, and layout helpers that sit above the widget layer.
+
+Responsibilities:
+    - Menu bar construction (Options / Users / View / Help) and dynamic theming
+      to match the glass design language and dim-while-signed-out state.
+    - User session lifecycle: sign-in, sign-out, profile management, and role-
+      gated menu access via `set_signed_in_menu_state`.
+    - Data management overlay access for analyze, import, export, and recover
+      workflows via `DataManagementWidget`.
+    - View toggles for the console, amplitude, temperature, and
+      resonance/dissipation panels, with persistence to `AppSettings`.
+    - OS-native file opening for release notes, changelogs, license, and user
+      guide documents.
+    - Software update checks with contextual pop-up feedback.
+    - Close-event interception with a user confirmation prompt.
+
+Author(s):
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-07-01
+"""
+
 import os
-import sys
 import subprocess
-from typing import Optional, Any, cast, TYPE_CHECKING
-from PyQt5 import QtCore, QtGui, QtWidgets
+import sys
 from contextlib import suppress
+from typing import TYPE_CHECKING, Any, Optional, cast
+
+from PyQt5 import QtCore, QtGui, QtWidgets
+
 from QATCH.common.architecture import Architecture, OSType
-from QATCH.common.logger import Logger as Log
-from QATCH.core.constants import Constants, UserRoles
-from QATCH.ui.popUp import PopUp
-from QATCH.common.userProfiles import UserProfiles
 from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.findDevices import Discovery
+from QATCH.common.logger import Logger as Log
+from QATCH.common.userProfiles import UserProfiles
+from QATCH.core.constants import Constants, UserRoles
+from QATCH.ui.interfaces import UIControls
+from QATCH.ui.popUp import PopUp
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets import (
     DataManagementWidget,
     UserPreferencesWidget,
     UserProfilesManagerWidget,
 )
-from QATCH.ui.interfaces import UIControls
-from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.windows.base_window import BaseWindow
 
 if TYPE_CHECKING:
-    from QATCH.ui.mainWindow import MainWindow
-
-
-def _tok_css(rgba: tuple) -> str:
-    r, g, b, a = rgba
-    if a == 255:
-        return f"#{r:02X}{g:02X}{b:02X}"
-    return f"rgba({r}, {g}, {b}, {a})"
-
-
-
+    from QATCH.ui.main_window import MainWindow
 
 TAG = "[ControlsWindow]"
 
 
-class ControlsWindow(QtWidgets.QMainWindow):
+class ControlsWindow(BaseWindow):
     def __init__(
         self,
         parent: "MainWindow",
@@ -53,7 +79,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
 
         Attributes:k
             parent (MainWindow): Reference to the parent UI component.
-            ui1 (UIControls): The main user interface controls object.
+            ui (UIControls): The main user interface controls object.
             data_management_widget (Optional[DataManagementWidget]): The widget
                 handling data management operations. Initialized as None.
             ui_preferences (UserPreferencesWidget): The widget managing user
@@ -64,8 +90,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.parent: "MainWindow" = parent
         super().__init__()
 
-        self.ui1: UIControls = UIControls()
-        self.ui1.setupUi(self)
+        self.ui: UIControls = UIControls()
+        self.ui.setup_ui(self)
 
         self.data_management_widget: Optional[Any] = None
         self.ui_preferences: UserPreferencesWidget = UserPreferencesWidget(self)
@@ -136,13 +162,13 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.userrole = UserRoles.NONE
         self.menubar.append(menu_bar.addMenu("&View"))
         self.modebar = self.menubar[2].addMenu("&Mode")
-        self.modebar.addAction("&1: Run", lambda: self.parent.MainWin.ui0._set_run_mode(None))
+        self.modebar.addAction("&1: Run", lambda: self.parent.ModeWin.ui._set_run_mode(None))
         self.modebar.addAction(
-            "&2: Analyze", lambda: self.parent.MainWin.ui0._set_analyze_mode(None)
+            "&2: Analyze", lambda: self.parent.ModeWin.ui._set_analyze_mode(None)
         )
         if Constants.show_visQ_in_R_builds:
             self.modebar.addAction(
-                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0._set_learn_mode(None)
+                "&3: VisQ.AI", lambda: self.parent.ModeWin.ui._set_learn_mode(None)
             )
         self.chk1 = self.menubar[2].addAction("&Console", self.toggle_console)
         self.chk1.setCheckable(True)
@@ -332,7 +358,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.act_check_updates.setEnabled(signed_in)
         self.menubar[5].menuAction().setEnabled(signed_in)  # "Model versions" submenu
         self._apply_menu_bar_theme(signed_in)
-        self.ui1.refresh_user_button_state()
+        self.ui.refresh_user_button_state()
 
     def _apply_menu_bar_theme(self, signed_in: bool) -> None:
         """Tints the native menu bar and its dropdowns to match the glass
@@ -361,19 +387,19 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self._signed_in_state = signed_in
         tok = ThemeManager.instance().tokens()
         if signed_in:
-            bg = _tok_css(tok["menubar_bg"])
-            text = _tok_css(tok["menubar_text"])
-            hover = _tok_css(tok["menubar_item_hover_bg"])
-            disabled = _tok_css(tok["menubar_item_disabled_text"])
-            border = _tok_css(tok["menubar_border"])
-            sep = _tok_css(tok["menubar_separator"])
+            bg = tok_css(tok["menubar_bg"])
+            text = tok_css(tok["menubar_text"])
+            hover = tok_css(tok["menubar_item_hover_bg"])
+            disabled = tok_css(tok["menubar_item_disabled_text"])
+            border = tok_css(tok["menubar_border"])
+            sep = tok_css(tok["menubar_separator"])
         else:
-            bg = _tok_css(tok["menubar_dim_bg"])
-            text = _tok_css(tok["menubar_dim_text"])
-            hover = _tok_css(tok["menubar_dim_item_hover_bg"])
-            disabled = _tok_css(tok["menubar_dim_item_disabled_text"])
-            border = _tok_css(tok["menubar_dim_border"])
-            sep = _tok_css(tok["menubar_dim_separator"])
+            bg = tok_css(tok["menubar_dim_bg"])
+            text = tok_css(tok["menubar_dim_text"])
+            hover = tok_css(tok["menubar_dim_item_hover_bg"])
+            disabled = tok_css(tok["menubar_dim_item_disabled_text"])
+            border = tok_css(tok["menubar_dim_border"])
+            sep = tok_css(tok["menubar_dim_separator"])
 
         menu_bar.setStyleSheet(f"""
             QMenuBar {{
@@ -419,7 +445,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 otherwise the main window itself or the current object.
         """
         if hasattr(self.parent, "MainWin"):
-            return self.parent.MainWin.centralWidget() or self.parent.MainWin
+            return self.parent.ModeWin.centralWidget() or self.parent.ModeWin
         return self.centralWidget() or self
 
     def _open_data_management(self, mode: str) -> None:
@@ -448,7 +474,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         Triggers the main UI controller to switch the workspace to the analysis
         view, allowing the user to inspect and interpret processed data.
         """
-        self.parent.MainWin.ui0._set_analyze_mode(self)
+        self.parent.ModeWin.ui._set_analyze_mode(self)
 
     def import_data(self) -> None:
         """Opens the data management interface in 'import' mode."""
@@ -522,14 +548,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 self.username.setText(f"User: {name}")
                 self.userrole = UserRoles(role)
                 self.signinout.setText("&Sign Out")
-                self.ui1.tool_User.setText(name)
+                self.ui.tool_User.setText(name)
                 self.parent.AnalyzeProc.tool_User.setText(name)
 
                 # Update management action context
                 if self.userrole != UserRoles.ADMIN:
                     self.manage.setText("&Change Password...")
         else:  # Action is "Sign Out"
-            if self.parent.MainWin.ui0._set_no_user_mode(None):
+            if self.parent.ModeWin.ui._set_no_user_mode(None):
                 UserProfiles().session_end()
                 name = self.username.text()[6:]
                 Log.i(f"Goodbye, {name}! You have been signed out.")
@@ -539,7 +565,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 self.userrole = UserRoles.NONE
                 self.signinout.setText("&Sign In")
                 self.manage.setText("&Manage Users...")
-                self.ui1.tool_User.setText("Anonymous")
+                self.ui.tool_User.setText("Anonymous")
                 self.parent.AnalyzeProc.tool_User.setText("Anonymous")
             else:
                 Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
@@ -558,7 +584,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 widget used for managing user profiles.
         """
         # Disallow user management if the current mode is busy or has unsaved changes
-        if not self.parent.MainWin.ui0._check_mode_change_allowed():
+        if not self.parent.ModeWin.ui._check_mode_change_allowed():
             Log.d("User has unsaved changes in Analyze mode. Manage users aborted.")
             return
 
@@ -583,9 +609,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
             self.userrole = UserRoles.NONE
             self.signinout.setText("&Sign In")
             self.manage.setText("&Manage Users...")
-            self.ui1.tool_User.setText("Anonymous")
+            self.ui.tool_User.setText("Anonymous")
             self.parent.AnalyzeProc.tool_User.setText("Anonymous")
-            self.parent.MainWin.ui0._set_no_user_mode(None)
+            self.parent.ModeWin.ui._set_no_user_mode(None)
 
         # Update UI if user information changed
         if admin != name and admin is not None:
@@ -594,13 +620,13 @@ class ControlsWindow(QtWidgets.QMainWindow):
             self.userrole = UserRoles.ADMIN
             self.signinout.setText("&Sign Out")
             self.manage.setText("&Manage Users...")
-            self.ui1.tool_User.setText(admin)
+            self.ui.tool_User.setText(admin)
             self.parent.AnalyzeProc.tool_User.setText(admin)
 
         # Display the management overlay
         if allow:
             if hasattr(self.parent, "MainWin"):
-                overlay_parent = self.parent.MainWin.centralWidget() or self.parent.MainWin
+                overlay_parent = self.parent.ModeWin.centralWidget() or self.parent.ModeWin
             else:
                 overlay_parent = self.centralWidget() or self
             self.user_manager = UserProfilesManagerWidget(parent=overlay_parent, admin_name=admin)
@@ -622,9 +648,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
         is_visible: bool = self.chk1.isChecked()
 
         if not is_visible:
-            self.parent.MainWin.ui0.logview.setVisible(False)
+            self.parent.ModeWin.ui.logview.setVisible(False)
         else:
-            self.parent.MainWin.ui0.logview.setVisible(True)
+            self.parent.ModeWin.ui.logview.setVisible(True)
         self.parent.AppSettings.setValue("viewState_Console", is_visible)
 
     def toggle_amplitude(self) -> None:
@@ -682,9 +708,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
         is_visible: bool = self.chk4.isChecked()
 
         if not is_visible:
-            self.parent.PlotsWin.ui2.pltB.setVisible(False)
+            self.parent.PlotsWin.ui.pltB.setVisible(False)
         else:
-            self.parent.PlotsWin.ui2.pltB.setVisible(True)
+            self.parent.PlotsWin.ui.pltB.setVisible(True)
         self.parent.AppSettings.setValue("viewState_Resonance_Dissipation", is_visible)
 
     def show_top_plot(self) -> bool:
@@ -703,8 +729,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
 
         # Check if any associated plots require the top container to be visible
         if self.chk2.isChecked() or self.chk3.isChecked():
-            toggle_console = self.parent.PlotsWin.ui2.plt.isVisible() is False
-            self.parent.PlotsWin.ui2.plt.setVisible(True)
+            toggle_console = self.parent.PlotsWin.ui.plt.isVisible() is False
+            self.parent.PlotsWin.ui.plt.setVisible(True)
         return toggle_console
 
     def hide_top_plot(self, toggle_console: bool) -> None:
@@ -725,7 +751,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 if layout is not None:
                     layout.activate()
         else:
-            self.parent.PlotsWin.ui2.plt.setVisible(False)
+            self.parent.PlotsWin.ui.plt.setVisible(False)
 
     def view_tutorials(self) -> None:
         """Toggles the visibility of the tutorials window.
@@ -839,32 +865,3 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 "Check for Updates",
                 f"You are running the latest{technicality}version.",
             )
-
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
-        """Handles the application close event with an optional confirmation dialog.
-
-        This method intercepts the standard window close event. If the attribute
-        `close_no_confirm` exists on the instance, it bypasses the confirmation
-        dialog. Otherwise, it prompts the user to confirm the exit. If confirmed,
-        the application terminates; if canceled, the event is ignored to keep
-        the application running.
-
-        Args:
-            event (QtGui.QCloseEvent): The event object triggered by the
-                window closing action.
-        """
-        # Determine if we should bypass the confirmation dialog
-        if hasattr(self, "close_no_confirm"):
-            res: bool = True
-        else:
-            # Prompt the user to confirm if they really want to quit
-            res = PopUp.question(
-                self,
-                Constants.app_title,
-                "Are you sure you want to quit QATCH Q-1 application now?",
-                True,
-            )
-        if res:
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
