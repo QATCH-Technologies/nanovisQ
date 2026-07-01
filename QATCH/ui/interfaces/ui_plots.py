@@ -40,6 +40,7 @@ def _tok_css(rgba: tuple) -> str:
         return f"#{r:02X}{g:02X}{b:02X}"
     return f"rgba({r}, {g}, {b}, {a})"
 
+
 # ============================================================
 #  PlotsWindow  (outer QMainWindow shell - API unchanged)
 # ============================================================
@@ -155,7 +156,9 @@ class _SectionMenuRow(QtWidgets.QWidget):
     def _apply_eye_style(self) -> None:
         symbol = "◉" if self._visible else "○"
         tok = ThemeManager.instance().tokens()
-        text_color = _tok_css(tok["plot_text_normal"] if self._visible else (*tok["plot_text_normal"][:3], 80))
+        text_color = _tok_css(
+            tok["plot_text_normal"] if self._visible else (*tok["plot_text_normal"][:3], 80)
+        )
         hover_bg = _tok_css(tok["plot_tab_bg_hover"])
         self._eye.setText(symbol)
         self._eye.setStyleSheet(f"""
@@ -396,7 +399,11 @@ class GlassTabContainer(GlassContainer):
         tok = ThemeManager.instance().tokens()
         main_sections = [
             ("dissipation", "Dissipation", QtGui.QColor(*tok["plot_data_primary"][:3])),
-            ("resonance_freq", "Resonance Frequency", QtGui.QColor(*tok["plot_data_secondary"][:3])),
+            (
+                "resonance_freq",
+                "Resonance Frequency",
+                QtGui.QColor(*tok["plot_data_secondary"][:3]),
+            ),
         ]
         # Pass sections so _build_glass_menu picks them up
         super().__init__(
@@ -604,7 +611,9 @@ class UIPlots:
         self.left_pane = GlassTabContainer(parent=self.main_splitter)
         self.pltB = _make_plot_widget(self.left_pane)
         self.pltB.setObjectName("pltB")
-        self.left_pane.add_device("Device 1", self.pltB, QtGui.QColor(*tok["plot_data_device_accent"][:3]))
+        self.left_pane.add_device(
+            "Device 1", self.pltB, QtGui.QColor(*tok["plot_data_device_accent"][:3])
+        )
 
         # RIGHT - stacked splitter for Amp & Temp
         self.right_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical, self.main_splitter)

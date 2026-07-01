@@ -175,8 +175,11 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # Fade via a composited opacity effect (animating the property is a
         # paint-time multiply) instead of re-setting the stylesheet each frame,
         # which would reparse + repolish the entire glass subtree per frame.
+        # Start at 0.0 so the very first paint after glass_frame.show() in
+        # _reveal() is transparent — prevents the one-frame white flash that
+        # occurs between show() and _animate_open() setting opacity to 0.
         self._glass_opacity = QtWidgets.QGraphicsOpacityEffect(self.glass_frame)
-        self._glass_opacity.setOpacity(1.0)
+        self._glass_opacity.setOpacity(0.0)
         self.glass_frame.setGraphicsEffect(self._glass_opacity)
 
         self.main_layout = QtWidgets.QVBoxLayout(self.glass_frame)
@@ -866,33 +869,42 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         """Fit to parent and keep the panel hidden until layout settles - kills
         the 'tiny blank dialog' flash on open.
 
-        UIControls calls .show()/.setVisible(True) on this overlay. At that
-        instant the child layout has not resolved to the parent-fitted size yet,
-        so Qt paints one transient frame of the glass panel at a small/unsettled
-        size, which reads as a little dialog popping up and flashing. To prevent
-        that we: keep the glass_frame itself hidden, become visible (scrim only,
-        fully transparent), fit to the parent and force the layout to compute,
-        then on the next tick reveal the now-correctly-sized panel and start the
-        fade. The first frame the user sees of the panel is its final size.
+        UIControls calls .show()/.setVisible(True) on this overlay. The entire
+        show sequence is deferred to a singleShot(0) so that the overlay and its
+        glass panel become visible in one atomic event-loop tick — no intermediate
+        frame where the overlay is visible without the panel, which is what caused
+        the floating-button flash in earlier versions.
         """
         if visible and not self.isVisible():
             self._scrim_alpha = 0
             self._panel_alpha = 0  # panel starts invisible; fades in
-            # Hide the panel so no unsettled frame paints.
+            # Pre-hide the panel and pre-fit geometry while we're still invisible,
+            # so the layout has settled before the first paint.
             self.glass_frame.hide()
             self._refit_to_parent()
-            super().setVisible(True)
-            self._refit_to_parent()
-            # Force the layout to resolve to the fitted geometry synchronously
-            # so the panel's first painted frame is already final-size.
-            if self.layout() is not None:
-                self.layout().activate()
 
             def _reveal():
+                # Fit once more now that the event loop has had one iteration to
+                # settle pending geometry changes from the caller's stack frame.
                 self._refit_to_parent()
-                if self.layout() is not None:
-                    self.layout().activate()
+                _layout = self.layout()
+                if _layout is not None:
+                    _layout.activate()
                 self._revealed = True
+                # Guarantee opacity=0 so the glass panel's very first painted
+                # frame is transparent regardless of any earlier state change.
+                self._set_glass_opacity(0.0)
+                # Show the overlay and panel atomically in this same callback so
+                # there is no event-loop iteration (and therefore no paint pass)
+                # between them — this eliminates the one-frame button-without-panel
+                # flash that happened when super().setVisible(True) was called
+                # before this singleShot, leaving the overlay visible but panelless
+                # while the event loop processed queued paints.
+                QtWidgets.QWidget.setVisible(self, True)
+                self._refit_to_parent()
+                _layout2 = self.layout()
+                if _layout2 is not None:
+                    _layout2.activate()
                 self.glass_frame.show()
                 self.glass_frame.raise_()
                 self.btn_close.raise_()

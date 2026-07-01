@@ -167,6 +167,7 @@ class UIMain:
 
         # Mode Header
         self.mode_mode = QtWidgets.QLabel("<b>MODE</b>")
+        self.mode_mode.setObjectName("menuSectionHeader")
         self.mode_mode.setStyleSheet("padding: 10px; padding-top: 15px;")
 
         # Run Mode
@@ -185,6 +186,7 @@ class UIMain:
 
         # Tools Header
         self.mode_tools = QtWidgets.QLabel("<b>TOOLS</b>")
+        self.mode_tools.setObjectName("menuSectionHeader")
         self.mode_tools.setStyleSheet("padding: 10px; padding-top: 15px;")
 
         # VisQ.AI Tool

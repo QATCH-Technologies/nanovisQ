@@ -163,18 +163,13 @@ class AccountPopup(QtWidgets.QWidget):
         shadow.setColor(QtGui.QColor(0, 20, 40, 110))
         self._panel.setGraphicsEffect(shadow)
 
-        # -- entrance animation (matches the advanced menu) --
-        # Fade the whole popup window in (setWindowOpacity, NOT a graphics
-        # effect - an opacity effect on this panel would clash with the drop
-        # shadow above and cause the same ghosting seen in the advanced panel),
-        # paired with a brief downward slide so it eases out from the anchor.
+        # -- entrance animation --
         self._enter_fade = QtCore.QVariantAnimation(self)
         self._enter_fade.setDuration(200)
         self._enter_fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         self._enter_fade.setStartValue(0.0)
         self._enter_fade.setEndValue(1.0)
         self._enter_fade.valueChanged.connect(lambda v: self.setWindowOpacity(float(v)))
-        self._enter_fade.finished.connect(lambda: self.setWindowOpacity(1.0))
 
         self._enter_slide = QtCore.QPropertyAnimation(self, b"pos", self)
         self._enter_slide.setDuration(220)
@@ -389,17 +384,27 @@ class AccountPopup(QtWidgets.QWidget):
         # in as it slides down to (x, y) - same feel as the advanced menu.
         final_pos = QtCore.QPoint(x, y)
         start_pos = QtCore.QPoint(x, y - 12)
-        self.move(start_pos)
+
+        # Show off-screen at opacity=0 so the unavoidable one-frame DWM flash
+        # (ShowWindow fires before SetLayeredWindowAttributes can commit alpha=0)
+        # occurs at an invisible position.  By the time singleShot(0) fires the
+        # event loop has processed SetLayeredWindowAttributes, so opacity=0 is
+        # committed before we move the window into the visible anchor area.
         self.setWindowOpacity(0.0)
+        self.move(QtCore.QPoint(-9999, -9999))
         self.show()
 
         self._enter_slide.stop()
         self._enter_slide.setStartValue(start_pos)
         self._enter_slide.setEndValue(final_pos)
-        self._enter_slide.start()
-
         self._enter_fade.stop()
-        self._enter_fade.start()
+
+        def _start():
+            self.move(start_pos)
+            self._enter_slide.start()
+            self._enter_fade.start()
+
+        QtCore.QTimer.singleShot(0, _start)
 
     # -- positioning helpers --------------------------------------------------
 

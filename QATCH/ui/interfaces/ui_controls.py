@@ -1653,6 +1653,9 @@ class UIControls:
         self.retranslateUi(MainWindow1)
         QtCore.QMetaObject.connectSlotsByName(MainWindow1)
 
+        ThemeManager.instance().themeChanged.connect(lambda _: self._refresh_toolbar_icons())
+        self._refresh_toolbar_icons()
+
     def on_text_edit(self, text: str, action: QtWidgets.QAction) -> None:
         """Updates the action's visual state based on whether the input text is empty.
 
@@ -2829,6 +2832,57 @@ class UIControls:
         self.chBox_correctNoise.setText(_translate("MainWindow", "Show amplitude curve"))
         self.chBox_MultiAuto.setText(_translate("MainWindow", "Auto-detect channel count"))
 
+    def _tinted_icon(self, svg_path: str, color: QtGui.QColor) -> QtGui.QIcon:
+        """Renders an SVG file into a QIcon with all opaque pixels tinted to `color`.
+
+        Uses SourceAtop composition so the SVG silhouette is preserved but every
+        non-transparent pixel adopts the supplied color, enabling icons to track
+        the active light/dark theme.
+
+        Args:
+            svg_path: Filesystem path to the SVG file.
+            color: The tint color to apply over the rendered SVG.
+
+        Returns:
+            A QIcon containing the tinted pixmap, or an empty QIcon if the SVG
+            cannot be loaded.
+        """
+        src = QtGui.QPixmap(svg_path)
+        if src.isNull():
+            return QtGui.QIcon()
+        dst = QtGui.QPixmap(src.size())
+        dst.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(dst)
+        p.drawPixmap(0, 0, src)
+        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+        p.fillRect(dst.rect(), color)
+        p.end()
+        return QtGui.QIcon(dst)
+
+    def _refresh_toolbar_icons(self) -> None:
+        """Recolors the SVG toolbar icons to match the active theme's text color.
+
+        Called once during setup and again whenever the theme changes so that
+        static SVG icons (which carry their own embedded fill color) are
+        re-rendered with the correct light-or-dark tint rather than staying
+        permanently dark or light regardless of the active mode.
+        """
+        tok = ThemeManager.instance().tokens()
+        color = QtGui.QColor(*tok["plot_text_normal"])
+        icon_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+
+        buttons_icons = [
+            (getattr(self, "tool_Initialize", None), "speedometer.svg"),
+            (getattr(self, "tool_Reset", None), "reset.svg"),
+            (getattr(self, "tool_TempControl", None), "temperature-control.svg"),
+            (getattr(self, "tool_Advanced", None), "gear.svg"),
+            (getattr(self, "tool_User", None), "user-circle.svg"),
+        ]
+
+        for btn, icon_name in buttons_icons:
+            if btn is not None:
+                btn.setIcon(self._tinted_icon(os.path.join(icon_dir, icon_name), color))
+
     def action_next_port(self) -> None:
         """Advance the FLUX controller to the next port.
 
@@ -3554,9 +3608,16 @@ class UIControls:
         The popup is anchored to the Account button and auto-closes on outside
         interaction or main window resize.
         """
-        # Close and cleanup any existing popup
+        # Close and cleanup any existing popup.  Stop animations first so no
+        # pending timer callbacks can fire on the widget after it is scheduled
+        # for deletion.
         prev = getattr(self, "_account_popup", None)
         if prev is not None:
+            try:
+                prev._enter_slide.stop()
+                prev._enter_fade.stop()
+            except Exception:
+                pass
             prev.close()
             prev.deleteLater()
 

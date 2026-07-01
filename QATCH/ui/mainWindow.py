@@ -65,6 +65,7 @@ from QATCH.processors.InterpTemps import (
     QueueCommandFormat,
 )
 from QATCH.ui.popUp import PopUp, QueryComboBox
+from QATCH.ui.styles.theme_manager import ThemeManager
 
 from QATCH.ui.workers import TECWorker, ExtractWorker, RenameOutputFilesWorker, WorkerSnapshot
 from QATCH.ui.interfaces import (
@@ -416,6 +417,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._plt3_4,
         ]  # array of all _plt3 plots
         self._plt4 = None  # temperature (combined)
+        ThemeManager.instance().themeChanged.connect(lambda _: self._refresh_plot_theme_colors())
         self.multiplex_plots = 1
         # TODO: update this variable on write to MUX state of primary device
         self.active_multi_ch = 1
@@ -2270,8 +2272,10 @@ class MainWindow(QtWidgets.QMainWindow):
         font_size_pt = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
         font_family = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
-        text_color_val = (100, 105, 115, 240)
-        icon_color_val = (140, 145, 155, 240)
+        tok = ThemeManager.instance().tokens()
+        text_color_val = tok["plot_text_muted"]
+        icon_color_val = tok["plot_text_dim"]
+        accent_val = tok["accent"]
 
         # 1. Main Title
         self._text1 = pg.TextItem("", anchor=(0.5, 0.5))
@@ -2286,8 +2290,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._text2.setHtml(
             f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; line-height: 1.5; margin: 0;'>"
             f"<span style='font-size: {font_size_pt}pt; font-weight: 400;'>"
-            f"Initialize quartz device in air <b style='color: #2b6cb0;'>before</b> starting.<br>"
-            f"Apply sample drop <b style='color: #2b6cb0;'>after</b> hitting Start."
+            f"Initialize quartz device in air <b style='color: rgba{accent_val};'>before</b> starting.<br>"
+            f"Apply sample drop <b style='color: rgba{accent_val};'>after</b> hitting Start."
             f"</span></p>"
         )
 
@@ -3328,9 +3332,39 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return pen, brush
 
+    def _plot_axis_text_pen(self):
+        """Returns a pen for axis tick/label text using the active theme's muted text color."""
+        tok = ThemeManager.instance().tokens()
+        return pg.mkPen(color=QtGui.QColor(*tok["plot_text_muted"]))
+
+    def _refresh_plot_theme_colors(self) -> None:
+        """Re-applies theme-derived colors to already-built plot axes and annotations.
+
+        Connected to ``ThemeManager.themeChanged`` so axis tick text, the welcome
+        overlay, and pooled peak-index labels (which are colored once at creation
+        and otherwise never revisited) stay legible after a light/dark switch.
+        """
+        text_pen = self._plot_axis_text_pen()
+        plot_items = list(self._plt0_arr) + list(self._plt2_arr) + [self._plt1, self._plt4]
+        for pi in plot_items:
+            if pi is None:
+                continue
+            for name in ("bottom", "left", "right", "top"):
+                ax = pi.getAxis(name)
+                if ax is not None:
+                    ax.setTextPen(text_pen)
+
+        if getattr(self, "_text1", None) is not None:
+            self._annotate_welcome_text()
+
+        tok = ThemeManager.instance().tokens()
+        peak_color = QtGui.QColor(*tok["plot_text_bright"])
+        for item in getattr(self, "_multiplex_peak_labels", []):
+            item.setColor(peak_color)
+
     def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.08) -> None:
         """Apply minimal glass axis styling - no spines, no ticks, floating labels."""
-        _text_pen = pg.mkPen(color=(35, 48, 68, 140))  # cool charcoal, quite light
+        _text_pen = self._plot_axis_text_pen()
 
         for name in ("bottom", "left", "right", "top"):
             ax = plot_item.getAxis(name)
@@ -3538,7 +3572,7 @@ class MainWindow(QtWidgets.QMainWindow):
             multi_plot.showAxis("right")
 
             multi_plot.getAxis("right").setPen(pg.mkPen(None))
-            multi_plot.getAxis("right").setTextPen(pg.mkPen(color=(35, 48, 68, 140)))
+            multi_plot.getAxis("right").setTextPen(self._plot_axis_text_pen())
             multi_plot.getAxis("right").setStyle(tickLength=0, tickTextOffset=3)
 
             multi_plot.scene().addItem(plot_layout)
@@ -5534,7 +5568,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Update positions and text, lazily creating new labels if the pool is too small
         for idx, (j, amp) in enumerate(amplitudes.items()):
             if idx >= len(labels):
-                item = pg.TextItem(color=(0, 0, 0), anchor=(0, 1))
+                tok = ThemeManager.instance().tokens()
+                item = pg.TextItem(color=QtGui.QColor(*tok["plot_text_bright"]), anchor=(0, 1))
                 plot_amplitude.addItem(item)
                 labels.append(item)
 
