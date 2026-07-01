@@ -1,4 +1,5 @@
 from .animated_combo_box import AnimatedComboBox
+from .plot_status_banner import PlotStatusBanner
 from .animated_spin_box import AnimatedDoubleSpinBox, AnimatedSpinBox
 from .borderless_action_button import BorderlessActionButton
 from .glass_card import GlassCard
@@ -25,4 +26,5 @@ __all__ = [
     "GlassCard",
     "RunControls",
     "FLUXControl",
+    "PlotStatusBanner",
 ]

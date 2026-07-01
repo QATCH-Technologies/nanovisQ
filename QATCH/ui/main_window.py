@@ -66,6 +66,7 @@ from QATCH.processors.updater import (
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
+from QATCH.ui.components.plot_status_banner import PlotStatusBanner
 from QATCH.ui.popUp import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager
 from QATCH.ui.windows import (
@@ -439,6 +440,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._selected_port = ""
 
         # Reference variables
+        self._section_colors: dict[str, QtGui.QColor] = {}
+        self._last_unit_rf: str = "Hz"
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
         self._drop_epoch_sent = False
@@ -1273,6 +1276,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Flush any persisted text
             self._hide_calib_ready_text()
+            for banner in getattr(self, "_text4", []):
+                if hasattr(banner, "remove"):
+                    banner.remove()
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
             self._drop_epoch_sent = False
@@ -3502,6 +3508,23 @@ class MainWindow(QtWidgets.QMainWindow):
                 p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
                 super().paint(p, opt, widget)
 
+            def tickStrings(self, values, scale, spacing):
+                # spacing >= 60 s → show minutes; otherwise show seconds.
+                # Each tick label carries its own unit so no separate axis title is needed.
+                try:
+                    use_minutes = spacing >= 60.0
+                    result = []
+                    for v in values:
+                        t = int(round(float(v)))
+                        if use_minutes:
+                            m, s = divmod(t, 60)
+                            result.append(f"{m}:{s:02d} min" if s else f"{m} min")
+                        else:
+                            result.append(f"{t} s")
+                    return result
+                except Exception:
+                    return [""] * len(values)
+
         self.PlotsWin.ui.plt.setBackground(None)
         self.PlotsWin.ui.pltB.setBackground(None)
         _plt_temp = getattr(self.PlotsWin.ui, "plt_temp", None)
@@ -3650,8 +3673,8 @@ class MainWindow(QtWidgets.QMainWindow):
             },
         )
 
-        # X-Axis remains, Y-Axis label removed
-        self._plt4.setLabel("bottom", "Time", units="s")
+        # Bottom axis label removed — tick labels carry "(s)" / "(min)" unit inline
+        self._plt4.setLabel("bottom", "")
 
         self._apply_glass_plot_style(self._plt4)
 
@@ -3854,6 +3877,27 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_plot_color_changed(self, key: str, color: QtGui.QColor) -> None:
         """Updates the active curve color for the named plot section."""
+        self._section_colors[key] = color
+
+        # Immediately sync axis labels for the RF/Diss dual-axis plots
+        if key in ("resonance_freq", "dissipation"):
+            hex_color = color.name() if hasattr(color, "name") else str(color)
+            for pi in self._plt2_arr:
+                if pi is None:
+                    continue
+                if key == "resonance_freq":
+                    lbl = getattr(pi, "_left_title_label", None)
+                    if lbl is not None:
+                        lbl.setText(
+                            f"Resonance Freq ({self._last_unit_rf})",
+                            color=hex_color,
+                            size="9pt",
+                        )
+                elif key == "dissipation":
+                    lbl = getattr(pi, "_right_title_label", None)
+                    if lbl is not None:
+                        lbl.setText("Dissipation", color=hex_color, size="9pt")
+
         if key == "amplitude":
             pen, brush = self._get_glass_curve_styles(color, width=2.0)
             for ci in self._ci_amp:
@@ -4733,6 +4777,8 @@ class MainWindow(QtWidgets.QMainWindow):
             unit_rf = "&Delta;Hz"
             scale_rf = 1.0
 
+        self._last_unit_rf = unit_rf
+
         for p in self._plt2_arr:
             if p is not None:
                 pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
@@ -4762,31 +4808,30 @@ class MainWindow(QtWidgets.QMainWindow):
                     right_axis.setScale(1.0)
                     right_axis.enableAutoSIPrefix(False)
                     right_axis.tickStrings = lambda values, scale, spacing: [
-                        f"{v * scale / 1e6:.6f}".rstrip("0").rstrip(".") for v in values
+                        f"{v * scale / 1e6:.2e}" for v in values
                     ]
 
-                c_rf = Constants.plot_colors[6]
-                c_diss = Constants.plot_colors[7]
+                _def_rf = Constants.plot_colors[6]
+                _def_diss = Constants.plot_colors[7]
+                c_rf = self._section_colors.get("resonance_freq", _def_rf)
+                c_diss = self._section_colors.get("dissipation", _def_diss)
                 color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
                 color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
 
                 unit_diss = "&Delta;"
 
-                # Top-Left Label (Over Frequency Axis) with LINE BREAKS
+                # Top-Left / Top-Right axis labels (single-line, flanking the status chip)
                 if not hasattr(pi, "_left_title_label"):
                     pi._left_title_label = pg.LabelItem(justify="right")
                     pi.layout.addItem(pi._left_title_label, 0, 0)
                 pi._left_title_label.setText(
-                    f"Resonance<br>Frequency<br>({unit_rf})", color=color_rf, size="10pt"
+                    f"Resonance Freq ({unit_rf})", color=color_rf, size="9pt"
                 )
 
-                # Top-Right Label (Over Dissipation Axis)
                 if not hasattr(pi, "_right_title_label"):
                     pi._right_title_label = pg.LabelItem(justify="left")
                     pi.layout.addItem(pi._right_title_label, 0, 2)
-                pi._right_title_label.setText(
-                    f"Dissipation<br>({unit_diss})", color=color_diss, size="10pt"
-                )
+                pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
 
         layout_ui = self.InfoWin.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff > Ref. Frequency </font>{self._labelref1}")
@@ -4908,6 +4953,8 @@ class MainWindow(QtWidgets.QMainWindow):
             unit_rf = "Hz"
             scale_rf = 1.0
 
+        self._last_unit_rf = unit_rf
+
         for p in self._plt2_arr:
             if p:
                 pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
@@ -4937,31 +4984,28 @@ class MainWindow(QtWidgets.QMainWindow):
                     right_axis.setScale(1.0)
                     right_axis.enableAutoSIPrefix(False)
                     right_axis.tickStrings = lambda values, scale, spacing: [
-                        f"{v * scale / 1e6:.6f}".rstrip("0").rstrip(".") for v in values
+                        f"{v * scale / 1e6:.2e}" for v in values
                     ]
 
-                c_rf = colors[2]
-                c_diss = colors[3]
+                _def_rf = colors[2]
+                _def_diss = colors[3]
+                c_rf = self._section_colors.get("resonance_freq", _def_rf)
+                c_diss = self._section_colors.get("dissipation", _def_diss)
                 color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
                 color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
 
-                # Top-Left Label (Over Frequency Axis) with LINE BREAKS
-                # justify="right" nudges the text toward the ViewBox edge so
-                # it sits centered over the left-axis tick marks.
+                # Top-Left / Top-Right axis labels (single-line, flanking the status chip)
                 if not hasattr(pi, "_left_title_label"):
                     pi._left_title_label = pg.LabelItem(justify="right")
                     pi.layout.addItem(pi._left_title_label, 0, 0)
                 pi._left_title_label.setText(
-                    f"Resonance<br>Frequency<br>({unit_rf})", color=color_rf, size="10pt"
+                    f"Resonance Freq ({unit_rf})", color=color_rf, size="9pt"
                 )
 
-                # Top-Right Label (Over Dissipation Axis)
-                # justify="left" nudges the text toward the ViewBox edge so
-                # it sits centered over the right-axis tick marks.
                 if not hasattr(pi, "_right_title_label"):
                     pi._right_title_label = pg.LabelItem(justify="left")
                     pi.layout.addItem(pi._right_title_label, 0, 2)
-                pi._right_title_label.setText("Dissipation", color=color_diss, size="10pt")
+                pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
 
         layout_ui = self.InfoWin.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff> Ref. Frequency </font>{self._labelref1}")
@@ -5168,10 +5212,10 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         try:
             if not self._text4[i]:
-                lbl = pg.LabelItem(size="11pt", bold=True)
-                lbl.setParentItem(plot_resonance_frequency.graphicsItem())
-                lbl.anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
-                self._text4[i] = lbl
+                icon_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+                self._text4[i] = PlotStatusBanner(
+                    plot_resonance_frequency, icon_dir, z_value=100
+                )
                 return  # nothing to show on the very first tick
             if self._drop_applied[i]:
                 self._update_post_drop_label(i, plot_resonance_frequency, plot_dissipation)
