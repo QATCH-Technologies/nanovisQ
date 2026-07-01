@@ -1,9 +1,102 @@
+from __future__ import annotations
+
 from enum import IntEnum
 from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.styles.theme_manager import ThemeManager
+
+
+class UpdateNotificationBadge(QtWidgets.QWidget):
+    """Small floating pill that appears above an UpdateStatusIcon.
+
+    Dismissing hides the badge but leaves the icon in its current state.
+    Clicking anywhere on the badge body (other than the dismiss button)
+    emits ``action_requested``, identical to clicking the icon itself.
+    """
+
+    action_requested = QtCore.pyqtSignal()
+    dismissed = QtCore.pyqtSignal()
+
+    _BG = QtGui.QColor(30, 38, 48, 235)
+    _BORDER = QtGui.QColor(255, 255, 255, 45)
+    _RADIUS = 10.0
+
+    def __init__(self, anchor: QtWidgets.QWidget) -> None:
+        super().__init__(None)
+        self._anchor = anchor
+
+        self.setWindowFlag(QtCore.Qt.WindowType.FramelessWindowHint, True)
+        self.setWindowFlag(QtCore.Qt.WindowType.Tool, True)
+        self.setWindowFlag(QtCore.Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(10, 5, 5, 5)
+        layout.setSpacing(6)
+
+        self._label = QtWidgets.QLabel("Software update available")
+        self._label.setStyleSheet(
+            "QLabel { color: #e8edf2; font-size: 11px; font-weight: 600;"
+            " background: transparent; }"
+        )
+        layout.addWidget(self._label)
+
+        self._dismiss_btn = QtWidgets.QToolButton()
+        self._dismiss_btn.setText("✕")
+        self._dismiss_btn.setFixedSize(16, 16)
+        self._dismiss_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._dismiss_btn.setStyleSheet(
+            "QToolButton { color: rgba(200,210,220,180); font-size: 10px;"
+            " background: transparent; border: none; }"
+            "QToolButton:hover { color: white; }"
+        )
+        self._dismiss_btn.clicked.connect(self._on_dismiss)
+        layout.addWidget(self._dismiss_btn)
+
+        self.adjustSize()
+
+    # ── Painting ──────────────────────────────────────────────────────────────
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        rf = QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setBrush(QtGui.QBrush(self._BG))
+        p.setPen(QtGui.QPen(self._BORDER, 1.0))
+        p.drawRoundedRect(rf, self._RADIUS, self._RADIUS)
+        p.end()
+
+    # ── Positioning ───────────────────────────────────────────────────────────
+
+    def reposition(self) -> None:
+        """Place the badge centered above the anchor icon."""
+        global_pos = self._anchor.mapToGlobal(QtCore.QPoint(0, 0))
+        anchor_cx = global_pos.x() + self._anchor.width() // 2
+        x = anchor_cx - self.width() // 2
+        y = global_pos.y() - self.height() - 6
+        self.move(x, y)
+
+    def show_above(self) -> None:
+        self.adjustSize()
+        self.reposition()
+        self.show()
+        self.raise_()
+
+    # ── Interaction ───────────────────────────────────────────────────────────
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        # Clicks on the body (not the dismiss button) trigger the update action
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.action_requested.emit()
+        super().mousePressEvent(event)
+
+    def _on_dismiss(self) -> None:
+        self.hide()
+        self.dismissed.emit()
 
 
 class UpdateStatusIcon(QtWidgets.QToolButton):
@@ -13,6 +106,10 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
     current :class:`State`. Non-static states pulse via a QVariantAnimation.
     Clicking the button emits :pyqtSignal:`update_requested` when the state
     is actionable (not UP_TO_DATE or CHECKING).
+
+    A small :class:`UpdateNotificationBadge` floats above this icon whenever
+    the state transitions to OPTIONAL or MANDATORY. It is auto-dismissed when
+    the state returns to UP_TO_DATE or CHECKING.
 
     Args:
         icon_path: Filesystem path to the SVG icon to display.
@@ -68,6 +165,8 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         self._state = self.State.UNKNOWN
         self._detail = ""
         self._glow: float = 1.0
+        self._badge_dismissed = False
+        self._badge: Optional[UpdateNotificationBadge] = None
 
         self.setFixedSize(size, size)
         self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
@@ -91,15 +190,19 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         self._refresh_icon()
 
     def state(self) -> "UpdateStatusIcon.State":
-        """Returns the current update state."""
         return self._state
 
     def setState(self, state: "UpdateStatusIcon.State", detail: str = "") -> None:
         """Set the update state and optional detail text shown in the tooltip.
 
+        Transitions to OPTIONAL or MANDATORY automatically show the floating
+        notification badge (unless the user has already dismissed it for this
+        update cycle). Transitioning back to UP_TO_DATE or CHECKING hides the
+        badge and resets the dismissed flag for the next update cycle.
+
         Args:
             state: New :class:`State` value.
-            detail: Additional tooltip text, e.g. version strings or device names.
+            detail: Additional tooltip text, e.g. version strings.
         """
         old_pulsing = self._state in self._PULSING
         self._state = state
@@ -117,16 +220,46 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
             self._glow = 1.0
 
         self._refresh_icon()
+        self._sync_badge()
+
+    def _sync_badge(self) -> None:
+        """Show or hide the notification badge based on current state."""
+        if self._state in (self.State.OPTIONAL, self.State.MANDATORY):
+            if not self._badge_dismissed:
+                self._show_badge()
+        else:
+            # Reset dismissed flag when state leaves actionable range
+            self._badge_dismissed = False
+            if self._badge and self._badge.isVisible():
+                self._badge.hide()
+
+    def _show_badge(self) -> None:
+        if self._badge is None:
+            self._badge = UpdateNotificationBadge(self)
+            self._badge.action_requested.connect(self._on_clicked)
+            self._badge.dismissed.connect(self._on_badge_dismissed)
+        if not self.isVisible():
+            return
+        self._badge.show_above()
+
+    def _on_badge_dismissed(self) -> None:
+        self._badge_dismissed = True
+
+    # ── Pulse animation ───────────────────────────────────────────────────────
 
     def _on_pulse(self, v: float) -> None:
         self._glow = v
         self._refresh_icon()
+
+    # ── Tooltip ───────────────────────────────────────────────────────────────
 
     def _update_tooltip(self) -> None:
         tip = self._TOOLTIPS.get(self._state, "")
         if self._detail:
             tip = f"{tip}\n{self._detail}"
         self.setToolTip(tip)
+
+    # ── Icon rendering ────────────────────────────────────────────────────────
 
     def _tinted_icon(self, color: QtGui.QColor, alpha_f: float = 1.0) -> QtGui.QIcon:
         if self._base_pixmap.isNull():
@@ -159,6 +292,22 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
             alpha = 1.0
         self.setIcon(self._tinted_icon(color, alpha))
 
+    # ── Interaction ───────────────────────────────────────────────────────────
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        super().showEvent(event)
+        # Re-show badge after icon becomes visible (e.g. window restore)
+        if self._state in (self.State.OPTIONAL, self.State.MANDATORY):
+            if not self._badge_dismissed and self._badge:
+                QtCore.QTimer.singleShot(50, self._badge.show_above)
+
+    def hideEvent(self, event: QtGui.QHideEvent) -> None:
+        super().hideEvent(event)
+        if self._badge and self._badge.isVisible():
+            self._badge.hide()
+
     def _on_clicked(self) -> None:
         if self._state not in (self.State.UP_TO_DATE, self.State.CHECKING):
+            if self._badge and self._badge.isVisible():
+                self._badge.hide()
             self.update_requested.emit()
