@@ -549,8 +549,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # enable ui
         self._enable_ui(True)
         ###################################################################################################################################
-        if UserProfiles.count() == 0:
-            QtCore.QTimer.singleShot(3000, self.start_download)
+        try:
+            self.ModeWin.ui.sw_update_icon.setState(UpdateStatusIcon.State.CHECKING)
+        except AttributeError:
+            pass
+        QtCore.QTimer.singleShot(3000, self.start_download)
         # Gets the QCS installed on the device (not used now)
         # self._QCS_installed = PopUp.question_QCM(self, Constants.app_title, "Please choose the Quartz Crystal Resonator installed on the openQCM-1 Device (default 5MHz if exit)")
 
