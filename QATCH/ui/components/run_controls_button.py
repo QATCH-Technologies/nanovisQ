@@ -17,14 +17,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from QATCH.ui.styles.theme_manager import ThemeManager
-
-
-def _tok_css(rgba: tuple) -> str:
-    r, g, b, a = rgba
-    if a == 255:
-        return f"#{r:02X}{g:02X}{b:02X}"
-    return f"rgba({r}, {g}, {b}, {a})"
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
 
 class StartStopButton(QToolButton):
@@ -352,8 +345,8 @@ class RunControls(QWidget):
 
     def _apply_label_theme(self) -> None:
         tok = ThemeManager.instance().tokens()
-        normal = _tok_css(tok["plot_text_normal"])
-        dim = _tok_css(tok["plot_text_dim"])
+        normal = tok_css(tok["plot_text_normal"])
+        dim = tok_css(tok["plot_text_dim"])
         self.status_label.setStyleSheet(f"color: {normal}; font-size: 12px; font-weight: bold;")
         self.lbl_status.setStyleSheet(f"color: {dim}; font-size: 11px; margin-top: 2px;")
 

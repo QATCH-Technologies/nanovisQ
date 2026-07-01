@@ -140,8 +140,8 @@ class QATCH:
         #     if hWnd:
         #         user32.ShowWindow(hWnd, SW_HIDE)
 
-        self.win.MainWin.showMaximized()
-        self.win.MainWin.activateWindow()
+        self.win.ModeWin.showMaximized()
+        self.win.ModeWin.activateWindow()
 
         if hasattr(self.win, "ask_for_update") and self.win.ask_for_update:
             self.win.start_download()
@@ -152,12 +152,12 @@ class QATCH:
     ###########################################################################
     def run(self):
         # lazy load imports
-        from QATCH.ui import mainWindow
+        from QATCH.ui import main_window
 
         if Architecture.is_python_version(MinimalPython.major, minor=MinimalPython.minor):
             Log.i(TAG, "Application started")
 
-            self.win = mainWindow.MainWindow(samples=self._args.get_user_samples())
+            self.win = main_window.MainWindow(samples=self._args.get_user_samples())
             # win.setWindowTitle("{} - {}".format(Constants.app_title, Constants.app_version))
             # win.move(500, 20) #GUI position (x,y) on the screen
             # win.show()

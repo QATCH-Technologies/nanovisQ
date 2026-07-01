@@ -1,6 +1,21 @@
+"""QATCH.ui.interfaces.ui_mode.py
+
+This module provides the structural foundation for the application's
+mode-based interface. It manages the layout, navigation, and state
+transitions between various functional views such as 'Run', 'Analyze',
+and tool modules.
+
+Author(s)
+    Alexander Ross  (alexander.ross@qatchtech.com)
+    Paul MacNichol  (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-07-01
+"""
+
 import datetime
 import os
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -11,124 +26,66 @@ from QATCH.core.constants import Constants, UserRoles
 from QATCH.tools.donnan_gibbs_calculator import DonnanCalculatorModule
 from QATCH.tools.injection_force_calculator import InjectionForceCalculatorModule
 from QATCH.ui.popUp import PopUp
-from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
 
-
-class _MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, parent):
-        super().__init__()
-        parent.ControlsWin._create_menu(self)
-        self.ui0 = UIMain()
-        self.ui0.setup_ui(self, parent)
-
-        # Get the application instance safely and connect the signals
-        app_instance = QtWidgets.QApplication.instance()
-        if app_instance:
-            app_instance.focusWindowChanged.connect(self.focusWindowChanged)
-            # capture clicks anywhere on gui
-            app_instance.installEventFilter(self)
-
-    def eventFilter(self, obj, event):
-        # Handle mouse click events (e.g. hide on click)
-        if event.type() == QtCore.QEvent.MouseButtonPress:
-            widget_clicked = QtWidgets.QApplication.widgetAt(event.globalPos())
-            allow_hide = True
-            if widget_clicked is self.ui0.mode_learn:
-                allow_hide = False
-            # if widget_clicked is self.ui0.mode_learn_text:
-            #     allow_hide = False
-            # if widget_clicked is self.ui0.mode_learn_arrow:
-            #     allow_hide = False
-            if self.ui0.floating_widget.isVisible() and allow_hide:
-                self.ui0.floating_widget.hide()
-        return super().eventFilter(obj, event)
-
-    def focusWindowChanged(self, focus_window):
-        # Hide the floating widget only when the focus leaves this window
-        # NOTE: This is a signal slot event firing, there is no `super()`
-        if focus_window is None or focus_window != self.windowHandle():
-            self.ui0.floating_widget.hide()
-
-    def moveEvent(self, event):
-        # Hide the floating widget whenever the main window moves
-        # NOTE: Its position will be recalculated on next `show()`
-        self.ui0.floating_widget.hide()
-        super().moveEvent(event)
-
-    def closeEvent(self, event):
-        # Log.d(" Exit Real-Time Plot GUI")
-        res = PopUp.question(
-            self,
-            Constants.app_title,
-            "Are you sure you want to quit QATCH Q-1 application now?",
-            True,
-        )
-        if res:
-            # self.close()
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
+if TYPE_CHECKING:
+    from QATCH.ui.main_window import MainWindow
+    from QATCH.ui.windows import ModeWindow
 
 
-class UIMain:
-    """The primary user interface controller for the nanovisQ application.
+class UIMode:
+    """
+    Manages the UI layout, mode switching logic, and view transitions for the
+    application's main interface.
 
-    This class manages the lifecycle and state of the main application window.
-    It coordinates  navigation between core operational modes (Run, Analyze, and VisQ.AI),
-    handles dynamic UI animations, and manages global styling via QSS.
-
-    The architecture utilizes a centralized splitter system to toggle between
-    primary workspace views and a collapsible diagnostic log area.
-
-    Attributes:
-        parent (Any): Reference to the main controller/logic parent containing
-            sub-window instances (e.g., AnalyzeProc, VisQAIWin).
-        centralwidget (QtWidgets.QWidget): The root container for the window
-            utilizing a gradient-based glass background.
-        active_highlight (QtWidgets.QWidget): An animated translucent widget
-        used to indicate the currently selected menu mode.
-        modemenu (QtWidgets.QScrollArea): The sidebar container for mode
-            navigation.
-        splitter (QtWidgets.QSplitter): The vertical divider separating the
-            active workspace from the log view.
-        mode_run (QtWidgets.QLabel): Interactive label for 'Run' mode.
-        mode_analyze (QtWidgets.QLabel): Interactive label for 'Analyze' mode.
-        mode_learn (QtWidgets.QLabel): Interactive label for 'VisQ.AI' mode.
-        logview (QtWidgets.QScrollArea): The bottom diagnostic logging pane.
+    This class handles the initialization of the left-hand navigation menu,
+    the central stacked view (controlled by mode-specific widgets), and the
+    integrated logging panel. It maintains references to various child modules
+    and handles state transitions between 'Run', 'Analyze', 'VisQ.AI', and
+    calculator modes.
     """
 
-    def setup_ui(self, main_window: QtWidgets.QMainWindow, parent: Any) -> None:
-        """
-        Initializes the main user interface for the nanovisQ application.
+    @staticmethod
+    def _click(handler: Callable[..., Any]):
+        """Adapts a mode-switch method to the `QLabel.mousePressEvent` signature.
 
-        Constructs the glassmorphic layout, including the sidebar navigation,
-        central view splitter, and log area. Loads global styling from QSS and
-        handles initial state configuration for user sessions.
+        The mode methods return `bool | None` for programmatic callers but the
+        event-handler slot must return `None`.  This wrapper discards the return
+        value and uses a position-only `ev` parameter.
+        """
+
+        def _h(ev: Optional[QtGui.QMouseEvent] = None) -> None:
+            handler(ev)
+
+        return _h
+
+    def setup_ui(self, mode_window: "ModeWindow", parent: "MainWindow") -> None:
+        """
+        Constructs and configures the UI elements, layouts, and signal connections
+        for the mode-based navigation system.
+
+        This method builds the sidebar menu (including logos and mode labels),
+        initializes the various sub-modules (calculators, loggers, and view frames),
+        and sets up the splitter-based layout for the log panel.
 
         Args:
-            main_window (QtWidgets.QMainWindow): The primary window instance.
-            parent (Any): The controller or parent object containing sub-window logic
-                (e.g., AnalyzeProc, VisQAIWin).
+            mode_window (ModeWIndow): The main container window being configured.
+            parent (MainWindow): The main application window instance containing global
+                    data and sub-windows.
         """
         self.parent = parent
-        main_window.setObjectName("main_window_0")
-        main_window.setMinimumSize(QtCore.QSize(1331, 711))
-        self.centralwidget = QtWidgets.QWidget(main_window)
+        mode_window.setObjectName("modeWindow")
+        mode_window.setMinimumSize(QtCore.QSize(1331, 711))
+        self.centralwidget = QtWidgets.QWidget(mode_window)
         self.centralwidget.setObjectName("centralwidget")
-        # Styling for #centralwidget and friends now comes from the app-wide
-        # stylesheet applied by QATCH.ui.styles.theme_manager.ThemeManager at
-        # startup (see app.py), not a per-widget QSS load.
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
         layout_h = QtWidgets.QHBoxLayout()
         layout_h.setSpacing(10)
 
-        # Add to mode menu here:
         # Run / Analyze / VisQ.AI
         modewidget = QtWidgets.QWidget()
         modewidget.setObjectName("modeWidgetContainer")
-
-        # Apply the style to the PARENT widget so the CSS cascade works properly
         modelayout = QtWidgets.QVBoxLayout()
         modelayout.setContentsMargins(0, 0, 0, 0)
         modelayout.setSpacing(0)
@@ -149,7 +106,7 @@ class UIMain:
             100, QtCore.Qt.TransformationMode.SmoothTransformation
         )
         rounded_pixmap = QtGui.QPixmap(original_pixmap.size())
-        rounded_pixmap.fill(QtCore.Qt.transparent)
+        rounded_pixmap.fill(QtCore.Qt.GlobalColor.transparent)
 
         painter = QtGui.QPainter(rounded_pixmap)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
@@ -161,57 +118,54 @@ class UIMain:
         painter.drawPixmap(0, 0, original_pixmap)
         painter.end()
         self.logolabel = QtWidgets.QLabel()
-        self.logolabel.setStyleSheet("padding-bottom:10px; background: transparent;")
+        self.logolabel.setObjectName("nanovisqLogo")
         self.logolabel.setPixmap(rounded_pixmap)
         self.logolabel.resize(rounded_pixmap.width(), rounded_pixmap.height())
 
         # Mode Header
         self.mode_mode = QtWidgets.QLabel("<b>MODE</b>")
         self.mode_mode.setObjectName("menuSectionHeader")
-        self.mode_mode.setStyleSheet("padding: 10px; padding-top: 15px;")
 
         # Run Mode
         self.mode_run = QtWidgets.QLabel("Run")
         self.mode_run.setObjectName("menuItem")
-        self.mode_run.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.mode_run.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         self.mode_run.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.mode_run.mousePressEvent = self._set_run_mode
+        self.mode_run.mousePressEvent = self._click(self._set_run_mode)
 
         # Analyze Mode
         self.mode_analyze = QtWidgets.QLabel("Analyze")
         self.mode_analyze.setObjectName("menuItem")
-        self.mode_analyze.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.mode_analyze.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         self.mode_analyze.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.mode_analyze.mousePressEvent = self._set_analyze_mode
+        self.mode_analyze.mousePressEvent = self._click(self._set_analyze_mode)
 
         # Tools Header
         self.mode_tools = QtWidgets.QLabel("<b>TOOLS</b>")
         self.mode_tools.setObjectName("menuSectionHeader")
-        self.mode_tools.setStyleSheet("padding: 10px; padding-top: 15px;")
 
         # VisQ.AI Tool
         self.mode_learn = QtWidgets.QLabel("VisQ.AI™")
-        # Using this instead of <sup> for beter antialiasing.
         self.mode_learn.setObjectName("menuItem")
-        self.mode_learn.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.mode_learn.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         self.mode_learn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.mode_learn.mousePressEvent = self._set_learn_mode
+        self.mode_learn.mousePressEvent = self._click(self._set_learn_mode)
 
         # Donnan Calculator Tool
         self.mode_donnan = QtWidgets.QLabel("Donnan-Gibbs Calculator")
         self.mode_donnan.setObjectName("menuItem")
-        self.mode_donnan.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.mode_donnan.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         self.mode_donnan.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.mode_donnan.setWordWrap(True)
-        self.mode_donnan.mousePressEvent = self._set_donnan_mode
+        self.mode_donnan.mousePressEvent = self._click(self._set_donnan_mode)
 
         # Injection Force Calculator Tool
         self.mode_injection = QtWidgets.QLabel("Injection Force Calculator")
         self.mode_injection.setObjectName("menuItem")
-        self.mode_injection.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.mode_injection.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         self.mode_injection.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.mode_injection.setWordWrap(True)
-        self.mode_injection.mousePressEvent = self._set_injection_mode
+        self.mode_injection.mousePressEvent = self._click(self._set_injection_mode)
 
         # Text antialiasing
         smooth_font = QtGui.QFont()
@@ -246,12 +200,11 @@ class UIMain:
         modewidget.setLayout(modelayout)
         self.modemenu = QtWidgets.QScrollArea()
         self.modemenu.setObjectName("modeMenuScrollArea")
-        self.mode_mode.setStyleSheet("padding: 10px; padding-top: 15px;")
         self.modemenu.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.modemenu.setLineWidth(0)
         self.modemenu.setMidLineWidth(0)
         self.modemenu.setWidgetResizable(True)
-        self.modemenu.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.modemenu.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.modemenu.setMinimumSize(QtCore.QSize(100, 700))
         self.modemenu.setWidget(modewidget)
 
@@ -264,8 +217,8 @@ class UIMain:
         runlayout = QtWidgets.QVBoxLayout()
         runlayout.setContentsMargins(0, 0, 0, 0)
         runlayout.setSpacing(0)
-        runlayout.addWidget(parent.ControlsWin.ui1.centralwidget, 1)
-        runlayout.addWidget(parent.PlotsWin.ui2.centralwidget, 255)
+        runlayout.addWidget(parent.ControlsWin.ui.centralwidget, 1)
+        runlayout.addWidget(parent.PlotsWin.ui.centralwidget, 255)
         runwidget.setLayout(runlayout)
         self.runview = QtWidgets.QScrollArea()
         self.runview.setObjectName("runview")
@@ -323,48 +276,29 @@ class UIMain:
         self.logview.setLineWidth(0)
         self.logview.setMidLineWidth(0)
         self.logview.setWidgetResizable(True)
-        self.logview.setWidget(parent.LogWin.ui4.centralwidget)
+        self.logview.setWidget(parent.LogWin.ui.centralwidget)
         # Min height relaxed to 0 so the pane can slide/drag closed.
         self.logview.setMinimumSize(QtCore.QSize(1000, 0))
-        # Transparent background to match the glass effect of other windows.
-        self.logview.setStyleSheet(
-            "QScrollArea#logview, QScrollArea#logview > QWidget > QWidget"
-            " { background: transparent; }"
-        )
-        self.logview.viewport().setAutoFillBackground(False)
+        self.logview.viewport().setAutoFillBackground(False)  # type: ignore
 
         layout_h.addWidget(self.modemenu, 1)
         layout_v = QtWidgets.QVBoxLayout()
-        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        self.splitter.setStyleSheet("""
-            QSplitter::handle {
-                background: transparent;
-            }
-        """)
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         # NOTE: this widget must not be changed at load time (or else it disappears)
         self.splitter.addWidget(self.runview)
-        # Logger removed from the splitter; it is now a full-width bottom row.
-        # The splitter holds only the active view, so the main row's height is
-        # governed by the view/plots content.
         layout_v.addWidget(self.splitter)
         layout_h.addLayout(layout_v, 255)
 
-        # Main area (modemenu + views) wrapped so it can sit in the outer splitter.
+        # Main area wrapped so it can sit in the outer splitter.
         self.main_area = QtWidgets.QWidget()
         self.main_area.setObjectName("mainArea")
         self.main_area.setLayout(layout_h)
+        parent.LoginWin.ui.centralwidget.attach_to(self.main_area)
 
-        # The login screen overlays just the sidebar+content area (not the
-        # console pane or its toggle bar/footer), so the debug console stays
-        # visible and toggleable while signed out.
-        parent.LoginWin.ui5.centralwidget.attach_to(self.main_area)
-
-        # ----- Controls/footer bar: footer text (left) + subtle toggle (right) -----
+        # Controls/footer bar
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
         self._log_chevron_down = QtGui.QIcon(os.path.join(icons_dir, "down-chevron.svg"))
         self._log_chevron_up = QtGui.QIcon(os.path.join(icons_dir, "up-chevron.svg"))
-        # Darker-tinted variants for the dimmed, signed-out/collapsed strip
-        # (that strip is a muted gray, not dark navy, so icons stay dark too).
         dimmed_tint = QtGui.QColor(40, 48, 56, 235)
         self._log_chevron_down_light = self._tinted_icon(
             os.path.join(icons_dir, "down-chevron.svg"), dimmed_tint
@@ -380,23 +314,14 @@ class UIMain:
         toggle_layout.setContentsMargins(8, 0, 6, 0)
         toggle_layout.setSpacing(6)
 
-        # Footer copyright text - small, non-italic, clearly static.
+        # Footer copyright text
         current_year = datetime.date.today().year
         footer_text = f"\u00a9 {current_year} QATCH Technologies. All rights reserved."
         self.copy_foot = QtWidgets.QLabel(footer_text)
         self.copy_foot.setObjectName("footerLabel")
         self.copy_foot.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self.copy_foot.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.copy_foot.setCursor(QtCore.Qt.ArrowCursor)
-        self.copy_foot.setStyleSheet("""
-            QLabel#footerLabel {
-                background: transparent;
-                border: none;
-                color: rgba(70, 80, 95, 140);
-                font-size: 9px;
-                font-weight: normal;
-            }
-        """)
+        self.copy_foot.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.copy_foot.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
         footer_font = QtGui.QFont()
         footer_font.setStyleStrategy(QtGui.QFont.PreferAntialias | QtGui.QFont.PreferQuality)
         self.copy_foot.setFont(footer_font)
@@ -404,36 +329,21 @@ class UIMain:
 
         toggle_layout.addStretch()
 
-        # Subtle, flat toggle tucked into the right edge of the controls bar.
+        # Log toggle button
         self.btnLogToggle = QtWidgets.QToolButton(self.log_toggle_bar)
         self.btnLogToggle.setObjectName("logToggleBtn")
         self.btnLogToggle.setFixedSize(22, 18)
         self.btnLogToggle.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.btnLogToggle.setIcon(self._log_chevron_down)  # expanded -> shows collapse action
+        self.btnLogToggle.setIcon(self._log_chevron_down)
         self.btnLogToggle.setIconSize(QtCore.QSize(11, 11))
         self.btnLogToggle.setToolTip("Hide console")
-        self.btnLogToggle.setStyleSheet("""
-            QToolButton#logToggleBtn {
-                background: transparent;
-                border: none;
-                border-radius: 4px;
-            }
-            QToolButton#logToggleBtn:hover {
-                background: rgba(120, 130, 145, 45);
-            }
-            QToolButton#logToggleBtn:pressed {
-                background: rgba(120, 130, 145, 80);
-            }
-        """)
         self.btnLogToggle.clicked.connect(self._toggle_logger)
         toggle_layout.addWidget(self.btnLogToggle)
 
-        # ----- Full-width logger container (transparent, drag-resizable) -----
+        # Logger container
         self.log_container = QtWidgets.QWidget()
         self.log_container.setObjectName("logContainer")
-        # Transparent so the glass effect of inner widgets shows through.
-        self.log_container.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-        self.log_container.setStyleSheet("QWidget#logContainer { background: transparent; }")
+        self.log_container.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         log_container_layout = QtWidgets.QVBoxLayout(self.log_container)
         log_container_layout.setContentsMargins(0, 0, 0, 0)
         log_container_layout.setSpacing(0)
@@ -442,27 +352,22 @@ class UIMain:
         self._log_expanded_height = 200
         self._log_collapsed = False
 
-        # Outer vertical splitter: draggable handle lets the user resize the log.
-        self.log_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        # Outer vertical splitter
+        self.log_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         self.log_splitter.setObjectName("logSplitter")
         self.log_splitter.setHandleWidth(6)
         self.log_splitter.addWidget(self.main_area)
         self.log_splitter.addWidget(self.log_container)
-        self.log_splitter.setStretchFactor(0, 1)  # main area takes extra space
-        self.log_splitter.setStretchFactor(1, 0)  # logger keeps its set size
-        # Allow the logger pane to collapse fully (to 0) when toggled/dragged,
-        # but keep the main area from vanishing.
+        self.log_splitter.setStretchFactor(0, 1)
+        self.log_splitter.setStretchFactor(1, 0)
         self.log_splitter.setCollapsible(0, False)
         self.log_splitter.setCollapsible(1, True)
         self.log_splitter.setSizes([1000, self._log_expanded_height])
-        # Track manual drags so the toggle restores to the user's chosen height.
         self.log_splitter.splitterMoved.connect(self._on_log_splitter_moved)
 
         self._signed_in = True
         self._update_log_toggle_bar_theme()  # also sets the splitter handle style
         # Re-tint the dim strip/divider if the user flips light/dark mode
-        # while signed out (otherwise it'd keep the old theme's dim color
-        # until the next sign-in/out toggle re-triggers a repaint).
         ThemeManager.instance().themeChanged.connect(lambda _: self._update_log_toggle_bar_theme())
 
         # Animate the splitter sizes for the smooth open/close slide.
@@ -480,15 +385,13 @@ class UIMain:
         self._force_splitter_mode_set = False
         # NOTE: splitter[0] widget must not change at load or else it disappears
         # (ignore the warning: "Trying to replace a widget with itself")
-
-        # retain sizing of view menu toggle elements
-        elems = [parent.LogWin.ui4.centralwidget, parent.PlotsWin.ui2.centralwidget]
+        elems = [parent.LogWin.ui.centralwidget, parent.PlotsWin.ui.centralwidget]
         for e in elems:
             not_resize = e.sizePolicy()
             not_resize.setHorizontalStretch(1)
             e.setSizePolicy(not_resize)
 
-        elems = [parent.PlotsWin.ui2.plt, parent.PlotsWin.ui2.pltB]
+        elems = [parent.PlotsWin.ui.plt, parent.PlotsWin.ui.pltB]
         for i, e in enumerate(elems):
             not_resize = e.sizePolicy()
             not_resize.setVerticalStretch(i + 2)
@@ -496,21 +399,18 @@ class UIMain:
 
         outer_v = QtWidgets.QVBoxLayout()
         outer_v.setContentsMargins(0, 0, 0, 0)
-        # No spacing: any gap here exposes centralwidget's own background,
-        # which only matches the dimmed signed-out look approximately (it's
-        # a flat color, not the blurred snapshot) - better to have no seam.
         outer_v.setSpacing(0)
-        outer_v.addWidget(self.log_splitter, 1)  # main area over draggable logger
-        outer_v.addWidget(self.log_toggle_bar)  # full-width toggle + footer bar
+        outer_v.addWidget(self.log_splitter, 1)
+        outer_v.addWidget(self.log_toggle_bar)
         self.centralwidget.setLayout(outer_v)
-        main_window.setCentralWidget(self.centralwidget)
+        mode_window.setCentralWidget(self.centralwidget)
 
-        self._retranslate_ui(main_window)
-        QtCore.QMetaObject.connectSlotsByName(main_window)
+        self._retranslate_ui(mode_window)
+        QtCore.QMetaObject.connectSlotsByName(mode_window)
 
     def animate_mode_highlight(self, target_widget: QtWidgets.QWidget) -> None:
         """
-        Animates the glassmorphic highlight to the selected menu item.
+        Animates the highlight to the selected menu item.
 
         Handles the smooth transition of the background highlight between modes
         using a QPropertyAnimation. It also updates dynamic properties to toggle
@@ -526,27 +426,22 @@ class UIMain:
             QtCore.QTimer.singleShot(50, lambda: self.animate_mode_highlight(target_widget))
             return
         self.active_highlight.lower()
-
-        # Snap to position if hidden (initial load), otherwise animate
         if not self.active_highlight.isVisible():
             self.active_highlight.setGeometry(target_widget.geometry())
             self.active_highlight.show()
         else:
-            # Create smooth geometry interpolation
             self.mode_anim = QtCore.QPropertyAnimation(self.active_highlight, b"geometry")
             self.mode_anim.setDuration(250)
             self.mode_anim.setStartValue(self.active_highlight.geometry())
             self.mode_anim.setEndValue(target_widget.geometry())
             self.mode_anim.setEasingCurve(QtCore.QEasingCurve.InOutQuad)
             self.mode_anim.start()
-
-        # Update 'active' property to toggle QSS hover effects
         menu_items = [self.mode_run, self.mode_analyze, self.mode_learn]
         for widget in menu_items:
             is_active = widget == target_widget
             widget.setProperty("active", "true" if is_active else "false")
-            widget.style().unpolish(widget)
-            widget.style().polish(widget)
+            widget.style().unpolish(widget)  # type: ignore
+            widget.style().polish(widget)  # type: ignore
 
     def _toggle_logger(self) -> None:
         """
@@ -562,7 +457,7 @@ class UIMain:
         start = sizes[1] if len(sizes) > 1 else 0
 
         if self._log_collapsed:
-            # Expand to the remembered height (clamped to available space).
+            # Expand to the remembered height
             end = min(self._log_expanded_height, max(total - 60, 60))
         else:
             # Remember the current height, then collapse.
@@ -589,7 +484,7 @@ class UIMain:
         Keeps the toggle state and remembered height in sync so a manual resize
         is preserved across collapse/expand and the chevron points correctly.
         """
-        if self._log_anim.state() == QtCore.QAbstractAnimation.Running:
+        if self._log_anim.state() == QtCore.QAbstractAnimation.State.Running:
             return  # ignore programmatic moves during animation
         log_h = self.log_splitter.sizes()[1]
         if log_h <= 0:
@@ -604,14 +499,19 @@ class UIMain:
 
     @staticmethod
     def _tinted_icon(path: str, color: QtGui.QColor, size: int = 14) -> QtGui.QIcon:
-        """Returns a copy of the icon at `path` fully painted in `color`.
+        """Creates a color-tinted version of an icon while preserving transparency.
 
-        Uses SourceAtop composition so the tint respects the original alpha
-        channel - transparent SVG areas stay transparent.
+        Args:
+            path (str): Filesystem path to the source icon (e.g., SVG or image file).
+            color (QtGui.QColor): The color used to tint the icon.
+            size (int, optional): Desired pixel size of the icon. Defaults to 14.
+
+        Returns:
+            QtGui.QIcon: A new QIcon instance containing the tinted pixmap.
         """
         src = QtGui.QIcon(path).pixmap(size, size)
         dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.transparent)
+        dst.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(dst)
         p.drawPixmap(0, 0, src)
         p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
@@ -637,10 +537,10 @@ class UIMain:
         while signed in.
         """
         dark = not self._signed_in
-        # The same "overlay_dim" token the login overlay's blurred dashboard
-        # dims to (QATCH.ui.styles.tokens) - keeps this strip's dim tone in
-        # sync with the active light/dark theme instead of a fixed literal.
-        dim_css = "rgba(%d, %d, %d, %d)" % ThemeManager.instance().tokens()["overlay_dim"]
+        tokens = ThemeManager.instance().tokens()
+        # "overlay_dim" keeps the strip/divider tint in sync with the login
+        # overlay's blurred-dashboard dim level for the active theme.
+        dim_css = tok_css(tokens["overlay_dim"])
         self.log_container.setStyleSheet(
             "QWidget#logContainer { background: %s; }" % (dim_css if dark else "transparent")
         )
@@ -655,48 +555,27 @@ class UIMain:
             )
 
         if dark:
-            # ~30% black over the strip's normal light tone - the same dim
-            # level used on the blurred dashboard, not an unrelated dark color.
             self.log_toggle_bar.setStyleSheet("QWidget#logToggleBar { background: %s; }" % dim_css)
-            self.copy_foot.setStyleSheet("""
-                QLabel#footerLabel {
-                    background: transparent;
-                    border: none;
-                    color: rgba(40, 48, 56, 200);
-                    font-size: 9px;
-                    font-weight: normal;
-                }
-            """)
-            # Left transparent, the splitter handle/divider shows
-            # centralwidget's light background through - a stray bright
-            # sliver right at the resize divider between the two dimmed panes.
-            self.log_splitter.setStyleSheet("""
-                QSplitter#logSplitter::handle {
-                    background: %s;
-                }
-                QSplitter#logSplitter::handle:hover {
-                    background: rgba(140, 145, 150, 255);
-                }
-            """ % dim_css)
+            # Override QSS-driven color with the dim-state token so text
+            # stays legible on whatever overlay_dim resolves to in this theme.
+            self.copy_foot.setStyleSheet(
+                "QLabel#footerLabel { color: %s; }" % tok_css(tokens["mode_footer_dim_text"])
+            )
+            self.log_splitter.setStyleSheet(
+                "QSplitter#logSplitter::handle { background: %s; }"
+                " QSplitter#logSplitter::handle:hover { background: %s; }"
+                % (dim_css, tok_css(tokens["mode_splitter_dim_handle_hover"]))
+            )
         else:
             self.log_toggle_bar.setStyleSheet("QWidget#logToggleBar { background: transparent; }")
-            self.copy_foot.setStyleSheet("""
-                QLabel#footerLabel {
-                    background: transparent;
-                    border: none;
-                    color: rgba(70, 80, 95, 140);
-                    font-size: 9px;
-                    font-weight: normal;
-                }
-            """)
-            self.log_splitter.setStyleSheet("""
-                QSplitter#logSplitter::handle {
-                    background: transparent;
-                }
-                QSplitter#logSplitter::handle:hover {
-                    background: rgba(120, 130, 145, 60);
-                }
-            """)
+            # Clear the widget-level override so the QSS-driven {{MODE_FOOTER_TEXT}}
+            # token takes effect for the normal signed-in color.
+            self.copy_foot.setStyleSheet("")
+            self.log_splitter.setStyleSheet(
+                "QSplitter#logSplitter::handle { background: transparent; }"
+                " QSplitter#logSplitter::handle:hover { background: %s; }"
+                % tok_css(tokens["mode_splitter_handle_hover"])
+            )
 
     def _check_mode_change_allowed(self) -> bool:
         """
@@ -711,7 +590,7 @@ class UIMain:
         # Active run in progress
         if (
             self.splitter.widget(0) == self.runview
-            and not self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
+            and not self.parent.ControlsWin.ui.pButton_Start.isEnabled()
         ):
             Log.e("Please stop the current run before switching modes.")
             return False
@@ -741,7 +620,11 @@ class UIMain:
                     return False
         return True
 
-    def _set_no_user_mode(self, obj: Optional[Any] = None, instant: bool = False) -> Optional[bool]:
+    def _set_no_user_mode(
+        self,
+        obj: Optional[Any] = None,
+        instant: bool = False,
+    ) -> Optional[bool]:
         """
         Switches the application to 'No User' (Sign-In) mode.
 
@@ -765,7 +648,7 @@ class UIMain:
                 - False: the mode change was aborted due to not being allowed (programmatic call).
                 - None if triggered via a UI event.
         """
-        login = self.parent.LoginWin.ui5.centralwidget
+        login = self.parent.LoginWin.ui.centralwidget
 
         # Already in No User / Sign-In mode
         if login.isVisible() and not self._force_splitter_mode_set:
@@ -783,19 +666,13 @@ class UIMain:
         self.active_highlight.hide()
         for widget in [self.mode_run, self.mode_analyze, self.mode_learn]:
             widget.setProperty("active", "false")
-            widget.style().unpolish(widget)
-            widget.style().polish(widget)
+            widget.style().unpolish(widget)  # type: ignore
+            widget.style().polish(widget)  # type: ignore
         self.parent.ControlsWin.set_signed_in_menu_state(False)
         self._signed_in = False
         self._update_log_toggle_bar_theme()
 
         if instant:
-            # Shown immediately, before the window has ever been painted, so
-            # there's nothing real to snapshot yet - starts on the fallback
-            # gradient, already fully blurred/dimmed (no flash of the bright
-            # dashboard). Once the window settles at its real size, swap in
-            # an actual blurred snapshot of it, still fully dimmed, so the
-            # backdrop isn't a generic gradient forever.
             login.reveal_signed_out(instant=True)
 
             def _refresh_backdrop() -> None:
@@ -812,15 +689,11 @@ class UIMain:
             def _do_reveal() -> None:
                 login.reveal_signed_out(self.main_area)
                 if session_expired:
-                    self.parent.LoginWin.ui5.error_expired()
+                    self.parent.LoginWin.ui.error_expired()
                 elif session_loggedout:
-                    self.parent.LoginWin.ui5.error_loggedout()
+                    self.parent.LoginWin.ui.error_loggedout()
 
             def _reveal() -> None:
-                # Deferred so a sign-out/session-expiry call (the event loop
-                # is already running) grabs a real frame instead of an
-                # unlaid-out blank one. The error/logout badge is shown only
-                # once the card is actually visible, so it anchors correctly.
                 self._wait_for_stable_size(self.main_area, _do_reveal)
 
             QtCore.QTimer.singleShot(0, _reveal)
@@ -828,7 +701,7 @@ class UIMain:
         self.parent.viewTutorialPage([1, 2, 0])
 
         # Focus the user initials input field after a short UI rendering delay
-        QtCore.QTimer.singleShot(500, self.parent.LoginWin.ui5.user_initials.setFocus)
+        QtCore.QTimer.singleShot(500, self.parent.LoginWin.ui.user_initials.setFocus)
 
         if obj is None:
             return True
@@ -873,7 +746,10 @@ class UIMain:
             lambda: self._wait_for_stable_size(widget, callback, current_size, _attempts + 1),
         )
 
-    def _set_run_mode(self, obj: Optional[Any] = None) -> Optional[bool]:
+    def _set_run_mode(
+        self,
+        obj: Optional[Any] = None,
+    ) -> Optional[bool]:
         """
         Switches the application to 'Run' mode.
 
@@ -897,9 +773,6 @@ class UIMain:
         # Already in Run mode
         if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Run mode already active. Skipping mode change request.")
-            # Still re-assert the highlight: the splitter staying on runview
-            # doesn't mean the highlight was ever shown - e.g. right after
-            # signing in, where this is the very first "Run mode" request.
             self.animate_mode_highlight(self.mode_run)
             return True if obj is None else None
 
@@ -936,7 +809,7 @@ class UIMain:
         self.parent.VisQAIWin.enable(False)
         self.animate_mode_highlight(self.mode_run)
         self.splitter.replaceWidget(0, target_widget)
-        self.parent.PlotsWin.ui2.handleSplitterButton(collapse=False)
+        self.parent.PlotsWin.ui.handleSplitterButton(collapse=False)
 
         if UserProfiles.count() == 0:
             # Measure, Next Steps, Create Accounts
@@ -947,7 +820,10 @@ class UIMain:
 
         return True if obj is None else None
 
-    def _set_analyze_mode(self, obj: Optional[Any] = None) -> Optional[bool]:
+    def _set_analyze_mode(
+        self,
+        obj: Optional[Any] = None,
+    ) -> Optional[bool]:
         """
         Switches the application to 'Analyze' mode.
 
@@ -972,8 +848,6 @@ class UIMain:
         # Already in Analyze mode
         if current_widget == target_widget and not self._force_splitter_mode_set:
             Log.d("Analyze mode already active. Skipping mode change request.")
-            # Still re-assert the highlight - see the matching comment in
-            # _set_run_mode for why "already active" doesn't imply "already shown".
             self.animate_mode_highlight(self.mode_analyze)
             return True if obj is None else None
 
@@ -1001,7 +875,11 @@ class UIMain:
 
         return True if obj is None else None
 
-    def _set_learn_mode(self, obj: Optional[Any] = None, tab_index: int = 0) -> Optional[bool]:
+    def _set_learn_mode(
+        self,
+        obj: Optional[Any] = None,
+        tab_index: int = 0,
+    ) -> Optional[bool]:
         """
         Switches the application to 'VisQ.AI' mode.
 
@@ -1068,7 +946,10 @@ class UIMain:
 
         return True if obj is None else None
 
-    def _set_donnan_mode(self, obj: Optional[Any] = None) -> Optional[bool]:
+    def _set_donnan_mode(
+        self,
+        obj: Optional[Any] = None,
+    ) -> Optional[bool]:
         """
         Switches the application to 'Donnan-Gibbs Calculator' mode.
 
@@ -1133,7 +1014,10 @@ class UIMain:
 
         return True if obj is None else None
 
-    def _set_injection_mode(self, obj: Optional[Any] = None) -> Optional[bool]:
+    def _set_injection_mode(
+        self,
+        obj: Optional[Any] = None,
+    ) -> Optional[bool]:
         """
         Switches the application to 'Injection Force Calculator' mode.
 
@@ -1198,7 +1082,7 @@ class UIMain:
 
         return True if obj is None else None
 
-    def _retranslate_ui(self, main_window: Any) -> None:
+    def _retranslate_ui(self, mode_window: Any) -> None:
         """
         Updates the localized text and window properties for the main application.
 
@@ -1207,13 +1091,13 @@ class UIMain:
         include the current application name and version.
 
         Args:
-            main_window (Any): The top-level QMainWindow instance to be updated.
+            mode_window (Any): The top-level QMainWindow instance to be updated.
                 Expected to be a QtWidgets.QMainWindow or similar.
         """
         _translate = QtCore.QCoreApplication.translate
         icon_path = os.path.join(
             Architecture.get_path(), "QATCH", "icons", "high-res-qatch-logo-no-bg.png"
         )
-        main_window.setWindowIcon(QtGui.QIcon(icon_path))
+        mode_window.setWindowIcon(QtGui.QIcon(icon_path))
         app_title_full = f"{Constants.app_title} {Constants.app_version}"
-        main_window.setWindowTitle(_translate("main_window_0", app_title_full))
+        mode_window.setWindowTitle(_translate("modeWindow", app_title_full))

@@ -23,21 +23,20 @@ Behavioural parity with the original:
     History view parses).
 """
 
-import os
-import time
-import shutil
-import zipfile
 import datetime
+import os
+import shutil
+import time
+import zipfile
 from datetime import timezone as tz
 from xml.dom import minidom
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from QATCH.core.constants import Constants
 from QATCH.common.logger import Logger as Log
-
+from QATCH.core.constants import Constants
+from QATCH.ui.components import GlassOptionCard, GlassOptionCardGroup, GlassPushButton
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
-from QATCH.ui.components import GlassPushButton, GlassOptionCard, GlassOptionCardGroup
 
 TAG = "[DataImport]"
 
@@ -1173,7 +1172,7 @@ class ImportMode(DataModeWidget):
         if not ic.isNull():
             return ic
         pix = QtGui.QPixmap(16, 16)
-        pix.fill(QtCore.Qt.transparent)
+        pix.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(pix)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
         amber = QtGui.QColor(214, 158, 46)

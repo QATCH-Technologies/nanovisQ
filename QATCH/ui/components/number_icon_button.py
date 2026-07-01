@@ -1,4 +1,5 @@
 from time import time
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.logger import Logger as Log
@@ -95,7 +96,7 @@ class NumberIconButton(QtWidgets.QToolButton):
         return icon
 
     def _beginPainter(self, device, enabled=True):
-        device.fill(QtCore.Qt.transparent)
+        device.fill(QtCore.Qt.GlobalColor.transparent)
 
         self.painter = QtGui.QPainter()
         self.painter.begin(device)

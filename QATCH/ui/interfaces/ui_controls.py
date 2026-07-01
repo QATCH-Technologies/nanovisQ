@@ -1,14 +1,11 @@
-"""
-QATCH.ui.interfaces.ui_controls
-================================
-UI definition and behaviour for the Controls Window.
+"""QATCH.ui.interfaces.ui_controls
 
 This module owns the `UIControls` class, which builds and manages every
 widget that appears in the floating controls bar shown below the main plot
 area.  It is the logical successor to the auto-generated `mainWindow_ui`
 file, hand-crafted to support two parallel layout modes:
 
-* **Toolbar (simple) mode** - the default production layout: a single
+* **Toolbar mode** - the default production layout: a single
   horizontal toolbar row with Initialize / Run / Reset / Temp-Control /
   Advanced / Account buttons and a collapsible TEC side-panel.
 * **Classic grid mode** - the legacy, full-featured `QGridLayout` kept for
@@ -59,7 +56,7 @@ from QATCH.ui.labels import (
     TemperatureLabel,
 )
 from QATCH.ui.popUp import PopUp
-from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets import (
     AdvancedMainWidget,
     ControlsWidget,
@@ -70,15 +67,8 @@ from QATCH.ui.widgets import (
 from QATCH.ui.widgets.account_popup import AccountPopup
 
 if TYPE_CHECKING:
-    from QATCH.ui.mainWindow import MainWindow
+    from QATCH.ui.main_window import MainWindow
     from QATCH.ui.windows import ControlsWindow
-
-
-def _tok_css(rgba: tuple) -> str:
-    r, g, b, a = rgba
-    if a == 255:
-        return f"#{r:02X}{g:02X}{b:02X}"
-    return f"rgba({r}, {g}, {b}, {a})"
 
 
 def _hairline() -> QtWidgets.QFrame:
@@ -537,13 +527,13 @@ class UIControls:
     """UI definition and controller for the QATCH Controls Window.
 
     `UIControls` is mixed into `ControlsWindow` (a `QMainWindow`
-    subclass) via the standard Qt Designer pattern: `setupUi` is called
+    subclass) via the standard Qt Designer pattern: `setup_ui` is called
     once during construction to build all widgets, and the remaining methods
     implement the associated actions, signals, and helper logic.
 
-    Layout architecture
+    Layout
     -------------------
-    Two complete sets of widgets are built during `setupUi`:
+    Two complete sets of widgets are built during `setup_ui`:
 
     * **`Layout_controls`** - a `QGridLayout` that places every control in a fixed grid.
       Always constructed so external code can reference every widget by name;
@@ -567,7 +557,7 @@ class UIControls:
       geometry.
     """
 
-    def setupUi(self, MainWindow1):
+    def setup_ui(self, controls_window: "ControlsWindow"):
         """Build and assemble all widgets for the controls window.
 
         Execution is grouped into seven phases:
@@ -603,7 +593,7 @@ class UIControls:
            and wires remaining Qt slots via `connectSlotsByName`.
 
         Args:
-            MainWindow1: The `ControlsWindow` parent that receives the
+            controls_window (ControlsWindow): The `ControlsWindow` parent that receives the
                 assembled UI.  Stored as `self.parent`.
         """
         # window geometry & shared layout scaffolding
@@ -611,21 +601,21 @@ class UIControls:
         USE_FULLSCREEN = QDesktopWidget().availableGeometry().width() == 2880
         SHOW_SIMPLE_CONTROLS = True
         self.cal_initialized = False
-        self.parent: "ControlsWindow" = MainWindow1
+        self.parent = controls_window
 
-        MainWindow1.setObjectName("MainWindow1")
-        MainWindow1.setMinimumSize(QtCore.QSize(1000, 50))
+        controls_window.setObjectName("controlsWindow")
+        controls_window.setMinimumSize(QtCore.QSize(1000, 50))
         if Architecture.get_os() is OSType.macosx:
-            MainWindow1.resize(1080, 188)
+            controls_window.resize(1080, 188)
         elif USE_FULLSCREEN:
-            MainWindow1.resize(2880, 390)
-            MainWindow1.move(0, 1485)
+            controls_window.resize(2880, 390)
+            controls_window.move(0, 1485)
         else:
-            MainWindow1.resize(1503, 175)
-            MainWindow1.move(7, 567)
-        MainWindow1.setStyleSheet("")
-        MainWindow1.setTabShape(QtWidgets.QTabWidget.Rounded)
-        self.centralwidget = QtWidgets.QWidget(MainWindow1)
+            controls_window.resize(1503, 175)
+            controls_window.move(7, 567)
+        controls_window.setStyleSheet("")
+        controls_window.setTabShape(QtWidgets.QTabWidget.Rounded)
+        self.centralwidget = QtWidgets.QWidget(controls_window)
         self.centralwidget.setObjectName("centralwidget")
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
         self.gridLayout = QtWidgets.QGridLayout()
@@ -1649,9 +1639,9 @@ class UIControls:
         self.device_info_container.hide()
 
         #  Finalization
-        MainWindow1.setCentralWidget(self.centralwidget)
-        self.retranslateUi(MainWindow1)
-        QtCore.QMetaObject.connectSlotsByName(MainWindow1)
+        controls_window.setCentralWidget(self.centralwidget)
+        self.retranslateUi(controls_window)
+        QtCore.QMetaObject.connectSlotsByName(controls_window)
 
         ThemeManager.instance().themeChanged.connect(lambda _: self._refresh_toolbar_icons())
         self._refresh_toolbar_icons()
@@ -1729,7 +1719,7 @@ class UIControls:
         base_qss = target.styleSheet()
         pulse_rgba = ThemeManager.instance().tokens()["ctrl_pulse_border"]
         amber = (
-            target.__class__.__name__ + f" {{ border: 1px solid {_tok_css(pulse_rgba)}; "
+            target.__class__.__name__ + f" {{ border: 1px solid {tok_css(pulse_rgba)}; "
             "border-radius: 12px; }"
         )
 
@@ -2419,7 +2409,7 @@ class UIControls:
 
         # Confirm the stored PID matches the one actively listed in the COM Port combobox
         try:
-            port_combobox = main_window.ControlsWin.ui1.cBox_Port
+            port_combobox = main_window.ControlsWin.ui.cBox_Port
             idx = port_combobox.findData(selected_port)
 
             if idx >= 0:
@@ -2851,7 +2841,7 @@ class UIControls:
         if src.isNull():
             return QtGui.QIcon()
         dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.transparent)
+        dst.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(dst)
         p.drawPixmap(0, 0, src)
         p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
@@ -3234,9 +3224,9 @@ class UIControls:
         self.tempStatusBar.setText(status_text)
         self.tempStatusBar.setStyleSheet(
             "QLabel { "
-            f"background: {_tok_css(bg_rgba)}; "
-            f"color: {_tok_css(text_rgba)}; "
-            f"border: 1px solid {_tok_css(border_rgba)}; "
+            f"background: {tok_css(bg_rgba)}; "
+            f"color: {tok_css(text_rgba)}; "
+            f"border: 1px solid {tok_css(border_rgba)}; "
             "border-radius: 3px; padding: 0 6px; font-weight: bold; }"
         )
 
@@ -3341,7 +3331,7 @@ class UIControls:
     def _build_advanced_layout(self) -> QtWidgets.QLayout:
         """Assemble the advanced-panel widgets into a clean, sectioned layout.
 
-        Called once during `setupUi` to produce the `QVBoxLayout` that is
+        Called once during `setup_ui` to produce the `QVBoxLayout` that is
         handed to `AdvancedMainWidget.build_container`.  The layout is stored
         as `self._advanced_controls_layout` and reused every time the popup
         is opened or recreated.
@@ -3641,7 +3631,7 @@ class UIControls:
             if main_win is None:
                 return
 
-            can_sign_out = main_win.ui0._set_no_user_mode(None)
+            can_sign_out = main_win.ui._set_no_user_mode(None)
             if not can_sign_out:
                 Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
                 return
@@ -3659,7 +3649,7 @@ class UIControls:
             self.parent.userrole = UserRoles.NONE
             self.parent.signinout.setText("&Sign In")
             self.parent.manage.setText("&Manage Users...")
-            self.parent.ui1.tool_User.setText("Anonymous")
+            self.parent.ui.tool_User.setText("Anonymous")
 
             analyze_proc = getattr(self.parent.parent, "AnalyzeProc", None)
             if analyze_proc:

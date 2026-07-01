@@ -9,9 +9,8 @@ import traceback
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-from typing import Optional, cast, List, Tuple, Any, Dict, Callable, Union
-from time import monotonic, localtime, strftime  # sleep
-from scipy import interpolate
+from time import localtime, monotonic, strftime  # sleep
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 from xml.dom import minidom
 
 import numpy as np
@@ -21,6 +20,7 @@ from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QCompleter
+from scipy import interpolate
 from scipy.interpolate import interp1d
 from scipy.signal import argrelextrema, savgol_filter
 
@@ -453,10 +453,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         layout_sign = QtWidgets.QVBoxLayout()
         layout_curr = QtWidgets.QHBoxLayout()
         signedInAs = QtWidgets.QLabel("Signed in as: ")
-        signedInAs.setAlignment(QtCore.Qt.AlignLeft)
+        signedInAs.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         layout_curr.addWidget(signedInAs)
         self.signedInAs = QtWidgets.QLabel("[NONE]")
-        self.signedInAs.setAlignment(QtCore.Qt.AlignRight)
+        self.signedInAs.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         layout_curr.addWidget(self.signedInAs)
         layout_sign.addLayout(layout_curr)
         line_sep = QtWidgets.QFrame()
@@ -1082,8 +1082,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.footerText_right = QtWidgets.QLabel(
             "<i>Drag markers for rough placement. &nbsp; Click bottom plots for precise placement.</i>"
         )
-        self.footerText_left.setAlignment(QtCore.Qt.AlignLeft)
-        self.footerText_right.setAlignment(QtCore.Qt.AlignRight)
+        self.footerText_left.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+        self.footerText_right.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
 
         layout_h3 = QtWidgets.QHBoxLayout()
         layout_h3.addWidget(self.footerText_left)
@@ -1663,7 +1663,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.parent.ControlsWin.username.setText(f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.ControlsWin.ui.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
                     self.parent.ControlsWin.manage.setText("&Change Password...")
@@ -1678,7 +1678,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.parent.ControlsWin.userrole = UserRoles.NONE
                 self.parent.ControlsWin.signinout.setText("&Sign In")
                 self.parent.ControlsWin.manage.setText("&Manage Users...")
-                self.parent.ControlsWin.ui1.tool_User.setText("Anonymous")
+                self.parent.ControlsWin.ui.tool_User.setText("Anonymous")
                 self.parent.AnalyzeProc.tool_User.setText("Anonymous")
                 PopUp.warning(
                     self,
@@ -1690,7 +1690,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.parent.ControlsWin.username.setText(f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.ControlsWin.ui.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
                     self.parent.ControlsWin.manage.setText("&Change Password...")
@@ -8451,10 +8451,15 @@ class AnalyzerWorker(QtCore.QObject):
             ax7 = fig4.add_subplot(111)
 
             # Create the annotation object (hidden by default)
-            self.annot = ax7.annotate("", xy=(0,0), xytext=(-40,20),textcoords="offset points",
-                                bbox=dict(boxstyle="round", fc="w"),
-                                arrowprops=dict(arrowstyle="->"),
-                                picker=True)
+            self.annot = ax7.annotate(
+                "",
+                xy=(0, 0),
+                xytext=(-40, 20),
+                textcoords="offset points",
+                bbox=dict(boxstyle="round", fc="w"),
+                arrowprops=dict(arrowstyle="->"),
+                picker=True,
+            )
             self.annot.set_visible(False)
             self.annot.get_bbox_patch().set_alpha(0.8)
 
@@ -9976,18 +9981,18 @@ class AnalyzerWorker(QtCore.QObject):
         return idx - 2
 
     def update_annot(self, child, ind):
-        """ Define the update function """
+        """Define the update function"""
         ax = getattr(self, "plot_ax", None)
         if ax is None:
             Log.w("No points to annotate.")
             return
         point_labels = {
             0: "High-Shear",
-            1: "Initial Fill", 
-            2: "End of Initial", 
-            3: "Channel 1 Fill", 
-            4: "Channel 2 Fill", 
-            5: "Channel 3 Fill"
+            1: "Initial Fill",
+            2: "End of Initial",
+            3: "Channel 1 Fill",
+            4: "Channel 2 Fill",
+            5: "Channel 3 Fill",
         }
         # If the child is a Scatter plot (PathCollection)
         if hasattr(child, "get_offsets"):
@@ -10004,7 +10009,9 @@ class AnalyzerWorker(QtCore.QObject):
             return
         idx = self.get_point_index_from_shear_rate(pos[0])
         self.annot.xy = pos
-        self.annot.set_text(f"POI: {idx:.0f}\n{point_labels[idx]}\n{pos[0]:.2f} S⁻¹\n{pos[1]:.2f} cP\n(Click to Modify)")
+        self.annot.set_text(
+            f"POI: {idx:.0f}\n{point_labels[idx]}\n{pos[0]:.2f} S⁻¹\n{pos[1]:.2f} cP\n(Click to Modify)"
+        )
         self.annot.get_bbox_patch().set_facecolor("lightblue")
 
     def _click(self, event):
@@ -10018,7 +10025,7 @@ class AnalyzerWorker(QtCore.QObject):
         fig.canvas.draw_idle()
 
     def hover(self, event):
-        """ Define the hover event listener """
+        """Define the hover event listener"""
         ax = getattr(self, "plot_ax", None)
         if ax is None:
             Log.w("No points to annotate.")

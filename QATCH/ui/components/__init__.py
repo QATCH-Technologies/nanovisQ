@@ -1,6 +1,7 @@
 from .animated_combo_box import AnimatedComboBox
 from .animated_spin_box import AnimatedDoubleSpinBox, AnimatedSpinBox
 from .borderless_action_button import BorderlessActionButton
+from .glass_card import GlassCard
 from .glass_line_edit import GlassLineEdit
 from .glass_option_card import GlassOptionCard, GlassOptionCardGroup
 from .glass_push_button import GlassPushButton
@@ -21,6 +22,7 @@ __all__ = [
     "GlassToggle",
     "GlassWarningLabel",
     "NumberIconButton",
+    "GlassCard",
     "RunControls",
     "FLUXControl",
 ]

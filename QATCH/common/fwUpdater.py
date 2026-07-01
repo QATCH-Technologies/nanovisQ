@@ -1,22 +1,24 @@
-from QATCH.ui.popUp import PopUp
-from QATCH.core.constants import Constants, UserRoles
-from QATCH.common.userProfiles import UserProfiles
-from QATCH.common.tyUpdater import QATCH_TyUpdater
-from QATCH.common.logger import Logger as Log
-from QATCH.common.fileStorage import FileStorage
-from QATCH.common.architecture import Architecture, OSType
-from serial import serialutil
-from PyQt5 import QtCore, QtWidgets, QtGui
-from enum import IntEnum, unique
-from time import time, sleep
-from subprocess import Popen, PIPE
-from datetime import datetime
 import mmap
 import os
 import shlex
 import shutil
 import stat
+from datetime import datetime
+from enum import IntEnum, unique
+from subprocess import PIPE, Popen
+from time import sleep, time
+
 import requests
+from PyQt5 import QtCore, QtGui, QtWidgets
+from serial import serialutil
+
+from QATCH.common.architecture import Architecture, OSType
+from QATCH.common.fileStorage import FileStorage
+from QATCH.common.logger import Logger as Log
+from QATCH.common.tyUpdater import QATCH_TyUpdater
+from QATCH.common.userProfiles import UserProfiles
+from QATCH.core.constants import Constants, UserRoles
+from QATCH.ui.popUp import PopUp
 
 USE_PROGRESS_BAR_MODULE = False
 if USE_PROGRESS_BAR_MODULE:
@@ -160,13 +162,13 @@ class FW_Updater:
                             doUpdate = parent.ReadyToShow
 
                         if doUpdate:
-                            parent.ControlsWin.ui1.infobar.setText(
+                            parent.ControlsWin.ui.infobar.setText(
                                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
                                     "#333333",
                                     "Programming device firmware... please wait...",
                                 )
                             )
-                            parent.ControlsWin.ui1.infobar.repaint()
+                            parent.ControlsWin.ui.infobar.repaint()
 
                             # # They said "YES" or we did not ask, attempt the update
                             multistep = f" ({i} of {num_ports})" if num_ports > 1 else ""
@@ -240,7 +242,7 @@ class FW_Updater:
                                 self._port_changed = False
                                 self._port = port
 
-                            parent.ControlsWin.ui1.infobar.setText(
+                            parent.ControlsWin.ui.infobar.setText(
                                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
                                     "#333333", ""
                                 )
@@ -880,8 +882,8 @@ class UpdaterTask(QtCore.QThread):
             #     PopUp.warning(parent, "Unknown Teensy HW Type", "Unknown hardware device. Cannot proceed.\nPlease check HW type and try again.")
             #     return result, output, error
 
-        # parent.ControlsWin.ui1.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333","Programming device firmware... please wait..."))
-        # parent.ControlsWin.ui1.infobar.repaint()
+        # parent.ControlsWin.ui.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333","Programming device firmware... please wait..."))
+        # parent.ControlsWin.ui.infobar.repaint()
 
         if self._serial.is_open == True or port == None:
             # NOTE: LEGACY UPDATES NO LONGER SUPPORTED (FLASHERX BOOTLOADER REQUIRED)
@@ -1193,7 +1195,7 @@ class UpdaterTask(QtCore.QThread):
                 # Log.d("GUI: Normal repaint events")
                 # Log.d("GUI: Toggle progress mode")
 
-        # parent.ControlsWin.ui1.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333",""))
+        # parent.ControlsWin.ui.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333",""))
 
         # Append results to the log file
         path_to_log = os.path.join(os.getcwd(), Constants.log_export_path)
@@ -1366,7 +1368,7 @@ class UpdaterTask(QtCore.QThread):
             finally:
                 self.close()
 
-        parent.ControlsWin.ui1.infobar.setText(
+        parent.ControlsWin.ui.infobar.setText(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333", "")
         )
 

@@ -497,7 +497,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         """
         src = QtGui.QIcon(path).pixmap(size, size)
         dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.transparent)
+        dst.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(dst)
         p.drawPixmap(0, 0, src)
         p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
@@ -587,7 +587,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             clip.setStyleSheet("QFrame#slideClip { background: transparent; border: none; }")
             clip.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             clip.setGeometry(tbl_geo)
-            clip.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+            clip.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
             # Force hard clipping of child widgets to the wrapper's rect.
             clip.setMask(QtGui.QRegion(0, 0, tbl_geo.width(), tbl_geo.height()))
             clip.show()
@@ -1129,7 +1129,9 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         container = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout(container)
         layout.setContentsMargins(4, 2, 4, 2)
-        layout.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        layout.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
 
         badge = QtWidgets.QLabel(role_name)
 
@@ -1463,7 +1465,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             base = getattr(combo, "_base_pixmap", None)
             if base is not None and not base.isNull():
                 tinted = QtGui.QPixmap(base.size())
-                tinted.fill(QtCore.Qt.transparent)
+                tinted.fill(QtCore.Qt.GlobalColor.transparent)
                 p = QtGui.QPainter(tinted)
                 p.drawPixmap(0, 0, base)
                 p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
@@ -1739,7 +1741,9 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 item = QtWidgets.QTableWidgetItem(clean_text)
                 item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 item.setTextAlignment(
-                    QtCore.Qt.AlignmentFlag.AlignCenter if col < 3 else QtCore.Qt.AlignLeft
+                    QtCore.Qt.AlignmentFlag.AlignCenter
+                    if col < 3
+                    else QtCore.Qt.AlignmentFlag.AlignLeft
                 )
 
                 if is_error:

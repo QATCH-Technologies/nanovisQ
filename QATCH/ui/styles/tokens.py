@@ -158,6 +158,42 @@ class ColorTokens(TypedDict):
     menubar_dim_item_disabled_text: RGBA
     menubar_dim_border: RGBA
     menubar_dim_separator: RGBA
+    # Login UI — titles, body text, links
+    login_title_text: RGBA
+    login_body_text: RGBA
+    login_link_text: RGBA
+    login_link_text_hover: RGBA
+    login_caps_warning: RGBA
+    # Login UI — checkbox
+    login_checkbox_text: RGBA
+    login_checkbox_border: RGBA
+    login_checkbox_bg: RGBA
+    login_checkbox_hover_border: RGBA
+    login_checkbox_checked_bg: RGBA
+    login_checkbox_checked_border: RGBA
+    # Login UI — recover status feedback
+    login_recover_success: RGBA
+    login_recover_error: RGBA
+    # Login UI — primary action buttons
+    login_primary_btn_top: RGBA
+    login_primary_btn_bottom: RGBA
+    login_primary_btn_hover_top: RGBA
+    login_primary_btn_hover_bottom: RGBA
+    login_primary_btn_pressed_top: RGBA
+    login_primary_btn_pressed_bottom: RGBA
+    login_primary_btn_disabled_bg: RGBA
+    # Login UI — back navigation button
+    login_back_btn_text: RGBA
+    login_back_btn_text_hover: RGBA
+    # Mode window — footer copyright label
+    mode_footer_text: RGBA
+    mode_footer_dim_text: RGBA
+    # Mode window — log-console toggle button
+    mode_toggle_btn_hover: RGBA
+    mode_toggle_btn_pressed: RGBA
+    # Mode window — log-splitter handle hover
+    mode_splitter_handle_hover: RGBA
+    mode_splitter_dim_handle_hover: RGBA
 
 
 # Lifted directly from QATCH/ui/styles/app_theme.qss (formerly ui_main_theme.qss)
@@ -301,6 +337,42 @@ LIGHT: ColorTokens = {
     "menubar_dim_item_disabled_text": (90, 98, 106, 150),
     "menubar_dim_border": (255, 255, 255, 90),
     "menubar_dim_separator": (255, 255, 255, 80),
+    # Login UI — titles, body text, links
+    "login_title_text": (50, 55, 65, 220),
+    "login_body_text": (100, 110, 120, 220),
+    "login_link_text": (100, 110, 120, 180),
+    "login_link_text_hover": (60, 60, 60, 220),
+    "login_caps_warning": (200, 130, 30, 235),
+    # Login UI — checkbox
+    "login_checkbox_text": (60, 70, 80, 220),
+    "login_checkbox_border": (150, 160, 170, 180),
+    "login_checkbox_bg": (255, 255, 255, 120),
+    "login_checkbox_hover_border": (10, 163, 230, 150),
+    "login_checkbox_checked_bg": (10, 163, 230, 210),
+    "login_checkbox_checked_border": (10, 150, 210, 255),
+    # Login UI — recover status feedback
+    "login_recover_success": (46, 139, 87, 220),
+    "login_recover_error": (200, 30, 30, 230),
+    # Login UI — primary action buttons
+    "login_primary_btn_top": (45, 165, 250, 210),
+    "login_primary_btn_bottom": (15, 125, 210, 190),
+    "login_primary_btn_hover_top": (65, 185, 255, 240),
+    "login_primary_btn_hover_bottom": (25, 145, 230, 220),
+    "login_primary_btn_pressed_top": (15, 115, 200, 220),
+    "login_primary_btn_pressed_bottom": (5, 95, 160, 200),
+    "login_primary_btn_disabled_bg": (150, 170, 190, 100),
+    # Login UI — back navigation button
+    "login_back_btn_text": (100, 110, 120, 200),
+    "login_back_btn_text_hover": (60, 60, 60, 220),
+    # Mode window — footer copyright label
+    "mode_footer_text": (70, 80, 95, 140),
+    "mode_footer_dim_text": (40, 48, 56, 200),
+    # Mode window — log-console toggle button
+    "mode_toggle_btn_hover": (120, 130, 145, 45),
+    "mode_toggle_btn_pressed": (120, 130, 145, 80),
+    # Mode window — log-splitter handle hover
+    "mode_splitter_handle_hover": (120, 130, 145, 60),
+    "mode_splitter_dim_handle_hover": (140, 145, 150, 255),
 }
 
 # First-pass dark palette: dark surfaces, lightened accent/text for contrast.
@@ -443,6 +515,42 @@ DARK: ColorTokens = {
     "menubar_dim_item_disabled_text": (80, 90, 100, 140),
     "menubar_dim_border": (60, 68, 78, 90),
     "menubar_dim_separator": (80, 88, 100, 80),
+    # Login UI — titles, body text, links
+    "login_title_text": (210, 218, 230, 220),
+    "login_body_text": (150, 162, 178, 220),
+    "login_link_text": (140, 152, 168, 180),
+    "login_link_text_hover": (200, 210, 225, 220),
+    "login_caps_warning": (240, 170, 50, 235),
+    # Login UI — checkbox
+    "login_checkbox_text": (185, 195, 210, 220),
+    "login_checkbox_border": (80, 90, 108, 180),
+    "login_checkbox_bg": (45, 52, 62, 120),
+    "login_checkbox_hover_border": (45, 175, 240, 150),
+    "login_checkbox_checked_bg": (30, 140, 210, 210),
+    "login_checkbox_checked_border": (25, 120, 190, 255),
+    # Login UI — recover status feedback
+    "login_recover_success": (80, 210, 140, 220),
+    "login_recover_error": (235, 90, 90, 230),
+    # Login UI — primary action buttons
+    "login_primary_btn_top": (30, 130, 220, 210),
+    "login_primary_btn_bottom": (10, 100, 190, 190),
+    "login_primary_btn_hover_top": (50, 155, 245, 240),
+    "login_primary_btn_hover_bottom": (20, 120, 210, 220),
+    "login_primary_btn_pressed_top": (10, 90, 175, 220),
+    "login_primary_btn_pressed_bottom": (5, 70, 140, 200),
+    "login_primary_btn_disabled_bg": (70, 80, 95, 100),
+    # Login UI — back navigation button
+    "login_back_btn_text": (130, 142, 158, 200),
+    "login_back_btn_text_hover": (190, 200, 218, 220),
+    # Mode window — footer copyright label
+    "mode_footer_text": (160, 170, 185, 140),
+    "mode_footer_dim_text": (160, 170, 185, 200),
+    # Mode window — log-console toggle button
+    "mode_toggle_btn_hover": (90, 100, 118, 60),
+    "mode_toggle_btn_pressed": (90, 100, 118, 100),
+    # Mode window — log-splitter handle hover
+    "mode_splitter_handle_hover": (90, 100, 118, 80),
+    "mode_splitter_dim_handle_hover": (80, 88, 100, 255),
 }
 
 PALETTES: dict[str, ColorTokens] = {"light": LIGHT, "dark": DARK}

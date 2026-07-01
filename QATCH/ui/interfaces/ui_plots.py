@@ -17,60 +17,22 @@ Date:
 
 from __future__ import annotations
 
-import os
 import math
+import os
 import time
 from typing import List, Tuple
 
-from PyQt5.QtGui import QCursor
-from PyQt5.QtCore import Qt
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import QDesktopWidget, QColorDialog
+from PyQt5.QtWidgets import QColorDialog, QDesktopWidget
 from pyqtgraph import GraphicsLayoutWidget
 
 from QATCH.common.architecture import Architecture
 from QATCH.core.constants import Constants
-from QATCH.ui.popUp import PopUp
-from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode, tok_css
+from QATCH.ui.styles.tokens import PALETTES
 
 
-def _tok_css(rgba: tuple) -> str:
-    r, g, b, a = rgba
-    if a == 255:
-        return f"#{r:02X}{g:02X}{b:02X}"
-    return f"rgba({r}, {g}, {b}, {a})"
-
-
-# ============================================================
-#  PlotsWindow  (outer QMainWindow shell - API unchanged)
-# ============================================================
-
-
-class PlotsWindow(QtWidgets.QMainWindow):
-    def __init__(self, samples=Constants.argument_default_samples):
-        super().__init__()
-        self.ui2 = UIPlots()
-        self.ui2.setupUi(self)
-
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
-        res = PopUp.question(
-            self,
-            Constants.app_title,
-            "Are you sure you want to quit QATCH Q-1 application now?",
-            True,
-        )
-        if res:
-            QtWidgets.QApplication.quit()
-        else:
-            event.ignore()
-
-
-# ============================================================
-#  _SectionMenuRow  - one row inside the glass dropdown
-# ============================================================
-
-
-class _SectionMenuRow(QtWidgets.QWidget):
+class SectionMenuRow(QtWidgets.QWidget):
     """
     A compact interactive row: [color-swatch] [label ···] [show/hide toggle]
     Used as a QWidgetAction payload inside each plot's option menu.
@@ -90,8 +52,10 @@ class _SectionMenuRow(QtWidgets.QWidget):
         self._key = key
         self._color = QtGui.QColor(color)
         self._visible = True
+        self._icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
-        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setObjectName("SectionMenuRow")
         self.setMinimumWidth(190)
         self.setFixedHeight(34)
 
@@ -101,7 +65,8 @@ class _SectionMenuRow(QtWidgets.QWidget):
 
         # ── Color swatch ──────────────────────────────────────────
         self._swatch = QtWidgets.QToolButton()
-        self._swatch.setFixedSize(16, 16)
+        self._swatch.setFixedSize(20, 20)
+        self._swatch.setIconSize(QtCore.QSize(16, 16))
         self._swatch.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self._swatch.setToolTip("Change color")
         self._swatch.clicked.connect(self._pick_color)
@@ -114,6 +79,7 @@ class _SectionMenuRow(QtWidgets.QWidget):
         # ── Show / Hide toggle ────────────────────────────────────
         self._eye = QtWidgets.QToolButton()
         self._eye.setFixedSize(22, 22)
+        self._eye.setIconSize(QtCore.QSize(16, 16))
         self._eye.setCheckable(True)
         self._eye.setChecked(True)
         self._eye.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
@@ -127,24 +93,17 @@ class _SectionMenuRow(QtWidgets.QWidget):
         lay.addWidget(self._lbl, 1)
         lay.addWidget(self._eye)
 
-    # ── Row hover ─────────────────────────────────────────────────
-    def enterEvent(self, _event):
-        hover = _tok_css(ThemeManager.instance().tokens()["plot_menu_row_hover"])
-        self.setStyleSheet(f"background: {hover}; border-radius: 6px;")
-
-    def leaveEvent(self, _event):
-        self.setStyleSheet("background: transparent;")
-
     # ── Style helpers ─────────────────────────────────────────────
     def _apply_swatch_style(self) -> None:
-        c = self._color
+        path = os.path.join(self._icons_dir, "color-mode.svg")
+        self._swatch.setIcon(PlotContainer._tinted_icon(path, self._color, size=16))
         tok = ThemeManager.instance().tokens()
         br = tok["plot_swatch_border"]
-        border = _tok_css(br)
-        border_full = _tok_css((*br[:3], 255))
+        border = tok_css(br)
+        border_full = tok_css((*br[:3], 255))
         self._swatch.setStyleSheet(f"""
             QToolButton {{
-                background-color: rgb({c.red()},{c.green()},{c.blue()});
+                background: transparent;
                 border: 1.5px solid {border};
                 border-radius: 8px;
             }}
@@ -154,17 +113,16 @@ class _SectionMenuRow(QtWidgets.QWidget):
         """)
 
     def _apply_eye_style(self) -> None:
-        symbol = "◉" if self._visible else "○"
+        icon_name = "eye-on.svg" if self._visible else "eye-off.svg"
+        path = os.path.join(self._icons_dir, icon_name)
         tok = ThemeManager.instance().tokens()
-        text_color = _tok_css(
-            tok["plot_text_normal"] if self._visible else (*tok["plot_text_normal"][:3], 80)
-        )
-        hover_bg = _tok_css(tok["plot_tab_bg_hover"])
-        self._eye.setText(symbol)
+        r, g, b, _ = tok["plot_text_normal"]
+        tint = QtGui.QColor(r, g, b, 200 if self._visible else 80)
+        self._eye.setIcon(PlotContainer._tinted_icon(path, tint, size=16))
+        hover_bg = tok_css(tok["plot_tab_bg_hover"])
         self._eye.setStyleSheet(f"""
             QToolButton {{
                 background: transparent; border: none;
-                color: {text_color}; font-size: 13px;
                 border-radius: 4px;
             }}
             QToolButton:hover {{ background: {hover_bg}; }}
@@ -200,29 +158,68 @@ class _SectionMenuRow(QtWidgets.QWidget):
         return None
 
 
-# ============================================================
-#  _SectionHeaderRow  - non-interactive section label
-# ============================================================
+class GridMenuRow(QtWidgets.QWidget):
+    """A labeled checkbox for toggling a grid-line axis in the plot gear menu."""
 
+    toggled = QtCore.pyqtSignal(str, bool)  # (key, visible)
 
-class _SectionHeaderRow(QtWidgets.QWidget):
-    def __init__(self, text: str, parent: QtWidgets.QWidget = None) -> None:
+    def __init__(
+        self,
+        key: str,
+        label: str,
+        parent: QtWidgets.QWidget = None,
+    ) -> None:
         super().__init__(parent)
-        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-        self.setFixedHeight(26)
+        self._key = key
+
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setObjectName("SectionMenuRow")
+        self.setMinimumWidth(190)
+        self.setFixedHeight(34)
+
         lay = QtWidgets.QHBoxLayout(self)
-        lay.setContentsMargins(10, 4, 10, 0)
-        lbl = QtWidgets.QLabel(text.upper())
-        lbl.setObjectName("PlotMenuSectionHeader")
-        lay.addWidget(lbl)
+        lay.setContentsMargins(10, 0, 10, 0)
+        lay.setSpacing(8)
+
+        self._checkbox = QtWidgets.QCheckBox(label)
+        self._checkbox.setObjectName("PlotMenuItemLabel")
+        self._checkbox.setChecked(False)  # off by default
+        self._checkbox.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self._checkbox.stateChanged.connect(
+            lambda _: self.toggled.emit(self._key, self._checkbox.isChecked())
+        )
+
+        ThemeManager.instance().themeChanged.connect(self._apply_style)
+
+        lay.addWidget(self._checkbox, 1)
+
+        self._apply_style()
+
+    def _apply_style(self, _=None) -> None:
+        tok = ThemeManager.instance().tokens()
+        text_css = tok_css(tok["plot_text_normal"])
+        border_css = tok_css(tok["plot_swatch_border"])
+        checked_css = tok_css(tok["plot_data_primary"])
+        self._checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {text_css};
+                spacing: 6px;
+            }}
+            QCheckBox::indicator {{
+                width: 15px;
+                height: 15px;
+                border-radius: 3px;
+                border: 1.5px solid {border_css};
+                background: transparent;
+            }}
+            QCheckBox::indicator:checked {{
+                background: {checked_css};
+                border-color: {checked_css};
+            }}
+        """)
 
 
-# ============================================================
-#  GlassContainer
-# ============================================================
-
-
-class GlassContainer(QtWidgets.QWidget):
+class PlotContainer(QtWidgets.QWidget):
     """Standard Frosted-glass card wrapping a single pyqtgraph GraphicsLayoutWidget."""
 
     # Legacy signal (kept for compatibility)
@@ -232,6 +229,7 @@ class GlassContainer(QtWidgets.QWidget):
     # Per-section signals
     sectionColorChanged = QtCore.pyqtSignal(str, QtGui.QColor)  # (key, color)
     sectionVisibilityChanged = QtCore.pyqtSignal(str, bool)  # (key, visible)
+    gridChanged = QtCore.pyqtSignal(str, bool)  # (key, visible)
 
     _R = 10.0
     _M = 3
@@ -252,6 +250,8 @@ class GlassContainer(QtWidgets.QWidget):
 
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self._is_fullscreen = False
+        self._preload_icons()
 
         self.has_header = title is not None or show_menu
 
@@ -287,6 +287,41 @@ class GlassContainer(QtWidgets.QWidget):
         layout.addWidget(plot_widget, 1)
 
         ThemeManager.instance().themeChanged.connect(self.update)
+        ThemeManager.instance().themeChanged.connect(lambda _: self._apply_icon_theme())
+        self._apply_icon_theme()
+
+    # ── Icon theming ──────────────────────────────────────────────
+    @staticmethod
+    def _tinted_icon(path: str, color: QtGui.QColor, size: int = 13) -> QtGui.QIcon:
+        src = QtGui.QIcon(path).pixmap(size, size)
+        dst = QtGui.QPixmap(src.size())
+        dst.fill(QtCore.Qt.GlobalColor.transparent)
+        p = QtGui.QPainter(dst)
+        p.drawPixmap(0, 0, src)
+        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+        p.fillRect(dst.rect(), color)
+        p.end()
+        return QtGui.QIcon(dst)
+
+    def _preload_icons(self) -> None:
+        icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+        tint = QtGui.QColor(*PALETTES["dark"]["plot_text_normal"][:3])
+        for stem in ("fullscreen", "fullscreen-exit", "gear"):
+            path = os.path.join(icons_dir, f"{stem}.svg")
+            attr = "_icon_" + stem.replace("-", "_")
+            setattr(self, attr, QtGui.QIcon(path))
+            setattr(self, attr + "_lit", self._tinted_icon(path, tint))
+
+    def _apply_icon_theme(self) -> None:
+        dark = ThemeManager.instance().mode() == ThemeMode.DARK
+        if hasattr(self, "_menu_btn"):
+            self._menu_btn.setIcon(self._icon_gear_lit if dark else self._icon_gear)
+        if hasattr(self, "btn_fs"):
+            if self._is_fullscreen:
+                icon = self._icon_fullscreen_exit_lit if dark else self._icon_fullscreen_exit
+            else:
+                icon = self._icon_fullscreen_lit if dark else self._icon_fullscreen
+            self.btn_fs.setIcon(icon)
 
     # ── Round icon button factory (circular hover) ────────────────
     def _make_icon_button(self, icon_name: str, tooltip: str) -> QtWidgets.QToolButton:
@@ -302,13 +337,13 @@ class GlassContainer(QtWidgets.QWidget):
 
     # ── Menu builder ──────────────────────────────────────────────
     def _build_menu(self) -> QtWidgets.QToolButton:
-        menu_btn = self._make_icon_button("gear.svg", "Plot Options")
-        menu_btn.setObjectName("PlotMenuBtn")
-        menu_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        self._menu_btn = self._make_icon_button("gear.svg", "Plot Options")
+        self._menu_btn.setObjectName("PlotMenuBtn")
+        self._menu_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
 
-        self.plot_menu = self._build_glass_menu(menu_btn)
-        menu_btn.setMenu(self.plot_menu)
-        return menu_btn
+        self.plot_menu = self._build_glass_menu(self._menu_btn)
+        self._menu_btn.setMenu(self.plot_menu)
+        return self._menu_btn
 
     def _build_glass_menu(self, parent_widget: QtWidgets.QWidget) -> QtWidgets.QMenu:
         menu = QtWidgets.QMenu(parent_widget)
@@ -322,7 +357,7 @@ class GlassContainer(QtWidgets.QWidget):
 
         if self._sections:
             for i, (key, label, color) in enumerate(self._sections):
-                row = _SectionMenuRow(key, label, color)
+                row = SectionMenuRow(key, label, color)
                 row.colorChanged.connect(self.sectionColorChanged)
                 row.visibilityChanged.connect(self.sectionVisibilityChanged)
 
@@ -336,6 +371,18 @@ class GlassContainer(QtWidgets.QWidget):
             # Fallback: legacy colour action
             action_color = menu.addAction("Change Line Colors…")
             action_color.triggered.connect(self.colorRequested.emit)
+
+        # Grid line toggles (always present)
+        menu.addSeparator()
+        for grid_key, grid_label in (
+            ("grid_major", "Major Gridlines"),
+            ("grid_minor", "Minor Gridlines"),
+        ):
+            grid_row = GridMenuRow(grid_key, grid_label)
+            grid_row.toggled.connect(self.gridChanged)
+            gwa = QtWidgets.QWidgetAction(menu)
+            gwa.setDefaultWidget(grid_row)
+            menu.addAction(gwa)
 
         return menu
 
@@ -389,7 +436,7 @@ class GlassContainer(QtWidgets.QWidget):
 # ============================================================
 
 
-class GlassTabContainer(GlassContainer):
+class PlotTabContainer(PlotContainer):
     """Specialized Glass Container that manages device tabs with activity indicators."""
 
     deviceColorRequested = QtCore.pyqtSignal(int)  # Legacy: emits active device index
@@ -398,11 +445,11 @@ class GlassTabContainer(GlassContainer):
         dummy = QtWidgets.QWidget()
         tok = ThemeManager.instance().tokens()
         main_sections = [
-            ("dissipation", "Dissipation", QtGui.QColor(*tok["plot_data_primary"][:3])),
+            ("dissipation", "Dissipation", QtGui.QColor(*tok["plot_data_temperature"][:3])),
             (
                 "resonance_freq",
                 "Resonance Frequency",
-                QtGui.QColor(*tok["plot_data_secondary"][:3]),
+                QtGui.QColor(*tok["plot_data_primary"][:3]),
             ),
         ]
         # Pass sections so _build_glass_menu picks them up
@@ -451,11 +498,51 @@ class GlassTabContainer(GlassContainer):
         self.stack = QtWidgets.QStackedWidget()
         layout.addWidget(self.stack, 1)
 
+        self._apply_icon_theme()
+
         # ── Activity indicator state management ────────────────────
         self._anim_timer = QtCore.QTimer(self)
         self._anim_timer.timeout.connect(self._animate_icons)
         self._device_states: dict[int, str] = {}
         self._valid_states = {"idle", "error", "init", "success", "recording"}
+
+    # ── Menu override: per-section grid controls ──────────────────
+    def _build_glass_menu(self, parent_widget: QtWidgets.QWidget) -> QtWidgets.QMenu:
+        menu = QtWidgets.QMenu(parent_widget)
+        menu.setObjectName("PlotGlassMenu")
+        menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        menu.setWindowFlags(
+            menu.windowFlags()
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint
+        )
+
+        # Section-specific grid key mapping
+        _grid_keys = {
+            "dissipation": ("grid_diss_major", "grid_diss_minor"),
+            "resonance_freq": ("grid_rf_major", "grid_rf_minor"),
+        }
+
+        for i, (key, label, color) in enumerate(self._sections):
+            row = SectionMenuRow(key, label, color)
+            row.colorChanged.connect(self.sectionColorChanged)
+            row.visibilityChanged.connect(self.sectionVisibilityChanged)
+            wa = QtWidgets.QWidgetAction(menu)
+            wa.setDefaultWidget(row)
+            menu.addAction(wa)
+
+            major_key, minor_key = _grid_keys.get(key, (f"grid_{key}_major", f"grid_{key}_minor"))
+            for grid_key, grid_label in ((major_key, "Major Gridlines"), (minor_key, "Minor Gridlines")):
+                grid_row = GridMenuRow(grid_key, grid_label)
+                grid_row.toggled.connect(self.gridChanged)
+                gwa = QtWidgets.QWidgetAction(menu)
+                gwa.setDefaultWidget(grid_row)
+                menu.addAction(gwa)
+
+            if i < len(self._sections) - 1:
+                menu.addSeparator()
+
+        return menu
 
     # ── Tab creation ──────────────────────────────────────────────
     def add_device(
@@ -539,7 +626,7 @@ class GlassTabContainer(GlassContainer):
 
     def _create_dot_icon(self, color: QtGui.QColor) -> QtGui.QIcon:
         pixmap = QtGui.QPixmap(16, 16)
-        pixmap.fill(QtCore.Qt.transparent)
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
         painter = QtGui.QPainter(pixmap)
         painter.setRenderHints(QtGui.QPainter.Antialiasing)
         painter.setBrush(color)
@@ -552,17 +639,11 @@ class GlassTabContainer(GlassContainer):
         self.stack.setCurrentIndex(index)
 
 
-# ============================================================
-#  Shared helpers
-# ============================================================
-
-
 def _make_plot_widget(parent: QtWidgets.QWidget) -> GraphicsLayoutWidget:
     w = GraphicsLayoutWidget(parent)
     w.setAutoFillBackground(False)
     w.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
     w.setBackground(None)
-    w.setStyleSheet("border:0px; background: transparent;")
     w.setFrameShape(QtWidgets.QFrame.NoFrame)
     w.setFrameShadow(QtWidgets.QFrame.Plain)
     w.setLineWidth(0)
@@ -577,23 +658,22 @@ def _make_plot_widget(parent: QtWidgets.QWidget) -> GraphicsLayoutWidget:
 
 class UIPlots:
 
-    def setupUi(self, MainWindow2: QtWidgets.QMainWindow) -> None:
+    def setup_ui(self, plots_window: QtWidgets.QMainWindow) -> None:
         USE_FULLSCREEN = QDesktopWidget().availableGeometry().width() == 2880
 
-        MainWindow2.setObjectName("MainWindow2")
-        MainWindow2.setMinimumSize(QtCore.QSize(1000, 250))
+        plots_window.setObjectName("plotsWindow")
+        plots_window.setMinimumSize(QtCore.QSize(1000, 250))
         if USE_FULLSCREEN:
-            MainWindow2.resize(1701, 1435)
-            MainWindow2.move(0, 0)
+            plots_window.resize(1701, 1435)
+            plots_window.move(0, 0)
         else:
-            MainWindow2.move(692, 0)
-        MainWindow2.setStyleSheet("")
-        MainWindow2.setTabShape(QtWidgets.QTabWidget.Rounded)
+            plots_window.move(692, 0)
+        plots_window.setTabShape(QtWidgets.QTabWidget.Rounded)
 
         self._fullscreen_active_widget = None
 
         # Central widget ──────────────────────────────────────────────
-        self.centralwidget = QtWidgets.QWidget(MainWindow2)
+        self.centralwidget = QtWidgets.QWidget(plots_window)
         self.centralwidget.setObjectName("centralwidget")
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
 
@@ -608,7 +688,7 @@ class UIPlots:
         self.main_splitter.setHandleWidth(6)
 
         # LEFT - Integrated glass tabs (Dissipation / Resonance Freq)
-        self.left_pane = GlassTabContainer(parent=self.main_splitter)
+        self.left_pane = PlotTabContainer(parent=self.main_splitter)
         self.pltB = _make_plot_widget(self.left_pane)
         self.pltB.setObjectName("pltB")
         self.left_pane.add_device(
@@ -622,13 +702,14 @@ class UIPlots:
         # Amplitude pane
         self.plt = _make_plot_widget(self.right_splitter)
         self.plt.setObjectName("plt")
-        self.amp_glass = GlassContainer(
+        _AMP_INIT = QtGui.QColor(220, 68, 80)  # rose-red, matches _init_plot_curves
+        self.amp_glass = PlotContainer(
             plot_widget=self.plt,
             title="Amplitude (dB)",
-            accent_color=QtGui.QColor(*tok["plot_data_primary"][:3]),
+            accent_color=_AMP_INIT,
             parent=self.right_splitter,
             sections=[
-                ("amplitude", "Amplitude", QtGui.QColor(*tok["plot_data_primary"][:3])),
+                ("amplitude", "Amplitude", _AMP_INIT),
             ],
         )
         self.right_splitter.addWidget(self.amp_glass)
@@ -636,13 +717,14 @@ class UIPlots:
         # Temperature pane
         self.plt_temp = _make_plot_widget(self.right_splitter)
         self.plt_temp.setObjectName("plt_temp")
-        self.temp_glass = GlassContainer(
+        _TEMP_INIT = QtGui.QColor(148, 99, 210)  # soft violet, matches _init_plot_curves
+        self.temp_glass = PlotContainer(
             plot_widget=self.plt_temp,
             title="Temperature °C",
-            accent_color=QtGui.QColor(*tok["plot_data_temperature"][:3]),
+            accent_color=_TEMP_INIT,
             parent=self.right_splitter,
             sections=[
-                ("temperature", "Temperature", QtGui.QColor(*tok["plot_data_temperature"][:3])),
+                ("temperature", "Temperature", _TEMP_INIT),
             ],
         )
         self.right_splitter.addWidget(self.temp_glass)
@@ -656,7 +738,7 @@ class UIPlots:
 
         # Build final hierarchy ────────────────────────────────────────
         root.addWidget(self.main_splitter)
-        MainWindow2.setCentralWidget(self.centralwidget)
+        plots_window.setCentralWidget(self.centralwidget)
 
         # Splitter ratios
         self.main_splitter.setStretchFactor(0, 2)
@@ -669,8 +751,8 @@ class UIPlots:
         self.btnCollapse = QtWidgets.QToolButton()
         self.btnExpand = QtWidgets.QToolButton()
 
-        self.retranslateUi(MainWindow2)
-        QtCore.QMetaObject.connectSlotsByName(MainWindow2)
+        self.retranslateUi(plots_window)
+        QtCore.QMetaObject.connectSlotsByName(plots_window)
 
     # ── Smooth fullscreen toggle ──────────────────────────────────
     def _toggle_fullscreen(self, target_widget: QtWidgets.QWidget) -> None:
@@ -687,29 +769,28 @@ class UIPlots:
         4. Viewport updates are restored (and a single repaint triggered)
            the moment the animation completes.
         """
-        expand_icon = os.path.join(Architecture.get_path(), "QATCH", "icons", "fullscreen.svg")
-        contract_icon = os.path.join(
-            Architecture.get_path(), "QATCH", "icons", "fullscreen-exit.svg"
-        )
-
         if getattr(self, "_fullscreen_active_widget", None) == target_widget:
             # ── Contracting back to normal ──
             target_main = self._normal_main_sizes
             target_right = self._normal_right_sizes
-            target_widget.btn_fs.setIcon(QtGui.QIcon(expand_icon))
+            target_widget._is_fullscreen = False
+            target_widget._apply_icon_theme()
             target_widget.btn_fs.setToolTip("Toggle Fullscreen")
             self._fullscreen_active_widget = None
         else:
             # ── Expanding ──
-            if getattr(self, "_fullscreen_active_widget", None) is None:
+            prev = getattr(self, "_fullscreen_active_widget", None)
+            if prev is None:
                 self._normal_main_sizes = self.main_splitter.sizes()
                 self._normal_right_sizes = self.right_splitter.sizes()
             else:
                 # Reset icon on the previously-expanded pane
-                self._fullscreen_active_widget.btn_fs.setIcon(QtGui.QIcon(expand_icon))
+                prev._is_fullscreen = False
+                prev._apply_icon_theme()
 
             self._fullscreen_active_widget = target_widget
-            target_widget.btn_fs.setIcon(QtGui.QIcon(contract_icon))
+            target_widget._is_fullscreen = True
+            target_widget._apply_icon_theme()
             target_widget.btn_fs.setToolTip("Restore Size")
 
             total_main = sum(self.main_splitter.sizes())
@@ -795,19 +876,19 @@ class UIPlots:
 
     # ─────────────────────────────────────────────────────────────
 
-    def retranslateUi(self, MainWindow2: QtWidgets.QMainWindow) -> None:
+    def retranslateUi(self, plots_window: QtWidgets.QMainWindow) -> None:
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
-        MainWindow2.setWindowIcon(QtGui.QIcon(icon_path))
-        MainWindow2.setWindowTitle(
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-icon.png")
+        plots_window.setWindowIcon(QtGui.QIcon(icon_path))
+        plots_window.setWindowTitle(
             _translate(
-                "MainWindow2",
+                "plotsWindow",
                 "{} {} - Plots".format(Constants.app_title, Constants.app_version),
             )
         )
 
-    def Ui(self, MainWindow2: QtWidgets.QMainWindow) -> None:
-        self.retranslateUi(MainWindow2)
+    def Ui(self, plots_window: QtWidgets.QMainWindow) -> None:
+        self.retranslateUi(plots_window)
 
     # Legacy no-op shims
     def handleSplitterMoved(self, pos: int = 0, index: int = 0) -> None:
