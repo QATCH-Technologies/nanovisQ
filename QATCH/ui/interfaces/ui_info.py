@@ -110,6 +110,7 @@ class UIInfo:
         self.l6a = self._create_info_label(" Temperature ")
         self.gridLayout_2.addWidget(self.l6a, 17, 0, 1, 1)
 
+<<<<<<< HEAD
         # Update status section — widgets are kept as hidden stubs so that
         # existing code in main_window.py can still call setText() on them
         # without errors, but the controls bar icon now owns the visible display.
@@ -119,13 +120,29 @@ class UIInfo:
         self.lweb3 = self._create_info_label(" Update Status ")
         self.lweb3.hide()
 
+=======
+        # Info from website / Updates
+        self.lweb = self._create_header_label(" Check for Updates ")
+        self.gridLayout_2.addWidget(self.lweb, 18, 0, 1, 1)
+
+        self.lweb3 = self._create_info_label(" Update Status ")
+        self.gridLayout_2.addWidget(self.lweb3, 20, 0, 1, 1)
+
+        # Download Button
+>>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
         self.pButton_Download = QtWidgets.QPushButton(self.centralwidget)
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-circle.svg")
         self.pButton_Download.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Download.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Download.setObjectName("pButton_Download")
         self.pButton_Download.setFixedWidth(145)
+<<<<<<< HEAD
         self.pButton_Download.hide()
+=======
+        self.gridLayout_2.addWidget(
+            self.pButton_Download, 21, 0, 1, 1, QtCore.Qt.AlignmentFlag.AlignRight
+        )
+>>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
 
         # Finalize Layout
         self.gridLayout.addLayout(self.gridLayout_2, 3, 1, 1, 1)

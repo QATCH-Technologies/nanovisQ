@@ -67,7 +67,10 @@ from QATCH.processors.updater import (
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner
+<<<<<<< HEAD
 from QATCH.ui.components.update_status_icon import UpdateStatusIcon
+=======
+>>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
 from QATCH.ui.popUp import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager
 from QATCH.ui.windows import (
@@ -2421,6 +2424,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui.cBox_MultiMode.currentIndexChanged.connect(self.set_multi_mode)
         self.ControlsWin.ui.pTemp.clicked.connect(self._enable_tec)
         # --------
+<<<<<<< HEAD
         # Software update icon → triggers download on click
         self.ControlsWin.ui.sw_update_icon.update_requested.connect(self.start_download)
         # Firmware update icon → re-runs check + shows dialog on click
@@ -2431,6 +2435,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fwUpdater.fw_status_changed.connect(
             self.PlotsWin.ui.left_pane.on_fw_status_changed
         )
+=======
+        self.InfoWin.ui.pButton_Download.clicked.connect(self.start_download)
+>>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
 
         # Plot section color / visibility controls
         self.PlotsWin.ui.left_pane.sectionColorChanged.connect(self._on_plot_color_changed)

@@ -28,12 +28,19 @@ from pyqtgraph import GraphicsLayoutWidget
 
 from QATCH.common.architecture import Architecture
 from QATCH.core.constants import Constants
+<<<<<<< HEAD
 from QATCH.ui.components.update_status_icon import UpdateStatusIcon
+=======
+>>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
 from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode, tok_css
 from QATCH.ui.styles.tokens import PALETTES
 
 
+<<<<<<< HEAD
 class PlotMenuRow(QtWidgets.QWidget):
+=======
+class SectionMenuRow(QtWidgets.QWidget):
+>>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
     """
     A compact interactive row: [color-swatch] [label ···] [show/hide toggle]
     Used as a QWidgetAction payload inside each plot's option menu.
@@ -358,7 +365,11 @@ class PlotContainer(QtWidgets.QWidget):
 
         if self._sections:
             for i, (key, label, color) in enumerate(self._sections):
+<<<<<<< HEAD
                 row = PlotMenuRow(key, label, color)
+=======
+                row = SectionMenuRow(key, label, color)
+>>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
                 row.colorChanged.connect(self.sectionColorChanged)
                 row.visibilityChanged.connect(self.sectionVisibilityChanged)
 
@@ -555,6 +566,44 @@ class PlotTabContainer(PlotContainer):
 
         return menu
 
+    # ── Menu override: per-section grid controls ──────────────────
+    def _build_glass_menu(self, parent_widget: QtWidgets.QWidget) -> QtWidgets.QMenu:
+        menu = QtWidgets.QMenu(parent_widget)
+        menu.setObjectName("PlotGlassMenu")
+        menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        menu.setWindowFlags(
+            menu.windowFlags()
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint
+        )
+
+        # Section-specific grid key mapping
+        _grid_keys = {
+            "dissipation": ("grid_diss_major", "grid_diss_minor"),
+            "resonance_freq": ("grid_rf_major", "grid_rf_minor"),
+        }
+
+        for i, (key, label, color) in enumerate(self._sections):
+            row = SectionMenuRow(key, label, color)
+            row.colorChanged.connect(self.sectionColorChanged)
+            row.visibilityChanged.connect(self.sectionVisibilityChanged)
+            wa = QtWidgets.QWidgetAction(menu)
+            wa.setDefaultWidget(row)
+            menu.addAction(wa)
+
+            major_key, minor_key = _grid_keys.get(key, (f"grid_{key}_major", f"grid_{key}_minor"))
+            for grid_key, grid_label in ((major_key, "Major Gridlines"), (minor_key, "Minor Gridlines")):
+                grid_row = GridMenuRow(grid_key, grid_label)
+                grid_row.toggled.connect(self.gridChanged)
+                gwa = QtWidgets.QWidgetAction(menu)
+                gwa.setDefaultWidget(grid_row)
+                menu.addAction(gwa)
+
+            if i < len(self._sections) - 1:
+                menu.addSeparator()
+
+        return menu
+
     # ── Tab creation ──────────────────────────────────────────────
     def add_device(
         self,
@@ -653,6 +702,7 @@ class PlotTabContainer(PlotContainer):
     def on_fw_status_changed(self, port: str, fw_value: int) -> None:
         """Update the firmware status icon based on a per-port check result.
 
+<<<<<<< HEAD
         Tracks each port's FW_UPDATE value and displays the worst-case state
         across all connected devices as a single icon (green/yellow/red).
 
@@ -684,6 +734,8 @@ class PlotTabContainer(PlotContainer):
         self._fw_status_icon.setState(worst, "\n".join(detail_lines))
 
 
+=======
+>>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
 def _make_plot_widget(parent: QtWidgets.QWidget) -> GraphicsLayoutWidget:
     w = GraphicsLayoutWidget(parent)
     w.setAutoFillBackground(False)
