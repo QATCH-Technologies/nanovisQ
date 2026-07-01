@@ -73,14 +73,23 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
     # ── Positioning ───────────────────────────────────────────────────────────
 
     def reposition(self) -> None:
-        """Place the badge centered above the anchor icon."""
+        """Place the badge below the anchor icon, right-aligned with it."""
         global_pos = self._anchor.mapToGlobal(QtCore.QPoint(0, 0))
-        anchor_cx = global_pos.x() + self._anchor.width() // 2
-        x = anchor_cx - self.width() // 2
-        y = global_pos.y() - self.height() - 6
+        anchor_right = global_pos.x() + self._anchor.width()
+        x = anchor_right - self.width()
+        y = global_pos.y() + self._anchor.height() + 4
+
+        # Constrain to the screen that contains the anchor widget so the
+        # badge never drifts to a secondary monitor.
+        screen = QtWidgets.QApplication.screenAt(global_pos)
+        if screen:
+            sg = screen.geometry()
+            x = max(sg.left(), min(x, sg.right() - self.width()))
+            y = max(sg.top(), min(y, sg.bottom() - self.height()))
+
         self.move(x, y)
 
-    def show_above(self) -> None:
+    def show_below(self) -> None:
         self.adjustSize()
         self.reposition()
         self.show()
@@ -240,7 +249,7 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
             self._badge.dismissed.connect(self._on_badge_dismissed)
         if not self.isVisible():
             return
-        self._badge.show_above()
+        self._badge.show_below()
 
     def _on_badge_dismissed(self) -> None:
         self._badge_dismissed = True
@@ -299,7 +308,7 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         # Re-show badge after icon becomes visible (e.g. window restore)
         if self._state in (self.State.OPTIONAL, self.State.MANDATORY):
             if not self._badge_dismissed and self._badge:
-                QtCore.QTimer.singleShot(50, self._badge.show_above)
+                QtCore.QTimer.singleShot(50, self._badge.show_below)
 
     def hideEvent(self, event: QtGui.QHideEvent) -> None:
         super().hideEvent(event)
