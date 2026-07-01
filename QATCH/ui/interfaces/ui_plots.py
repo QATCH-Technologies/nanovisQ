@@ -28,19 +28,12 @@ from pyqtgraph import GraphicsLayoutWidget
 
 from QATCH.common.architecture import Architecture
 from QATCH.core.constants import Constants
-<<<<<<< HEAD
 from QATCH.ui.components.update_status_icon import UpdateStatusIcon
-=======
->>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
 from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode, tok_css
 from QATCH.ui.styles.tokens import PALETTES
 
 
-<<<<<<< HEAD
 class PlotMenuRow(QtWidgets.QWidget):
-=======
-class SectionMenuRow(QtWidgets.QWidget):
->>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
     """
     A compact interactive row: [color-swatch] [label ···] [show/hide toggle]
     Used as a QWidgetAction payload inside each plot's option menu.
@@ -63,7 +56,7 @@ class SectionMenuRow(QtWidgets.QWidget):
         self._icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setObjectName("SectionMenuRow")
+        self.setObjectName("PlotMenuRow")
         self.setMinimumWidth(190)
         self.setFixedHeight(34)
 
@@ -181,7 +174,7 @@ class GridMenuRow(QtWidgets.QWidget):
         self._key = key
 
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setObjectName("SectionMenuRow")
+        self.setObjectName("PlotMenuRow")
         self.setMinimumWidth(190)
         self.setFixedHeight(34)
 
@@ -365,11 +358,7 @@ class PlotContainer(QtWidgets.QWidget):
 
         if self._sections:
             for i, (key, label, color) in enumerate(self._sections):
-<<<<<<< HEAD
                 row = PlotMenuRow(key, label, color)
-=======
-                row = SectionMenuRow(key, label, color)
->>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
                 row.colorChanged.connect(self.sectionColorChanged)
                 row.visibilityChanged.connect(self.sectionVisibilityChanged)
 
@@ -498,7 +487,7 @@ class PlotTabContainer(PlotContainer):
         h_layout.addStretch(1)
 
         # Firmware update status icon
-        _fw_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "sw-update.svg")
+        _fw_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "fw-update.svg")
         self._fw_status_icon = UpdateStatusIcon(_fw_icon_path, size=18)
         h_layout.addWidget(self._fw_status_icon)
 
@@ -584,7 +573,7 @@ class PlotTabContainer(PlotContainer):
         }
 
         for i, (key, label, color) in enumerate(self._sections):
-            row = SectionMenuRow(key, label, color)
+            row = PlotMenuRow(key, label, color)
             row.colorChanged.connect(self.sectionColorChanged)
             row.visibilityChanged.connect(self.sectionVisibilityChanged)
             wa = QtWidgets.QWidgetAction(menu)
@@ -592,7 +581,10 @@ class PlotTabContainer(PlotContainer):
             menu.addAction(wa)
 
             major_key, minor_key = _grid_keys.get(key, (f"grid_{key}_major", f"grid_{key}_minor"))
-            for grid_key, grid_label in ((major_key, "Major Gridlines"), (minor_key, "Minor Gridlines")):
+            for grid_key, grid_label in (
+                (major_key, "Major Gridlines"),
+                (minor_key, "Minor Gridlines"),
+            ):
                 grid_row = GridMenuRow(grid_key, grid_label)
                 grid_row.toggled.connect(self.gridChanged)
                 gwa = QtWidgets.QWidgetAction(menu)
@@ -702,7 +694,6 @@ class PlotTabContainer(PlotContainer):
     def on_fw_status_changed(self, port: str, fw_value: int) -> None:
         """Update the firmware status icon based on a per-port check result.
 
-<<<<<<< HEAD
         Tracks each port's FW_UPDATE value and displays the worst-case state
         across all connected devices as a single icon (green/yellow/red).
 
@@ -724,7 +715,9 @@ class PlotTabContainer(PlotContainer):
             elif v in (int(FW_UPDATE.RESULT_OUTDATED), int(FW_UPDATE.RESULT_UNKNOWN)):
                 if worst != UpdateStatusIcon.State.MANDATORY:
                     worst = UpdateStatusIcon.State.OPTIONAL
-                label = "update available" if v == int(FW_UPDATE.RESULT_OUTDATED) else "unknown version"
+                label = (
+                    "update available" if v == int(FW_UPDATE.RESULT_OUTDATED) else "unknown version"
+                )
                 detail_lines.append(f"{p}: {label}")
             elif v == int(FW_UPDATE.RESULT_FAILED):
                 if worst == UpdateStatusIcon.State.UP_TO_DATE:
@@ -734,8 +727,6 @@ class PlotTabContainer(PlotContainer):
         self._fw_status_icon.setState(worst, "\n".join(detail_lines))
 
 
-=======
->>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
 def _make_plot_widget(parent: QtWidgets.QWidget) -> GraphicsLayoutWidget:
     w = GraphicsLayoutWidget(parent)
     w.setAutoFillBackground(False)

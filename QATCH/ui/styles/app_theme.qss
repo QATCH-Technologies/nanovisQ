@@ -387,7 +387,7 @@ QPushButton#PlotDeviceTab:checked:hover {
 }
 
 /* ---- Menu row hover (QWidgetAction payload) ---- */
-QWidget#SectionMenuRow:hover {
+QWidget#PlotMenuRow:hover {
     background: {{PLOT_MENU_ROW_HOVER}};
     border-radius: 6px;
 }

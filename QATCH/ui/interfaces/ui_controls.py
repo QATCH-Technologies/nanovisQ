@@ -47,7 +47,6 @@ from QATCH.ui.components import (
     GlassToggle,
     NumberIconButton,
     RunControls,
-    UpdateStatusIcon,
 )
 from QATCH.ui.labels import (
     DeviceConfigLabel,
@@ -1163,12 +1162,6 @@ class UIControls:
         self.lTemp.text_updated.connect(self._update_temp_display)
 
         self.toolBar.addStretch()
-
-        # Software update status icon (green/yellow/red) — sits right of the
-        # stretch so it's always visible in the top-right corner of the bar.
-        _sw_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "sw-update.svg")
-        self.sw_update_icon = UpdateStatusIcon(_sw_icon_path, size=22)
-        self.toolBar.addWidget(self.sw_update_icon)
 
         self.tool_bar_2 = QtWidgets.QToolBar()
         self.tool_bar_2.setObjectName("CtrlToolBar")

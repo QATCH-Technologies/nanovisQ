@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
+from QATCH.ui.components.update_status_icon import UpdateStatusIcon
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
@@ -328,6 +329,11 @@ class UIMode:
         toggle_layout.addWidget(self.copy_foot)
 
         toggle_layout.addStretch()
+
+        # Software update status icon — bottom right, left of the log toggle
+        _sw_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "sw-update.svg")
+        self.sw_update_icon = UpdateStatusIcon(_sw_icon_path, size=16)
+        toggle_layout.addWidget(self.sw_update_icon)
 
         # Log toggle button
         self.btnLogToggle = QtWidgets.QToolButton(self.log_toggle_bar)

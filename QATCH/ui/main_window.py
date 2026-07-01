@@ -67,10 +67,7 @@ from QATCH.processors.updater import (
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner
-<<<<<<< HEAD
 from QATCH.ui.components.update_status_icon import UpdateStatusIcon
-=======
->>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
 from QATCH.ui.popUp import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager
 from QATCH.ui.windows import (
@@ -2424,28 +2421,28 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui.cBox_MultiMode.currentIndexChanged.connect(self.set_multi_mode)
         self.ControlsWin.ui.pTemp.clicked.connect(self._enable_tec)
         # --------
-<<<<<<< HEAD
         # Software update icon → triggers download on click
-        self.ControlsWin.ui.sw_update_icon.update_requested.connect(self.start_download)
+        self.ModeWin.ui.sw_update_icon.update_requested.connect(self.start_download)
         # Firmware update icon → re-runs check + shows dialog on click
         self.PlotsWin.ui.left_pane._fw_status_icon.update_requested.connect(
             lambda: self.fwUpdater.request_update_dialog(self)
         )
         # Route firmware check results to the plots icon
-        self.fwUpdater.fw_status_changed.connect(
-            self.PlotsWin.ui.left_pane.on_fw_status_changed
-        )
-=======
-        self.InfoWin.ui.pButton_Download.clicked.connect(self.start_download)
->>>>>>> c994fa14e26120b945d2b6704c6e293a0005ce2c
+        self.fwUpdater.fw_status_changed.connect(self.PlotsWin.ui.left_pane.on_fw_status_changed)
 
         # Plot section color / visibility controls
         self.PlotsWin.ui.left_pane.sectionColorChanged.connect(self._on_plot_color_changed)
-        self.PlotsWin.ui.left_pane.sectionVisibilityChanged.connect(self._on_plot_visibility_changed)
+        self.PlotsWin.ui.left_pane.sectionVisibilityChanged.connect(
+            self._on_plot_visibility_changed
+        )
         self.PlotsWin.ui.amp_glass.sectionColorChanged.connect(self._on_plot_color_changed)
-        self.PlotsWin.ui.amp_glass.sectionVisibilityChanged.connect(self._on_plot_visibility_changed)
+        self.PlotsWin.ui.amp_glass.sectionVisibilityChanged.connect(
+            self._on_plot_visibility_changed
+        )
         self.PlotsWin.ui.temp_glass.sectionColorChanged.connect(self._on_plot_color_changed)
-        self.PlotsWin.ui.temp_glass.sectionVisibilityChanged.connect(self._on_plot_visibility_changed)
+        self.PlotsWin.ui.temp_glass.sectionVisibilityChanged.connect(
+            self._on_plot_visibility_changed
+        )
 
         # Grid line toggle controls
         self.PlotsWin.ui.left_pane.gridChanged.connect(self._on_left_pane_grid_changed)
@@ -5230,9 +5227,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             if not self._text4[i]:
                 icon_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
-                self._text4[i] = PlotStatusBanner(
-                    plot_resonance_frequency, icon_dir, z_value=100
-                )
+                self._text4[i] = PlotStatusBanner(plot_resonance_frequency, icon_dir, z_value=100)
                 return  # nothing to show on the very first tick
             if self._drop_applied[i]:
                 self._update_post_drop_label(i, plot_resonance_frequency, plot_dissipation)
@@ -6868,7 +6863,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     labelweb3 = "UP-TO-DATE!"
                 self.ask_for_update = False
                 try:
-                    self.ControlsWin.ui.sw_update_icon.setState(UpdateStatusIcon.State.UP_TO_DATE)
+                    self.ModeWin.ui.sw_update_icon.setState(UpdateStatusIcon.State.UP_TO_DATE)
                 except AttributeError:
                     pass
             elif Constants.UpdateEngine in [
@@ -6913,7 +6908,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     Constants.app_version, Constants.app_date, v
                 )
                 try:
-                    self.ControlsWin.ui.sw_update_icon.setState(
+                    self.ModeWin.ui.sw_update_icon.setState(
                         UpdateStatusIcon.State.OPTIONAL, detail
                     )
                 except AttributeError:
