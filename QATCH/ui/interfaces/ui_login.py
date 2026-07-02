@@ -548,16 +548,16 @@ class UILogin:
         Log.i(f"Welcome, {params[0]}! Role: {params[2].name}.")
 
         # Post-login UI setup
-        controls = self.parent.ControlsWin
+        controls = self.parent.controls_window
 
         controls.username.setText(f"User: {name}")
         controls.userrole = UserRoles(role)
         controls.signinout.setText("&Sign Out")
         controls.ui.tool_User.setText(name)
-        self.parent.AnalyzeProc.tool_User.setText(name)
+        self.parent.analyze_process.tool_User.setText(name)
 
         controls.set_signed_in_menu_state(True)
-        self.parent.ModeWin.ui.mark_signed_in()
+        self.parent.mode_window.ui.mark_signed_in()
 
         if controls.userrole != UserRoles.ADMIN:
             controls.manage.setText("&Change Password...")
@@ -568,9 +568,9 @@ class UILogin:
         )
 
         if has_capture_perm:
-            self.parent.ModeWin.ui._set_run_mode(None)
+            self.parent.mode_window.ui._set_run_mode(None)
         else:
-            self.parent.ModeWin.ui._set_analyze_mode(None)
+            self.parent.mode_window.ui._set_analyze_mode(None)
 
         # Transition + cleanup
         self.centralwidget.dismiss_for_signin()
@@ -668,9 +668,9 @@ class UILogin:
         valid, _ = UserProfiles().session_info()
 
         if not valid:
-            if self.parent.ControlsWin.userrole != UserRoles.NONE:
+            if self.parent.controls_window.userrole != UserRoles.NONE:
                 Log.w("User session has expired.")
-                self.parent.ControlsWin.set_user_profile()
+                self.parent.controls_window.set_user_profile()
         else:
             Log.d("User session valid at hourly check.")
             self._sessionTimer.start()

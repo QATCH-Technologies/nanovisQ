@@ -133,6 +133,18 @@ class ColorTokens(TypedDict):
     ctrl_input_text: RGBA
     ctrl_input_focus_bg: RGBA
     ctrl_input_focus_border: RGBA
+    # Controls UI — animated combo box (AnimatedComboBox)
+    combo_bg: RGBA
+    combo_border: RGBA
+    combo_bg_hover: RGBA
+    combo_border_hover: RGBA
+    combo_bg_focus: RGBA
+    combo_border_focus: RGBA
+    combo_text: RGBA
+    combo_popup_bg: RGBA
+    combo_popup_border: RGBA
+    combo_selection_bg: RGBA
+    combo_selection_text: RGBA
     # Controls UI — temperature status dynamic states
     ctrl_temp_ready_bg: RGBA
     ctrl_temp_ready_text: RGBA
@@ -312,6 +324,18 @@ LIGHT: ColorTokens = {
     "ctrl_input_text": (30, 40, 55, 220),
     "ctrl_input_focus_bg": (255, 255, 255, 180),
     "ctrl_input_focus_border": (0, 120, 215, 150),
+    # Controls UI — animated combo box
+    "combo_bg": (255, 255, 255, 150),
+    "combo_border": (120, 130, 145, 150),
+    "combo_bg_hover": (255, 255, 255, 200),
+    "combo_border_hover": (90, 100, 115, 190),
+    "combo_bg_focus": (255, 255, 255, 225),
+    "combo_border_focus": (10, 163, 230, 200),
+    "combo_text": (40, 50, 62, 255),
+    "combo_popup_bg": (245, 247, 250, 255),
+    "combo_popup_border": (180, 192, 205, 220),
+    "combo_selection_bg": (10, 163, 230, 40),
+    "combo_selection_text": (10, 163, 230, 255),
     # Controls UI — temperature status dynamic states
     "ctrl_temp_ready_bg": (60, 200, 90, 220),
     "ctrl_temp_ready_text": (255, 255, 255, 230),
@@ -490,6 +514,18 @@ DARK: ColorTokens = {
     "ctrl_input_text": (210, 218, 230, 220),
     "ctrl_input_focus_bg": (65, 75, 90, 180),
     "ctrl_input_focus_border": (40, 130, 240, 180),
+    # Controls UI — animated combo box
+    "combo_bg": (50, 58, 70, 150),
+    "combo_border": (95, 105, 122, 150),
+    "combo_bg_hover": (60, 68, 82, 200),
+    "combo_border_hover": (115, 126, 145, 190),
+    "combo_bg_focus": (65, 75, 90, 225),
+    "combo_border_focus": (45, 175, 240, 200),
+    "combo_text": (225, 230, 238, 255),
+    "combo_popup_bg": (38, 44, 54, 255),
+    "combo_popup_border": (80, 90, 105, 220),
+    "combo_selection_bg": (45, 175, 240, 50),
+    "combo_selection_text": (70, 195, 255, 255),
     # Controls UI — temperature status dynamic states
     "ctrl_temp_ready_bg": (50, 190, 100, 220),
     "ctrl_temp_ready_text": (255, 255, 255, 230),

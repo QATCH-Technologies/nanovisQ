@@ -295,6 +295,116 @@ QComboBox#LevelFilter QAbstractItemView::item {
 }
 
 /* ═══════════════════════════════════════════════════════
+   ANIMATED COMBO BOX
+   Default look for QATCH.ui.components.AnimatedComboBox,
+   scoped to its default objectName so call sites that
+   rename it (e.g. #LevelFilter, above) or set their own
+   instance stylesheet (e.g. create_user_widget's role
+   combo) opt out of these rules automatically. The popup
+   container (QComboBoxPrivateContainer) is styled directly
+   in Python instead of here - see AnimatedComboBox for why.
+   ═══════════════════════════════════════════════════════ */
+QComboBox#AnimatedComboBox {
+    background: {{COMBO_BG}};
+    border: 1px solid {{COMBO_BORDER}};
+    border-radius: 14px;
+    padding-left: 14px;
+    padding-right: 30px;          /* room for the custom chevron */
+    color: {{COMBO_TEXT}};
+    font-weight: bold;
+    min-height: 26px;
+}
+QComboBox#AnimatedComboBox:hover {
+    background: {{COMBO_BG_HOVER}};
+    border: 1px solid {{COMBO_BORDER_HOVER}};
+}
+QComboBox#AnimatedComboBox:on,
+QComboBox#AnimatedComboBox:focus {
+    background: {{COMBO_BG_FOCUS}};
+    border: 1px solid {{COMBO_BORDER_FOCUS}};
+}
+/* Kill the native drop-down region + arrow (custom chevron replaces it). */
+QComboBox#AnimatedComboBox::drop-down {
+    border: none;
+    background: transparent;
+    width: 0px;
+}
+QComboBox#AnimatedComboBox::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+/* Pop-up list - transparent so the rounded container shape shows cleanly.
+   The container (QComboBoxPrivateContainer) paints the solid rounded
+   background; the view only styles its rows. */
+QComboBox#AnimatedComboBox QAbstractItemView {
+    background: transparent;
+    border: none;
+    color: {{COMBO_TEXT}};
+    padding: 4px;
+    selection-background-color: {{COMBO_SELECTION_BG}};
+    selection-color: {{COMBO_SELECTION_TEXT}};
+    outline: none;
+}
+QComboBox#AnimatedComboBox QAbstractItemView::item {
+    min-height: 24px;
+    border-radius: 6px;
+    padding-left: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   ANIMATED SPIN BOX
+   Default look for QATCH.ui.components.AnimatedSpinBox /
+   AnimatedDoubleSpinBox, scoped to their default object
+   names. Reuses the ANIMATED COMBO BOX tokens so both
+   controls read as one matched "glass" family and stay in
+   sync across light/dark themes. The native up/down button
+   region is suppressed via QSS; the only visible controls
+   are the custom chevrons (_SpinArrow), tinted in Python.
+   ═══════════════════════════════════════════════════════ */
+QSpinBox#AnimatedSpinBox,
+QDoubleSpinBox#AnimatedDoubleSpinBox {
+    background: {{COMBO_BG}};
+    border: 1px solid {{COMBO_BORDER}};
+    border-radius: 14px;
+    padding-left: 14px;
+    padding-right: 30px;          /* room for the stacked custom chevrons */
+    color: {{COMBO_TEXT}};
+    font-weight: bold;
+    min-height: 26px;
+    selection-background-color: {{COMBO_SELECTION_BG}};
+    selection-color: {{COMBO_TEXT}};
+}
+QSpinBox#AnimatedSpinBox:hover,
+QDoubleSpinBox#AnimatedDoubleSpinBox:hover {
+    background: {{COMBO_BG_HOVER}};
+    border: 1px solid {{COMBO_BORDER_HOVER}};
+}
+QSpinBox#AnimatedSpinBox:focus,
+QDoubleSpinBox#AnimatedDoubleSpinBox:focus {
+    background: {{COMBO_BG_FOCUS}};
+    border: 1px solid {{COMBO_BORDER_FOCUS}};
+}
+/* Kill the native up/down button region + arrows (custom chevrons replace). */
+QSpinBox#AnimatedSpinBox::up-button,
+QSpinBox#AnimatedSpinBox::down-button,
+QDoubleSpinBox#AnimatedDoubleSpinBox::up-button,
+QDoubleSpinBox#AnimatedDoubleSpinBox::down-button {
+    border: none;
+    background: transparent;
+    width: 0px;
+    height: 0px;
+}
+QSpinBox#AnimatedSpinBox::up-arrow,
+QSpinBox#AnimatedSpinBox::down-arrow,
+QDoubleSpinBox#AnimatedDoubleSpinBox::up-arrow,
+QDoubleSpinBox#AnimatedDoubleSpinBox::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+
+/* ═══════════════════════════════════════════════════════
    PLOT GLASS CARDS
    Icon buttons, menus, device tabs, and labels are all
    targeted by objectName so rules cannot bleed globally.

@@ -4,47 +4,29 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-# Persistent rounded glass styling shared by every animated spin box in the app.
-# Mirrors _COMBO_GLASS_QSS from animated_combo_box.py (same background, border,
-# radius, hover/focus states) so spin boxes sit visually beside the animated
-# combos as a matched set. The NATIVE up/down buttons are suppressed via QSS;
-# the only visible controls are the custom animated chevrons (_SpinArrow).
-_SPIN_GLASS_QSS = """
-    QAbstractSpinBox {
-        background: rgba(255, 255, 255, 150);
-        border: 1px solid rgba(120, 130, 145, 150);
-        border-radius: 14px;
-        padding-left: 14px;
-        padding-right: 30px;          /* room for the stacked custom chevrons */
-        color: rgb(40, 50, 62);
-        font-weight: bold;
-        min-height: 26px;
-        selection-background-color: rgba(10, 163, 230, 60);
-        selection-color: rgb(40, 50, 62);
-    }
-    QAbstractSpinBox:hover {
-        background: rgba(255, 255, 255, 200);
-        border: 1px solid rgba(90, 100, 115, 190);
-    }
-    QAbstractSpinBox:focus {
-        background: rgba(255, 255, 255, 225);
-        border: 1px solid rgba(10, 163, 230, 200);
-    }
-    /* Kill the native up/down button region + arrows (custom chevrons replace). */
-    QAbstractSpinBox::up-button,
-    QAbstractSpinBox::down-button {
-        border: none;
-        background: transparent;
-        width: 0px;
-        height: 0px;
-    }
-    QAbstractSpinBox::up-arrow,
-    QAbstractSpinBox::down-arrow {
-        image: none;
-        width: 0px;
-        height: 0px;
-    }
-"""
+from QATCH.ui.styles.theme_manager import ThemeManager
+
+# The persistent rounded glass chrome (background, border, radius, hover/focus
+# states) lives in the "ANIMATED SPIN BOX" section of
+# QATCH/ui/styles/app_theme.qss, scoped by objectName ("AnimatedSpinBox" /
+# "AnimatedDoubleSpinBox"). It reuses the ANIMATED COMBO BOX tokens so spin
+# boxes sit visually beside the animated combos as a matched set, and both
+# repaint automatically on theme change via ThemeManager's app-wide
+# stylesheet. Only the parts Qt Style Sheets can't reach - the custom chevron
+# pixmaps and the odometer overlay's painted colors - are retinted in Python,
+# below.
+
+
+def _tinted_pixmap(source: QtGui.QPixmap, color: QtGui.QColor) -> QtGui.QPixmap:
+    """Recolors every opaque pixel of `source` to `color`, preserving alpha."""
+    dst = QtGui.QPixmap(source.size())
+    dst.fill(QtCore.Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(dst)
+    painter.drawPixmap(0, 0, source)
+    painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+    painter.fillRect(dst.rect(), color)
+    painter.end()
+    return dst
 
 
 class _SpinArrow(QtWidgets.QLabel):
@@ -322,7 +304,24 @@ class _OdometerOverlay(QtWidgets.QWidget):
 
 
 class _OdometerMixin:
-    """Shared odometer wiring for the int and double spin boxes."""
+    """Shared chevron + odometer + theme wiring for the int and double spin boxes."""
+
+    def _init_chevrons(self, up_icon_path: str, down_icon_path: Optional[str]) -> None:
+        self._up_source, self._down_source = _make_chevrons(up_icon_path, down_icon_path)
+        self._up_arrow = _SpinArrow(QtGui.QPixmap(), self)
+        self._down_arrow = _SpinArrow(QtGui.QPixmap(), self)
+        self._up_arrow.stepped.connect(self.stepUp)
+        self._down_arrow.stepped.connect(self.stepDown)
+        self._retint_chevrons()
+
+    def _retint_chevrons(self) -> None:
+        color = ThemeManager.instance().color("combo_text")
+        self._up_arrow.setPixmap(_tinted_pixmap(self._up_source, color))
+        self._down_arrow.setPixmap(_tinted_pixmap(self._down_source, color))
+
+    def _on_theme_changed(self, _mode: Optional[str] = None) -> None:
+        self._retint_chevrons()
+        self._retint_odometer()
 
     def _init_odometer(self) -> None:
         # Tabular (monospaced) figures: every digit gets the same advance in the
@@ -345,8 +344,7 @@ class _OdometerMixin:
             self.lineEdit().setFont(f)
 
         self._odometer = _OdometerOverlay(self)
-        self._odometer.set_color(QtGui.QColor(40, 50, 62))
-        self._sync_odometer_bg()
+        self._retint_odometer()
 
         self._prev_value = self.value()
         self._prev_text = self.text()
@@ -380,14 +378,15 @@ class _OdometerMixin:
         self._position_odometer()
         self._odometer.roll(old_text, new_text, self._step_direction)
 
-    def _sync_odometer_bg(self) -> None:
-        # Match the glass body's effective fill so the reel sits seamlessly.
-        # The QSS uses rgba(255,255,255,~150-225); paint a solid near-white that
-        # blends with the body. Pull the actual base if the palette defines one.
-        base = self.palette().color(QtGui.QPalette.Base)
-        if base.alpha() == 0:
-            base = QtGui.QColor(252, 253, 255)
-        self._odometer.set_background(base)
+    def _retint_odometer(self) -> None:
+        # combo_text matches the glass body's own text color; combo_popup_bg is
+        # the family's opaque solid (used for the combo dropdown backing), which
+        # reads as a seamless continuation of the translucent glass body in both
+        # themes without needing a separate token pair.
+        tok = ThemeManager.instance()
+        self._odometer.set_color(tok.color("combo_text"))
+        self._odometer.set_background(tok.color("combo_popup_bg"))
+        self._odometer.update()
 
     def _position_odometer(self) -> None:
         le = self.lineEdit()
@@ -446,17 +445,13 @@ class AnimatedDoubleSpinBox(_OdometerMixin, QtWidgets.QDoubleSpinBox):
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         super().__init__(parent)
-        self.setStyleSheet(_SPIN_GLASS_QSS)
+        self.setObjectName("AnimatedDoubleSpinBox")
         self.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        up_pix, down_pix = _make_chevrons(up_icon_path, down_icon_path)
-        self._up_arrow = _SpinArrow(up_pix, self)
-        self._down_arrow = _SpinArrow(down_pix, self)
-        self._up_arrow.stepped.connect(self.stepUp)
-        self._down_arrow.stepped.connect(self.stepDown)
-
+        self._init_chevrons(up_icon_path, down_icon_path)
         self._init_odometer()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -467,7 +462,7 @@ class AnimatedDoubleSpinBox(_OdometerMixin, QtWidgets.QDoubleSpinBox):
 class AnimatedSpinBox(_OdometerMixin, QtWidgets.QSpinBox):
     """Integer counterpart to AnimatedDoubleSpinBox with identical styling.
 
-    Shares the glass QSS, chevron behaviour, and the odometer digit-roll on
+    Shares the glass chrome, chevron behaviour, and the odometer digit-roll on
     value changes.
     """
 
@@ -478,17 +473,13 @@ class AnimatedSpinBox(_OdometerMixin, QtWidgets.QSpinBox):
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         super().__init__(parent)
-        self.setStyleSheet(_SPIN_GLASS_QSS)
+        self.setObjectName("AnimatedSpinBox")
         self.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        up_pix, down_pix = _make_chevrons(up_icon_path, down_icon_path)
-        self._up_arrow = _SpinArrow(up_pix, self)
-        self._down_arrow = _SpinArrow(down_pix, self)
-        self._up_arrow.stepped.connect(self.stepUp)
-        self._down_arrow.stepped.connect(self.stepDown)
-
+        self._init_chevrons(up_icon_path, down_icon_path)
         self._init_odometer()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)

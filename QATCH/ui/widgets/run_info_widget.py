@@ -3,7 +3,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.popUp import PopUp
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 
 TAG = "[RunInfoWidget]"

@@ -4,7 +4,7 @@ from threading import Event, Thread
 from QATCH.common.logger import Logger as Log
 from QATCH.nightly.artifacts import GH_Artifacts
 from QATCH.ui.main_window import UpdaterTask
-from QATCH.ui.popUp import PopUp
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 
 
 class GH_Interface:

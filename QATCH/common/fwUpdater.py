@@ -18,7 +18,7 @@ from QATCH.common.logger import Logger as Log
 from QATCH.common.tyUpdater import QATCH_TyUpdater
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
-from QATCH.ui.popUp import PopUp
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 
 USE_PROGRESS_BAR_MODULE = False
 if USE_PROGRESS_BAR_MODULE:

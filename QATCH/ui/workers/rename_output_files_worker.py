@@ -35,7 +35,7 @@ from QATCH.processors.InterpTemps import (
     InterpTempsProcess,
     QueueCommandFormat,
 )
-from QATCH.ui.popUp import PopUp
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 from QATCH.ui.widgets.run_info_widget import RunInfoWindow
 

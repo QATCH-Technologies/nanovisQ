@@ -28,7 +28,7 @@ class ModeWindow(BaseWindow):
         super().__init__()
 
         # Register this window within the parent's menu system
-        parent.ControlsWin._create_menu(self)
+        parent.controls_window._create_menu(self)
 
         # Initialize the specific UI components
         self.ui = UIMode()

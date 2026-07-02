@@ -1,5 +1,4 @@
-"""
-mainWindow.py
+"""QATCH.ui.main_window.py
 
 The primary container for the QATCH Q-1 application, responsible for initializing and managing the main user interface.
 This module defines the main window of the application, which includes the menu bar, user profile management,
@@ -12,9 +11,6 @@ Author(s):
 
 Date:
     2026-05-21
-
-Version:
-    x.x.x?
 """
 
 import hashlib
@@ -27,7 +23,7 @@ import sys
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from time import localtime, monotonic, strftime, strptime, time
+from time import localtime, monotonic, strftime, time
 from typing import Any, Callable, Optional
 from xml.dom import minidom
 
@@ -67,8 +63,8 @@ from QATCH.processors.updater import (
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner
-from QATCH.ui.components.update_status_icon import UpdateStatusIcon
-from QATCH.ui.popUp import PopUp, QueryComboBox
+from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
+from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager
 from QATCH.ui.windows import (
     ControlsWindow,
@@ -113,10 +109,10 @@ class RoundedProgressBar(QtWidgets.QWidget):
     """A progress bar with guaranteed rounded corners at every fill level.
 
     Qt5's CSS engine does not reliably apply border-radius to the start-edge
-    (left side) of ``QProgressBar::chunk`` at partial fill values-the corner
+    (left side) of `QProgressBar::chunk` at partial fill values-the corner
     either clips to a square or flickers on rapid value changes. This widget
     bypasses the CSS paint path entirely by drawing the track and fill directly
-    with ``QPainter``, ensuring both ends stay rounded from 0% to 100%.
+    with `QPainter`, ensuring both ends stay rounded from 0% to 100%.
 
     Attributes:
         _value (int): The current progress value.
@@ -219,7 +215,7 @@ class _PlotDimAnimator(QtCore.QObject):
 
     This animator provides a smooth visual ramp for dimming or undimming plot
     elements, preventing abrupt visual jarring during state changes. It
-    operates at approximately 60 FPS using a ``QTimer``.
+    operates at approximately 60 FPS using a `QTimer`.
 
     Attributes:
         DEFAULT_DURATION_MS (int): Default fade time (300ms).
@@ -233,7 +229,7 @@ class _PlotDimAnimator(QtCore.QObject):
         """Initializes the animator with a target item and timer.
 
         Args:
-            item: The ``QGraphicsItem`` to animate (e.g., a ``QGraphicsRectItem``).
+            item: The `QGraphicsItem` to animate (e.g., a `QGraphicsRectItem`).
             parent: The Qt parent object for lifecycle management.
         """
         super().__init__(parent)
@@ -256,7 +252,7 @@ class _PlotDimAnimator(QtCore.QObject):
         Args:
             target_opacity: The desired final opacity (0.0 to 1.0).
             duration_ms: The length of the animation in milliseconds.
-                If None, defaults to ``DEFAULT_DURATION_MS``.
+                If None, defaults to `DEFAULT_DURATION_MS`.
         """
         if duration_ms is None:
             duration_ms = self.DEFAULT_DURATION_MS
@@ -291,7 +287,7 @@ class _PlotDimAnimator(QtCore.QObject):
         """Calculates and applies the next opacity step based on elapsed time.
 
         Side Effects:
-            Updates the opacity of ``self._item``. Stops the timer if the
+            Updates the opacity of `self._item`. Stops the timer if the
             duration is reached or if the item is no longer accessible.
         """
         self._elapsed_ms += self._timer.interval()
@@ -334,7 +330,7 @@ class MainWindow(QtWidgets.QMainWindow):
     ###########################################################################
     # Initializes methods, values and sets the UI
     ###########################################################################
-    def __init__(self, samples=Constants.argument_default_samples):
+    def __init__(self, samples: int = Constants.argument_default_samples) -> None:
         """Handles the main window layout.
 
         This method setups up the various child windows and layout of the main application
@@ -342,11 +338,8 @@ class MainWindow(QtWidgets.QMainWindow):
         application mode.  Last, the initializer sets the various signals for each thread and
         enables the UI.
 
-        Parameters:
+        Args:
             samples (int): The number default number of samples shown in the plot (Optional).
-
-        Returns:
-            None
         """
         QtWidgets.QMainWindow.__init__(self)
 
@@ -360,36 +353,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self._dbx_connection = None
 
         # Check application settings global variable to get/set elsewhere
-        self.AppSettings = QtCore.QSettings(Constants.app_publisher, Constants.app_name)
-
-        # Sets up the user interface from the generated Python script using Qt Designer
-        # Instantiates Ui classes
-
-        # Calls setup_ui method of created instance
-        self.LogWin = LoggerWindow()
-        self.ControlsWin = ControlsWindow(self)
-        # self.ControlsWin.move(270, 550)
-        self.PlotsWin = PlotsWindow()
-        # self.PlotsWin.move(270,0) #GUI position (x,y) on the screen
-        self.InfoWin = InfoWindow()
-        self.LoginWin = LoginWindow(self)
-        # self.InfoWin.move(1082, 0)
-        # self.ControlsWin.show()
-        # self.PlotsWin.show()
-        # self.InfoWin.show()
-        self.AnalyzeProc = AnalyzeProcess(self)
+        self.app_settings = QtCore.QSettings(Constants.app_publisher, Constants.app_name)
+        self.logger_window = LoggerWindow()
+        self.controls_window = ControlsWindow(self)
+        self.plots_window = PlotsWindow()
+        self.info_window = InfoWindow()
+        self.login_window = LoginWindow(self)
+        self.analyze_process = AnalyzeProcess(self)
 
         # Configures the database file for VisQ.AI (if missing or out-of-date).
         # NOTE: This must be done before instantiating the `VisQAIWindow` class
         self._configure_database(exec_migrations=False)
+        self.visq_window = VisQAIWindow(self)
+        self.tec_worker = TECWorker()
+        self.mode_window = ModeWindow(self)
 
-        self.VisQAIWin = VisQAIWindow(self)
-
-        self.tecWorker = TECWorker()
-
-        self.ModeWin = ModeWindow(self)
-
-        Log.d("AppSettings = ", self.AppSettings.fileName())
+        Log.d("app_settings = ", self.app_settings.fileName())
 
         # Shared variables, initial values
         # amplitude / calibration curve (split for multi below)
@@ -481,7 +460,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker = Worker()
 
         # Initiates an Upgrader class
-        self.fwUpdater = FW_Updater()
+        self.firmware_updater = FW_Updater()
 
         # Check for nightly build option, set if available
         try:
@@ -495,7 +474,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.restore_mode_idx = np.full(len(OperationType), -1, int)
 
         # Populates comboBox for sources
-        self.ControlsWin.ui.cBox_Source.addItems(Constants.app_sources)
+        self.controls_window.ui.cBox_Source.addItems(Constants.app_sources)
 
         # Holds the 4-element tuples for each of the 4 plot channels during calibration:
         # Index corresponds to channel ID; elements are (proxy, dim_rect, progress_bar, label).
@@ -540,17 +519,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Populates combo box for serial ports
         self._source_changed()
-        self.ControlsWin.ui.cBox_Source.setCurrentIndex(OperationType.calibration.value)
-        self.ControlsWin.ui.sBox_Samples.setValue(samples - 1)  # samples
+        self.controls_window.ui.cBox_Source.setCurrentIndex(OperationType.calibration.value)
+        self.controls_window.ui.sBox_Samples.setValue(samples - 1)  # samples
 
         # Populate TEC temperature initial value
-        self.ControlsWin.ui.slTemp.setValue(25)  # start at ambient
+        self.controls_window.ui.slTemp.setValue(25)  # start at ambient
 
         # enable ui
         self._enable_ui(True)
         ###################################################################################################################################
         try:
-            self.ModeWin.ui.sw_update_icon.setState(UpdateStatusIcon.State.CHECKING)
+            self.mode_window.ui.sw_update_icon.setState(UpdateStatusIcon.State.CHECKING)
         except AttributeError:
             pass
         QtCore.QTimer.singleShot(3000, self.start_download)
@@ -582,7 +561,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_dry_msg: str = "Preparing sensor..."
         self._last_dry_status: bool = False
         self.dry_detect = []
-        n_devices = self.ControlsWin.ui.cBox_Port.count() - 1
+        n_devices = self.controls_window.ui.cBox_Port.count() - 1
         for _ in range(n_devices):
             self.dry_detect.append(
                 DryingDetection(
@@ -617,19 +596,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def analyze_data(self, data_device=None, data_folder=None, data_file=None):
         action_role = UserRoles.ANALYZE
-        check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
+        check_result = UserProfiles().check(self.controls_window.userrole, action_role)
         if check_result is None:  # user check required, but no user signed in
             Log.w(
                 f"Not signed in: User with role {action_role.name} is required to perform this action."
             )
             Log.i("Please sign in to continue.")
-            self.ControlsWin.set_user_profile()  # prompt for sign-in
+            self.controls_window.set_user_profile()  # prompt for sign-in
             check_result = UserProfiles().check(
-                self.ControlsWin.userrole, action_role
+                self.controls_window.userrole, action_role
             )  # check again
         if not check_result:  # no user signed in or user not authorized
             Log.w(
-                f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+                f"ACTION DENIED: User with role {self.controls_window.userrole.name} does not have permission to {action_role.name}."
             )
             return  # deny action
 
@@ -640,11 +619,11 @@ class MainWindow(QtWidgets.QMainWindow):
             for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
                 self.data_devices = dirs  # show all available devices in logged data
                 break
-            self.AnalyzeProc.scan_for_most_recent_run = True
-            self.AnalyzeProc.hide()
-            self.AnalyzeProc.reset()
-            self.AnalyzeProc.showMaximized()
-            self.AnalyzeProc.check_user_info()
+            self.analyze_process.scan_for_most_recent_run = True
+            self.analyze_process.hide()
+            self.analyze_process.reset()
+            self.analyze_process.showMaximized()
+            self.analyze_process.check_user_info()
             if len(self.data_devices) > 0:
                 pass
             else:
@@ -743,7 +722,7 @@ class MainWindow(QtWidgets.QMainWindow):
             xml_path = data_path[0:-3] + "xml"
             # set always, even if not found
             Log.d(TAG, f"XML PATH= {xml_path}, DATA PATH = {data_path}")
-            self.AnalyzeProc.setXmlPath(xml_path)
+            self.analyze_process.setXmlPath(xml_path)
             if os.path.exists(xml_path):
                 doc = minidom.parse(xml_path)
                 metrics = doc.getElementsByTagName("metric")
@@ -765,11 +744,11 @@ class MainWindow(QtWidgets.QMainWindow):
             captured = os.path.getctime(data_path)
             captured = datetime.fromtimestamp(captured, timezone.utc)
             captured = captured.strftime("%Y-%m-%d")  # %H:%M:%S")
-        self.AnalyzeProc.text_Created.setText("Loaded: {} ({})".format(data_folder, captured))
-        if hasattr(self.AnalyzeProc, "_batched_runs") and self.AnalyzeProc._batched_runs:
-            self.AnalyzeProc._current_run = self.AnalyzeProc.text_Created.text()
+        self.analyze_process.text_Created.setText("Loaded: {} ({})".format(data_folder, captured))
+        if hasattr(self.analyze_process, "_batched_runs") and self.analyze_process._batched_runs:
+            self.analyze_process._current_run = self.analyze_process.text_Created.text()
 
-        self.AnalyzeProc.analyze_data(data_path)
+        self.analyze_process.analyze_data(data_path)
 
     def refresh_data_files(self):
         Log.i(TAG, "Refreshing data files...")
@@ -812,26 +791,26 @@ class MainWindow(QtWidgets.QMainWindow):
             Log.w("User aborted data file selection.")
 
     def auto_update_view_windows(self):
-        chk1 = self.ControlsWin.chk1.isChecked()  # console
-        chk2 = self.ControlsWin.chk2.isChecked()  # amplitude
-        chk3 = self.ControlsWin.chk3.isChecked()  # temperature
-        chk4 = self.ControlsWin.chk4.isChecked()  # resonance/dissipation
+        chk1 = self.controls_window.chk1.isChecked()  # console
+        chk2 = self.controls_window.chk2.isChecked()  # amplitude
+        chk3 = self.controls_window.chk3.isChecked()  # temperature
+        chk4 = self.controls_window.chk4.isChecked()  # resonance/dissipation
         if self._get_source() == OperationType.calibration:
-            self.ControlsWin.chk2.setChecked(True)
-            self.ControlsWin.chk3.setChecked(False)
-            self.ControlsWin.chk4.setChecked(False)
+            self.controls_window.chk2.setChecked(True)
+            self.controls_window.chk3.setChecked(False)
+            self.controls_window.chk4.setChecked(False)
         elif self._get_source() == OperationType.measurement:
-            self.ControlsWin.chk2.setChecked(True)
-            self.ControlsWin.chk3.setChecked(False)
-            self.ControlsWin.chk4.setChecked(True)
-        if chk1 != self.ControlsWin.chk1.isChecked():
-            self.ControlsWin.toggle_console()
-        if chk2 != self.ControlsWin.chk2.isChecked():
-            self.ControlsWin.toggle_amplitude()
-        if chk3 != self.ControlsWin.chk3.isChecked():
-            self.ControlsWin.toggle_temperature()
-        if chk4 != self.ControlsWin.chk4.isChecked():
-            self.ControlsWin.toggle_resonance_dissipation()
+            self.controls_window.chk2.setChecked(True)
+            self.controls_window.chk3.setChecked(False)
+            self.controls_window.chk4.setChecked(True)
+        if chk1 != self.controls_window.chk1.isChecked():
+            self.controls_window.toggle_console()
+        if chk2 != self.controls_window.chk2.isChecked():
+            self.controls_window.toggle_amplitude()
+        if chk3 != self.controls_window.chk3.isChecked():
+            self.controls_window.toggle_temperature()
+        if chk4 != self.controls_window.chk4.isChecked():
+            self.controls_window.toggle_resonance_dissipation()
 
     def parse_ports_from_file(self, path_to_plate_config: str = r"plate-config.json"):
         """
@@ -908,7 +887,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return ports_dict, active_ports
 
     def has_active_multi_port(self):
-        i = self.ControlsWin.ui.cBox_Port.currentText()
+        i = self.controls_window.ui.cBox_Port.currentText()
         i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
         if i != i % 9:  # 4x6 system detected, PID A-D, not 1-4
             return os.path.exists("plate-config.json")
@@ -928,7 +907,7 @@ class MainWindow(QtWidgets.QMainWindow):
         This method coordinates the pre-run validation sequence, hardware
         initialization, and UI state transitions. The execution flow includes:
 
-        1. Validates that the signed-in user has ``CAPTURE`` permissions. Prompts
+        1. Validates that the signed-in user has `CAPTURE` permissions. Prompts
            for sign-in if no user is active.
         2. Handles 'orphaned' CSV files from previous terminated runs by moving
            them to an archival directory with unique timestamps to prevent data collision.
@@ -945,7 +924,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         # Validate if a userprofile can perform the capture action.
         action_role = UserRoles.CAPTURE
-        check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
+        check_result = UserProfiles().check(self.controls_window.userrole, action_role)
         # if check_result is None:  # user check required, but no user signed in
         #     Log.w(
         #         f"Not signed in: User with role {action_role.name} is required to perform this action.")
@@ -967,15 +946,15 @@ class MainWindow(QtWidgets.QMainWindow):
             Log.i(tag=TAG, msg="Please sign in to continue.")
 
             # Prompt user for sign-in.
-            self.ControlsWin.set_user_profile()
-            check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
+            self.controls_window.set_user_profile()
+            check_result = UserProfiles().check(self.controls_window.userrole, action_role)
 
         # No user signed in or user not authorized to perform capture.  Notify user and deny action request returning to
         # caller.
         if not check_result:
             Log.w(
                 tag=TAG,
-                msg=f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.",
+                msg=f"ACTION DENIED: User with role {self.controls_window.userrole.name} does not have permission to {action_role.name}.",
             )
             return
 
@@ -993,7 +972,7 @@ class MainWindow(QtWidgets.QMainWindow):
         Log.i(tag=TAG, msg="Clicked START")
 
         # Focus plots window (useful if hidden)
-        self.PlotsWin.raise_()
+        self.plots_window.raise_()
 
         # BEGIN HANDLE ORPHANED FILES:
         # Move any existing orphaned CSV files in the output directories from prior Returns
@@ -1047,14 +1026,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Add TEC output file to new files list (if exists)
         tec_log_path = FileStorage.DEV_populate_path(Constants.tec_log_path, 0)
-        if os.path.exists(tec_log_path) and not self.tecWorker._tec_state == "OFF":
+        if os.path.exists(tec_log_path) and not self.tec_worker._tec_state == "OFF":
             with open(Constants.new_files_path, "a") as tempFile:
                 tempFile.write(tec_log_path + "\n")
 
         # Select a valid port for for the current data displayed.  If selected port is None or the
         # str "CMD_DEV_INFO", the selected port is set to the empty string effectively dissallowing
         # those actions.
-        selected_port = self.ControlsWin.ui.cBox_Port.currentData()
+        selected_port = self.controls_window.ui.cBox_Port.currentData()
         if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
@@ -1063,11 +1042,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # If the selected port has been disallowed, the application scans for connected devices.
         if selected_port == "":
             # Scan for connected devices.
-            self.ControlsWin.ui.pButton_Refresh.clicked.emit()
+            self.controls_window.ui.pButton_Refresh.clicked.emit()
 
             # Try the same port validation sequence from before disallowing None type or 'CMD_DEV_INFO'
             # port returns.
-            now_port = self.ControlsWin.ui.cBox_Port.currentData()
+            now_port = self.controls_window.ui.cBox_Port.currentData()
             if now_port is None:
                 now_port = ""
             if now_port == "CMD_DEV_INFO":
@@ -1077,7 +1056,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # If ports are empty or None type, determine the number of devices connected.  If multiple devices (>2)
                 # are connected, warn the user.  Otherwise, pressume there are no deives connected and warn the user again and
                 # return to caller.
-                if self.ControlsWin.ui.cBox_Port.count() > 2:
+                if self.controls_window.ui.cBox_Port.count() > 2:
                     Log.e(
                         tag=TAG,
                         msg="Multiple devices detected. Please select a device and try again.",
@@ -1116,10 +1095,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.multiplex_plots > 1:
             selected_port = []
             for port_id in active_port_list:
-                if port_id < self.ControlsWin.ui.cBox_Port.count() - 1:
+                if port_id < self.controls_window.ui.cBox_Port.count() - 1:
                     # TODO: Figure out what value needs to be appended to the active ports list.
                     # Format is PORT_SERIALDEVICE from Last_Used.txt
-                    selected_port.append(self.ControlsWin.ui.cBox_Port.itemData(port_id))
+                    selected_port.append(self.controls_window.ui.cBox_Port.itemData(port_id))
 
         # Determine the measurement type and user profile is not in developer mode.  If the user profile is in developer
         # mode, and there is an error or expires is empty, warn the user.
@@ -1138,7 +1117,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._get_source() == OperationType.measurement:
             num_devices = getattr(self, "multiplex_plots", 1)
             for i in range(num_devices):
-                self.PlotsWin.ui.left_pane.set_device_state(i, "recording")
+                self.plots_window.ui.left_pane.set_device_state(i, "recording")
             is_recent, age_in_mins = self._get_cal_age()
             if not is_recent:
                 Log.w(
@@ -1153,7 +1132,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     "Initialize has not been performed recently.\nWould you like to initialize now?",
                     True,
                 ):
-                    self.ControlsWin.ui.cBox_Source.setCurrentIndex(OperationType.calibration.value)
+                    self.controls_window.ui.cBox_Source.setCurrentIndex(
+                        OperationType.calibration.value
+                    )
             else:
                 Log.i(
                     TAG,
@@ -1163,7 +1144,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
 
             # Application EXE hangs on close if we do not check before doing a measurement run every single time.
-            self.fwUpdater.checkAgain()
+            self.firmware_updater.checkAgain()
 
         else:
             # Check for and remove any invalid calibration files in root of config folder on CAL start
@@ -1186,22 +1167,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.config(
             QCS_on=self._QCS_installed,
             port=selected_port,
-            pid=self.ControlsWin.ui.cBox_Port.currentIndex() + 1,
-            speed=self.ControlsWin.ui.cBox_Speed.currentText(),
-            samples=self.ControlsWin.ui.sBox_Samples.value() + 1,
+            pid=self.controls_window.ui.cBox_Port.currentIndex() + 1,
+            speed=self.controls_window.ui.cBox_Speed.currentText(),
+            samples=self.controls_window.ui.sBox_Samples.value() + 1,
             source=self._get_source(),
-            export_enabled=self.ControlsWin.ui.chBox_export.isChecked(),
-            freq_hopping=self.ControlsWin.ui.chBox_freqHop.isChecked(),
-            reconstruct=self.ControlsWin.ui.chBox_correctNoise.isChecked(),
-            lid_auto=self.ControlsWin.ui.toggle_Cartridge.isChecked(),
+            export_enabled=self.controls_window.ui.chBox_export.isChecked(),
+            freq_hopping=self.controls_window.ui.chBox_freqHop.isChecked(),
+            reconstruct=self.controls_window.ui.chBox_correctNoise.isChecked(),
+            lid_auto=self.controls_window.ui.toggle_Cartridge.isChecked(),
         )
 
         # Check for firmware updates (only if not yet checked this instance)
         try:
-            do_continue = self.fwUpdater.run(self, suppress_optional_popup=True)
-            if self.fwUpdater._port_changed:
-                self.ControlsWin.ui.pButton_Refresh.clicked.emit()
-                selected_port = self.fwUpdater._port
+            do_continue = self.firmware_updater.run(self, suppress_optional_popup=True)
+            if self.firmware_updater._port_changed:
+                self.controls_window.ui.pButton_Refresh.clicked.emit()
+                selected_port = self.firmware_updater._port
                 self.worker._port = selected_port
             if not do_continue:
                 # If firmware is incompatible with software, notify the user and return to caller.
@@ -1218,7 +1199,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         # Freeze plot rendering to prevent flickering during setup/rebuild.
-        self.PlotsWin.setUpdatesEnabled(False)
+        self.plots_window.setUpdatesEnabled(False)
         try:
             # Optimization for Initialize -> Initialize: If we are already in
             # calibration mode and the overlay is active, we flag it for an
@@ -1237,11 +1218,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if self._get_source() == OperationType.measurement:
                 # Update UI status indicators for a standard measurement run.
-                self.ControlsWin.ui.infobar.setText(
+                self.controls_window.ui.infobar.setText(
                     f"<font color=#0000ff> Infobar </font><font color='#333333'>Starting...</font>"
                 )
-                self.ControlsWin.ui._update_progress_text()
-                self.ControlsWin.ui.run_progress_bar.repaint()
+                self.controls_window.ui._update_progress_text()
+                self.controls_window.ui.run_progress_bar.repaint()
 
                 # Mask the plots with an immediate dimming layer (animate=False).
                 # We use a singleShot(0) to schedule the 'un-dim' fade for the
@@ -1262,7 +1243,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._set_plots_dimmed(amplitude=True, temperature=True, animate=False)
         finally:
             # Re-enable plot rendering.
-            self.PlotsWin.setUpdatesEnabled(True)
+            self.plots_window.setUpdatesEnabled(True)
 
         # Launch the hardware acquisition worker.
         worker_check = self.worker.start()
@@ -1357,65 +1338,67 @@ class MainWindow(QtWidgets.QMainWindow):
                 elif overtones_number == 2:
                     label_quartz = "@5MHz_QCM"
 
-                self.InfoWin.ui.info1a.setText(
+                self.info_window.ui.info1a.setText(
                     "<font color=#0000ff > Device Setup </font>" + label_quartz
                 )
                 label11 = "Measurement Qatch Q-1"
-                self.InfoWin.ui.info11.setText(
+                self.info_window.ui.info11.setText(
                     "<font color=#0000ff > Operation Mode </font>" + label11
                 )
                 self._overtone_name, self._overtone_value, self._fStep = self.worker.get_overtone()
                 label6 = str(int(self._overtone_value)) + " Hz"
-                self.InfoWin.ui.info6.setText(
+                self.info_window.ui.info6.setText(
                     "<font color=#0000ff > Frequency Value </font>" + label6
                 )
                 # +" "+ str(self._overtone_value)+"Hz"
                 label2 = str(self._overtone_name)
-                self.InfoWin.ui.info2.setText(
+                self.info_window.ui.info2.setText(
                     "<font color=#0000ff > Selected Frequency </font>" + label2
                 )
                 label3 = str(int(self._readFREQ[0])) + " Hz"
-                self.InfoWin.ui.info3.setText(
+                self.info_window.ui.info3.setText(
                     "<font color=#0000ff > Start Frequency </font>" + label3
                 )
                 label4 = str(int(self._readFREQ[-1])) + " Hz"
-                self.InfoWin.ui.info4.setText(
+                self.info_window.ui.info4.setText(
                     "<font color=#0000ff > Stop Frequency </font>" + label4
                 )
                 label4a = str(int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
-                self.InfoWin.ui.info4a.setText(
+                self.info_window.ui.info4a.setText(
                     "<font color=#0000ff > Frequency Range </font>" + label4a
                 )
                 label5 = str(int(self._fStep)) + " Hz"
-                self.InfoWin.ui.info5.setText("<font color=#0000ff > Sample Rate </font>" + label5)
+                self.info_window.ui.info5.setText(
+                    "<font color=#0000ff > Sample Rate </font>" + label5
+                )
                 label7 = str(Constants.argument_default_samples - 1)
-                self.InfoWin.ui.info7.setText(
+                self.info_window.ui.info7.setText(
                     "<font color=#0000ff > Sample Number </font>" + label7
                 )
 
             elif self._get_source() == OperationType.calibration:
-                label_quartz = self.ControlsWin.ui.cBox_Speed.currentText()
-                self.InfoWin.ui.info1a.setText(
+                label_quartz = self.controls_window.ui.cBox_Speed.currentText()
+                self.info_window.ui.info1a.setText(
                     "<font color=#0000ff > Device Setup </font>" + label_quartz
                 )
                 label11 = "Calibration Qatch Q-1"
-                self.InfoWin.ui.info11.setText(
+                self.info_window.ui.info11.setText(
                     "<font color=#0000ff > Operation Mode </font>" + label11
                 )
                 label6 = "Overall Frequency Range"
-                self.InfoWin.ui.info6.setText(
+                self.info_window.ui.info6.setText(
                     "<font color=#0000ff > Frequency Value </font>" + label6
                 )
                 label2 = "Overall Frequency Range"
-                self.InfoWin.ui.info2.setText(
+                self.info_window.ui.info2.setText(
                     "<font color=#0000ff > Selected Frequency </font>" + label2
                 )
                 label3 = str(Constants.calibration_frequency_start) + " Hz"
-                self.InfoWin.ui.info3.setText(
+                self.info_window.ui.info3.setText(
                     "<font color=#0000ff > Start Frequency </font>" + label3
                 )
                 label4 = str(Constants.calibration_frequency_stop) + " Hz"
-                self.InfoWin.ui.info4.setText(
+                self.info_window.ui.info4.setText(
                     "<font color=#0000ff > Stop Frequency </font>" + label4
                 )
                 label4a = (
@@ -1427,13 +1410,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     )
                     + " Hz"
                 )
-                self.InfoWin.ui.info4a.setText(
+                self.info_window.ui.info4a.setText(
                     "<font color=#0000ff > Frequency Range </font>" + label4a
                 )
                 label5 = str(int(Constants.calibration_fStep)) + " Hz"
-                self.InfoWin.ui.info5.setText("<font color=#0000ff > Sample Rate </font>" + label5)
+                self.info_window.ui.info5.setText(
+                    "<font color=#0000ff > Sample Rate </font>" + label5
+                )
                 label7 = str(Constants.calibration_default_samples - 1)
-                self.InfoWin.ui.info7.setText(
+                self.info_window.ui.info7.setText(
                     "<font color=#0000ff > Sample Number </font>" + label7
                 )
                 self.stop_flag = 0
@@ -1442,8 +1427,8 @@ class MainWindow(QtWidgets.QMainWindow):
             # self._timer_plot.timeout.connect(self._update_plot) #moved from _configure_timers mothod
 
             if self._get_source() == OperationType.calibration:
-                self.ControlsWin.ui.pButton_Clear.setEnabled(False)  # insert
-                self.ControlsWin.ui.pButton_Reference.setEnabled(False)  # insert
+                self.controls_window.ui.pButton_Clear.setEnabled(False)  # insert
+                self.controls_window.ui.pButton_Reference.setEnabled(False)  # insert
         elif worker_check == 0:
             if self._get_source() == OperationType.calibration:
                 self._set_plots_dimmed(amplitude=False, temperature=False, animate=False)
@@ -1453,7 +1438,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self,
                 Constants.app_title,
                 "Warning: Selected Port [{}] is not available!".format(
-                    self.ControlsWin.ui.cBox_Port.currentText()
+                    self.controls_window.ui.cBox_Port.currentText()
                 ),
             )
             self._enable_ui(True)
@@ -1466,7 +1451,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self,
                 Constants.app_title,
                 "Warning: No peak magnitudes found. Rerun Initialize on port {}".format(
-                    self.ControlsWin.ui.cBox_Port.currentText()
+                    self.controls_window.ui.cBox_Port.currentText()
                 ),
             )
             self._enable_ui(True)
@@ -1478,16 +1463,18 @@ class MainWindow(QtWidgets.QMainWindow):
     def stop(self):
 
         # This function is connected to the clicked signal of the Stop button.
-        self.ControlsWin.ui.infostatus.setStyleSheet(
+        self.controls_window.ui.infostatus.setStyleSheet(
             "background: white; padding: 1px; border: 1px solid #cccccc"
         )
-        self.ControlsWin.ui.infostatus.setText(
+        self.controls_window.ui.infostatus.setText(
             "<font color=#333333 > Program Status Standby</font>"
         )
-        self.ControlsWin.ui.infobar_label.setText("<font color=#0000ff > Infobar </font>Stopped")
-        self.InfoWin.ui.inforef1.setText("<font color=#0000ff > Ref. Frequency </font>")
-        self.InfoWin.ui.inforef2.setText("<font color=#0000ff > Ref. Dissipation </font>")
-        self.ControlsWin.ui.run_progress_bar.setValue(0)
+        self.controls_window.ui.infobar_label.setText(
+            "<font color=#0000ff > Infobar </font>Stopped"
+        )
+        self.info_window.ui.inforef1.setText("<font color=#0000ff > Ref. Frequency </font>")
+        self.info_window.ui.inforef2.setText("<font color=#0000ff > Ref. Dissipation </font>")
+        self.controls_window.ui.run_progress_bar.setValue(0)
         Log.i(TAG, "Clicked STOP")
         self._timer_plot.stop()
         self._enable_ui(True)
@@ -1524,13 +1511,13 @@ class MainWindow(QtWidgets.QMainWindow):
             # evnt.accept()
 
         if hasattr(self, "tecThread"):
-            if self.tecThread.isRunning() or self.tecWorker._tec_locked:
+            if self.tecThread.isRunning() or self.tec_worker._tec_locked:
                 Log.w("Stopping TEC before closing...")
-                self.tecWorker._tec_update("OFF")
+                self.tec_worker._tec_update("OFF")
 
         # Close database file on app close.
-        if self.VisQAIWin.database.is_open:
-            self.VisQAIWin.database.close()
+        if self.visq_window.database.is_open:
+            self.visq_window.database.close()
 
     ###########################################################################
     # Enables or disables the UI elements of the window.
@@ -1539,41 +1526,41 @@ class MainWindow(QtWidgets.QMainWindow):
     def _enable_ui(self, enabled):
 
         # :param enabled: The value to be set for the UI elements :type enabled: bool
-        self.ControlsWin.ui.cBox_Port.setEnabled(enabled)
-        self.ControlsWin.ui.pButton_ID.setEnabled(enabled)
-        self.ControlsWin.ui.pButton_Refresh.setEnabled(enabled)
-        self.ControlsWin.ui.cBox_Speed.setEnabled(enabled)
-        self.ControlsWin.ui.pButton_Start.setEnabled(enabled)
-        self.ControlsWin.ui.chBox_freqHop.setEnabled(enabled)
-        self.ControlsWin.ui.chBox_correctNoise.setEnabled(enabled)
-        self.ControlsWin.ui.chBox_export.setEnabled(enabled)
-        self.ControlsWin.ui.cBox_Source.setEnabled(enabled)
-        self.ControlsWin.ui.cBox_MultiMode.setEnabled(enabled)
-        self.ControlsWin.ui.pButton_PlateConfig.setEnabled(enabled)
-        self.ControlsWin.ui.chBox_MultiAuto.setEnabled(enabled)
-        self.ControlsWin.ui.toggle_Cartridge.setEnabled(enabled)
-        self.ControlsWin.ui.pButton_ResetApp.setEnabled(enabled)
+        self.controls_window.ui.cBox_Port.setEnabled(enabled)
+        self.controls_window.ui.pButton_ID.setEnabled(enabled)
+        self.controls_window.ui.pButton_Refresh.setEnabled(enabled)
+        self.controls_window.ui.cBox_Speed.setEnabled(enabled)
+        self.controls_window.ui.pButton_Start.setEnabled(enabled)
+        self.controls_window.ui.chBox_freqHop.setEnabled(enabled)
+        self.controls_window.ui.chBox_correctNoise.setEnabled(enabled)
+        self.controls_window.ui.chBox_export.setEnabled(enabled)
+        self.controls_window.ui.cBox_Source.setEnabled(enabled)
+        self.controls_window.ui.cBox_MultiMode.setEnabled(enabled)
+        self.controls_window.ui.pButton_PlateConfig.setEnabled(enabled)
+        self.controls_window.ui.chBox_MultiAuto.setEnabled(enabled)
+        self.controls_window.ui.toggle_Cartridge.setEnabled(enabled)
+        self.controls_window.ui.pButton_ResetApp.setEnabled(enabled)
         # self.ControlsWin.ui.lTemp.setEnabled(enabled)
-        self.ControlsWin.ui.slTemp.setEnabled(enabled)
-        self.ControlsWin.ui.pTemp.setEnabled(enabled)
-        self.tecWorker.set_slider_enable(enabled)
+        self.controls_window.ui.slTemp.setEnabled(enabled)
+        self.controls_window.ui.pTemp.setEnabled(enabled)
+        self.tec_worker.set_slider_enable(enabled)
 
-        if self.ControlsWin.ui.pTemp.text() == "Stop Temp Control" and not enabled:
-            self.ControlsWin.ui.pTemp.setText("Temp Control Locked")
-            self.tecWorker._tec_update_now = True
-            self.tecWorker.update_now.emit()
+        if self.controls_window.ui.pTemp.text() == "Stop Temp Control" and not enabled:
+            self.controls_window.ui.pTemp.setText("Temp Control Locked")
+            self.tec_worker._tec_update_now = True
+            self.tec_worker.update_now.emit()
 
-        if self.ControlsWin.ui.pTemp.text() == "Temp Control Locked" and enabled:
-            self.ControlsWin.ui.pTemp.setText("Stop Temp Control")
-            self.tecWorker._tec_update_now = True
-            QtCore.QTimer.singleShot(1000, self.tecWorker.update_now.emit)
+        if self.controls_window.ui.pTemp.text() == "Temp Control Locked" and enabled:
+            self.controls_window.ui.pTemp.setText("Stop Temp Control")
+            self.tec_worker._tec_update_now = True
+            QtCore.QTimer.singleShot(1000, self.tec_worker.update_now.emit)
             # self.tecWorker.update_now.emit()
 
-        self.ControlsWin.ui.pButton_Stop.setEnabled(not enabled)
-        self.ControlsWin.ui.sBox_Samples.setEnabled(not enabled)  # insert
-        self.ControlsWin.ui.pButton_Clear.setEnabled(not enabled)
-        self.ControlsWin.ui.pButton_Reference.setEnabled(not enabled)
-        self.ControlsWin.ui.pButton_Reference.setChecked(False)  # clear toggle state
+        self.controls_window.ui.pButton_Stop.setEnabled(not enabled)
+        self.controls_window.ui.sBox_Samples.setEnabled(not enabled)  # insert
+        self.controls_window.ui.pButton_Clear.setEnabled(not enabled)
+        self.controls_window.ui.pButton_Reference.setEnabled(not enabled)
+        self.controls_window.ui.pButton_Reference.setChecked(False)  # clear toggle state
 
         enable_start = enabled
         if enable_start:
@@ -1583,27 +1570,28 @@ class MainWindow(QtWidgets.QMainWindow):
         enable_stop = False if enabled else True
         if enable_stop:
             enable_stop = (
-                self.ControlsWin.ui.cBox_Source.currentIndex() == OperationType.measurement.value
+                self.controls_window.ui.cBox_Source.currentIndex()
+                == OperationType.measurement.value
             )
 
         enable_temp = enabled
         if enable_temp:
             # at least one device connected
-            enable_temp = self.ControlsWin.ui.cBox_Port.count() > 1
+            enable_temp = self.controls_window.ui.cBox_Port.count() > 1
 
         if not enabled:
             # Lock icon to show number when button is disabled (not hourglass)
-            self.ControlsWin.ui.tool_NextPortRow.updateIcon(running=True)
+            self.controls_window.ui.tool_NextPortRow.updateIcon(running=True)
 
-        self.ControlsWin.ui.action_NextPortRow.setEnabled(enabled)
-        self.ControlsWin.ui.tool_Initialize.setEnabled(enabled)
+        self.controls_window.ui.action_NextPortRow.setEnabled(enabled)
+        self.controls_window.ui.tool_Initialize.setEnabled(enabled)
 
         # Modified for new run-status controls
-        if hasattr(self.ControlsWin.ui, "run_controls"):
-            self.ControlsWin.ui.run_controls.setEnabled(enable_start or enable_stop)
+        if hasattr(self.controls_window.ui, "run_controls"):
+            self.controls_window.ui.run_controls.setEnabled(enable_start or enable_stop)
 
-        self.ControlsWin.ui.tool_Reset.setEnabled(enabled)
-        self.ControlsWin.ui.tool_TempControl.setEnabled(enable_temp)
+        self.controls_window.ui.tool_Reset.setEnabled(enabled)
+        self.controls_window.ui.tool_TempControl.setEnabled(enable_temp)
         # self.ControlsWin.ui.tool_Advanced.setEnabled(enabled)
 
         # macOS immediate 'repaint()' to force visual state changes
@@ -1611,28 +1599,28 @@ class MainWindow(QtWidgets.QMainWindow):
         # about to enter a intensive block. http://stackoverflow.com/a/60074600
         if Architecture.get_os() == OSType.macosx:
             # Force an synchronous paint event.
-            self.ControlsWin.ui.pButton_Start.repaint()
-            self.ControlsWin.ui.pButton_Stop.repaint()
+            self.controls_window.ui.pButton_Start.repaint()
+            self.controls_window.ui.pButton_Stop.repaint()
         else:
             # On Windows/Linux, 'update()' is preferred as it schedules a
             # paint event for the next cycle, allowing Qt to optimize
             # and prevent redundant redraws.
-            self.ControlsWin.ui.pButton_Start.update()
-            self.ControlsWin.ui.pButton_Stop.update()
+            self.controls_window.ui.pButton_Start.update()
+            self.controls_window.ui.pButton_Stop.update()
 
     def _hide_calib_ready_text(self) -> None:
         """Removes post-calibration 'Ready' annotations from all plot channels.
 
-        This method iterates through the ``self._calib_ready_text`` collection,
-        detaching each ``pg.TextItem`` from its corresponding plot in
-        ``self._plt2_arr``. Once removed, the internal references are nullified
+        This method iterates through the `self._calib_ready_text` collection,
+        detaching each `pg.TextItem` from its corresponding plot in
+        `self._plt2_arr`. Once removed, the internal references are nullified
         to prevent memory leaks and ensure a clean state for the next run.
 
         The method is idempotent; it is safe to call repeatedly or when no
         annotations are currently present.
 
         Raises:
-            Exception: Silently catches and ignores errors during ``removeItem``,
+            Exception: Silently catches and ignores errors during `removeItem`,
                 typically occurring if the underlying C++ graphics object was
                 previously deleted or the item is no longer a child of the plot.
         """
@@ -1651,24 +1639,18 @@ class MainWindow(QtWidgets.QMainWindow):
         """Removes instructional text overlays and cleans up associated event trackers.
 
         This method handles the teardown of the 'Welcome' UI state. It disconnects
-        the resize callback from the ``ViewBox`` to prevent background
-        calculations on hidden items and removes the ``pg.TextItem`` instances
-        (stored in ``_text1``, ``_text2``, and ``_text3``) from the graphics
+        the resize callback from the `ViewBox` to prevent background
+        calculations on hidden items and removes the `pg.TextItem` instances
+        (stored in `_text1`, `_text2`, and `_text3`) from the graphics
         scene.
 
-        The cleanup handles items parented via ``setParentItem`` to ensure they
-        are properly detached from the ``PlotItem``'s graphics hierarchy.
+        The cleanup handles items parented via `setParentItem` to ensure they
+        are properly detached from the `PlotItem`'s graphics hierarchy.
 
         Side Effects:
-            - Disconnects ``self._welcome_resize_cb`` from the ``ViewBox`` signal.
-            - Nullifies ``self._welcome_parent_vb`` and ``self._welcome_resize_cb``.
-            - Sets ``self._text1``, ``self._text2``, and ``self._text3`` to ``None``.
-
-        Note:
-            The method uses a broad ``try-except`` block during signal
-            disconnection and item removal to remain idempotent and avoid
-            crashes if the underlying Qt objects have already been garbage
-            collected.
+            - Disconnects `self._welcome_resize_cb` from the `ViewBox` signal.
+            - Nullifies `self._welcome_parent_vb` and `self._welcome_resize_cb`.
+            - Sets `self._text1`, `self._text2`, and `self._text3` to `None`.
         """
         # Disconnect resize tracker if one was wired up.
         vb = getattr(self, "_welcome_parent_vb", None)
@@ -1700,22 +1682,22 @@ class MainWindow(QtWidgets.QMainWindow):
 
         This method identifies currently visible instructional text items and
         animates their opacity from the current value to 0.0 over 300ms. It
-        utilizes ``QVariantAnimation`` to handle the interpolation.
+        utilizes `QVariantAnimation` to handle the interpolation.
 
         To ensure memory safety and proper cleanup, the final animation in the
-        sequence is linked to ``self._remove_welcome_text``, which handles the
+        sequence is linked to `self._remove_welcome_text`, which handles the
         actual removal of the items from the scene and nullifies references.
 
         Side Effects:
-            - Populates ``self._welcome_fade_anims`` with active animation objects
+            - Populates `self._welcome_fade_anims` with active animation objects
               to prevent premature garbage collection.
-            - Updates the opacity of ``_text1``, ``_text2``, and ``_text3``
+            - Updates the opacity of `_text1`, `_text2`, and `_text3`
               frame-by-frame.
-            - Calls ``self._remove_welcome_text()`` upon animation completion.
+            - Calls `self._remove_welcome_text()` upon animation completion.
 
         Note:
             If no text items are visible or existing, the method falls back to
-            immediate cleanup via ``_remove_welcome_text()``.
+            immediate cleanup via `_remove_welcome_text()`.
         """
         texts_to_fade = []
         for attr in ("_text1", "_text2", "_text3"):
@@ -1752,7 +1734,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         This method orchestrates a 300ms asynchronous fade-out for all active
         calibration progress items (both the widget proxy and the background
-        dimming rectangle). It uses ``QVariantAnimation`` to interpolate the
+        dimming rectangle). It uses `QVariantAnimation` to interpolate the
         opacity, ensuring the transition is visually 'soft' rather than an
         abrupt toggle.
 
@@ -1760,7 +1742,7 @@ class MainWindow(QtWidgets.QMainWindow):
         invisible to remove them from the Qt paint queue and scene graph.
 
         Note:
-            Uses lambda closures with default arguments (``p=proxy``, ``d=dim_rect``)
+            Uses lambda closures with default arguments (`p=proxy`, `d=dim_rect`)
              to safely capture the current loop items for the asynchronous
             callback signals.
         """
@@ -1807,17 +1789,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         This method orchestrates a multi-stage UI transition:
         1. Smoothly fades out existing 'Welcome' text.
-        2. Creates a ``QGraphicsRectItem`` (dimming layer) and a
-           ``QGraphicsProxyWidget`` (holding a ``RoundedProgressBar``) for each
+        2. Creates a `QGraphicsRectItem` (dimming layer) and a
+           `QGraphicsProxyWidget` (holding a `RoundedProgressBar`) for each
            active plot channel.
         3. Establishes a closure-based resize callback
-           connected to the ``ViewBox.sigResized`` signal to ensure overlays
+           connected to the `ViewBox.sigResized` signal to ensure overlays
            remain centered and correctly scaled during window resizing.
-        4. Executes a 300ms ``QVariantAnimation`` to fade the
+        4. Executes a 300ms `QVariantAnimation` to fade the
            opacity of the progress widgets from 0.0 to 1.0.
 
         Attributes updated:
-            self._overlay_anims (list): Stores ``QVariantAnimation`` references
+            self._overlay_anims (list): Stores `QVariantAnimation` references
                 to prevent premature garbage collection.
             self._calib_overlay_items (list): Tracks overlay components for
                 future updates and cleanup.
@@ -1916,9 +1898,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 the geometry of another channel's overlay.
 
                 Args:
-                    plot_obj: The target ``PlotItem`` providing the coordinate system.
-                    proxy_obj: The ``QGraphicsProxyWidget`` containing the progress UI.
-                    dim_obj: The ``QGraphicsRectItem`` used for the dimming background.
+                    plot_obj: The target `PlotItem` providing the coordinate system.
+                    proxy_obj: The `QGraphicsProxyWidget` containing the progress UI.
+                    dim_obj: The `QGraphicsRectItem` used for the dimming background.
 
                 Returns:
                     A parameterless function (callback) configured to center the
@@ -1928,7 +1910,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 def _center_callback(*args: Any) -> None:
                     """Positions overlay elements relative to the plot's current viewport.
 
-                    Calculates the bounding box of the ``ViewBox`` in the parent's
+                    Calculates the bounding box of the `ViewBox` in the parent's
                     coordinate system and updates the dimming rectangle to match. It then
                     calculates the centered position for the proxy widget, applying
                     hardcoded fallbacks (340x72) if the widget geometry has not yet been
@@ -1939,11 +1921,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     initialization.
 
                     Args:
-                        *args: Catch-all for signals (like ``sigResized``) that may
+                        *args: Catch-all for signals (like `sigResized`) that may
                             emit varying numbers of parameters.
 
                     Note:
-                        Uses a broad ``try-except`` block to prevent UI thread crashes if
+                        Uses a broad `try-except` block to prevent UI thread crashes if
                         the user closes a plot window while an asynchronous resize event
                         is still in the event queue.
                     """
@@ -1998,12 +1980,12 @@ class MainWindow(QtWidgets.QMainWindow):
         of the GraphicsView scene:
 
         1. Unbinds the custom resize callback from the
-           ``ViewBox.sigResized`` signal. This prevents 'dead' callbacks from
+           `ViewBox.sigResized` signal. This prevents 'dead' callbacks from
            firing when the underlying plot is resized after a run.
-        2. Detaches both the ``QGraphicsProxyWidget`` and the
-           ``QGraphicsRectItem`` from the scene hierarchy.
-        3. Resets ``_calib_overlay_ready`` and
-           ``_calib_overlay_live`` to False, and nullifies the tracking list.
+        2. Detaches both the `QGraphicsProxyWidget` and the
+           `QGraphicsRectItem` from the scene hierarchy.
+        3. Resets `_calib_overlay_ready` and
+           `_calib_overlay_live` to False, and nullifies the tracking list.
 
         """
         self._calib_overlay_ready = False
@@ -2042,7 +2024,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         Note:
             The 'drain' animation is strictly visual; once finished, the
-            animation objects are removed from ``_reset_bar_anims`` to allow
+            animation objects are removed from `_reset_bar_anims` to allow
             the standard worker signals to resume control of the bar values.
         """
         for anim in getattr(self, "_fade_anims", []):
@@ -2231,15 +2213,15 @@ class MainWindow(QtWidgets.QMainWindow):
         used during task initialization, calibration, or when the system enters
         a standby state.
 
-        Each group argument accepts ``True`` to dim, ``False`` to undim, or
-        ``None`` to bypass the group and maintain its current state.
+        Each group argument accepts `True` to dim, `False` to undim, or
+        `None` to bypass the group and maintain its current state.
 
         Args:
-            amplitude: Visual state for the Amplitude plots (``_plt0_arr``).
+            amplitude: Visual state for the Amplitude plots (`_plt0_arr`).
             rf_diss: Visual state for Resonance Frequency and Dissipation
-                plots (``_plt2_arr``).
-            temperature: Visual state for the Temperature plot (``_plt4``).
-            animate: Whether to fade the transition over 300ms. Set to ``False``
+                plots (`_plt2_arr`).
+            temperature: Visual state for the Temperature plot (`_plt4`).
+            animate: Whether to fade the transition over 300ms. Set to `False`
                 to snap the opacity instantly (useful during UI rebuilds).
         """
         if amplitude is not None:
@@ -2404,57 +2386,59 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _configure_signals(self):
 
-        self.ControlsWin.ui.pButton_Start.clicked.connect(self.start)
-        self.ControlsWin.ui.pButton_Stop.clicked.connect(self.stop)
+        self.controls_window.ui.pButton_Start.clicked.connect(self.start)
+        self.controls_window.ui.pButton_Stop.clicked.connect(self.stop)
 
         # Gaurd to prevent amplitdue plot not being drawn on Initailize -> Reset -> Initalize action sequence
-        self.ControlsWin.ui.pButton_Clear.clicked.connect(
+        self.controls_window.ui.pButton_Clear.clicked.connect(
             lambda checked: self.clear(_reinit_curves=True)
         )
-        self.ControlsWin.ui.pButton_Reference.clicked.connect(self.reference)
-        self.ControlsWin.ui.pButton_ResetApp.clicked.connect(self.factory_defaults)
-        self.ControlsWin.ui.pButton_ID.clicked.connect(self._port_identify)
-        self.ControlsWin.ui.pButton_Refresh.clicked.connect(self._port_list_refresh)
-        self.ControlsWin.ui.pButton_Configure.clicked.connect(self._configure_device_info)
-        self.ControlsWin.ui.sBox_Samples.valueChanged.connect(self._update_sample_size)
-        self.ControlsWin.ui.slTemp.valueChanged.connect(self._update_tec_temp)
-        self.ControlsWin.ui.slTemp.sliderReleased.connect(self._update_tec_temp)
-        self.ControlsWin.ui.cBox_Source.currentIndexChanged.connect(self._source_changed)
-        self.ControlsWin.ui.cBox_Port.currentIndexChanged.connect(self._port_changed)
-        self.ControlsWin.ui.cBox_MultiMode.currentIndexChanged.connect(self.set_multi_mode)
-        self.ControlsWin.ui.pTemp.clicked.connect(self._enable_tec)
+        self.controls_window.ui.pButton_Reference.clicked.connect(self.reference)
+        self.controls_window.ui.pButton_ResetApp.clicked.connect(self.factory_defaults)
+        self.controls_window.ui.pButton_ID.clicked.connect(self._port_identify)
+        self.controls_window.ui.pButton_Refresh.clicked.connect(self._port_list_refresh)
+        self.controls_window.ui.pButton_Configure.clicked.connect(self._configure_device_info)
+        self.controls_window.ui.sBox_Samples.valueChanged.connect(self._update_sample_size)
+        self.controls_window.ui.slTemp.valueChanged.connect(self._update_tec_temp)
+        self.controls_window.ui.slTemp.sliderReleased.connect(self._update_tec_temp)
+        self.controls_window.ui.cBox_Source.currentIndexChanged.connect(self._source_changed)
+        self.controls_window.ui.cBox_Port.currentIndexChanged.connect(self._port_changed)
+        self.controls_window.ui.cBox_MultiMode.currentIndexChanged.connect(self.set_multi_mode)
+        self.controls_window.ui.pTemp.clicked.connect(self._enable_tec)
         # --------
         # Software update icon → triggers download on click
-        self.ModeWin.ui.sw_update_icon.update_requested.connect(self.start_download)
+        self.mode_window.ui.sw_update_icon.update_requested.connect(self.start_download)
         # Firmware update icon → re-runs check + shows dialog on click
-        self.PlotsWin.ui.left_pane._fw_status_icon.update_requested.connect(
-            lambda: self.fwUpdater.request_update_dialog(self)
+        self.plots_window.ui.left_pane._fw_status_icon.update_requested.connect(
+            lambda: self.firmware_updater.request_update_dialog(self)
         )
         # Route firmware check results to the plots icon
-        self.fwUpdater.fw_status_changed.connect(self.PlotsWin.ui.left_pane.on_fw_status_changed)
+        self.firmware_updater.fw_status_changed.connect(
+            self.plots_window.ui.left_pane.on_fw_status_changed
+        )
 
         # Plot section color / visibility controls
-        self.PlotsWin.ui.left_pane.sectionColorChanged.connect(self._on_plot_color_changed)
-        self.PlotsWin.ui.left_pane.sectionVisibilityChanged.connect(
+        self.plots_window.ui.left_pane.section_color_changed.connect(self._on_plot_color_changed)
+        self.plots_window.ui.left_pane.section_visibility_changed.connect(
             self._on_plot_visibility_changed
         )
-        self.PlotsWin.ui.amp_glass.sectionColorChanged.connect(self._on_plot_color_changed)
-        self.PlotsWin.ui.amp_glass.sectionVisibilityChanged.connect(
+        self.plots_window.ui.amp_glass.section_color_changed.connect(self._on_plot_color_changed)
+        self.plots_window.ui.amp_glass.section_visibility_changed.connect(
             self._on_plot_visibility_changed
         )
-        self.PlotsWin.ui.temp_glass.sectionColorChanged.connect(self._on_plot_color_changed)
-        self.PlotsWin.ui.temp_glass.sectionVisibilityChanged.connect(
+        self.plots_window.ui.temp_glass.section_color_changed.connect(self._on_plot_color_changed)
+        self.plots_window.ui.temp_glass.section_visibility_changed.connect(
             self._on_plot_visibility_changed
         )
 
         # Grid line toggle controls
-        self.PlotsWin.ui.left_pane.gridChanged.connect(self._on_left_pane_grid_changed)
-        self.PlotsWin.ui.amp_glass.gridChanged.connect(
+        self.plots_window.ui.left_pane.grid_changed.connect(self._on_left_pane_grid_changed)
+        self.plots_window.ui.amp_glass.grid_changed.connect(
             lambda key, vis: self._on_grid_changed(
                 key, vis, [p for p in self._plt0_arr if p is not None]
             )
         )
-        self.PlotsWin.ui.temp_glass.gridChanged.connect(
+        self.plots_window.ui.temp_glass.grid_changed.connect(
             lambda key, vis: self._on_grid_changed(
                 key, vis, [self._plt4] if self._plt4 is not None else []
             )
@@ -2510,14 +2494,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         Handles two distinct scenarios on startup: if no local database exists but
         a bundled one does, the bundled database is copied directly into the local
-        application data directory. If both exist, defers to ``DatabaseSynchronizer``
+        application data directory. If both exist, defers to `DatabaseSynchronizer`
         to safely compare schema versions and merge any missing tables, columns, or
         seed data into the local database without overwriting user data.
 
         Args:
-            exec_migrations (bool): Reserved for future use. If ``True``, indicates
+            exec_migrations (bool): Reserved for future use. If `True`, indicates
                 that pending schema migrations should be executed during configuration.
-                Defaults to ``False``.
+                Defaults to `False`.
 
         Raises:
             Exception: Re-raises any exception encountered during path resolution,
@@ -2631,19 +2615,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialWidget.setLayout(top_layout)
         self.TutorialWin.setWidget(self.TutorialWidget)
         # set widget to the dock
-        self.ModeWin.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.TutorialWin)
+        self.mode_window.addDockWidget(
+            QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.TutorialWin
+        )
         # check application settings and set visibility on startup
-        if self.AppSettings.contains("showTutorialsOnStartup"):
-            if not self.AppSettings.value("showTutorialsOnStartup").lower() == "true":
+        if self.app_settings.contains("showTutorialsOnStartup"):
+            if not self.app_settings.value("showTutorialsOnStartup").lower() == "true":
                 self.TutorialWin.setVisible(False)
         else:
-            self.AppSettings.setValue("showTutorialsOnStartup", True)
+            self.app_settings.setValue("showTutorialsOnStartup", True)
         # update checkbox to reflect application settings state
-        self.ControlsWin.chk5.setChecked(
-            self.AppSettings.value("showTutorialsOnStartup").lower() == "true"
+        self.controls_window.chk5.setChecked(
+            self.app_settings.value("showTutorialsOnStartup").lower() == "true"
         )
         self.TutorialCheckbox.setChecked(
-            self.AppSettings.value("showTutorialsOnStartup").lower() == "true"
+            self.app_settings.value("showTutorialsOnStartup").lower() == "true"
         )
         self.TutorialCheckbox.clicked.connect(self.toggleTutorialOnStartup)
         # force widget to minimum width, determined by length of checkbox text
@@ -2702,7 +2688,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def toggleTutorialOnStartup(self):
         currentState = self.TutorialCheckbox.isChecked()
-        self.AppSettings.setValue("showTutorialsOnStartup", currentState)
+        self.app_settings.setValue("showTutorialsOnStartup", currentState)
 
     ###########################################################################
     # Indentify device COM port by finding LED on device
@@ -2711,7 +2697,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _port_identify(self):
 
         # Open or close the port accordingly
-        selected_port = self.ControlsWin.ui.cBox_Port.currentData()
+        selected_port = self.controls_window.ui.cBox_Port.currentData()
         if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
@@ -2720,7 +2706,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if not self._identifying:
             Log.i(TAG, f"Identifying port {friendly_port_name}...")
-            self.ControlsWin.ui.pButton_ID.setStyleSheet("background: yellow;")
+            self.controls_window.ui.pButton_ID.setStyleSheet("background: yellow;")
             self._identifying = True
             if True:  # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
                 # selected_port.count('.') == 3:
@@ -2735,19 +2721,19 @@ class MainWindow(QtWidgets.QMainWindow):
                     IDENTIFY_serial.close()
             # check version and write device info (if needed)
             self.worker._port = selected_port  # used in run()
-            self.fwUpdater.run(self, suppress_optional_popup=True)
-            if self.fwUpdater._port_changed:
-                self.ControlsWin.ui.pButton_Refresh.clicked.emit()
-                selected_port = self.fwUpdater._port
+            self.firmware_updater.run(self, suppress_optional_popup=True)
+            if self.firmware_updater._port_changed:
+                self.controls_window.ui.pButton_Refresh.clicked.emit()
+                selected_port = self.firmware_updater._port
                 self.worker._port = selected_port
             # leave port open after update check to keep LED blinking
-            self.fwUpdater.open(selected_port)
+            self.firmware_updater.open(selected_port)
         else:
             Log.i(TAG, f"Identifying port {friendly_port_name}... done!")
-            self.ControlsWin.ui.pButton_ID.setStyleSheet("background: white;")
+            self.controls_window.ui.pButton_ID.setStyleSheet("background: white;")
             self._identifying = False
             # close port to stop LED blink
-            self.fwUpdater.close()
+            self.firmware_updater.close()
             if True:  # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
                 # selected_port.count('.') == 3:
                 if not len(selected_port) == 0:
@@ -2778,15 +2764,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._port_identify_stop()
 
         # Program Position ID if asked
-        if self.ControlsWin.ui.cBox_Port.currentData() == "CMD_DEV_INFO":
+        if self.controls_window.ui.cBox_Port.currentData() == "CMD_DEV_INFO":
             self._configure_device_info()
             return  # skip the rest of this method
 
         # Inform Upgrader class to perform version check on next run
-        self.fwUpdater.checkAgain()
+        self.firmware_updater.checkAgain()
 
         # Set active port to update speeds in real-time
-        self._selected_port = self.ControlsWin.ui.cBox_Port.currentData()
+        self._selected_port = self.controls_window.ui.cBox_Port.currentData()
         if self._selected_port is None:
             self._selected_port = ""  # Dissallow None
         if self._selected_port == "CMD_DEV_INFO":
@@ -2847,7 +2833,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         try:
             # Clamp the multiplex count between 1 and 4 based on the combo box selection
-            combo_idx = self.ControlsWin.ui.cBox_MultiMode.currentIndex()
+            combo_idx = self.controls_window.ui.cBox_MultiMode.currentIndex()
             new_count = max(1, min(4, 1 + combo_idx))
 
             current_count = getattr(self, "multiplex_plots", None)
@@ -2855,7 +2841,7 @@ class MainWindow(QtWidgets.QMainWindow):
             new_source = self._get_source()
             # TODO: This is just a placeholder, more work required to draw plots
             if current_count != new_count:
-                left_pane = self.PlotsWin.ui.left_pane
+                left_pane = self.plots_window.ui.left_pane
                 current_tabs = len(left_pane.btn_group.buttons())
                 while current_tabs < new_count:
                     dummy_plot = GraphicsLayoutWidget()
@@ -2897,9 +2883,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self, "_calib_ready_text"):
                 self._hide_calib_ready_text()
 
-            plt_widget = self.PlotsWin.ui.plt
-            pltB_widget = self.PlotsWin.ui.pltB
-            plt_temp_widget = getattr(self.PlotsWin.ui, "plt_temp", None)
+            plt_widget = self.plots_window.ui.plt
+            pltB_widget = self.plots_window.ui.pltB
+            plt_temp_widget = getattr(self.plots_window.ui, "plt_temp", None)
             _all_tiles = [w for w in (plt_widget, pltB_widget, plt_temp_widget) if w]
 
             # Freeze all tile widgets so the user sees no intermediate state.
@@ -2934,7 +2920,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _configure_device_info(self):
         if not len(self._selected_port) == 0:
 
-            ui = self.ControlsWin.ui
+            ui = self.controls_window.ui
 
             # The device-config editor now lives as the second perspective INSIDE
             # the advanced popup, rather than as a separate overlay window. The
@@ -2973,17 +2959,17 @@ class MainWindow(QtWidgets.QMainWindow):
             ok_name = self._configure_device_name()
             ok_pid, dif = self._configure_device_pid()
 
-            self.tecWorker.set_port(self._selected_port)
-            self.tecWorker._tec_update()  # Force read to update SW cached offsets
-            self.set_cal1 = self.tecWorker._tec_offset1  # Store offsets to locals
-            self.set_cal2 = self.tecWorker._tec_offset2
+            self.tec_worker.set_port(self._selected_port)
+            self.tec_worker._tec_update()  # Force read to update SW cached offsets
+            self.set_cal1 = self.tec_worker._tec_offset1  # Store offsets to locals
+            self.set_cal2 = self.tec_worker._tec_offset2
 
             ok_cal = self._configure_device_temp_cal_1()
             ok_cal = self._configure_device_temp_cal_2()
 
             # restore selected port back to device
-            restore_port_idx = self.ControlsWin.ui.cBox_Port.findData(self._selected_port)
-            self.ControlsWin.ui.cBox_Port.setCurrentIndex(restore_port_idx)
+            restore_port_idx = self.controls_window.ui.cBox_Port.findData(self._selected_port)
+            self.controls_window.ui.cBox_Port.setCurrentIndex(restore_port_idx)
 
             if ok_pid:
                 if dif != None:
@@ -2992,9 +2978,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     except:
                         Log.e("Failed to delete file:", dif)
                 # force parse and/or write device info (to update name and/or pid)
-                self.fwUpdater.checkAgain()
+                self.firmware_updater.checkAgain()
                 self.worker._port = self._selected_port  # used in run()
-                self.fwUpdater.run(self, suppress_optional_popup=True)
+                self.firmware_updater.run(self, suppress_optional_popup=True)
             elif ok_name:  # (needed only if PID not changed too)
                 self._refresh_ports()  # update name in port list
             # elif ok_cal: do nothing
@@ -3012,11 +2998,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     dev_handle = dev_name
                     break
         if dev_handle:
-            if not self.ControlsWin.ui.ConfigBannerWidget.text().endswith(dev_handle):
-                self.ControlsWin.ui.ConfigBannerWidget.setText(
+            if not self.controls_window.ui.ConfigBannerWidget.text().endswith(dev_handle):
+                self.controls_window.ui.ConfigBannerWidget.setText(
                     f"Configuration Editor for Device {dev_handle}"
                 )
-                self.ControlsWin.ui.blank_device_config_icon_text()  # re-query all fields
+                self.controls_window.ui.blank_device_config_icon_text()  # re-query all fields
 
     def _configure_device_name(self):
         friendly_name = self._selected_port
@@ -3032,7 +3018,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         text, ok = QtWidgets.QInputDialog.getText(
             self,
-            self.ControlsWin.ui.cBox_Port.currentText(),
+            self.controls_window.ui.cBox_Port.currentText(),
             "Enter a name for device '{}':".format(dev_handle),
             text=friendly_name,
         )
@@ -3085,9 +3071,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # confirm PID in DEV_INFO matches COM Port listed text
         try:
-            idx = self.ControlsWin.ui.cBox_Port.findData(self._selected_port)
+            idx = self.controls_window.ui.cBox_Port.findData(self._selected_port)
             if idx >= 0:
-                device_text = self.ControlsWin.ui.cBox_Port.itemText(idx)
+                device_text = self.controls_window.ui.cBox_Port.itemText(idx)
                 if ":" in device_text:
                     dev_i = int(device_text.split(":")[0], base=16)
                     if dev_i != pid_old:
@@ -3100,7 +3086,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         text, ok = QtWidgets.QInputDialog.getText(
             self,
-            self.ControlsWin.ui.cBox_Port.currentText(),
+            self.controls_window.ui.cBox_Port.currentText(),
             "Enter a 'Position ID' for device '{}':".format(friendly_name),
             text=hex(pid_old)[2:].upper(),
         )
@@ -3184,7 +3170,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         text, ok = QtWidgets.QInputDialog.getText(
             self,
-            self.ControlsWin.ui.cBox_Port.currentText(),
+            self.controls_window.ui.cBox_Port.currentText(),
             "Enter a constant 'TEMP CAL' for device '{}':\n(Applies all the time)".format(
                 friendly_name
             ),
@@ -3227,7 +3213,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         text, ok = QtWidgets.QInputDialog.getText(
             self,
-            self.ControlsWin.ui.cBox_Port.currentText(),
+            self.controls_window.ui.cBox_Port.currentText(),
             "Enter a running 'TEMP CAL' for device '{}':\n(Applies during measurements ONLY)".format(
                 friendly_name
             ),
@@ -3306,7 +3292,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # This function is connected to the valueChanged signal of the sample Spin Box.
         if self.worker is not None:
             # Log.i(TAG, "Changing sample size")
-            self.worker.reset_buffers(self.ControlsWin.ui.sBox_Samples.value() + 1)
+            self.worker.reset_buffers(self.controls_window.ui.sBox_Samples.value() + 1)
 
     ###########################################################################
     # Updates and redraws the graphics in the plot.
@@ -3330,7 +3316,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         dictating the layout structure.
         """
         # Freeze the UI to prevent flickering during rapid layout shifts
-        plt_widget = self.PlotsWin.ui.plt
+        plt_widget = self.plots_window.ui.plt
         plt_widget.setUpdatesEnabled(False)
 
         try:
@@ -3388,7 +3374,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_plot_theme_colors(self) -> None:
         """Re-applies theme-derived colors to already-built plot axes and annotations.
 
-        Connected to ``ThemeManager.themeChanged`` so axis tick text, the welcome
+        Connected to `ThemeManager.themeChanged` so axis tick text, the welcome
         overlay, and pooled peak-index labels (which are colored once at creation
         and otherwise never revisited) stay legible after a light/dark switch.
         """
@@ -3542,14 +3528,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     return [""] * len(values)
 
-        self.PlotsWin.ui.plt.setBackground(None)
-        self.PlotsWin.ui.pltB.setBackground(None)
-        _plt_temp = getattr(self.PlotsWin.ui, "plt_temp", None)
+        self.plots_window.ui.plt.setBackground(None)
+        self.plots_window.ui.pltB.setBackground(None)
+        _plt_temp = getattr(self.plots_window.ui, "plt_temp", None)
         if _plt_temp:
             _plt_temp.setBackground(None)
 
-        self.PlotsWin.ui.plt.setAntialiasing(True)
-        self.PlotsWin.ui.pltB.setAntialiasing(True)
+        self.plots_window.ui.plt.setAntialiasing(True)
+        self.plots_window.ui.pltB.setAntialiasing(True)
         if _plt_temp:
             _plt_temp.setAntialiasing(True)
 
@@ -3569,7 +3555,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if i == 0:
                     span, y = 2, 0
 
-            plot_layout = self.PlotsWin.ui.plt.addPlot(
+            plot_layout = self.plots_window.ui.plt.addPlot(
                 col=x,
                 row=y,
                 colspan=span,
@@ -3614,7 +3600,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._yaxis.append(GlassAxisItem(orientation="left"))
             self._xaxis.append(GlassDateAxis(orientation="bottom"))
 
-            plot_layout = self.PlotsWin.ui.pltB.addPlot(
+            plot_layout = self.plots_window.ui.pltB.addPlot(
                 col=x,
                 row=y,
                 **{"font-size": "12pt"},
@@ -3679,7 +3665,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # ---------------------------------------------------------
         # Temperature Plot
         # ---------------------------------------------------------
-        _temp_container = _plt_temp if _plt_temp else self.PlotsWin.ui.plt
+        _temp_container = _plt_temp if _plt_temp else self.plots_window.ui.plt
         self._plt4 = _temp_container.addPlot(
             row=0,
             col=0,
@@ -4163,7 +4149,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Progress bar handling
         if self._ser_control <= Constants.environment:
             self._completed = self._ser_control * 2
-        self.ControlsWin.ui.run_progress_bar.setValue(int((self._ser_control / 10) % 100))
+        self.controls_window.ui.run_progress_bar.setValue(int((self._ser_control / 10) % 100))
 
         # Create data label strings
         (
@@ -4183,10 +4169,10 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
         # Stats and infobar widget handling
-        self.ControlsWin.ui.infostatus.setText(
+        self.controls_window.ui.infostatus.setText(
             "<font color=#333333> Program Status </font>" + label_status
         )
-        self.ControlsWin.ui.infobar.setText(
+        self.controls_window.ui.infobar.setText(
             "<font color=#0000ff> Infobar </font>"
             "<font color={color}>{bar}</font>".format(color=color_err, bar=label_bar)
         )
@@ -4216,8 +4202,8 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QApplication.processEvents()
 
         # Convenience aliases for UI elements
-        controls_ui = self.ControlsWin.ui
-        info_ui = self.InfoWin.ui
+        controls_ui = self.controls_window.ui
+        info_ui = self.info_window.ui
 
         controls_ui.pButton_Stop.setEnabled(False)
 
@@ -4237,7 +4223,7 @@ class MainWindow(QtWidgets.QMainWindow):
         is_warning = False
         num_devices = getattr(self, "multiplex_plots", 1)
         for i in range(num_devices):
-            self.PlotsWin.ui.left_pane.set_device_state(i, "init")
+            self.plots_window.ui.left_pane.set_device_state(i, "init")
         label_status = "Calibration Processing"
         label_bar = "The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
         color_err = "#333333"
@@ -4268,7 +4254,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._calib_overlay_ready = True
                 self._set_plots_dimmed(amplitude=False)
                 for i in range(num_devices):
-                    self.PlotsWin.ui.left_pane.set_device_state(i, "success")
+                    self.plots_window.ui.left_pane.set_device_state(i, "success")
             elif time_temp_err:
                 label_bar = "Warning: ValueError or generic error during signal acquisition. Please repeat the Initialize."
                 is_warning = True
@@ -4286,7 +4272,7 @@ class MainWindow(QtWidgets.QMainWindow):
             stop_flag = 1
             self._set_plots_dimmed(amplitude=False)
             for i in range(num_devices):
-                self.PlotsWin.ui.left_pane.set_device_state(i, "error")
+                self.plots_window.ui.left_pane.set_device_state(i, "error")
 
         # Apply updates to the Side-panel UI
         controls_ui.infostatus.setStyleSheet(css_style)
@@ -4453,8 +4439,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 elif pred_int == 3:
                     self._fill_display_msg = "Data Ready, Stop"
 
-            if hasattr(self.ControlsWin.ui, "run_controls"):
-                self.ControlsWin.ui.run_controls.update_progress(ui_step, 5, status_msg)
+            if hasattr(self.controls_window.ui, "run_controls"):
+                self.controls_window.ui.run_controls.update_progress(ui_step, 5, status_msg)
 
         except Exception as e:
             Log.e(TAG, f"Error retrieving fill status: {e}")
@@ -4471,13 +4457,13 @@ class MainWindow(QtWidgets.QMainWindow):
             data_temperature (np.ndarray): Array containing the latest temperature
                 readings; index 0 is used as the current process value.
         """
-        if not self.tecWorker._tec_locked:
+        if not self.tec_worker._tec_locked:
             return
-        self.tecWorker._tec_temp = data_temperature[-1]
-        self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
-        tec_temperature = self.tecWorker._tec_temp
-        tec_set_point = self.tecWorker._tec_setpoint or 0.25
-        tec_power = self.tecWorker._tec_power
+        self.tec_worker._tec_temp = data_temperature[-1]
+        self.tec_worker._tec_power = self.worker.get_value2_buffer(0)
+        tec_temperature = self.tec_worker._tec_temp
+        tec_set_point = self.tec_worker._tec_setpoint or 0.25
+        tec_power = self.tec_worker._tec_power
 
         if tec_power == 0:
             is_err = np.isnan(tec_temperature)
@@ -4489,7 +4475,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             bgcolor = "lightgreen" if abs(tec_temperature - tec_set_point) <= 1.0 else "yellow"
 
-        tec_label = self.ControlsWin.ui.lTemp
+        tec_label = self.controls_window.ui.lTemp
         tec_label.setText(label)
         tec_label.setStyleSheet(f"background-color: {bgcolor}")
         tec_label.repaint()
@@ -4527,7 +4513,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
 
         e1, e2, e3, e4 = self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4
-        ui = self.ControlsWin.ui
+        ui = self.controls_window.ui
 
         # Early-data processing state
         if data_resonance_frequency[0] == 0 and not (e1 or e2):
@@ -4604,7 +4590,7 @@ class MainWindow(QtWidgets.QMainWindow):
         diss_label = f"{d_diss:.6f}"
         d_temperature = float(f"{data_temperature[0]:.2f}")
 
-        self.ControlsWin.ui.infostatus.setStyleSheet(Constants._CSS_GREEN)
+        self.controls_window.ui.infostatus.setStyleSheet(Constants._CSS_GREEN)
 
         # Check for max dissipation warning bounds
         _max_diss = (
@@ -4755,7 +4741,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 (including units).
         """
         rf = self._readFREQ
-        layout_ui = self.InfoWin.ui
+        layout_ui = self.info_window.ui
         _h = "<font color=#0000ff> {title} </font>"
 
         layout_ui.info6.setText(
@@ -4850,7 +4836,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     pi.layout.addItem(pi._right_title_label, 0, 2)
                 pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
 
-        layout_ui = self.InfoWin.ui
+        layout_ui = self.info_window.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff > Ref. Frequency </font>{self._labelref1}")
         layout_ui.inforef2.setText(
             f"<font color=#0000ff > Ref. Dissipation </font>{self._labelref2}"
@@ -5024,7 +5010,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     pi.layout.addItem(pi._right_title_label, 0, 2)
                 pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
 
-        layout_ui = self.InfoWin.ui
+        layout_ui = self.info_window.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff> Ref. Frequency </font>{self._labelref1}")
         layout_ui.inforef2.setText(
             f"<font color=#0000ff> Ref. Dissipation </font>{self._labelref2}"
@@ -5404,7 +5390,7 @@ class MainWindow(QtWidgets.QMainWindow):
         300 ms, giving a clear visual signal that the event was retracted.
 
         Args:
-            marker_dict: The record originally built by ``_place_fill_event_marker``.
+            marker_dict: The record originally built by `_place_fill_event_marker`.
         """
         m_freq = marker_dict.get("m_freq")
         m_diss = marker_dict.get("m_diss")
@@ -5490,12 +5476,12 @@ class MainWindow(QtWidgets.QMainWindow):
         """Displays a glassmorphic tooltip with an animated leader line.
 
         The label is centred above the marker (anchor bottom-centre).  A
-        ``PlotCurveItem`` leader line grows downward from the label's anchor
+        `PlotCurveItem` leader line grows downward from the label's anchor
         point to the top edge of the dot ring over 250 ms, making it
         unambiguous which event the tooltip describes.
 
         Args:
-            marker_dict: Record built by ``_place_fill_event_marker``.
+            marker_dict: Record built by `_place_fill_event_marker`.
         """
         self._hide_marker_label()
 
@@ -5880,14 +5866,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def _port_list_refresh(self):
 
         # Capture ports list before changing it
-        before_count = self.ControlsWin.ui.cBox_Port.count()
-        before_items = [self.ControlsWin.ui.cBox_Port.itemData(i) for i in range(before_count)]
+        before_count = self.controls_window.ui.cBox_Port.count()
+        before_items = [self.controls_window.ui.cBox_Port.itemData(i) for i in range(before_count)]
         # Update ports list
         self._source_changed()
 
         # Get differences from before and after
-        after_count = self.ControlsWin.ui.cBox_Port.count()
-        after_items = [self.ControlsWin.ui.cBox_Port.itemData(i) for i in range(after_count)]
+        after_count = self.controls_window.ui.cBox_Port.count()
+        after_items = [self.controls_window.ui.cBox_Port.itemData(i) for i in range(after_count)]
         differences = set(before_items) ^ set(after_items)
 
         # Compare before and after, report changes
@@ -5901,8 +5887,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 use_port = True
                 Log.w(f"Found new port: {[t.split(':')[0] for t in added_str.split()]}")
                 if use_port:
-                    i = self.ControlsWin.ui.cBox_Port.findData(added_str)
-                    self.ControlsWin.ui.cBox_Port.setCurrentIndex(i)
+                    i = self.controls_window.ui.cBox_Port.findData(added_str)
+                    self.controls_window.ui.cBox_Port.setCurrentIndex(i)
                     self._port_changed()
             else:
                 if len(list(added)[0]) > 6:
@@ -5940,7 +5926,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     + 'NOTICE: YOU MUST PUSH THE "PROGRAM" BUTTON ON THE DEVICE BEFORE PROCEEDING.\n\n'
                     + "Next Step: You will be asked to provide the HW TYPE of the Teensy device.",
                 )
-                self.fwUpdater.doUpdate(self, None)
+                self.firmware_updater.doUpdate(self, None)
         elif len(differences) == 0:  # no port list changes
             # PopUp.information(self, title, "No port changes detected.")
             if after_count == ADMIN_OPTION_CMDS:
@@ -5973,37 +5959,37 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_ports(self):
         flux_controller_exists = False
 
-        selected_port = self.ControlsWin.ui.cBox_Port.currentData()
+        selected_port = self.controls_window.ui.cBox_Port.currentData()
         if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
 
         # Block signals to prevent unwanted triggers during refresh
-        self.ControlsWin.ui.cBox_Port.blockSignals(True)
+        self.controls_window.ui.cBox_Port.blockSignals(True)
 
         # Wrap signal-blocked code in try-finally to restore signals on error
         try:
 
             # Clears boxes before adding new
-            self.ControlsWin.ui.cBox_Port.clear()
+            self.controls_window.ui.cBox_Port.clear()
 
             # Gets the current source type
             source = self._get_source()
 
-            self.ControlsWin.ui.infobar.setText(
+            self.controls_window.ui.infobar.setText(
                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
                     "#333333", "Searching for devices... please wait..."
                 )
             )
             if Architecture.get_os() == OSType.macosx:
-                self.ControlsWin.ui.infobar.repaint()
+                self.controls_window.ui.infobar.repaint()
             else:
-                self.ControlsWin.ui.infobar.update()
+                self.controls_window.ui.infobar.update()
 
             ports = self.worker.get_source_ports(source)
 
-            self.ControlsWin.ui.infobar.setText(
+            self.controls_window.ui.infobar.setText(
                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333", "")
             )
 
@@ -6072,10 +6058,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     Log.d(
                         f"New device found: querying device info for {port_name.split(':')[0]}..."
                     )
-                    self.fwUpdater.checkAgain()
+                    self.firmware_updater.checkAgain()
                     self.worker._port = port_name  # used in run()
                     # Icon shows state; suppress optional popup regardless of ReadyToShow
-                    ret = self.fwUpdater.run(self, self.ReadyToShow, suppress_optional_popup=True)
+                    ret = self.firmware_updater.run(
+                        self, self.ReadyToShow, suppress_optional_popup=True
+                    )
                     if ret == True or ret >= 0:  # not a failed check
                         Log.d("Device info queried. Waiting to refresh ports on next call.")
                         # Ensure the combo box signals are re-enabled before the
@@ -6135,10 +6123,10 @@ class MainWindow(QtWidgets.QMainWindow):
                         continue  # wait to add it until after sorting other ports
                     elif is_networked:
                         port_icon = ethernet_icon
-                    self.ControlsWin.ui.cBox_Port.addItem(port_icon, dev_name, ports[i])
-                self.ControlsWin.ui.cBox_Port.model().sort(0)
+                    self.controls_window.ui.cBox_Port.addItem(port_icon, dev_name, ports[i])
+                self.controls_window.ui.cBox_Port.model().sort(0)
                 if controller_port:
-                    self.ControlsWin.ui.cBox_Port.addItem(
+                    self.controls_window.ui.cBox_Port.addItem(
                         controller_port[0], controller_port[1], controller_port[2]
                     )
                 # The last item is the device-config entry. When at least one
@@ -6146,35 +6134,35 @@ class MainWindow(QtWidgets.QMainWindow):
                 # device connected it reads "No device connected" and is left
                 # non-actionable (its data stays empty so selecting it does
                 # nothing in _port_changed).
-                if self.ControlsWin.ui.cBox_Port.count() > 0:
-                    self.ControlsWin.ui.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
+                if self.controls_window.ui.cBox_Port.count() > 0:
+                    self.controls_window.ui.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
                 else:
-                    self.ControlsWin.ui.cBox_Port.addItem("No device connected", "")
+                    self.controls_window.ui.cBox_Port.addItem("No device connected", "")
                     # Grey it out so it reads as a status, not a choice.
-                    _idx = self.ControlsWin.ui.cBox_Port.count() - 1
-                    _model = self.ControlsWin.ui.cBox_Port.model()
+                    _idx = self.controls_window.ui.cBox_Port.count() - 1
+                    _model = self.controls_window.ui.cBox_Port.model()
                     _item = _model.item(_idx) if hasattr(_model, "item") else None
                     if _item is not None:
                         _item.setEnabled(False)
 
             # Show/hide "Next Port" button (as HW supports it)
-            self.ControlsWin.ui.action_NextPortRow.setVisible(flux_controller_exists)
-            self.ControlsWin.ui.action_NextPortSep.setVisible(flux_controller_exists)
+            self.controls_window.ui.action_NextPortRow.setVisible(flux_controller_exists)
+            self.controls_window.ui.action_NextPortSep.setVisible(flux_controller_exists)
 
             # Refresh the Configure button's connected/'No device connected'
             # state now that the port list has been repopulated.
-            if hasattr(self.ControlsWin.ui, "_update_configure_enabled"):
-                self.ControlsWin.ui._update_configure_enabled()
+            if hasattr(self.controls_window.ui, "_update_configure_enabled"):
+                self.controls_window.ui._update_configure_enabled()
 
             # re-home controller if FLUX is connected (on launch and Reset)
-            if self.ControlsWin.ui.action_NextPortRow.isVisible():  # use action, not tool
+            if self.controls_window.ui.action_NextPortRow.isVisible():  # use action, not tool
                 # To avoid re-homing on run start, only do this if Run button is disabled
-                if self.ControlsWin.ui.tool_Start.isEnabled():
+                if self.controls_window.ui.tool_Start.isEnabled():
                     pass  # do nothing, leave cam wheel where it is
                 else:
                     # setting error will force immediate re-home on next update
-                    self.ControlsWin.ui.tool_NextPortRow.setIconError()
-                    self.ControlsWin.ui.tool_NextPortRow.click()  # update
+                    self.controls_window.ui.tool_NextPortRow.setIconError()
+                    self.controls_window.ui.tool_NextPortRow.click()  # update
 
             # Log.d(selected_port, ports)
             selected_port_parts = selected_port.split(";")
@@ -6200,11 +6188,11 @@ class MainWindow(QtWidgets.QMainWindow):
             # Unblock signals before setCurrentIndex so the final port-change
             # notification propagates exactly once (instead of once per addItem
             # during the repopulate loop above).
-            self.ControlsWin.ui.cBox_Port.blockSignals(False)
+            self.controls_window.ui.cBox_Port.blockSignals(False)
 
         if selected_port in ports:
-            i = self.ControlsWin.ui.cBox_Port.findData(selected_port)
-            self.ControlsWin.ui.cBox_Port.setCurrentIndex(i)
+            i = self.controls_window.ui.cBox_Port.findData(selected_port)
+            self.controls_window.ui.cBox_Port.setCurrentIndex(i)
 
             # RESET PORT MSGBOX
             try:
@@ -6223,7 +6211,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.e(e)
 
         else:
-            self.ControlsWin.ui.cBox_Port.setCurrentIndex(-1)
+            self.controls_window.ui.cBox_Port.setCurrentIndex(-1)
             if len(selected_port) > 0:
                 Log.w(f"The selected port ({selected_port.split(':')[0]}) is no longer available.")
                 Log.w("Please check connection or select a new port.")
@@ -6231,38 +6219,38 @@ class MainWindow(QtWidgets.QMainWindow):
                 #     "The selected port ({}) is no longer available.\n\n".format(selected_port) +
                 #     "Please check connection or select a new port.")
             elif len(ports) == 1 or len(ports) == len(dev_pids):
-                self.ControlsWin.ui.cBox_Port.setCurrentIndex(0)
+                self.controls_window.ui.cBox_Port.setCurrentIndex(0)
                 self._port_changed()
 
         # Remove FLUX controller from list of PIDs connected (if exists)
         if "80" in dev_pids:
             dev_pids.remove("80")
 
-        restore_idx = self.ControlsWin.ui.cBox_MultiMode.currentIndex()
-        self.ControlsWin.ui.cBox_MultiMode.clear()
+        restore_idx = self.controls_window.ui.cBox_MultiMode.currentIndex()
+        self.controls_window.ui.cBox_MultiMode.clear()
         multi_channel_count = 4 * 1
         if "A" in dev_pids:
             multi_channel_count = 4 * 6
         multi_channel_items = [
             f"{i + 1} Channel" + ("s" if i > 0 else "") for i in range(multi_channel_count)
         ]
-        self.ControlsWin.ui.cBox_MultiMode.addItems(multi_channel_items)
-        if self.ControlsWin.ui.chBox_MultiAuto.isChecked():
+        self.controls_window.ui.cBox_MultiMode.addItems(multi_channel_items)
+        if self.controls_window.ui.chBox_MultiAuto.isChecked():
             idx = max(0, min(len(dev_pids), multi_channel_count) - 1)
             Log.d(f"Auto-Detect Channel Count: {idx + 1}")
         else:
-            if self.ControlsWin.ui.cBox_MultiMode.count() > restore_idx:
+            if self.controls_window.ui.cBox_MultiMode.count() > restore_idx:
                 idx = restore_idx
             else:
                 Log.w("Too few channels to restore prior selection.")
-                idx = self.ControlsWin.ui.cBox_MultiMode.count() - 1
-        self.ControlsWin.ui.cBox_MultiMode.setCurrentIndex(idx)
-        for i in range(self.ControlsWin.ui.cBox_MultiMode.count()):
-            if i < self.ControlsWin.ui.cBox_Port.count() * (6 if "A" in dev_pids else 1) - 1:
+                idx = self.controls_window.ui.cBox_MultiMode.count() - 1
+        self.controls_window.ui.cBox_MultiMode.setCurrentIndex(idx)
+        for i in range(self.controls_window.ui.cBox_MultiMode.count()):
+            if i < self.controls_window.ui.cBox_Port.count() * (6 if "A" in dev_pids else 1) - 1:
                 enable = True
             else:
                 enable = False
-            self.ControlsWin.ui.cBox_MultiMode.model().item(i).setEnabled(enable)
+            self.controls_window.ui.cBox_MultiMode.model().item(i).setEnabled(enable)
 
     ###########################################################################
     # Updates the speeds and depending boxes on change
@@ -6272,17 +6260,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Gets the current source type
         source = self._get_source()
-        i = self.ControlsWin.ui.cBox_Port.currentText()
+        i = self.controls_window.ui.cBox_Port.currentText()
         i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16) % 9
         speeds = self.worker.get_source_speeds(source, i)
 
         # Store and get the restore index
-        if len(speeds) == self.ControlsWin.ui.cBox_Speed.count():
+        if len(speeds) == self.controls_window.ui.cBox_Speed.count():
             idx = source.value
         else:
             idx = (source.value + 1) % 2  # 0 -> 1, 1 -> 0
-        if not self.ControlsWin.ui.cBox_Speed.currentText() == "0":
-            self.restore_mode_idx[idx] = self.ControlsWin.ui.cBox_Speed.currentIndex()
+        if not self.controls_window.ui.cBox_Speed.currentText() == "0":
+            self.restore_mode_idx[idx] = self.controls_window.ui.cBox_Speed.currentIndex()
         # do not use 'idx' here
         selected_index = self.restore_mode_idx[source.value]
 
@@ -6294,13 +6282,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 selected_index = 0
 
         # Clears boxes before adding new
-        self.ControlsWin.ui.cBox_Speed.clear()
+        self.controls_window.ui.cBox_Speed.clear()
 
         if speeds is not None:
-            self.ControlsWin.ui.cBox_Speed.addItems(speeds)
+            self.controls_window.ui.cBox_Speed.addItems(speeds)
 
-        if selected_index < self.ControlsWin.ui.cBox_Speed.count():
-            self.ControlsWin.ui.cBox_Speed.setCurrentIndex(selected_index)
+        if selected_index < self.controls_window.ui.cBox_Speed.count():
+            self.controls_window.ui.cBox_Speed.setCurrentIndex(selected_index)
 
     ###########################################################################
     # Gets the current source type
@@ -6309,13 +6297,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _get_source(self):
 
         # :rtype: OperationType.
-        return OperationType(self.ControlsWin.ui.cBox_Source.currentIndex())
+        return OperationType(self.controls_window.ui.cBox_Source.currentIndex())
 
     def _get_cal_age(self):
         is_recent = False
         age_in_mins = -1
         try:
-            if self.ControlsWin.ui.cal_initialized:  # been initialized this session
+            if self.controls_window.ui.cal_initialized:  # been initialized this session
                 is_recent = True
                 for i in range(len(self.worker._port)):
                     j = i
@@ -6323,7 +6311,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         j += 1
                     else:
                         # TODO: doesn't work if connected PIDs: FF, 1, 2, 3, 4
-                        j = self.ControlsWin.ui.cBox_Port.currentIndex() + 1
+                        j = self.controls_window.ui.cBox_Port.currentIndex() + 1
                     # Check age of calibration file, and ask for new cal if older than 15 mins
                     cal_file_path = Constants.cvs_peakfrequencies_path
                     cal_file_path = FileStorage.DEV_populate_path(cal_file_path, j)
@@ -6360,9 +6348,9 @@ class MainWindow(QtWidgets.QMainWindow):
             _show_welcome: If True, renders the welcome text annotations on the
                         primary plots. If False, ensures they are removed.
         """
-        plt_widget = getattr(self.PlotsWin.ui, "plt", None)
-        pltB_widget = getattr(self.PlotsWin.ui, "pltB", None)
-        plt_temp_widget = getattr(self.PlotsWin.ui, "plt_temp", None)
+        plt_widget = getattr(self.plots_window.ui, "plt", None)
+        pltB_widget = getattr(self.plots_window.ui, "pltB", None)
+        plt_temp_widget = getattr(self.plots_window.ui, "plt_temp", None)
         _all_tiles = [w for w in (plt_widget, pltB_widget, plt_temp_widget) if w]
 
         # Freeze UI updates to batch plot mutations invisibly
@@ -6402,7 +6390,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._remove_welcome_text()
 
             # Reset global UI states
-            self.ControlsWin.ui.run_progress_bar.setValue(0)
+            self.controls_window.ui.run_progress_bar.setValue(0)
 
             # Rebuild Curves and Apply Standby-Dim Invariant
             if _reinit_curves and getattr(self, "_plt4", None) is not None:
@@ -6482,7 +6470,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def factory_defaults(self):
 
         action_role = UserRoles.ADMIN
-        check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
+        check_result = UserProfiles().check(self.controls_window.userrole, action_role)
 
         if not check_result:
             PopUp.critical(
@@ -6519,21 +6507,21 @@ class MainWindow(QtWidgets.QMainWindow):
             Log.w("Factory Default: Invalidated 'config' folder successfully.")
 
             # restore viewStates to True
-            self.ControlsWin.chk1.setChecked(True)
-            self.ControlsWin.chk2.setChecked(True)
-            self.ControlsWin.chk3.setChecked(True)
-            self.ControlsWin.chk4.setChecked(True)
+            self.controls_window.chk1.setChecked(True)
+            self.controls_window.chk2.setChecked(True)
+            self.controls_window.chk3.setChecked(True)
+            self.controls_window.chk4.setChecked(True)
             Log.w("Factory Default: Restore viewStates in application.")
 
             # reload UI states to match viewStates
-            self.ControlsWin.toggle_console()
-            self.ControlsWin.toggle_amplitude()
-            self.ControlsWin.toggle_temperature()
-            self.ControlsWin.toggle_resonance_dissipation()
+            self.controls_window.toggle_console()
+            self.controls_window.toggle_amplitude()
+            self.controls_window.toggle_temperature()
+            self.controls_window.toggle_resonance_dissipation()
             Log.w("Factory Default: Reloaded UI states to sync.")
 
             # remove all keys
-            self.AppSettings.clear()
+            self.app_settings.clear()
             Log.w("Factory Default: Removed all application registry keys.")
 
             Log.i("Factory Default finished successfully.")
@@ -6547,36 +6535,36 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_tec_temp(self):  # wired to slider change
 
-        self.tecWorker.set_slider_down(self.ControlsWin.ui.slTemp.isSliderDown())
-        self.tecWorker.set_slider_value(self.ControlsWin.ui.slTemp.value())
-        self.tecWorker.set_slider_enable(self.ControlsWin.ui.slTemp.isEnabled())
+        self.tec_worker.set_slider_down(self.controls_window.ui.slTemp.isSliderDown())
+        self.tec_worker.set_slider_value(self.controls_window.ui.slTemp.value())
+        self.tec_worker.set_slider_enable(self.controls_window.ui.slTemp.isEnabled())
 
-        pv = self.tecWorker._tec_temp
-        sp = self.ControlsWin.ui.slTemp.value()
-        op = self.tecWorker._tec_power
+        pv = self.tec_worker._tec_temp
+        sp = self.controls_window.ui.slTemp.value()
+        op = self.tec_worker._tec_power
 
         if sp == 0.00:
             sp = 0.25
 
-        if self.tecWorker._tec_state == "OFF":
+        if self.tec_worker._tec_state == "OFF":
             # control is OFF: update GUI only, not TEC
             new_l1 = "PV:--.--C SP:{1:2.2f}C OP:[OFF]".format(pv, sp, op)
-            self.ControlsWin.ui.lTemp.setText(new_l1)
-            self.tecWorker._tec_update_now = False
-        elif self.ControlsWin.ui.slTemp.isSliderDown():
+            self.controls_window.ui.lTemp.setText(new_l1)
+            self.tec_worker._tec_update_now = False
+        elif self.controls_window.ui.slTemp.isSliderDown():
             # control is ON: update GUI only, not TEC
             new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(pv, sp, op)
-            self.ControlsWin.ui.lTemp.setText(new_l1)
-            self.tecWorker._tec_update_now = False
+            self.controls_window.ui.lTemp.setText(new_l1)
+            self.tec_worker._tec_update_now = False
         else:
             # control is ON: update TEC now (which updates GUI internally)
-            self.tecWorker._tec_update_now = True
-            self.tecWorker.update_now.emit()
+            self.tec_worker._tec_update_now = True
+            self.tec_worker.update_now.emit()
 
     def _enable_tec(self):  # wired to on/off button
-        if self.tecWorker._tec_state == "OFF" or self.tecWorker._tec_locked:
+        if self.tec_worker._tec_state == "OFF" or self.tec_worker._tec_locked:
             # check version and write device info (if needed)
-            selected_port = self.ControlsWin.ui.cBox_Port.currentData()
+            selected_port = self.controls_window.ui.cBox_Port.currentData()
             if selected_port is None:
                 selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
@@ -6585,20 +6573,20 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.multiplex_plots > 1:
                 selected_port = []
                 for i in range(self.multiplex_plots):
-                    if i < self.ControlsWin.ui.cBox_Port.count() - 1:
-                        selected_port.append(self.ControlsWin.ui.cBox_Port.itemData(i))
+                    if i < self.controls_window.ui.cBox_Port.count() - 1:
+                        selected_port.append(self.controls_window.ui.cBox_Port.itemData(i))
 
             self.worker._port = selected_port  # used in run()
-            do_continue = self.fwUpdater.run(self, suppress_optional_popup=True)
-            if self.fwUpdater._port_changed:
-                self.ControlsWin.ui.pButton_Refresh.clicked.emit()
-                selected_port = self.fwUpdater._port
+            do_continue = self.firmware_updater.run(self, suppress_optional_popup=True)
+            if self.firmware_updater._port_changed:
+                self.controls_window.ui.pButton_Refresh.clicked.emit()
+                selected_port = self.firmware_updater._port
                 self.worker._port = selected_port
             if not do_continue:
                 return
 
             # Restore single selected port (even when multiplex mode)
-            selected_port = self.ControlsWin.ui.cBox_Port.currentData()
+            selected_port = self.controls_window.ui.cBox_Port.currentData()
             if selected_port is None:
                 selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
@@ -6610,57 +6598,59 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
 
             # turn temp control on
-            self.ControlsWin.ui.pTemp.setText("Stop Temp Control")
+            self.controls_window.ui.pTemp.setText("Stop Temp Control")
 
             if hasattr(self, "tecThread"):
                 if self.tecThread.isRunning():
                     Log.d("Waiting for Temp Control to stop.")
                     # queue thread for 'quit' on next update
-                    self.tecWorker._tec_stop_thread = True
-                    self.tecWorker._tec_update_now = False  # invalidate flag to update TEC again
-                    self.tecWorker.update_now.emit()  # force next update of task to happen now
+                    self.tec_worker._tec_stop_thread = True
+                    self.tec_worker._tec_update_now = False  # invalidate flag to update TEC again
+                    self.tec_worker.update_now.emit()  # force next update of task to happen now
                     self.tecThread.wait()  # wait for thread to quit, gracefully
             Log.d("Starting new TEC thread.")
             self.tecThread = QtCore.QThread()
-            self.tecWorker = TECWorker()
-            self.tecWorker.set_port(selected_port)
-            self.tecWorker.set_slider_down(self.ControlsWin.ui.slTemp.isSliderDown())
-            self.tecWorker.set_slider_value(self.ControlsWin.ui.slTemp.value())
-            self.tecWorker.set_slider_enable(self.ControlsWin.ui.slTemp.isEnabled())
-            self.tecWorker.moveToThread(self.tecThread)
-            self.tecThread.worker = self.tecWorker
-            self.tecThread.started.connect(self.tecWorker.run)
-            self.tecWorker.finished.connect(self.tecThread.quit)
-            self.tecWorker.auto_off.connect(self.tec_auto_off)
-            self.tecWorker.volt_err.connect(self.tec_volt_err)
-            self.tecWorker.finished.connect(self.tec_stopped)
-            self.tecWorker.lTemp_setText.connect(lambda str: self.ControlsWin.ui.lTemp.setText(str))
-            self.tecWorker.lTemp_setStyleSheet.connect(
-                lambda str: self.ControlsWin.ui.lTemp.setStyleSheet(str)
+            self.tec_worker = TECWorker()
+            self.tec_worker.set_port(selected_port)
+            self.tec_worker.set_slider_down(self.controls_window.ui.slTemp.isSliderDown())
+            self.tec_worker.set_slider_value(self.controls_window.ui.slTemp.value())
+            self.tec_worker.set_slider_enable(self.controls_window.ui.slTemp.isEnabled())
+            self.tec_worker.moveToThread(self.tecThread)
+            self.tecThread.worker = self.tec_worker
+            self.tecThread.started.connect(self.tec_worker.run)
+            self.tec_worker.finished.connect(self.tecThread.quit)
+            self.tec_worker.auto_off.connect(self.tec_auto_off)
+            self.tec_worker.volt_err.connect(self.tec_volt_err)
+            self.tec_worker.finished.connect(self.tec_stopped)
+            self.tec_worker.lTemp_setText.connect(
+                lambda str: self.controls_window.ui.lTemp.setText(str)
             )
-            self.tecWorker.infobar_setText.connect(
-                lambda str: self.ControlsWin.ui.infobar.setText(str)
+            self.tec_worker.lTemp_setStyleSheet.connect(
+                lambda str: self.controls_window.ui.lTemp.setStyleSheet(str)
+            )
+            self.tec_worker.infobar_setText.connect(
+                lambda str: self.controls_window.ui.infobar.setText(str)
             )
             self.tecThread.start()
 
             # disable task timeout if running in development mode
             enabled, error, expires = UserProfiles.checkDevMode()
             if enabled:
-                self.tecWorker._task_timeout = np.inf
+                self.tec_worker._task_timeout = np.inf
 
         else:
             # turn temp control off
-            self.ControlsWin.ui.pTemp.setText("Start Temp Control")
-            self.tecWorker._tec_update("OFF")
-            self.tecWorker._tec_stop_thread = True
-            self.tecWorker._tec_update_now = False  # invalidate flag to update TEC again
-            self.tecWorker.update_now.emit()
-            self.ControlsWin.ui.lTemp.setStyleSheet("")
+            self.controls_window.ui.pTemp.setText("Start Temp Control")
+            self.tec_worker._tec_update("OFF")
+            self.tec_worker._tec_stop_thread = True
+            self.tec_worker._tec_update_now = False  # invalidate flag to update TEC again
+            self.tec_worker.update_now.emit()
+            self.controls_window.ui.lTemp.setStyleSheet("")
 
     def tec_auto_off(self):
-        self.ControlsWin.ui.pTemp.setText("Resume Temp Control")
-        self.ControlsWin.ui.tool_TempControl.setChecked(False)
-        self.ControlsWin.ui.tempController.setEnabled(False)
+        self.controls_window.ui.pTemp.setText("Resume Temp Control")
+        self.controls_window.ui.tool_TempControl.setChecked(False)
+        self.controls_window.ui.tempController.setEnabled(False)
 
     def tec_volt_err(self):
         if not PopUp.critical(
@@ -6669,18 +6659,18 @@ class MainWindow(QtWidgets.QMainWindow):
             "<b>POWER ISSUE</b>: VOLTAGE ERROR DETECTED!<br/>"
             + "Please confirm external voltage supply is powered.<br/>"
             + "Ignore this warning at your own risk. May cause damage!",
-            details=f"Voltage Detected: {self.tecWorker._tec_voltage}\nExpected: 5V",
+            details=f"Voltage Detected: {self.tec_worker._tec_voltage}\nExpected: 5V",
             btn1_text="Ok",
         ):
             # force auto-restart, user accepts liability of incorrect voltage
-            self.tecWorker._tec_stop_thread = False
-            self.tecWorker._tec_update_now = True
+            self.tec_worker._tec_stop_thread = False
+            self.tec_worker._tec_update_now = True
 
     def tec_stopped(self):
-        sp = self.ControlsWin.ui.slTemp.value()
+        sp = self.controls_window.ui.slTemp.value()
         new_l1 = "PV:--.--C SP:{0:2.2f}C OP:[OFF]".format(sp)  # pv, sp, op)
-        self.ControlsWin.ui.lTemp.setText(new_l1)
-        self.ControlsWin.ui.lTemp.setStyleSheet("")
+        self.controls_window.ui.lTemp.setText(new_l1)
+        self.controls_window.ui.lTemp.setStyleSheet("")
         Log.d("TEC Thead and Worker have finished.")
 
     ########################################################################################################
@@ -6866,7 +6856,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     labelweb3 = "UP-TO-DATE!"
                 self.ask_for_update = False
                 try:
-                    self.ModeWin.ui.sw_update_icon.setState(UpdateStatusIcon.State.UP_TO_DATE)
+                    self.mode_window.ui.sw_update_icon.setState(UpdateStatusIcon.State.UP_TO_DATE)
                 except AttributeError:
                     pass
             elif Constants.UpdateEngine in [
@@ -6880,7 +6870,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._dbx_connection = None
 
             if hasattr(self, "_license_manager") and self._license_manager:
-                self.VisQAIWin.check_license(getattr(self, "_license_manager", None))
+                self.visq_window.check_license(getattr(self, "_license_manager", None))
 
         except Exception as e:
             Log.e("Update Task error:", e)
@@ -6891,8 +6881,8 @@ class MainWindow(QtWidgets.QMainWindow):
         labelweb3 = "{} available!".format(v)
         _translate = QtCore.QCoreApplication.translate
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/download_icon.ico")
-        self.InfoWin.ui.pButton_Download.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
-        self.InfoWin.ui.pButton_Download.setText(_translate("infoWindow", " Download ZIP"))
+        self.info_window.ui.pButton_Download.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
+        self.info_window.ui.pButton_Download.setText(_translate("infoWindow", " Download ZIP"))
 
         # re-import each time to update settings from file
         from QATCH.common.userProfiles import UserConstants
@@ -6900,7 +6890,7 @@ class MainWindow(QtWidgets.QMainWindow):
         check_result = True
         if UserConstants.REQ_ADMIN_UPDATES:
             action_role = UserRoles.ADMIN
-            check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
+            check_result = UserProfiles().check(self.controls_window.userrole, action_role)
 
         if hasattr(self, "ask_for_update"):
             Log.i("Update Status:", labelweb3)
@@ -6911,7 +6901,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     Constants.app_version, Constants.app_date, v
                 )
                 try:
-                    self.ModeWin.ui.sw_update_icon.setState(
+                    self.mode_window.ui.sw_update_icon.setState(
                         UpdateStatusIcon.State.OPTIONAL, detail
                     )
                 except AttributeError:
@@ -6935,8 +6925,6 @@ class MainWindow(QtWidgets.QMainWindow):
             # init 'res_download' if not set
             if not hasattr(self, "res_download"):
                 self.res_download = False
-
-            import base64
             import json
 
             import dropbox
@@ -7271,10 +7259,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         Log.i(TAG, "Checking your internet connection {} ".format(labelweb2))
 
-        self.InfoWin.ui.lweb3.setText(
-            "<font color=#0000ff > Update Status &nbsp;&nbsp;&nbsp;</font><font color={}>{}</font>".format(
-                color, labelweb3
-            )
+        QtCore.QMetaObject.invokeMethod(
+            self.info_window.ui.lweb3,
+            "setText",
+            QtCore.Qt.QueuedConnection,
+            QtCore.Q_ARG(
+                str,
+                "<font color=#0000ff > Update Status &nbsp;&nbsp;&nbsp;</font><font color={}>{}</font>".format(
+                    color, labelweb3
+                ),
+            ),
         )
         if hasattr(self, "ask_for_update") == False or self.ask_for_update == False:
             Log.i("Update Status:", labelweb3)
@@ -7873,8 +7867,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
 
                 # close application (prompting user first)
-                self.ControlsWin.close_no_confirm = True
-                QtCore.QTimer.singleShot(1000, self.ControlsWin.close)
+                self.controls_window.close_no_confirm = True
+                QtCore.QTimer.singleShot(1000, self.controls_window.close)
 
                 # Update latest build information for nightly
                 if Constants.UpdateEngine == UpdateEngines.Nightly:

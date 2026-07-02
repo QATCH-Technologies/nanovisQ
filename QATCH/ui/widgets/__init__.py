@@ -26,6 +26,7 @@ from .toggle_list_widget import ToggleListWidget
 from .user_preferences_widget import UserPreferencesWidget
 from .user_profiles_manager_widget import UserProfilesManagerWidget
 from .well_plate_widget import WellPlate
+from .update_status_badge import UpdateStatusIcon
 
 __all__ = [
     "AdvancedMainWidget",
@@ -56,4 +57,5 @@ __all__ = [
     "ControlsWidget",
     "SavedStateDot",
     "AccountPopup",
+    "UpdateStatusIcon",
 ]

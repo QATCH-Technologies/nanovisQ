@@ -46,7 +46,7 @@ from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
 from QATCH.ui.interfaces import UIControls
-from QATCH.ui.popUp import PopUp
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets import (
     DataManagementWidget,
@@ -162,35 +162,35 @@ class ControlsWindow(BaseWindow):
         self.userrole = UserRoles.NONE
         self.menubar.append(menu_bar.addMenu("&View"))
         self.modebar = self.menubar[2].addMenu("&Mode")
-        self.modebar.addAction("&1: Run", lambda: self.parent.ModeWin.ui._set_run_mode(None))
+        self.modebar.addAction("&1: Run", lambda: self.parent.mode_window.ui._set_run_mode(None))
         self.modebar.addAction(
-            "&2: Analyze", lambda: self.parent.ModeWin.ui._set_analyze_mode(None)
+            "&2: Analyze", lambda: self.parent.mode_window.ui._set_analyze_mode(None)
         )
         if Constants.show_visQ_in_R_builds:
             self.modebar.addAction(
-                "&3: VisQ.AI", lambda: self.parent.ModeWin.ui._set_learn_mode(None)
+                "&3: VisQ.AI", lambda: self.parent.mode_window.ui._set_learn_mode(None)
             )
         self.chk1 = self.menubar[2].addAction("&Console", self.toggle_console)
         self.chk1.setCheckable(True)
         self.chk1.setChecked(
-            self.parent.AppSettings.value("viewState_Console", "True").lower() == "true"
+            self.parent.app_settings.value("viewState_Console", "True").lower() == "true"
         )
         self.chk2 = self.menubar[2].addAction("&Amplitude", self.toggle_amplitude)
         self.chk2.setCheckable(True)
         self.chk2.setChecked(
-            self.parent.AppSettings.value("viewState_Amplitude", "True").lower() == "true"
+            self.parent.app_settings.value("viewState_Amplitude", "True").lower() == "true"
         )
         self.chk3 = self.menubar[2].addAction("&Temperature", self.toggle_temperature)
         self.chk3.setCheckable(True)
         self.chk3.setChecked(
-            self.parent.AppSettings.value("viewState_Temperature", "True").lower() == "true"
+            self.parent.app_settings.value("viewState_Temperature", "True").lower() == "true"
         )
         self.chk4 = self.menubar[2].addAction(
             "&Resonance/Dissipation", self.toggle_resonance_dissipation
         )
         self.chk4.setCheckable(True)
         self.chk4.setChecked(
-            self.parent.AppSettings.value("viewState_Resonance_Dissipation", "True").lower()
+            self.parent.app_settings.value("viewState_Resonance_Dissipation", "True").lower()
             == "true"
         )
         self.menubar.append(menu_bar.addMenu("&Help"))
@@ -225,21 +225,21 @@ class ControlsWindow(BaseWindow):
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
             "ModelData v{} ({})".format(model_data_version, model_data_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+            lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[0]
             ),
         )
         self.q_version_v1.setCheckable(True)
         self.q_version_v4 = self.menubar[5].addAction(
             "QModel Fusion v{} ({})".format(qmodel4_version, qmodel4_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+            lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[1]
             ),
         )
         self.q_version_v4.setCheckable(True)
         self.q_version_v6 = self.menubar[5].addAction(
             "QModel YOLO26 v{} ({})".format(qmodel6_version, qmodel6_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+            lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[2]
             ),
         )
@@ -445,7 +445,7 @@ class ControlsWindow(BaseWindow):
                 otherwise the main window itself or the current object.
         """
         if hasattr(self.parent, "ModeWin"):
-            return self.parent.ModeWin.centralWidget() or self.parent.ModeWin
+            return self.parent.mode_window.centralWidget() or self.parent.mode_window
         return self.centralWidget() or self
 
     def _open_data_management(self, mode: str) -> None:
@@ -474,7 +474,7 @@ class ControlsWindow(BaseWindow):
         Triggers the main UI controller to switch the workspace to the analysis
         view, allowing the user to inspect and interpret processed data.
         """
-        self.parent.ModeWin.ui._set_analyze_mode(self)
+        self.parent.mode_window.ui._set_analyze_mode(self)
 
     def import_data(self) -> None:
         """Opens the data management interface in 'import' mode."""
@@ -549,13 +549,13 @@ class ControlsWindow(BaseWindow):
                 self.userrole = UserRoles(role)
                 self.signinout.setText("&Sign Out")
                 self.ui.tool_User.setText(name)
-                self.parent.AnalyzeProc.tool_User.setText(name)
+                self.parent.analyze_process.tool_User.setText(name)
 
                 # Update management action context
                 if self.userrole != UserRoles.ADMIN:
                     self.manage.setText("&Change Password...")
         else:  # Action is "Sign Out"
-            if self.parent.ModeWin.ui._set_no_user_mode(None):
+            if self.parent.mode_window.ui._set_no_user_mode(None):
                 UserProfiles().session_end()
                 name = self.username.text()[6:]
                 Log.i(f"Goodbye, {name}! You have been signed out.")
@@ -566,7 +566,7 @@ class ControlsWindow(BaseWindow):
                 self.signinout.setText("&Sign In")
                 self.manage.setText("&Manage Users...")
                 self.ui.tool_User.setText("Anonymous")
-                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
+                self.parent.analyze_process.tool_User.setText("Anonymous")
             else:
                 Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
 
@@ -584,7 +584,7 @@ class ControlsWindow(BaseWindow):
                 widget used for managing user profiles.
         """
         # Disallow user management if the current mode is busy or has unsaved changes
-        if not self.parent.ModeWin.ui._check_mode_change_allowed():
+        if not self.parent.mode_window.ui._check_mode_change_allowed():
             Log.d("User has unsaved changes in Analyze mode. Manage users aborted.")
             return
 
@@ -610,8 +610,8 @@ class ControlsWindow(BaseWindow):
             self.signinout.setText("&Sign In")
             self.manage.setText("&Manage Users...")
             self.ui.tool_User.setText("Anonymous")
-            self.parent.AnalyzeProc.tool_User.setText("Anonymous")
-            self.parent.ModeWin.ui._set_no_user_mode(None)
+            self.parent.analyze_process.tool_User.setText("Anonymous")
+            self.parent.mode_window.ui._set_no_user_mode(None)
 
         # Update UI if user information changed
         if admin != name and admin is not None:
@@ -621,12 +621,12 @@ class ControlsWindow(BaseWindow):
             self.signinout.setText("&Sign Out")
             self.manage.setText("&Manage Users...")
             self.ui.tool_User.setText(admin)
-            self.parent.AnalyzeProc.tool_User.setText(admin)
+            self.parent.analyze_process.tool_User.setText(admin)
 
         # Display the management overlay
         if allow:
             if hasattr(self.parent, "ModeWin"):
-                overlay_parent = self.parent.ModeWin.centralWidget() or self.parent.ModeWin
+                overlay_parent = self.parent.mode_window.centralWidget() or self.parent.mode_window
             else:
                 overlay_parent = self.centralWidget() or self
             self.user_manager = UserProfilesManagerWidget(parent=overlay_parent, admin_name=admin)
@@ -648,10 +648,10 @@ class ControlsWindow(BaseWindow):
         is_visible: bool = self.chk1.isChecked()
 
         if not is_visible:
-            self.parent.ModeWin.ui.logview.setVisible(False)
+            self.parent.mode_window.ui.logview.setVisible(False)
         else:
-            self.parent.ModeWin.ui.logview.setVisible(True)
-        self.parent.AppSettings.setValue("viewState_Console", is_visible)
+            self.parent.mode_window.ui.logview.setVisible(True)
+        self.parent.app_settings.setValue("viewState_Console", is_visible)
 
     def toggle_amplitude(self) -> None:
         """Toggles the visibility of the Amplitude plots.
@@ -673,7 +673,7 @@ class ControlsWindow(BaseWindow):
 
         # Restore container layout
         self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue("viewState_Amplitude", is_visible)
+        self.parent.app_settings.setValue("viewState_Amplitude", is_visible)
 
     def toggle_temperature(self) -> None:
         """Toggles the visibility of the temperature plot.
@@ -691,7 +691,7 @@ class ControlsWindow(BaseWindow):
             Log.e(TAG, "Cannot toggle temperature plot, temperature plot is `None`.")
         # Restore container layout
         self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue("viewState_Temperature", is_visible)
+        self.parent.app_settings.setValue("viewState_Temperature", is_visible)
 
     def toggle_resonance_dissipation(self) -> None:
         """Toggles the visibility of the Resonance/Dissipation plots.
@@ -708,10 +708,10 @@ class ControlsWindow(BaseWindow):
         is_visible: bool = self.chk4.isChecked()
 
         if not is_visible:
-            self.parent.PlotsWin.ui.pltB.setVisible(False)
+            self.parent.plots_window.ui.pltB.setVisible(False)
         else:
-            self.parent.PlotsWin.ui.pltB.setVisible(True)
-        self.parent.AppSettings.setValue("viewState_Resonance_Dissipation", is_visible)
+            self.parent.plots_window.ui.pltB.setVisible(True)
+        self.parent.app_settings.setValue("viewState_Resonance_Dissipation", is_visible)
 
     def show_top_plot(self) -> bool:
         """Ensures the top-level plot container is visible.
@@ -729,8 +729,8 @@ class ControlsWindow(BaseWindow):
 
         # Check if any associated plots require the top container to be visible
         if self.chk2.isChecked() or self.chk3.isChecked():
-            toggle_console = self.parent.PlotsWin.ui.plt.isVisible() is False
-            self.parent.PlotsWin.ui.plt.setVisible(True)
+            toggle_console = self.parent.plots_window.ui.plt.isVisible() is False
+            self.parent.plots_window.ui.plt.setVisible(True)
         return toggle_console
 
     def hide_top_plot(self, toggle_console: bool) -> None:
@@ -747,11 +747,11 @@ class ControlsWindow(BaseWindow):
         """
         if self.chk2.isChecked() or self.chk3.isChecked():
             if toggle_console:
-                layout = self.parent.PlotsWin.layout()
+                layout = self.parent.plots_window.layout()
                 if layout is not None:
                     layout.activate()
         else:
-            self.parent.PlotsWin.ui.plt.setVisible(False)
+            self.parent.plots_window.ui.plt.setVisible(False)
 
     def view_tutorials(self) -> None:
         """Toggles the visibility of the tutorials window.

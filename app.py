@@ -140,8 +140,8 @@ class QATCH:
         #     if hWnd:
         #         user32.ShowWindow(hWnd, SW_HIDE)
 
-        self.win.ModeWin.showMaximized()
-        self.win.ModeWin.activateWindow()
+        self.win.mode_window.showMaximized()
+        self.win.mode_window.activateWindow()
 
         if hasattr(self.win, "ask_for_update") and self.win.ask_for_update:
             self.win.start_download()

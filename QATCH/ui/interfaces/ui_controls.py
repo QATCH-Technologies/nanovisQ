@@ -55,7 +55,7 @@ from QATCH.ui.labels import (
     StatusLabel,
     TemperatureLabel,
 )
-from QATCH.ui.popUp import PopUp
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets import (
     AdvancedMainWidget,
@@ -2409,7 +2409,7 @@ class UIControls:
 
         # Confirm the stored PID matches the one actively listed in the COM Port combobox
         try:
-            port_combobox = main_window.ControlsWin.ui.cBox_Port
+            port_combobox = main_window.controls_window.ui.cBox_Port
             idx = port_combobox.findData(selected_port)
 
             if idx >= 0:
@@ -2555,7 +2555,7 @@ class UIControls:
         assert self.temp_cal_measure_action is not None
 
         main_window = self.parent.parent
-        tec_worker = main_window.tecWorker
+        tec_worker = main_window.tec_worker
         start_time = monotonic()
 
         # Determine if we need fresh data from the TEC hardware

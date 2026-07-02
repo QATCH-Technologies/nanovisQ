@@ -20,13 +20,13 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
-from QATCH.ui.components.update_status_icon import UpdateStatusIcon
+from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
 from QATCH.tools.donnan_gibbs_calculator import DonnanCalculatorModule
 from QATCH.tools.injection_force_calculator import InjectionForceCalculatorModule
-from QATCH.ui.popUp import PopUp
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets.floating_menu_widget import FloatingMenuWidget
 
@@ -211,15 +211,15 @@ class UIMode:
 
         # Create floating menu widget for VisQ.AI Toolkit
         self.floating_widget = FloatingMenuWidget(self)
-        self.floating_widget.addItems(self.parent.VisQAIWin.getToolNames())
+        self.floating_widget.addItems(self.parent.visq_window.getToolNames())
 
         # run mode view frame: Controls and Plots
         runwidget = QtWidgets.QWidget()
         runlayout = QtWidgets.QVBoxLayout()
         runlayout.setContentsMargins(0, 0, 0, 0)
         runlayout.setSpacing(0)
-        runlayout.addWidget(parent.ControlsWin.ui.centralwidget, 1)
-        runlayout.addWidget(parent.PlotsWin.ui.centralwidget, 255)
+        runlayout.addWidget(parent.controls_window.ui.centralwidget, 1)
+        runlayout.addWidget(parent.plots_window.ui.centralwidget, 255)
         runwidget.setLayout(runlayout)
         self.runview = QtWidgets.QScrollArea()
         self.runview.setObjectName("runview")
@@ -237,7 +237,7 @@ class UIMode:
         self.analyze.setLineWidth(0)
         self.analyze.setMidLineWidth(0)
         self.analyze.setWidgetResizable(True)
-        self.analyze.setWidget(parent.AnalyzeProc)
+        self.analyze.setWidget(parent.analyze_process)
         self.analyze.setMinimumSize(QtCore.QSize(1000, 122))
 
         # learn mode view frame: VisQ.AI
@@ -247,7 +247,7 @@ class UIMode:
         self.learn_ui.setLineWidth(0)
         self.learn_ui.setMidLineWidth(0)
         self.learn_ui.setWidgetResizable(True)
-        self.learn_ui.setWidget(parent.VisQAIWin)
+        self.learn_ui.setWidget(parent.visq_window)
         self.learn_ui.setMinimumSize(QtCore.QSize(1000, 122))
 
         self.donnan_calc_module = DonnanCalculatorModule()  # Instantiate the module
@@ -277,7 +277,7 @@ class UIMode:
         self.logview.setLineWidth(0)
         self.logview.setMidLineWidth(0)
         self.logview.setWidgetResizable(True)
-        self.logview.setWidget(parent.LogWin.ui.centralwidget)
+        self.logview.setWidget(parent.logger_window.ui.centralwidget)
         # Min height relaxed to 0 so the pane can slide/drag closed.
         self.logview.setMinimumSize(QtCore.QSize(1000, 0))
         self.logview.viewport().setAutoFillBackground(False)  # type: ignore
@@ -294,7 +294,7 @@ class UIMode:
         self.main_area = QtWidgets.QWidget()
         self.main_area.setObjectName("mainArea")
         self.main_area.setLayout(layout_h)
-        parent.LoginWin.ui.centralwidget.attach_to(self.main_area)
+        parent.login_window.ui.centralwidget.attach_to(self.main_area)
 
         # Controls/footer bar
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
@@ -391,13 +391,13 @@ class UIMode:
         self._force_splitter_mode_set = False
         # NOTE: splitter[0] widget must not change at load or else it disappears
         # (ignore the warning: "Trying to replace a widget with itself")
-        elems = [parent.LogWin.ui.centralwidget, parent.PlotsWin.ui.centralwidget]
+        elems = [parent.logger_window.ui.centralwidget, parent.plots_window.ui.centralwidget]
         for e in elems:
             not_resize = e.sizePolicy()
             not_resize.setHorizontalStretch(1)
             e.setSizePolicy(not_resize)
 
-        elems = [parent.PlotsWin.ui.plt, parent.PlotsWin.ui.pltB]
+        elems = [parent.plots_window.ui.plt, parent.plots_window.ui.pltB]
         for i, e in enumerate(elems):
             not_resize = e.sizePolicy()
             not_resize.setVerticalStretch(i + 2)
@@ -596,15 +596,15 @@ class UIMode:
         # Active run in progress
         if (
             self.splitter.widget(0) == self.runview
-            and not self.parent.ControlsWin.ui.pButton_Start.isEnabled()
+            and not self.parent.controls_window.ui.pButton_Start.isEnabled()
         ):
             Log.e("Please stop the current run before switching modes.")
             return False
 
         # Check for busy and/or unsaved changes in Analyze or VisQ.AI
         for processor, name in [
-            (self.parent.AnalyzeProc, "Analyze"),
-            (self.parent.VisQAIWin, "VisQ.AI™"),
+            (self.parent.analyze_process, "Analyze"),
+            (self.parent.visq_window, "VisQ.AI™"),
         ]:
             if processor.isBusy():
                 PopUp.warning(
@@ -654,7 +654,7 @@ class UIMode:
                 - False: the mode change was aborted due to not being allowed (programmatic call).
                 - None if triggered via a UI event.
         """
-        login = self.parent.LoginWin.ui.centralwidget
+        login = self.parent.login_window.ui.centralwidget
 
         # Already in No User / Sign-In mode
         if login.isVisible() and not self._force_splitter_mode_set:
@@ -668,13 +668,13 @@ class UIMode:
             return False if obj is None else None
 
         # Apply UI Changes for Sign-In Mode
-        self.parent.ControlsWin.ui_preferences.hide()
+        self.parent.controls_window.ui_preferences.hide()
         self.active_highlight.hide()
         for widget in [self.mode_run, self.mode_analyze, self.mode_learn]:
             widget.setProperty("active", "false")
             widget.style().unpolish(widget)  # type: ignore
             widget.style().polish(widget)  # type: ignore
-        self.parent.ControlsWin.set_signed_in_menu_state(False)
+        self.parent.controls_window.set_signed_in_menu_state(False)
         self._signed_in = False
         self._update_log_toggle_bar_theme()
 
@@ -695,9 +695,9 @@ class UIMode:
             def _do_reveal() -> None:
                 login.reveal_signed_out(self.main_area)
                 if session_expired:
-                    self.parent.LoginWin.ui.error_expired()
+                    self.parent.login_window.ui.error_expired()
                 elif session_loggedout:
-                    self.parent.LoginWin.ui.error_loggedout()
+                    self.parent.login_window.ui.error_loggedout()
 
             def _reveal() -> None:
                 self._wait_for_stable_size(self.main_area, _do_reveal)
@@ -707,7 +707,7 @@ class UIMode:
         self.parent.viewTutorialPage([1, 2, 0])
 
         # Focus the user initials input field after a short UI rendering delay
-        QtCore.QTimer.singleShot(500, self.parent.LoginWin.ui.user_initials.setFocus)
+        QtCore.QTimer.singleShot(500, self.parent.login_window.ui.user_initials.setFocus)
 
         if obj is None:
             return True
@@ -788,21 +788,21 @@ class UIMode:
 
         # Check User Permissions
         action_role = UserRoles.CAPTURE
-        check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+        check_result = UserProfiles().check(self.parent.controls_window.userrole, action_role)
 
         if check_result is None:  # User check required, but no user signed in
             Log.w(
                 f"Not signed in: User with role {action_role.name} is required to perform this action."
             )
             Log.i("Please sign in to continue.")
-            self.parent.ControlsWin.set_user_profile()  # Prompt for sign-in
+            self.parent.controls_window.set_user_profile()  # Prompt for sign-in
             check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+                self.parent.controls_window.userrole, action_role
             )  # Check again
 
         if not check_result:  # Explicitly denied
             Log.w(
-                f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+                f"ACTION DENIED: User with role {self.parent.controls_window.userrole.name} does not have permission to {action_role.name}."
             )
             Log.e(
                 "Please sign in to access Run mode."
@@ -812,10 +812,9 @@ class UIMode:
             return False if obj is None else None
 
         self.parent._enable_ui(True)
-        self.parent.VisQAIWin.enable(False)
+        self.parent.visq_window.enable(False)
         self.animate_mode_highlight(self.mode_run)
         self.splitter.replaceWidget(0, target_widget)
-        self.parent.PlotsWin.ui.handleSplitterButton(collapse=False)
 
         if UserProfiles.count() == 0:
             # Measure, Next Steps, Create Accounts
@@ -863,7 +862,7 @@ class UIMode:
 
         # Check User Permissions
         action_role = UserRoles.ANALYZE
-        check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+        check_result = UserProfiles().check(self.parent.controls_window.userrole, action_role)
 
         if not check_result:
             if check_result is None:
@@ -874,7 +873,7 @@ class UIMode:
 
         self.parent.analyze_data()
         self.parent._enable_ui(False)
-        self.parent.VisQAIWin.enable(False)
+        self.parent.visq_window.enable(False)
         self.animate_mode_highlight(self.mode_analyze)
         self.splitter.replaceWidget(0, target_widget)
         self.parent.viewTutorialPage([5, 6])  # analyze / prior results
@@ -911,9 +910,9 @@ class UIMode:
 
         # Already in Learn mode
         if current_widget == target_widget and not self._force_splitter_mode_set:
-            if self.parent.VisQAIWin.tab_widget.currentIndex() != tab_index:
+            if self.parent.visq_window.tab_widget.currentIndex() != tab_index:
                 Log.d(f"VisQ.AI showing toolkit at index {tab_index}.")
-                self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
+                self.parent.visq_window.tab_widget.setCurrentIndex(tab_index)
             else:
                 Log.d("VisQ.AI mode already active. Skipping mode change request.")
 
@@ -926,12 +925,12 @@ class UIMode:
 
         # Check User Permissions
         action_role = UserRoles.OPERATE
-        check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+        check_result = UserProfiles().check(self.parent.controls_window.userrole, action_role)
 
         if check_result is None:  # Prompt sign-in if no user is active
             Log.w(f"Not signed in: {action_role.name} role required.")
-            self.parent.ControlsWin.set_user_profile()
-            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            self.parent.controls_window.set_user_profile()
+            check_result = UserProfiles().check(self.parent.controls_window.userrole, action_role)
 
         if not check_result:
             Log.e(
@@ -941,11 +940,11 @@ class UIMode:
             )
             return False if obj is None else None
 
-        self.parent.VisQAIWin.reset()
+        self.parent.visq_window.reset()
         self.parent._enable_ui(False)
-        self.parent.VisQAIWin.enable(True)
-        self.parent.VisQAIWin.check_license(getattr(self.parent, "_license_manager", None))
-        self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
+        self.parent.visq_window.enable(True)
+        self.parent.visq_window.check_license(getattr(self.parent, "_license_manager", None))
+        self.parent.visq_window.tab_widget.setCurrentIndex(tab_index)
         self.animate_mode_highlight(self.mode_learn)
         self.splitter.replaceWidget(0, target_widget)
         self.parent.viewTutorialPage(8)
@@ -988,21 +987,21 @@ class UIMode:
 
         # Check User Permissions
         action_role = UserRoles.ANALYZE
-        check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+        check_result = UserProfiles().check(self.parent.controls_window.userrole, action_role)
 
         if check_result is None:  # User check required, but no user signed in
             Log.w(
                 f"Not signed in: User with role {action_role.name} is required to perform this action."
             )
             Log.i("Please sign in to continue.")
-            self.parent.ControlsWin.set_user_profile()  # Prompt for sign-in
+            self.parent.controls_window.set_user_profile()  # Prompt for sign-in
             check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+                self.parent.controls_window.userrole, action_role
             )  # Check again
 
         if not check_result:  # Explicitly denied
             Log.w(
-                f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+                f"ACTION DENIED: User with role {self.parent.controls_window.userrole.name} does not have permission to {action_role.name}."
             )
             Log.e(
                 "Please sign in to access the Donnan-Gibbs Calculator."
@@ -1012,7 +1011,7 @@ class UIMode:
             return False if obj is None else None
 
         self.parent._enable_ui(False)
-        self.parent.VisQAIWin.enable(False)
+        self.parent.visq_window.enable(False)
         self.animate_mode_highlight(self.mode_donnan)
         self.splitter.replaceWidget(0, target_widget)
 
@@ -1056,21 +1055,21 @@ class UIMode:
 
         # Check User Permissions
         action_role = UserRoles.ANALYZE
-        check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+        check_result = UserProfiles().check(self.parent.controls_window.userrole, action_role)
 
         if check_result is None:  # User check required, but no user signed in
             Log.w(
                 f"Not signed in: User with role {action_role.name} is required to perform this action."
             )
             Log.i("Please sign in to continue.")
-            self.parent.ControlsWin.set_user_profile()  # Prompt for sign-in
+            self.parent.controls_window.set_user_profile()  # Prompt for sign-in
             check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+                self.parent.controls_window.userrole, action_role
             )  # Check again
 
         if not check_result:  # Explicitly denied
             Log.w(
-                f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+                f"ACTION DENIED: User with role {self.parent.controls_window.userrole.name} does not have permission to {action_role.name}."
             )
             Log.e(
                 "Please sign in to access the Injection Force Calculator."
@@ -1080,7 +1079,7 @@ class UIMode:
             return False if obj is None else None
 
         self.parent._enable_ui(False)
-        self.parent.VisQAIWin.enable(False)
+        self.parent.visq_window.enable(False)
         self.animate_mode_highlight(self.mode_injection)
         self.splitter.replaceWidget(0, target_widget)
 

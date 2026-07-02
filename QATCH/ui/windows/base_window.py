@@ -27,7 +27,7 @@ Date:
 from PyQt5 import QtGui, QtWidgets
 
 from QATCH.core.constants import Constants
-from QATCH.ui.popUp import PopUp
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 
 _QUIT_MESSAGE = "Are you sure you want to quit QATCH Q-1 application now?"
 

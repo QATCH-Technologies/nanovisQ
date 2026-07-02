@@ -32,7 +32,7 @@ from QATCH.ui.components import (
     GlassPushButton,
     GlassToggle,
 )
-from QATCH.ui.popUp import PopUp
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.widgets.reset_password_widget import ResetPasswordWidget
 
 TAG = "[UserProfilesManager]"
@@ -1453,26 +1453,17 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             text_color = "#495057"
 
         # --- Dynamically dye the SVG arrow to match the role text color ---
-        # Pre-render the tint into the pixmap itself (same technique as
-        # _tinted_icon) rather than a QGraphicsColorizeEffect: glass_frame
-        # carries a QGraphicsOpacityEffect for the open/close fade, and Qt
-        # doesn't compose nested widget graphics effects reliably - every
-        # role combo in the table got its own colorize effect, which spammed
+        # Uses AnimatedComboBox.set_arrow_color() (fixed-color override) rather
+        # than a QGraphicsColorizeEffect: glass_frame carries a
+        # QGraphicsOpacityEffect for the open/close fade, and Qt doesn't
+        # compose nested widget graphics effects reliably - every role combo
+        # in the table got its own colorize effect, which spammed
         # "QPainter::begin: A paint device can only be painted by one painter
         # at a time" / "Painter not active" during the fade and corrupted the
-        # panel's first painted frame.
-        if hasattr(combo, "arrow_lbl"):
-            base = getattr(combo, "_base_pixmap", None)
-            if base is not None and not base.isNull():
-                tinted = QtGui.QPixmap(base.size())
-                tinted.fill(QtCore.Qt.GlobalColor.transparent)
-                p = QtGui.QPainter(tinted)
-                p.drawPixmap(0, 0, base)
-                p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
-                p.fillRect(tinted.rect(), QtGui.QColor(text_color))
-                p.end()
-                combo._base_pixmap = tinted
-                combo.arrow_lbl.setPixmap(tinted)
+        # panel's first painted frame. The override also survives theme
+        # changes, unlike poking the pixmap directly.
+        if hasattr(combo, "set_arrow_color"):
+            combo.set_arrow_color(QtGui.QColor(text_color))
 
         combo.setStyleSheet(f"""
             QComboBox {{

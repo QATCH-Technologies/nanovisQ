@@ -133,8 +133,8 @@ class QATCH:
         #     if hWnd:
         #         user32.ShowWindow(hWnd, SW_HIDE)
 
-        self.win.ModeWin.showMaximized()
-        self.win.ModeWin.activateWindow()
+        self.win.mode_window.showMaximized()
+        self.win.mode_window.activateWindow()
 
         ##
 

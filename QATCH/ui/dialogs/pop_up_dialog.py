@@ -10,7 +10,9 @@ class PopUp:
     @staticmethod
     def question_QCM(parent, title, message):  # noqa: N802
         d = GlassDialog(
-            parent, title, message,
+            parent,
+            title,
+            message,
             buttons=[("@5MHz", "neutral", 0), ("@10MHz", "primary", 1)],
             icon_type="question",
         )
@@ -29,7 +31,9 @@ class PopUp:
         else:
             buttons = [("No", "neutral", 0), ("Yes", "primary", 1)]
         d = GlassDialog(
-            parent, title, message,
+            parent,
+            title,
+            message,
             details=details,
             buttons=buttons,
             icon_type="question",
@@ -40,7 +44,9 @@ class PopUp:
     @staticmethod
     def warning(parent, title, message):
         d = GlassDialog(
-            parent, title, message,
+            parent,
+            title,
+            message,
             buttons=[("OK", "primary", 1)],
             icon_type="warning",
         )
@@ -50,7 +56,9 @@ class PopUp:
     def question(parent, title, message, default=False):
         buttons = [("No", "neutral", 0), ("Yes", "primary", 1)]
         d = GlassDialog(
-            parent, title, message,
+            parent,
+            title,
+            message,
             buttons=buttons,
             icon_type="question",
         )
@@ -71,7 +79,9 @@ class PopUp:
             buttons = [("Ignore", "neutral", 0), (btn1_text, "danger", 1)]
             icon_type = "critical"
         d = GlassDialog(
-            parent, title, message,
+            parent,
+            title,
+            message,
             details=details,
             buttons=buttons,
             icon_type=icon_type,
@@ -82,7 +92,9 @@ class PopUp:
     @staticmethod
     def information(parent, title, message, details=""):
         d = GlassDialog(
-            parent, title, message,
+            parent,
+            title,
+            message,
             details=details,
             buttons=[("OK", "primary", 1)],
             icon_type="information",
@@ -108,7 +120,7 @@ class QueryComboBox(QtWidgets.QWidget):
 
         layout_v = QtWidgets.QVBoxLayout()
         self.tb = QtWidgets.QLabel()
-        vowel = 'aeiou'
+        vowel = "aeiou"
         a_n = "an" if type[0].lower() in vowel else "a"
         self.tb.setText("Select {} {}:".format(a_n, type))
         layout_v.addWidget(self.tb)
