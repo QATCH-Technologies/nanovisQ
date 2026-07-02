@@ -20,16 +20,16 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class PlotStatusBanner:
     """Pill-shaped, icon-driven status chip for a pyqtgraph PlotItem header.
 
-    The chip is a ``QGraphicsProxyWidget`` wrapping a styled ``QFrame`` that
+    The chip is a `QGraphicsProxyWidget` wrapping a styled `QFrame` that
     floats over the PlotItem's title row — the narrow strip above the
     ViewBox that shows the axis labels.  It tracks plot resizes via
-    ``ViewBox.sigResized`` and re-centres itself automatically.
+    `ViewBox.sigResized` and re-centres itself automatically.
 
     Args:
-        plot_item: The ``pg.PlotItem`` to anchor the banner to.
+        plot_item: The `pg.PlotItem` to anchor the banner to.
         icon_dir:  Path to the QATCH icons folder (must contain
-                   ``warning-circle.svg``, ``checkmark-circle.svg``,
-                   ``info-circle.svg``).
+                   `warning-circle.svg`, `checkmark-circle.svg`,
+                   `info-circle.svg`).
         z_value:   Scene Z-order for the proxy (default 150, above labels).
     """
 
@@ -93,8 +93,7 @@ class PlotStatusBanner:
 
         self._text_lbl = QtWidgets.QLabel()
         self._text_lbl.setAlignment(
-            QtCore.Qt.AlignmentFlag.AlignVCenter
-            | QtCore.Qt.AlignmentFlag.AlignLeft
+            QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft
         )
         # Prevent the label from triggering unwanted size expansion
         self._text_lbl.setSizePolicy(
@@ -173,7 +172,7 @@ class PlotStatusBanner:
         self._proxy.setVisible(False)
 
     def setText(self, text: str, color: tuple = None) -> None:
-        """Backwards-compatible shim matching ``pg.LabelItem.setText``.
+        """Backwards-compatible shim matching `pg.LabelItem.setText`.
 
         Maps the *color* tuple to one of the named visual states and
         delegates to :meth:`set_state`.
@@ -181,9 +180,7 @@ class PlotStatusBanner:
         if not text or not text.strip():
             self.hide()
             return
-        state = self._COLOR_TO_STATE.get(
-            tuple(int(c) for c in color) if color else (), "neutral"
-        )
+        state = self._COLOR_TO_STATE.get(tuple(int(c) for c in color) if color else (), "neutral")
         self.set_state(state, text)
 
     def remove(self) -> None:
@@ -214,9 +211,7 @@ class PlotStatusBanner:
                 vb = plot_item.getViewBox()
                 # ViewBox rect in the PlotItem's own coordinate space.
                 # vb_rect.y() is the height of the header strip above the ViewBox.
-                vb_rect = vb.mapRectToItem(
-                    plot_item.graphicsItem(), vb.boundingRect()
-                )
+                vb_rect = vb.mapRectToItem(plot_item.graphicsItem(), vb.boundingRect())
                 pw = proxy.boundingRect().width() or fw
                 ph = proxy.boundingRect().height() or fh
 
@@ -237,6 +232,7 @@ class PlotStatusBanner:
 
 # ── Module-level pixmap helper (used by PlotStatusBanner) ────────────────────
 
+
 def _tinted_pixmap(svg_path: str, color: QtGui.QColor, size: int) -> QtGui.QPixmap:
     """Return a *size*×*size* pixmap loaded from *svg_path* recoloured to *color*."""
     src = QtGui.QIcon(svg_path).pixmap(size, size)
@@ -244,9 +240,7 @@ def _tinted_pixmap(svg_path: str, color: QtGui.QColor, size: int) -> QtGui.QPixm
     dst.fill(QtCore.Qt.GlobalColor.transparent)
     painter = QtGui.QPainter(dst)
     painter.drawPixmap(0, 0, src)
-    painter.setCompositionMode(
-        QtGui.QPainter.CompositionMode.CompositionMode_SourceAtop
-    )
+    painter.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_SourceAtop)
     painter.fillRect(dst.rect(), color)
     painter.end()
     return dst

@@ -1,7 +1,7 @@
 """DataModeWidget - base class for every data-management mode page.
 
 Each mode (import, export, recover, advanced, history) subclasses this. The
-base wires up the shared ``DataServices`` connections and defines the small
+base wires up the shared `DataServices` connections and defines the small
 contract the parent container relies on, so the container can treat every mode
 uniformly and never needs to know mode internals.
 
@@ -13,7 +13,7 @@ Contract a subclass implements:
     on_leave()                      - called when switching away (optional)
     on_freeze(frozen: bool)         - enable/disable controls (optional)
 
-The base provides ``self.services`` and a transparent root layout to build on.
+The base provides `self.services` and a transparent root layout to build on.
 """
 
 from PyQt5 import QtCore, QtWidgets

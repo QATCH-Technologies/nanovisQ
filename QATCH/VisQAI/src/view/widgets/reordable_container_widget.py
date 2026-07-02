@@ -3,7 +3,7 @@ reordable_container_widget.py
 
 A drag-and-drop reorderable card container for PyQt5 layouts.
 
-Provides ``ReorderableCardContainer``, a ``QWidget`` that manages free-form
+Provides `ReorderableCardContainer`, a `QWidget` that manages free-form
 vertical drag-and-drop reordering of child card widgets.  During a drag the
 card is reparented to the container and floats freely over the layout while a
 fixed-size placeholder widget holds the card's intended insertion slot.  The
@@ -28,19 +28,19 @@ class ReorderableCardContainer(QtWidgets.QWidget):
 
     Manages all drag state and layout mutations required for smooth card
     reordering.  Child cards are responsible for detecting mouse events and
-    calling ``start_drag``, ``update_drag``, and ``finish_drag`` at the
+    calling `start_drag`, `update_drag`, and `finish_drag` at the
     appropriate points in the drag lifecycle; this class owns all layout
     manipulation and placeholder management.
 
     During a drag, the card being moved is:
 
-    * Detached from the ``QVBoxLayout`` and reparented directly to this widget
-      so it can be positioned freely with ``move()``.
-    * Replaced in the layout by a fixed-size ``QWidget`` placeholder
-      (``objectName`` ``"dragPlaceholder"``) that reserves the insertion slot
+    * Detached from the `QVBoxLayout` and reparented directly to this widget
+      so it can be positioned freely with `move()`.
+    * Replaced in the layout by a fixed-size `QWidget` placeholder
+      (`objectName` `"dragPlaceholder"`) that reserves the insertion slot
       and shifts sibling cards in real time.
 
-    On ``finish_drag`` the placeholder is removed, and the card is reinserted
+    On `finish_drag` the placeholder is removed, and the card is reinserted
     at the placeholder's final index, committing the new order.
 
     Attributes:
@@ -49,10 +49,10 @@ class ReorderableCardContainer(QtWidgets.QWidget):
             and top alignment so cards stack from the top rather than being
             spread across the full widget height.
         dragged_card (QtWidgets.QWidget | None): The card widget currently
-            being dragged, or ``None`` when no drag is in progress.
+            being dragged, or `None` when no drag is in progress.
         placeholder (QtWidgets.QWidget | None): The transparent placeholder
             widget occupying the dragged card's reserved slot in the layout,
-            or ``None`` when no drag is in progress.
+            or `None` when no drag is in progress.
         drag_offset (QtCore.QPoint): The offset from the card's top-left corner
             to the point where the user grabbed it, used to keep the floating
             card anchored under the cursor rather than snapping its corner to
@@ -62,13 +62,13 @@ class ReorderableCardContainer(QtWidgets.QWidget):
     def __init__(self, parent=None):
         """Initialise the container layout and drag-state attributes.
 
-        Creates a top-aligned ``QVBoxLayout`` with 15 px margins and 10 px
-        inter-card spacing.  All drag-state attributes start as ``None`` /
+        Creates a top-aligned `QVBoxLayout` with 15 px margins and 10 px
+        inter-card spacing.  All drag-state attributes start as `None` /
         zero and are populated only while a drag is active.
 
         Args:
             parent (QtWidgets.QWidget | None): Optional Qt parent widget.
-                Defaults to ``None``.
+                Defaults to `None`.
         """
         super().__init__(parent)
         self.main_layout = QtWidgets.QVBoxLayout(self)
@@ -87,17 +87,17 @@ class ReorderableCardContainer(QtWidgets.QWidget):
 
         Performs the following steps in order:
 
-        1. Records *card* as ``dragged_card`` and stores *offset*.
-        2. Creates a ``QWidget`` placeholder sized to match *card* and inserts
-           it into ``main_layout`` at the index *card* previously occupied.
+        1. Records *card* as `dragged_card` and stores *offset*.
+        2. Creates a `QWidget` placeholder sized to match *card* and inserts
+           it into `main_layout` at the index *card* previously occupied.
         3. Removes *card* from the layout, reparents it to this container, and
            raises it above all sibling widgets so it floats visually.
-        4. Calls ``update_drag`` with *global_mouse_pos* to snap the floating
+        4. Calls `update_drag` with *global_mouse_pos* to snap the floating
            card to the cursor immediately on drag start.
 
         Args:
             card (QtWidgets.QWidget): The card widget to drag.  Must currently
-                be a direct child of ``main_layout``.
+                be a direct child of `main_layout`.
             global_mouse_pos (QtCore.QPoint): The cursor position in global
                 screen coordinates at the moment the drag begins.
             offset (QtCore.QPoint): The offset from *card*'s top-left corner
@@ -123,7 +123,7 @@ class ReorderableCardContainer(QtWidgets.QWidget):
     def update_drag(self, global_mouse_pos):
         """Reposition the floating card and update the placeholder slot.
 
-        Called on every ``mouseMoveEvent`` while a drag is active.  Converts
+        Called on every `mouseMoveEvent` while a drag is active.  Converts
         *global_mouse_pos* to container-local coordinates, moves the floating
         card so the grab point stays under the cursor, then walks the layout
         items to determine the correct insertion index for the placeholder:
@@ -134,9 +134,9 @@ class ReorderableCardContainer(QtWidgets.QWidget):
         * If the top edge is *below* the centre, the placeholder moves to one
           past that sibling's index (insert after).
         * The first matching condition breaks the loop; if no condition fires,
-          ``new_idx`` accumulates to the last valid position.
+          `new_idx` accumulates to the last valid position.
 
-        Does nothing when no drag is active (``dragged_card`` is ``None``).
+        Does nothing when no drag is active (`dragged_card` is `None`).
 
         Args:
             global_mouse_pos (QtCore.QPoint): Current cursor position in global
@@ -187,10 +187,10 @@ class ReorderableCardContainer(QtWidgets.QWidget):
 
         Reads the placeholder's current layout index as the final insertion
         position, removes and destroys the placeholder, then reinserts
-        ``dragged_card`` at that index.  Clears ``dragged_card`` and
-        ``placeholder`` to signal that no drag is in progress.
+        `dragged_card` at that index.  Clears `dragged_card` and
+        `placeholder` to signal that no drag is in progress.
 
-        Does nothing when no drag is active (``dragged_card`` is ``None``).
+        Does nothing when no drag is active (`dragged_card` is `None`).
         """
         if not self.dragged_card:
             return

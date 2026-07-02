@@ -17,6 +17,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
 from QATCH.ui.components.glass_push_button import GlassPushButton
+from QATCH.ui.components.glass_paint import paint_glass_surface
 from QATCH.ui.styles.theme_manager import ThemeManager
 
 # (button_label, GlassPushButton_variant, return_value)
@@ -24,20 +25,22 @@ ButtonSpec = Tuple[str, str, int]
 
 _ICONS_DIR = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
-# Accent colours used for the icon badge when no SVG is supplied
-_BADGE_COLORS = {
-    "information": QtGui.QColor(10, 163, 230),
-    "question":    QtGui.QColor(10, 163, 230),
-    "warning":     QtGui.QColor(255, 193, 7),
-    "critical":    QtGui.QColor(220, 53, 69),
+# Which palette token colors the icon badge for each dialog type. Resolved
+# from the active theme at paint time (see _refresh_icon) so badges are
+# theme-correct and share the app's semantic accent/warning/danger colors.
+_BADGE_TOKENS = {
+    "information": "accent",
+    "question": "accent",
+    "warning": "warning",
+    "critical": "danger",
 }
 
 # SVG filenames — drop these into QATCH/icons/ to get tinted icons
 _ICON_FILES = {
     "information": "info-circle.svg",
-    "question":    "question-circle.svg",
-    "warning":     "warning-circle.svg",
-    "critical":    "critical-circle.svg",
+    "question": "question-circle.svg",
+    "warning": "warning-circle.svg",
+    "critical": "critical-circle.svg",
 }
 
 _CARD_W = 440
@@ -58,7 +61,8 @@ def _tinted_icon(path: str, color: QtGui.QColor, size: int = 22) -> QtGui.QPixma
 
 
 class _GlassCard(QtWidgets.QFrame):
-    """Frosted glass card: same paint pipeline as PlotContainer."""
+    """Frosted glass card: paints via the shared glass-paint helper so it
+    stays identical to PlotContainer and the other glass surfaces."""
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
@@ -66,41 +70,14 @@ class _GlassCard(QtWidgets.QFrame):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        tok = ThemeManager.instance().tokens()
-        p = QtGui.QPainter(self)
-        p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
-        rf = QtCore.QRectF(self.rect())
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rf, _CARD_RADIUS, _CARD_RADIUS)
-        p.setClipPath(clip)
-
-        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_base"]))
-        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_overlay"]))
-
-        sh = QtGui.QLinearGradient(0, 0, 0, 50)
-        sh.setColorAt(0, QtGui.QColor(*tok["plot_glass_shimmer_top"]))
-        sh.setColorAt(0.5, QtGui.QColor(*tok["plot_glass_shimmer_mid"]))
-        sh.setColorAt(1, QtGui.QColor(0, 0, 0, 0))
-        p.fillRect(self.rect(), QtGui.QBrush(sh))
-
-        vg = QtGui.QLinearGradient(0, self.height() - 30, 0, self.height())
-        vg.setColorAt(0, QtGui.QColor(0, 0, 0, 0))
-        vg.setColorAt(1, QtGui.QColor(*tok["plot_glass_vignette_end"]))
-        p.fillRect(self.rect(), QtGui.QBrush(vg))
-
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_rim"]), 1.0))
-        p.drawRoundedRect(rf.adjusted(0.5, 0.5, -0.5, -0.5), _CARD_RADIUS, _CARD_RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_inset"]), 1.0))
-        p.drawRoundedRect(
-            rf.adjusted(1.5, 1.5, -1.5, -1.5), _CARD_RADIUS - 1.5, _CARD_RADIUS - 1.5
+        paint_glass_surface(
+            self,
+            radius=_CARD_RADIUS,
+            tokens=ThemeManager.instance().tokens(),
+            shimmer_height=50.0,
+            draw_vignette=True,
+            header_line_y=_HEADER_H,
         )
-
-        # Header divider
-        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_header_line"]), 1.0))
-        p.drawLine(0, _HEADER_H, self.width(), _HEADER_H)
-        p.end()
 
 
 class GlassDialog(QtWidgets.QDialog):
@@ -274,12 +251,16 @@ class GlassDialog(QtWidgets.QDialog):
         text_area = QtWidgets.QPlainTextEdit(details)
         text_area.setReadOnly(True)
         text_area.setMaximumHeight(100)
+        tok = ThemeManager.instance().tokens()
+        fill = tok["ctrl_input_bg"]
+        border = tok["ctrl_input_border"]
+        txt = tok["plot_text_normal"]
         text_area.setStyleSheet(
             "QPlainTextEdit {"
-            "  background: rgba(0,0,0,40);"
-            "  border: 1px solid rgba(255,255,255,60);"
+            f"  background: rgba({fill[0]},{fill[1]},{fill[2]},{fill[3]});"
+            f"  border: 1px solid rgba({border[0]},{border[1]},{border[2]},{border[3]});"
             "  border-radius: 6px;"
-            "  color: rgba(60,60,60,220);"
+            f"  color: rgba({txt[0]},{txt[1]},{txt[2]},{txt[3]});"
             "  font-size: 11px;"
             "}"
         )
@@ -307,13 +288,13 @@ class GlassDialog(QtWidgets.QDialog):
     def _apply_body_style(self) -> None:
         tok = ThemeManager.instance().tokens()
         r, g, b, _ = tok["plot_text_normal"]
-        self._msg_label.setStyleSheet(
-            f"QLabel {{ color: rgb({r},{g},{b}); font-size: 13px; }}"
-        )
+        self._msg_label.setStyleSheet(f"QLabel {{ color: rgb({r},{g},{b}); font-size: 13px; }}")
 
     def _refresh_icon(self) -> None:
+        tok = ThemeManager.instance().tokens()
+        badge_key = _BADGE_TOKENS.get(self._icon_type, "accent")
+        color = QtGui.QColor(*tok[badge_key])
         svg = os.path.join(_ICONS_DIR, _ICON_FILES.get(self._icon_type, "info-circle.svg"))
-        color = _BADGE_COLORS.get(self._icon_type, QtGui.QColor(10, 163, 230))
         if os.path.isfile(svg):
             pm = _tinted_icon(svg, color, size=22)
         else:
@@ -344,8 +325,9 @@ class GlassDialog(QtWidgets.QDialog):
         super().showEvent(event)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
-        p.fillRect(self.rect(), QtGui.QColor(0, 0, 0, 140))
+        p.fillRect(self.rect(), QtGui.QColor(*tok["backdrop_dim"]))
         p.end()
 
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:

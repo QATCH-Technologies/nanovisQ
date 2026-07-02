@@ -1,11 +1,11 @@
 """DataManagementWidget - glassmorphic overlay container.
 
 Owns the overlay lifecycle (open/close, fade, fullscreen, click-outside
-dismiss) and the shared ``DataServices``. Links in the five mode submodules and
+dismiss) and the shared `DataServices`. Links in the five mode submodules and
 drives switching between them via a glass segmented control + QStackedWidget.
 
-Replaces ``export_widget.Ui_Export`` in the controls UI. Compatibility shims
-(``showNormal`` / ``open_mode``) preserve the existing call sites.
+Replaces `export_widget.Ui_Export` in the controls UI. Compatibility shims
+(`showNormal` / `open_mode`) preserve the existing call sites.
 """
 
 import os
@@ -182,13 +182,13 @@ class _GlassPanel(QtWidgets.QFrame):
     painted directly instead of via QSS.
 
     The fullscreen toggle animates alpha/border-width/radius every frame.
-    Driving that through ``setStyleSheet()`` (the original approach) means a
+    Driving that through `setStyleSheet()` (the original approach) means a
     full CSS reparse + repolish of this frame AND its entire child tree
     (header, sidebar, the active mode's whole widget tree) on every tick -
     cheap when this panel was simple, but the per-mode content has since
     grown a lot heavier (chips, option cards, scroll areas...), and that
     repolish cascade is what showed up as animation stutter. Painting these
-    three properties manually and calling ``update()`` instead skips the
+    three properties manually and calling `update()` instead skips the
     style system entirely, so a tick is just "redraw one rounded rect."
     """
 
@@ -798,9 +798,9 @@ class DataManagementWidget(QtWidgets.QWidget):
         """Animate the scrim alpha (cheap paintEvent) and an opacity effect
         (composited) from fixed endpoints. No per-frame stylesheet.
 
-        ``opacity_effect`` defaults to the live glass_frame's own effect
+        `opacity_effect` defaults to the live glass_frame's own effect
         (the open fade). The close fade passes a lightweight effect on a
-        static pixmap proxy instead - see ``_animate_close``.
+        static pixmap proxy instead - see `_animate_close`.
         """
         self._stop_anim()
         effect = opacity_effect if opacity_effect is not None else self._glass_opacity

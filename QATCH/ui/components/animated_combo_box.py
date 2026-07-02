@@ -31,11 +31,11 @@ class _FixedHeightDelegate(QtWidgets.QStyledItemDelegate):
 class _RoundedPopup(QtWidgets.QFrame):
     """A frameless, translucent, rounded popup that hosts the combo's list view.
 
-    Hosted in a widget we own (not Qt's ``QComboBoxPrivateContainer``) so we can
+    Hosted in a widget we own (not Qt's `QComboBoxPrivateContainer`) so we can
     translucent + round + animate it safely. The slide is driven by animating the
-    window ``mask`` (a growing rounded-rect ``QRegion``): this clips the real
+    window `mask` (a growing rounded-rect `QRegion`): this clips the real
     top-level popup window frame-by-frame and forces repaints, which animating a
-    height property on a ``Qt::Popup`` does not do reliably. Styling is scoped by
+    height property on a `Qt::Popup` does not do reliably. Styling is scoped by
     objectName because a Qt Style Sheet *type* selector matches the Qt class name,
     not a Python subclass name.
     """
@@ -78,7 +78,7 @@ class _RoundedPopup(QtWidgets.QFrame):
         self._lay = lay
 
     def size_to_rows(self, rows: int, row_h: int) -> int:
-        """Size the popup (and pin the view) to exactly ``rows`` of ``row_h``.
+        """Size the popup (and pin the view) to exactly `rows` of `row_h`.
 
         The view is given a fixed height equal to its content so the surrounding
         layout cannot hand it a slack row; the window height is that plus the
@@ -104,7 +104,7 @@ class _RoundedPopup(QtWidgets.QFrame):
 
     @staticmethod
     def _contrast_border(bg: QtGui.QColor) -> QtGui.QColor:
-        """A border color that stands out against ``bg``.
+        """A border color that stands out against `bg`.
 
         Uses perceived luminance: a dark background gets a lighter edge, a light
         background gets a darker one. The shift is a fixed step in HSL lightness
@@ -201,8 +201,8 @@ class _RoundedPopup(QtWidgets.QFrame):
     # ---- dismissal --------------------------------------------------------
     # A Qt::Popup hides itself the instant it loses focus (outside click) or an
     # item is clicked, which would kill the slide-close before it runs. We veto
-    # that hide and emit ``dismiss`` so the owner can run the animation and hide
-    # us itself. ``allow_hide`` is set True only for that final animated hide.
+    # that hide and emit `dismiss` so the owner can run the animation and hide
+    # us itself. `allow_hide` is set True only for that final animated hide.
 
     dismiss = QtCore.pyqtSignal()
 
@@ -234,8 +234,8 @@ class _RoundedPopup(QtWidgets.QFrame):
 
 class AnimatedComboBox(QtWidgets.QComboBox):
     """A QComboBox that slides its rounded drop-down open/closed and spins its
-    chevron. The list is hosted in a ``_RoundedPopup`` we own; the slide is a
-    mask reveal (0..1) so it actually repaints on a ``Qt::Popup`` window.
+    chevron. The list is hosted in a `_RoundedPopup` we own; the slide is a
+    mask reveal (0..1) so it actually repaints on a `Qt::Popup` window.
     """
 
     _POPUP_RADIUS = 8

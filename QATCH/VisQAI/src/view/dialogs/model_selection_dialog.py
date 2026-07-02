@@ -1,7 +1,7 @@
 """
 model_selection_dialog.py
 
-Model selection dialog for browsing and managing VisQ-AI ``.visq`` model files.
+Model selection dialog for browsing and managing VisQ-AI `.visq` model files.
 
 This module provides :class:`ModelSelectionDialog`, a :class:`QDialog` subclass
 that emulates the :class:`QFileDialog` interface while offering VisQ-AI-specific
@@ -108,7 +108,7 @@ class ModelSelectionDialog(QDialog):
         """Initialize the dialog and populate model lists.
 
         Args:
-            models_directory (str): Path to the directory containing ``.visq``
+            models_directory (str): Path to the directory containing `.visq`
                 model files. Defaults to the current working directory.
             parent (QWidget, optional): Parent widget. Defaults to None.
         """
@@ -323,16 +323,16 @@ class ModelSelectionDialog(QDialog):
                 """.strip()
 
     def scan_model_directory(self):
-        """Scan the models directory for ``.visq`` model files.
+        """Scan the models directory for `.visq` model files.
 
-        Reads ``index.json`` (if present) for metadata, then iterates over all
-        ``.visq`` files and builds a list of model info dictionaries. Deleted
+        Reads `index.json` (if present) for metadata, then iterates over all
+        `.visq` files and builds a list of model info dictionaries. Deleted
         models are skipped. The base model is automatically pinned and protected.
 
         Returns:
-            list[dict]: Each dict has the keys ``filename``, ``filepath``,
-                ``pinned_name``, ``created``, ``size``, ``metadata``, and
-                ``sha``.
+            list[dict]: Each dict has the keys `filename`, `filepath`,
+                `pinned_name`, `created`, `size`, `metadata`, and
+                `sha`.
         """
         models = []
         index_data = {}
@@ -394,18 +394,18 @@ class ModelSelectionDialog(QDialog):
         """Look up metadata for a model file in the index.
 
         Matches the model filename against SHA-prefixed entries in
-        ``index_data``. As a side effect, updates :attr:`pinned_names` and
+        `index_data`. As a side effect, updates :attr:`pinned_names` and
         :attr:`pinned_models` based on the stored metadata flags.
 
         Args:
-            index_data (dict): Parsed contents of ``index.json``, keyed by
+            index_data (dict): Parsed contents of `index.json`, keyed by
                 full SHA hash strings.
-            model_path (str): Absolute path to the ``.visq`` model file.
+            model_path (str): Absolute path to the `.visq` model file.
 
         Returns:
-            tuple[dict, str | None]: A ``(metadata, sha)`` pair. ``metadata``
+            tuple[dict, str | None]: A `(metadata, sha)` pair. `metadata`
                 is the metadata dict from the index (empty dict if not found).
-                ``sha`` is the full SHA key string, or ``None`` if not found.
+                `sha` is the full SHA key string, or `None` if not found.
         """
         # Search for metadata in index_data where filename contains the start of the sha hash
         base_name = os.path.basename(model_path)
@@ -430,16 +430,16 @@ class ModelSelectionDialog(QDialog):
     def on_model_selected(self, item=None, previous=_NOT_PROVIDED):
         """Update the detail panel and selected_model for the given item.
 
-        Connected to both ``itemClicked`` and ``currentItemChanged`` on the
+        Connected to both `itemClicked` and `currentItemChanged` on the
         pinned and recent lists. Clears the opposing list's selection so that
         only one item is active at a time.
 
         Args:
             item (QListWidgetItem, optional): The newly selected item, or
-                ``None`` to clear the selection. Defaults to ``None``.
-            previous: Unused; present to match the ``currentItemChanged``
-                signature. Defaults to ``NameError`` as a sentinel that
-                distinguishes an explicit ``None`` from a missing argument.
+                `None` to clear the selection. Defaults to `None`.
+            previous: Unused; present to match the `currentItemChanged`
+                signature. Defaults to `NameError` as a sentinel that
+                distinguishes an explicit `None` from a missing argument.
         """
         if not item:
             # Update detail panel to reflect no selection
@@ -472,7 +472,7 @@ class ModelSelectionDialog(QDialog):
     def select_model_by_name(self, model_name):
         """Programmatically select a model by its display name and accept the dialog.
 
-        If ``model_name`` is ``None`` or ``"Base Model"``, the base model is
+        If `model_name` is `None` or `"Base Model"`, the base model is
         selected. Emits :attr:`fileSelected` and calls :meth:`accept`.
 
         Args:
@@ -493,7 +493,7 @@ class ModelSelectionDialog(QDialog):
     def toggle_pin(self):
         """Toggle the pin status of the currently selected model.
 
-        Persists the change via :class:`VersionManager` (``index.json``),
+        Persists the change via :class:`VersionManager` (`index.json`),
         then refreshes the lists and restores the selection. Shows a warning
         if no model is selected or if the model is protected.
         """
@@ -689,7 +689,7 @@ class ModelSelectionDialog(QDialog):
         """Open a separate window showing the training tree for the selected model.
 
         Traverses parent/child relationships stored in model metadata to build
-        a ``QTreeWidget`` rooted at the earliest known ancestor. The selected
+        a `QTreeWidget` rooted at the earliest known ancestor. The selected
         model is highlighted with an arrow marker. A "Switch to Selected"
         button accepts the dialog with that model; "Close" dismisses the window.
         """

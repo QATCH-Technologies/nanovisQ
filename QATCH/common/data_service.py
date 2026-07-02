@@ -1,12 +1,12 @@
 """DataServices - shared, cross-mode machinery for the data-management overlay.
 
-This object is constructed once by ``DataManagementWidget`` and injected into
-every mode submodule. It owns the things the original ``Ui_Export`` shared
+This object is constructed once by `DataManagementWidget` and injected into
+every mode submodule. It owns the things the original `Ui_Export` shared
 across its tabs:
 
-  * the background worker thread (the old ``mainTask`` USB-detection loop)
-  * USB drive state (``drive``) and add/remove notifications
-  * the single ``progress`` signal, now routed by a named *channel* instead of
+  * the background worker thread (the old `mainTask` USB-detection loop)
+  * USB drive state (`drive`) and add/remove notifications
+  * the single `progress` signal, now routed by a named *channel* instead of
     a magic tab index
   * GUI-freeze coordination (import/export enable-state moved in lockstep)
   * a cooperative task-abort flag shared by import/export/erase/eject tasks
@@ -29,7 +29,7 @@ from QATCH.common.logger import Logger as Log
 
 TAG = "[DataServices]"
 
-# Progress channels - replace the old integer ``tab`` argument (0=export, 1=import).
+# Progress channels - replace the old integer `tab` argument (0=export, 1=import).
 CH_EXPORT = "export"
 CH_IMPORT = "import"
 
@@ -48,12 +48,12 @@ class DataServices(QtCore.QObject):
 
         # Shared drive / run state (ported fields from Ui_Export).
         #
-        # ``drive`` and ``usb_drive`` look redundant but mean different
+        # `drive` and `usb_drive` look redundant but mean different
         # things, and conflating them is what made Advanced's "USB Drive"
         # card show a local export folder (e.g. C:\...\export) as if it
         # were a connected USB stick:
         #   - usb_drive: the actual hardware-detected USB drive letter, if
-        #     any. Only the USB-detection loop (``_main_loop``) writes this;
+        #     any. Only the USB-detection loop (`_main_loop`) writes this;
         #     everyone else only reads it. None means "no USB connected."
         #   - drive: the user's current chosen export/erase TARGET, which
         #     may be a USB drive letter or any plain folder path. Export
@@ -62,10 +62,10 @@ class DataServices(QtCore.QObject):
         self.usb_drive: Optional[str] = None
         self.source_subfolder: str = ""
 
-        # Concurrency primitives. ``_abort`` is the cooperative cancel flag the
-        # long-running tasks poll; ``_worker`` is the background USB loop.
+        # Concurrency primitives. `_abort` is the cooperative cancel flag the
+        # long-running tasks poll; `_worker` is the background USB loop.
         self._abort = Event()
-        self._stop = Event()  # tells mainTask to exit (old ``do_close``)
+        self._stop = Event()  # tells mainTask to exit (old `do_close`)
         self._worker: Optional[Thread] = None
         self._task: Optional[Thread] = None
 
@@ -73,7 +73,7 @@ class DataServices(QtCore.QObject):
     #  Lifecycle - started when the overlay opens, stopped when it closes
     # ------------------------------------------------------------------
     def start(self):
-        """Spin up the background USB-detection loop (old ``mainTask``)."""
+        """Spin up the background USB-detection loop (old `mainTask`)."""
         if self._worker is not None and self._worker.is_alive():
             return
         self._stop.clear()
@@ -82,7 +82,7 @@ class DataServices(QtCore.QObject):
         Log.d(f"{TAG} background worker started")
 
     def stop(self):
-        """Signal the loop to exit and join it (old ``closeEvent`` behavior)."""
+        """Signal the loop to exit and join it (old `closeEvent` behavior)."""
         self._stop.set()
         self.request_abort()
         if self._worker is not None:
@@ -95,8 +95,8 @@ class DataServices(QtCore.QObject):
 
         Original responsibilities:
           - poll for USB drives, diff against last seen set
-          - write the detected drive letter (or None) to ``self.usb_drive``
-            - NOT ``self.drive``, which is the user's chosen export target
+          - write the detected drive letter (or None) to `self.usb_drive`
+            - NOT `self.drive`, which is the user's chosen export target
           - emit usb_add / usb_remove on change
           - exit cleanly when self._stop is set
         """
@@ -109,8 +109,8 @@ class DataServices(QtCore.QObject):
     def run_task(self, fn: Callable[[Event], None]):
         """Run a long task (import/export/erase) on a worker thread.
 
-        ``fn`` receives the abort Event and should poll it to support Cancel.
-        Replaces the ad-hoc ``Thread(target=self.importTask, args=(abort, ...))``
+        `fn` receives the abort Event and should poll it to support Cancel.
+        Replaces the ad-hoc `Thread(target=self.importTask, args=(abort, ...))`
         pattern scattered through Ui_Export.
         """
         if self._task is not None and self._task.is_alive():
@@ -121,7 +121,7 @@ class DataServices(QtCore.QObject):
         self._task.start()
 
     def request_abort(self):
-        """Cooperative cancel for the active task (old ``cancel``)."""
+        """Cooperative cancel for the active task (old `cancel`)."""
         self._abort.set()
 
     @property

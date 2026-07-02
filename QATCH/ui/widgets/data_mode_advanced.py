@@ -19,8 +19,8 @@ Behavioural parity with the original:
 
 LAYOUT: USB Drive / Local storage / Danger zone cards (matches the wireframe).
 The USB card shows live connection status + free/total space (from
-``self.services.usb_drive`` - the hardware-detected drive letter, refreshed
-on usb_add/usb_remove). This is deliberately NOT ``self.services.drive``,
+`self.services.usb_drive` - the hardware-detected drive letter, refreshed
+on usb_add/usb_remove). This is deliberately NOT `self.services.drive`,
 which is Export mode's *chosen target* and may be any local folder; reading
 that here was a bug - it made this card claim a plain export folder (e.g.
 C:\...\export) was a connected USB stick. The storage card shows a usage bar
@@ -595,7 +595,7 @@ class AdvancedMode(DataModeWidget):
 
     def _panel(self, danger=False):
         """A frosted glass panel with an empty body layout for the caller to
-        build a custom header into (unlike ``_card``, no title is pre-added -
+        build a custom header into (unlike `_card`, no title is pre-added -
         each card here has its own icon-swatch header row)."""
         card = QtWidgets.QFrame()
         card.setObjectName("glassPanel")

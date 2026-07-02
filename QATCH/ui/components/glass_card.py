@@ -95,28 +95,37 @@ class GlassCard(QtWidgets.QFrame):
             grad.setColorAt(1.0, QtGui.QColor(*tokens["backdrop_fallback_end"]))
             p.fillRect(self.rect(), QtGui.QBrush(grad))
 
-        # Primary white glass tint
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 70))
-        p.fillRect(self.rect(), QtGui.QColor(210, 225, 240, 35))
+        # Glass tint + shimmer layers, driven from the shared glass tokens so
+        # this login card matches the other frosted surfaces (and tracks the
+        # active theme). The sampled backdrop above is left intact underneath.
+        tokens = ThemeManager.instance().tokens()
+        p.fillRect(self.rect(), QtGui.QColor(*tokens["plot_glass_shimmer_top"]))
+        p.fillRect(self.rect(), QtGui.QColor(*tokens["plot_glass_overlay"]))
         shimmer = QtGui.QLinearGradient(0, 0, 0, 80)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 60))
+        shimmer.setColorAt(0.0, QtGui.QColor(*tokens["plot_glass_shimmer_mid"]))
         shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
         p.fillRect(self.rect(), QtGui.QBrush(shimmer))
         p.setClipping(False)
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(120, 160, 200, 135), 1.0))
+        p.setPen(QtGui.QPen(QtGui.QColor(*tokens["plot_glass_rim"]), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 175), 1.0))
+        p.setPen(QtGui.QPen(QtGui.QColor(*tokens["plot_glass_inset"]), 1.0))
         p.drawRoundedRect(
             rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
             self._RADIUS - 1.5,
             self._RADIUS - 1.5,
         )
 
-        # Emphasis border: a crisp 1px white edge that catches up shortly
+        # Emphasis border: a crisp 1px highlight edge that catches up shortly
         # after the card pops in, like glass catching the light.
         if self._border_frac > 0.0:
-            p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, int(210 * self._border_frac)), 1.0))
+            rim = tokens["plot_glass_rim"]
+            p.setPen(
+                QtGui.QPen(
+                    QtGui.QColor(rim[0], rim[1], rim[2], int(210 * self._border_frac)),
+                    1.0,
+                )
+            )
             p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
 
         p.end()

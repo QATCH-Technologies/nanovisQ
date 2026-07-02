@@ -37,7 +37,7 @@ TAG = "[DataHistory]"
 
 
 class _ClickableRow(QtWidgets.QFrame):
-    """A transparent row container that emits ``clicked`` on a left click -
+    """A transparent row container that emits `clicked` on a left click -
     used as the always-visible header of an expandable history row."""
 
     clicked = QtCore.pyqtSignal()
@@ -306,10 +306,10 @@ class HistoryMode(DataModeWidget):
     PAGE_SIZE = 50  # rows rendered per page; long logs stay responsive
 
     def _render(self, entries):
-        """Reset the list to ``entries`` and render just the first page.
+        """Reset the list to `entries` and render just the first page.
 
-        Further pages are appended by ``_maybe_load_more`` as the user
-        scrolls toward the bottom (see ``_on_scroll_changed``).
+        Further pages are appended by `_maybe_load_more` as the user
+        scrolls toward the bottom (see `_on_scroll_changed`).
         """
         # Clear existing rows/headers (keep the trailing stretch).
         while self._list_layout.count() > 1:

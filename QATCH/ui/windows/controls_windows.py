@@ -444,7 +444,7 @@ class ControlsWindow(BaseWindow):
             QtWidgets.QWidget: The central widget of the main window if available,
                 otherwise the main window itself or the current object.
         """
-        if hasattr(self.parent, "ModeWin"):
+        if hasattr(self.parent, "mode_window"):
             return self.parent.mode_window.centralWidget() or self.parent.mode_window
         return self.centralWidget() or self
 
@@ -625,7 +625,7 @@ class ControlsWindow(BaseWindow):
 
         # Display the management overlay
         if allow:
-            if hasattr(self.parent, "ModeWin"):
+            if hasattr(self.parent, "mode_window"):
                 overlay_parent = self.parent.mode_window.centralWidget() or self.parent.mode_window
             else:
                 overlay_parent = self.centralWidget() or self

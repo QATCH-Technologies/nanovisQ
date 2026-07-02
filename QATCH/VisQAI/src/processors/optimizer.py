@@ -285,14 +285,14 @@ class Optimizer:
     seed : int, optional
         Random seed for reproducibility.
     target_weights : sequence of float, optional
-        Per-point loss weights, aligned with ``target.shear_rates``.
+        Per-point loss weights, aligned with `target.shear_rates`.
         Defaults to uniform.  Weights are normalised internally.
     lambda_unc : float
         Uncertainty-penalty coefficient λ ≥ 0.
     history_df : pd.DataFrame, optional
         Historical formulation data in encoded=False format used to
         warm-start the CNP context.  Obtained from
-        ``FormulationController.get_all_as_dataframe(encoded=False)``.
+        `FormulationController.get_all_as_dataframe(encoded=False)`.
     polish_continuous : bool
         Run a L-BFGS-B pass on the continuous variables after DE finishes,
         with all categorical indices held fixed.  Default True.

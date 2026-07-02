@@ -3,7 +3,7 @@ glass_option_card.py
 
 A selectable "card" control: a frosted glass panel with a bold title and a
 smaller description line beneath it. Cards are grouped via
-``GlassOptionCardGroup`` for exclusive (radio-style) selection - used wherever
+`GlassOptionCardGroup` for exclusive (radio-style) selection - used wherever
 a wireframe shows a labelled option instead of a plain segmented control
 (e.g. Import's "When a run already exists" policy, Export's Destination
 USB/Folder choice).
@@ -26,6 +26,8 @@ Usage
 from __future__ import annotations
 
 from PyQt5 import QtCore, QtWidgets
+
+from QATCH.ui.styles.theme_manager import ThemeManager
 
 
 class GlassOptionCard(QtWidgets.QFrame):
@@ -67,6 +69,11 @@ class GlassOptionCard(QtWidgets.QFrame):
         outer.addLayout(text_col, 1)
 
         self._apply_qss()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        """Re-style from the active palette when the theme flips."""
+        self._apply_qss()
 
     # ------------------------------------------------------------------
     def text(self):
@@ -97,42 +104,49 @@ class GlassOptionCard(QtWidgets.QFrame):
         super().mousePressEvent(event)
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _rgba(rgba) -> str:
+        """Format a token (r, g, b, a) tuple as a CSS rgba() string."""
+        return f"rgba({rgba[0]}, {rgba[1]}, {rgba[2]}, {rgba[3]})"
+
     def _apply_qss(self):
+        tok = ThemeManager.instance().tokens()
+        rgba = self._rgba
         if self._checked:
-            frame_qss = """
-                QFrame#glassOptionCard {
-                    background: rgba(10, 163, 230, 35);
-                    border: 1.5px solid rgba(0, 118, 174, 200);
+            frame_qss = f"""
+                QFrame#glassOptionCard {{
+                    background: {rgba(tok["option_card_checked_bg"])};
+                    border: 1.5px solid {rgba(tok["option_card_checked_border"])};
                     border-radius: 10px;
-                }
+                }}
             """
-            title_color = "rgba(0, 90, 135, 245)"
-            radio_qss = """
-                QFrame#optionCardRadio {
-                    background: rgba(0, 118, 174, 235);
-                    border: 1px solid rgba(0, 118, 174, 235);
+            title_color = rgba(tok["option_card_checked_title"])
+            radio_qss = f"""
+                QFrame#optionCardRadio {{
+                    background: {rgba(tok["option_card_radio_checked"])};
+                    border: 1px solid {rgba(tok["option_card_radio_checked"])};
                     border-radius: 8px;
-                }
+                }}
             """
         else:
-            frame_qss = """
-                QFrame#glassOptionCard {
-                    background: rgba(255, 255, 255, 130);
-                    border: 1px solid rgba(212, 219, 228, 190);
+            frame_qss = f"""
+                QFrame#glassOptionCard {{
+                    background: {rgba(tok["option_card_bg"])};
+                    border: 1px solid {rgba(tok["option_card_border"])};
                     border-radius: 10px;
-                }
-                QFrame#glassOptionCard:hover {
-                    background: rgba(255, 255, 255, 180);
-                    border: 1px solid rgba(160, 175, 190, 210);
-                }
+                }}
+                QFrame#glassOptionCard:hover {{
+                    background: {rgba(tok["option_card_hover_bg"])};
+                    border: 1px solid {rgba(tok["option_card_hover_border"])};
+                }}
             """
-            title_color = "rgba(30, 42, 56, 230)"
-            radio_qss = """
-                QFrame#optionCardRadio {
-                    background: rgba(255, 255, 255, 200);
-                    border: 1px solid rgba(150, 160, 175, 180);
+            title_color = rgba(tok["option_card_title"])
+            radio_qss = f"""
+                QFrame#optionCardRadio {{
+                    background: {rgba(tok["option_card_radio_bg"])};
+                    border: 1px solid {rgba(tok["option_card_radio_border"])};
                     border-radius: 8px;
-                }
+                }}
             """
         self.setStyleSheet(frame_qss)
         self._title_lbl.setStyleSheet(
@@ -141,8 +155,8 @@ class GlassOptionCard(QtWidgets.QFrame):
         )
         if self._desc_lbl is not None:
             self._desc_lbl.setStyleSheet(
-                "QLabel#optionCardDesc { color: rgba(50, 62, 78, 200); font-size: 11px; "
-                "background: transparent; }"
+                f"QLabel#optionCardDesc {{ color: {rgba(tok['option_card_desc'])}; "
+                "font-size: 11px; background: transparent; }"
             )
         if self._show_radio:
             self._radio_dot.setStyleSheet(radio_qss)

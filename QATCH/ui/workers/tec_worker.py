@@ -74,11 +74,11 @@ class TECWorker(QtCore.QThread):
 
     def last_reply(self):
         """Gets monotonic time of last TEMP reply message.
-        
-        NOTE: ``None`` reply means never heard.
+
+        NOTE: `None` reply means never heard.
         """
         return self._time_last_reply
-    
+
     def run(self):
         Log.i(
             TAG,

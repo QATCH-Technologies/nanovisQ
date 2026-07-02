@@ -138,7 +138,7 @@ def _prep_candidates(
 
     The preprocessing pipeline performs the following steps per POI:
 
-    1. Confidence filtering using ``min_conf``.
+    1. Confidence filtering using `min_conf`.
     2. Fallback retention of all candidates if filtering removes all
        detections (ensures no POI is dropped entirely).
     3. Deduplication of near-identical timestamps (rounded to 1e-6
@@ -155,12 +155,12 @@ def _prep_candidates(
             pruning.
 
     Returns:
-        A dictionary mapping each POI in ``present`` to a cleaned and
+        A dictionary mapping each POI in `present` to a cleaned and
         time-sorted list of :class:`Candidate` objects ready for decoding.
 
     Notes:
         Deduplication is performed using a coarse time key
-        (``round(c.time, 6)``) to merge near-identical detections
+        (`round(c.time, 6)`) to merge near-identical detections
         originating from different model stages (e.g., coarse + fine
         inference passes).
     """
@@ -221,7 +221,7 @@ def _score_config(
         * confidence sum component
 
     Notes:
-        Only POIs present in both ``placeable`` and ``chosen`` are scored.
+        Only POIs present in both `placeable` and `chosen` are scored.
         Confidence values are clipped to [0, 1] via :func:`_clip01`.
 
         The spacing term is accumulated over consecutive POI pairs using
@@ -281,12 +281,12 @@ def _dp_pass(
 
     Returns:
         A dictionary mapping POI names to selected :class:`Candidate`
-        objects representing the best-scoring configuration, or ``None``
+        objects representing the best-scoring configuration, or `None`
         if no valid monotonic path exists.
 
     Notes:
         This is a Viterbi-style DP over a fully connected bipartite layer
-        graph between consecutive POIs in ``placeable``.
+        graph between consecutive POIs in `placeable`.
 
         Transitions enforce:
             * Strict temporal ordering (gap > 0)
@@ -369,7 +369,7 @@ def _span_conditioned_decode(
     For each feasible choice of first and last candidate:
 
     1. The configuration span is fixed as:
-       ``span = t(last) - t(first)``
+       `span = t(last) - t(first)`
     2. Endpoint candidates are pinned (single-choice constraints).
     3. A constrained DP (:meth:`_dp_pass`) is executed under that span.
     4. The resulting configuration is re-scored under a consistent
@@ -389,7 +389,7 @@ def _span_conditioned_decode(
 
     Returns:
         The highest-scoring configuration satisfying a consistent
-        span-conditioned objective, or ``None`` if no valid configuration
+        span-conditioned objective, or `None` if no valid configuration
         exists for any endpoint pairing.
 
     Notes:
@@ -457,7 +457,7 @@ def dp_decode(
 
     The decoder operates over a restricted subset of POIs (`present_pois`)
     and produces a globally consistent ordered configuration aligned with
-    ``POI_ORDER``.
+    `POI_ORDER`.
 
     Two decoding regimes are supported:
 
@@ -514,7 +514,7 @@ def dp_decode(
         ranking via the spacing prior.
 
     Warnings:
-        This decoder assumes ``POI_ORDER`` defines a strict global ordering
+        This decoder assumes `POI_ORDER` defines a strict global ordering
         of all possible POIs. All indexing and span logic depends on this
         invariant.
     """
@@ -603,7 +603,7 @@ def _greedy_result(
     be found under the DP formulation or feasibility constraints.
 
     Unlike the DP-based decoders, this method does not enforce temporal
-    ordering constraints beyond the implicit ordering of ``placeable``, and it
+    ordering constraints beyond the implicit ordering of `placeable`, and it
     does not guarantee global optimality under the spacing prior. However, it
     guarantees that every POI with available candidates contributes exactly one
     selected detection, ensuring a complete output whenever possible.

@@ -8,8 +8,21 @@ existing convention in QATCH.ui.components.glass_push_button._PALETTES and
 QATCH.ui.widgets.saved_state_dot._COLORS, so a token is a drop-in
 QtGui.QColor(*token) the same way those call sites already build colors.
 
-`DARK` is a real first-pass dark palette, not placeholder values - it has
-not been through a dedicated contrast/design review yet.
+Design note
+-----------
+Both palettes are *derived*, not hand-listed. A small set of base anchors
+(one accent hue, one neutral ink/paper axis per mode, and one hue per
+semantic role) is fed through a handful of ramp/mix/alpha helpers, and every
+one of the ~150 tokens is expressed as a role on those ramps. `LIGHT` and
+`DARK` are produced by the *same* builder with different anchors, so a given
+token means the same thing in both modes - e.g. every accent-tinted control
+resolves to the same step of the accent ramp, and every hairline/border to
+the same step of the neutral ramp. This is what keeps the two themes feeling
+like one product instead of two separately tuned colorways.
+
+To retune the whole app, change an anchor (e.g. `_ACCENT`) or a ramp stop -
+not 40 individual tokens. To retune a single control, override its line in
+`_build()`.
 """
 
 from __future__ import annotations
@@ -17,6 +30,68 @@ from __future__ import annotations
 from typing import Tuple, TypedDict
 
 RGBA = Tuple[int, int, int, int]
+RGB = Tuple[int, int, int]
+
+
+# =====================================================================
+# Base anchors
+# =====================================================================
+# Hues are locked here; lightness/darkness comes from the ramps below, so
+# every tint of a hue stays on-hue instead of drifting the way the old
+# hand-entered values did.
+
+_ACCENT: RGB = (10, 163, 230)  # brand cyan-blue
+_DANGER: RGB = (216, 50, 60)  # error / destructive
+_WARNING: RGB = (240, 168, 20)  # amber caution / heating
+_SUCCESS: RGB = (52, 190, 120)  # ready / ok
+_CAUTION: RGB = (235, 120, 10)  # deep orange (cooling / hot readouts)
+_INFO: RGB = (0, 150, 170)  # teal (log timestamps)
+_PURPLE: RGB = (150, 60, 180)  # log location tag
+
+# Plot data-line colors are *content*, not chrome, so they are identical in
+# both modes on purpose - a trace must read the same regardless of theme.
+_PLOT_PRIMARY: RGB = (46, 155, 218)
+_PLOT_SECONDARY: RGB = (240, 100, 53)
+_PLOT_TEMPERATURE: RGB = (240, 156, 53)
+_PLOT_DEVICE: RGB = (72, 190, 120)
+
+# Per-mode neutral axis endpoints (ink = text-ward, paper = background-ward)
+# and the mid neutral used for borders/hairlines. One hue drives all greys.
+_LIGHT_INK: RGB = (38, 46, 58)
+_LIGHT_PAPER: RGB = (255, 255, 255)
+_DARK_INK: RGB = (232, 236, 240)
+_DARK_PAPER: RGB = (31, 37, 44)
+
+
+# =====================================================================
+# Helpers
+# =====================================================================
+def _clamp(x: float) -> int:
+    return max(0, min(255, int(round(x))))
+
+
+def _mix(c1: RGB, c2: RGB, t: float) -> RGB:
+    """Linear blend from c1 (t=0) to c2 (t=1) in RGB."""
+    return (
+        _clamp(c1[0] + (c2[0] - c1[0]) * t),
+        _clamp(c1[1] + (c2[1] - c1[1]) * t),
+        _clamp(c1[2] + (c2[2] - c1[2]) * t),
+    )
+
+
+def _shade(base: RGB, s: float) -> RGB:
+    """Darken (s<0) or lighten (s>0) a hue while keeping it on-hue.
+
+    s in roughly [-1, 1]; 0 returns the base hue unchanged.
+    """
+    if s < 0:
+        return _mix(base, (0, 0, 0), -s)
+    return _mix(base, (255, 255, 255), s)
+
+
+def _a(c: RGB, alpha: int) -> RGBA:
+    """Attach an alpha channel to an RGB triple."""
+    return (c[0], c[1], c[2], _clamp(alpha))
 
 
 class ColorTokens(TypedDict):
@@ -206,387 +281,381 @@ class ColorTokens(TypedDict):
     # Mode window — log-splitter handle hover
     mode_splitter_handle_hover: RGBA
     mode_splitter_dim_handle_hover: RGBA
+    # Selectable option card (GlassOptionCard)
+    option_card_bg: RGBA
+    option_card_border: RGBA
+    option_card_hover_bg: RGBA
+    option_card_hover_border: RGBA
+    option_card_title: RGBA
+    option_card_desc: RGBA
+    option_card_radio_bg: RGBA
+    option_card_radio_border: RGBA
+    option_card_checked_bg: RGBA
+    option_card_checked_border: RGBA
+    option_card_checked_title: RGBA
+    option_card_radio_checked: RGBA
+    # Glass input field (GlassLineEdit) — paint-time fills/borders/shimmer
+    input_glass_text: RGBA
+    input_glass_selection_bg: RGBA
+    input_glass_fill: RGBA
+    input_glass_fill_focus: RGBA
+    input_glass_fill_error: RGBA
+    input_glass_border: RGBA
+    input_glass_border_error: RGBA
+    input_glass_shimmer_accent: RGBA
+    input_glass_shimmer_peak: RGBA
+
+    # Account popup — avatar badge (brand mark, identical both modes)
+    account_avatar_grad_start: RGBA
+    account_avatar_grad_end: RGBA
+    account_avatar_ring: RGBA
+    account_avatar_shimmer: RGBA
+    account_avatar_text: RGBA
+    # Account popup — role badge chip
+    account_role_admin_bg: RGBA
+    account_role_admin_text: RGBA
+    account_role_operate_bg: RGBA
+    account_role_operate_text: RGBA
+    account_role_analyze_bg: RGBA
+    account_role_analyze_text: RGBA
+    account_role_capture_bg: RGBA
+    account_role_capture_text: RGBA
+    account_role_default_bg: RGBA
+    account_role_default_text: RGBA
 
 
-# Lifted directly from QATCH/ui/styles/app_theme.qss (formerly ui_main_theme.qss)
-# and the "default" variant of glass_push_button._PALETTES.
-LIGHT: ColorTokens = {
-    "bg_gradient_start": (0xE4, 0xEB, 0xF1, 255),
-    "bg_gradient_end": (0xF4, 0xF7, 0xF9, 255),
-    "surface": (255, 255, 255, 160),
-    "surface_border": (255, 255, 255, 220),
-    "menu_item_hover": (229, 229, 229, 150),
-    "text_primary": (51, 51, 51, 255),
-    "text_secondary": (60, 60, 60, 180),
-    "accent": (10, 163, 230, 255),
-    "accent_translucent": (10, 163, 230, 38),
-    "scrollbar_handle": (130, 130, 130, 100),
-    "scrollbar_handle_hover": (130, 130, 130, 180),
-    "overlay_dim": (164, 168, 172, 255),
-    "danger": (220, 53, 69, 255),
-    "warning": (255, 193, 7, 255),
-    "success": (60, 190, 120, 255),
-    "backdrop_fallback_start": (0xD8, 0xE6, 0xF0, 255),
-    "backdrop_fallback_end": (0xEE, 0xF4, 0xF8, 255),
-    "backdrop_frost": (238, 243, 247, 62),
-    "backdrop_dim": (0, 0, 0, 76),
-    # Log console — container / controls
-    "log_surface": (255, 255, 255, 120),
-    "log_surface_border": (255, 255, 255, 200),
-    "log_control_bg": (255, 255, 255, 160),
-    "log_control_bg_hover": (255, 255, 255, 200),
-    "log_control_bg_focus": (255, 255, 255, 220),
-    "log_control_border": (120, 130, 145, 160),
-    "log_control_border_hover": (90, 100, 115, 200),
-    "log_dropdown_bg": (245, 247, 250, 255),
-    "log_dropdown_border": (200, 200, 200, 180),
-    "log_separator": (120, 130, 145, 110),
-    "log_btn_hover": (255, 255, 255, 180),
-    "log_btn_pressed": (255, 255, 255, 220),
-    "log_text": (30, 40, 55, 200),
-    "log_match_highlight": (10, 163, 230, 90),
-    # Log console — per-level text colors
-    "log_time": (0, 131, 143, 255),
-    "log_location": (142, 36, 170, 255),
-    "log_debug": (120, 144, 156, 255),
-    "log_info": (46, 125, 50, 255),
-    "log_warning": (230, 81, 0, 255),
-    "log_error": (198, 40, 40, 255),
-    "log_default": (51, 51, 51, 255),
-    # Plot glass cards — paintEvent fill colors
-    "plot_glass_base": (255, 255, 255, 160),
-    "plot_glass_overlay": (228, 235, 241, 18),
-    "plot_glass_shimmer_top": (255, 255, 255, 100),
-    "plot_glass_shimmer_mid": (255, 255, 255, 20),
-    "plot_glass_vignette_end": (200, 218, 240, 18),
-    "plot_glass_rim": (255, 255, 255, 230),
-    "plot_glass_inset": (190, 210, 235, 70),
-    "plot_glass_header_line": (195, 215, 238, 70),
-    # Plot glass cards — text
-    "plot_text_normal": (30, 40, 55, 200),
-    "plot_text_bright": (30, 40, 55, 235),
-    "plot_text_muted": (30, 40, 55, 155),
-    "plot_text_dim": (30, 40, 55, 110),
-    # Plot glass cards — icon buttons
-    "plot_icon_btn_hover_bg": (255, 255, 255, 160),
-    "plot_icon_btn_hover_border": (255, 255, 255, 200),
-    "plot_icon_btn_pressed_bg": (180, 215, 255, 190),
-    # Plot glass cards — dropdown menu
-    "plot_menu_bg": (232, 242, 252, 248),
-    "plot_menu_border": (255, 255, 255, 230),
-    "plot_menu_separator": (175, 200, 228, 90),
-    "plot_menu_row_hover": (46, 155, 218, 28),
-    "plot_swatch_border": (255, 255, 255, 210),
-    # Plot glass cards — device tabs (pill buttons)
-    "plot_tab_bg": (255, 255, 255, 55),
-    "plot_tab_border": (255, 255, 255, 110),
-    "plot_tab_bg_hover": (255, 255, 255, 130),
-    "plot_tab_bg_active": (255, 255, 255, 215),
-    "plot_tab_border_active": (255, 255, 255, 255),
-    "plot_tab_bg_active_hover": (255, 255, 255, 240),
-    # Plot data line default colors (same in both themes — content, not chrome)
-    "plot_data_primary": (46, 155, 218, 255),
-    "plot_data_secondary": (240, 100, 53, 255),
-    "plot_data_temperature": (240, 156, 53, 255),
-    "plot_data_device_accent": (72, 190, 120, 255),
-    # Controls UI — toolbar
-    "ctrl_toolbar_btn_disabled_text": (30, 40, 55, 90),
-    "ctrl_toolbar_btn_pressed_bg": (229, 229, 229, 200),
-    "ctrl_toolbar_separator": (0, 0, 0, 22),
-    # Controls UI — progress bar
-    "ctrl_progress_border": (0, 0, 0, 25),
-    "ctrl_progress_chunk_start": (10, 163, 230, 130),
-    "ctrl_progress_chunk_end": (10, 163, 230, 90),
-    # Controls UI — temperature controller
-    "ctrl_temp_ctrl_bg": (229, 229, 229, 80),
-    "ctrl_temp_pid_header_text": (0, 118, 174, 220),
-    "ctrl_temp_status_offline_bg": (150, 155, 160, 120),
-    "ctrl_temp_status_offline_text": (30, 40, 55, 160),
-    "ctrl_temp_status_border": (255, 255, 255, 160),
-    # Controls UI — sliders
-    "ctrl_slider_groove": (0, 0, 0, 30),
-    "ctrl_slider_handle_border": (0, 130, 200, 200),
-    "ctrl_slider_track": (10, 163, 230, 120),
-    "ctrl_slider_disabled_handle": (150, 170, 190, 140),
-    "ctrl_slider_handle_hover": (31, 179, 240, 255),
-    # Controls UI — hairline divider
-    "ctrl_hairline": (200, 210, 220, 130),
-    # Controls UI — toggle row labels
-    "ctrl_toggle_label_text": (30, 40, 55, 215),
-    # Controls UI — device config back button
-    "ctrl_back_btn_bg": (255, 255, 255, 40),
-    "ctrl_back_btn_border": (255, 255, 255, 100),
-    "ctrl_back_btn_hover_bg": (255, 255, 255, 80),
-    "ctrl_back_btn_hover_border": (255, 255, 255, 150),
-    # Controls UI — glass input fields
-    "ctrl_input_bg": (255, 255, 255, 60),
-    "ctrl_input_border": (255, 255, 255, 120),
-    "ctrl_input_text": (30, 40, 55, 220),
-    "ctrl_input_focus_bg": (255, 255, 255, 180),
-    "ctrl_input_focus_border": (0, 120, 215, 150),
-    # Controls UI — animated combo box
-    "combo_bg": (255, 255, 255, 150),
-    "combo_border": (120, 130, 145, 150),
-    "combo_bg_hover": (255, 255, 255, 200),
-    "combo_border_hover": (90, 100, 115, 190),
-    "combo_bg_focus": (255, 255, 255, 225),
-    "combo_border_focus": (10, 163, 230, 200),
-    "combo_text": (40, 50, 62, 255),
-    "combo_popup_bg": (245, 247, 250, 255),
-    "combo_popup_border": (180, 192, 205, 220),
-    "combo_selection_bg": (10, 163, 230, 40),
-    "combo_selection_text": (10, 163, 230, 255),
-    # Controls UI — temperature status dynamic states
-    "ctrl_temp_ready_bg": (60, 200, 90, 220),
-    "ctrl_temp_ready_text": (255, 255, 255, 230),
-    "ctrl_temp_heating_bg": (240, 190, 0, 220),
-    "ctrl_temp_heating_text": (30, 20, 0, 200),
-    "ctrl_temp_cooling_bg": (240, 140, 0, 220),
-    "ctrl_temp_cooling_text": (30, 20, 0, 200),
-    # Controls UI — amber pulse border
-    "ctrl_pulse_border": (240, 170, 50, 230),
-    # Controls UI — infobar readout
-    "ctrl_infobar_text": (70, 90, 110, 190),
-    # Controls window — menu bar signed-in (normal) state
-    "menubar_bg": (233, 239, 244, 255),
-    "menubar_text": (50, 60, 70, 230),
-    "menubar_item_hover_bg": (10, 163, 230, 60),
-    "menubar_item_disabled_text": (120, 130, 140, 140),
-    "menubar_border": (255, 255, 255, 230),
-    "menubar_separator": (120, 130, 140, 70),
-    # Controls window — menu bar signed-out (dimmed) state
-    "menubar_dim_bg": (163, 167, 171, 255),
-    "menubar_dim_text": (40, 48, 56, 235),
-    "menubar_dim_item_hover_bg": (255, 255, 255, 60),
-    "menubar_dim_item_disabled_text": (90, 98, 106, 150),
-    "menubar_dim_border": (255, 255, 255, 90),
-    "menubar_dim_separator": (255, 255, 255, 80),
-    # Login UI — titles, body text, links
-    "login_title_text": (50, 55, 65, 220),
-    "login_body_text": (100, 110, 120, 220),
-    "login_link_text": (100, 110, 120, 180),
-    "login_link_text_hover": (60, 60, 60, 220),
-    "login_caps_warning": (200, 130, 30, 235),
-    # Login UI — checkbox
-    "login_checkbox_text": (60, 70, 80, 220),
-    "login_checkbox_border": (150, 160, 170, 180),
-    "login_checkbox_bg": (255, 255, 255, 120),
-    "login_checkbox_hover_border": (10, 163, 230, 150),
-    "login_checkbox_checked_bg": (10, 163, 230, 210),
-    "login_checkbox_checked_border": (10, 150, 210, 255),
-    # Login UI — recover status feedback
-    "login_recover_success": (46, 139, 87, 220),
-    "login_recover_error": (200, 30, 30, 230),
-    # Login UI — primary action buttons
-    "login_primary_btn_top": (45, 165, 250, 210),
-    "login_primary_btn_bottom": (15, 125, 210, 190),
-    "login_primary_btn_hover_top": (65, 185, 255, 240),
-    "login_primary_btn_hover_bottom": (25, 145, 230, 220),
-    "login_primary_btn_pressed_top": (15, 115, 200, 220),
-    "login_primary_btn_pressed_bottom": (5, 95, 160, 200),
-    "login_primary_btn_disabled_bg": (150, 170, 190, 100),
-    # Login UI — back navigation button
-    "login_back_btn_text": (100, 110, 120, 200),
-    "login_back_btn_text_hover": (60, 60, 60, 220),
-    # Mode window — footer copyright label
-    "mode_footer_text": (70, 80, 95, 140),
-    "mode_footer_dim_text": (40, 48, 56, 200),
-    # Mode window — log-console toggle button
-    "mode_toggle_btn_hover": (120, 130, 145, 45),
-    "mode_toggle_btn_pressed": (120, 130, 145, 80),
-    # Mode window — log-splitter handle hover
-    "mode_splitter_handle_hover": (120, 130, 145, 60),
-    "mode_splitter_dim_handle_hover": (140, 145, 150, 255),
-}
+def _build(mode: str) -> ColorTokens:
+    """Derives a full ColorTokens palette for `mode` ('light' | 'dark').
 
-# First-pass dark palette: dark surfaces, lightened accent/text for contrast.
-DARK: ColorTokens = {
-    "bg_gradient_start": (0x1B, 0x20, 0x26, 255),
-    "bg_gradient_end": (0x23, 0x29, 0x30, 255),
-    "surface": (40, 46, 54, 170),
-    "surface_border": (70, 78, 88, 160),
-    "menu_item_hover": (60, 68, 78, 150),
-    "text_primary": (230, 234, 238, 255),
-    "text_secondary": (170, 178, 188, 200),
-    "accent": (45, 175, 240, 255),
-    "accent_translucent": (45, 175, 240, 46),
-    "scrollbar_handle": (110, 116, 124, 140),
-    "scrollbar_handle_hover": (140, 146, 156, 190),
-    "overlay_dim": (30, 34, 40, 255),
-    "danger": (235, 90, 90, 255),
-    "warning": (255, 200, 80, 255),
-    "success": (80, 210, 140, 255),
-    "backdrop_fallback_start": (0x20, 0x26, 0x2E, 255),
-    "backdrop_fallback_end": (0x14, 0x18, 0x1E, 255),
-    "backdrop_frost": (60, 68, 78, 70),
-    "backdrop_dim": (0, 0, 0, 110),
-    # Log console — container / controls
-    "log_surface": (40, 46, 54, 140),
-    "log_surface_border": (70, 78, 88, 180),
-    "log_control_bg": (50, 58, 68, 160),
-    "log_control_bg_hover": (60, 68, 80, 200),
-    "log_control_bg_focus": (65, 74, 86, 220),
-    "log_control_border": (80, 90, 105, 160),
-    "log_control_border_hover": (100, 110, 125, 200),
-    "log_dropdown_bg": (35, 40, 50, 255),
-    "log_dropdown_border": (70, 78, 88, 180),
-    "log_separator": (80, 88, 100, 110),
-    "log_btn_hover": (55, 63, 75, 180),
-    "log_btn_pressed": (65, 73, 85, 220),
-    "log_text": (200, 210, 220, 200),
-    "log_match_highlight": (45, 175, 240, 90),
-    # Log console — per-level text colors
-    "log_time": (0, 188, 212, 255),
-    "log_location": (206, 147, 216, 255),
-    "log_debug": (144, 164, 174, 255),
-    "log_info": (102, 187, 106, 255),
-    "log_warning": (255, 152, 0, 255),
-    "log_error": (239, 83, 80, 255),
-    "log_default": (204, 204, 204, 255),
-    # Plot glass cards — paintEvent fill colors
-    "plot_glass_base": (45, 52, 62, 160),
-    "plot_glass_overlay": (60, 68, 80, 18),
-    "plot_glass_shimmer_top": (80, 90, 105, 60),
-    "plot_glass_shimmer_mid": (80, 90, 105, 15),
-    "plot_glass_vignette_end": (10, 14, 22, 30),
-    "plot_glass_rim": (90, 100, 115, 180),
-    "plot_glass_inset": (60, 70, 90, 70),
-    "plot_glass_header_line": (55, 65, 85, 70),
-    # Plot glass cards — text
-    "plot_text_normal": (210, 218, 230, 200),
-    "plot_text_bright": (220, 228, 238, 235),
-    "plot_text_muted": (170, 180, 195, 155),
-    "plot_text_dim": (160, 170, 185, 130),
-    # Plot glass cards — icon buttons
-    "plot_icon_btn_hover_bg": (55, 63, 75, 160),
-    "plot_icon_btn_hover_border": (90, 100, 120, 180),
-    "plot_icon_btn_pressed_bg": (30, 80, 150, 190),
-    # Plot glass cards — dropdown menu
-    "plot_menu_bg": (38, 45, 56, 248),
-    "plot_menu_border": (70, 80, 95, 200),
-    "plot_menu_separator": (70, 80, 100, 90),
-    "plot_menu_row_hover": (45, 175, 240, 35),
-    "plot_swatch_border": (90, 100, 120, 180),
-    # Plot glass cards — device tabs (pill buttons)
-    "plot_tab_bg": (50, 58, 70, 55),
-    "plot_tab_border": (70, 80, 98, 110),
-    "plot_tab_bg_hover": (58, 67, 82, 130),
-    "plot_tab_bg_active": (65, 75, 90, 215),
-    "plot_tab_border_active": (95, 108, 125, 255),
-    "plot_tab_bg_active_hover": (72, 83, 98, 240),
-    # Plot data line default colors (same in both themes — content, not chrome)
-    "plot_data_primary": (46, 155, 218, 255),
-    "plot_data_secondary": (240, 100, 53, 255),
-    "plot_data_temperature": (240, 156, 53, 255),
-    "plot_data_device_accent": (72, 190, 120, 255),
-    # Controls UI — toolbar
-    "ctrl_toolbar_btn_disabled_text": (210, 218, 230, 90),
-    "ctrl_toolbar_btn_pressed_bg": (60, 68, 78, 200),
-    "ctrl_toolbar_separator": (255, 255, 255, 22),
-    # Controls UI — progress bar
-    "ctrl_progress_border": (255, 255, 255, 25),
-    "ctrl_progress_chunk_start": (45, 175, 240, 130),
-    "ctrl_progress_chunk_end": (45, 175, 240, 90),
-    # Controls UI — temperature controller
-    "ctrl_temp_ctrl_bg": (40, 46, 54, 80),
-    "ctrl_temp_pid_header_text": (45, 175, 240, 220),
-    "ctrl_temp_status_offline_bg": (60, 65, 70, 120),
-    "ctrl_temp_status_offline_text": (180, 190, 200, 160),
-    "ctrl_temp_status_border": (90, 100, 115, 160),
-    # Controls UI — sliders
-    "ctrl_slider_groove": (255, 255, 255, 30),
-    "ctrl_slider_handle_border": (30, 150, 220, 200),
-    "ctrl_slider_track": (45, 175, 240, 120),
-    "ctrl_slider_disabled_handle": (80, 90, 100, 140),
-    "ctrl_slider_handle_hover": (70, 195, 255, 255),
-    # Controls UI — hairline divider
-    "ctrl_hairline": (60, 70, 80, 130),
-    # Controls UI — toggle row labels
-    "ctrl_toggle_label_text": (210, 218, 230, 215),
-    # Controls UI — device config back button
-    "ctrl_back_btn_bg": (50, 60, 75, 40),
-    "ctrl_back_btn_border": (80, 90, 110, 100),
-    "ctrl_back_btn_hover_bg": (65, 75, 95, 80),
-    "ctrl_back_btn_hover_border": (100, 115, 140, 150),
-    # Controls UI — glass input fields
-    "ctrl_input_bg": (50, 58, 70, 60),
-    "ctrl_input_border": (70, 80, 98, 120),
-    "ctrl_input_text": (210, 218, 230, 220),
-    "ctrl_input_focus_bg": (65, 75, 90, 180),
-    "ctrl_input_focus_border": (40, 130, 240, 180),
-    # Controls UI — animated combo box
-    "combo_bg": (50, 58, 70, 150),
-    "combo_border": (95, 105, 122, 150),
-    "combo_bg_hover": (60, 68, 82, 200),
-    "combo_border_hover": (115, 126, 145, 190),
-    "combo_bg_focus": (65, 75, 90, 225),
-    "combo_border_focus": (45, 175, 240, 200),
-    "combo_text": (225, 230, 238, 255),
-    "combo_popup_bg": (38, 44, 54, 255),
-    "combo_popup_border": (80, 90, 105, 220),
-    "combo_selection_bg": (45, 175, 240, 50),
-    "combo_selection_text": (70, 195, 255, 255),
-    # Controls UI — temperature status dynamic states
-    "ctrl_temp_ready_bg": (50, 190, 100, 220),
-    "ctrl_temp_ready_text": (255, 255, 255, 230),
-    "ctrl_temp_heating_bg": (220, 170, 0, 220),
-    "ctrl_temp_heating_text": (255, 240, 180, 200),
-    "ctrl_temp_cooling_bg": (220, 120, 0, 220),
-    "ctrl_temp_cooling_text": (255, 220, 170, 200),
-    # Controls UI — amber pulse border
-    "ctrl_pulse_border": (255, 190, 70, 230),
-    # Controls UI — infobar readout
-    "ctrl_infobar_text": (150, 165, 180, 190),
-    # Controls window — menu bar signed-in (normal) state
-    "menubar_bg": (35, 40, 48, 255),
-    "menubar_text": (200, 210, 220, 230),
-    "menubar_item_hover_bg": (45, 175, 240, 60),
-    "menubar_item_disabled_text": (90, 100, 110, 140),
-    "menubar_border": (70, 78, 88, 200),
-    "menubar_separator": (70, 80, 95, 80),
-    # Controls window — menu bar signed-out (dimmed) state
-    "menubar_dim_bg": (45, 50, 58, 255),
-    "menubar_dim_text": (150, 160, 170, 235),
-    "menubar_dim_item_hover_bg": (80, 90, 105, 60),
-    "menubar_dim_item_disabled_text": (80, 90, 100, 140),
-    "menubar_dim_border": (60, 68, 78, 90),
-    "menubar_dim_separator": (80, 88, 100, 80),
-    # Login UI — titles, body text, links
-    "login_title_text": (210, 218, 230, 220),
-    "login_body_text": (150, 162, 178, 220),
-    "login_link_text": (140, 152, 168, 180),
-    "login_link_text_hover": (200, 210, 225, 220),
-    "login_caps_warning": (240, 170, 50, 235),
-    # Login UI — checkbox
-    "login_checkbox_text": (185, 195, 210, 220),
-    "login_checkbox_border": (80, 90, 108, 180),
-    "login_checkbox_bg": (45, 52, 62, 120),
-    "login_checkbox_hover_border": (45, 175, 240, 150),
-    "login_checkbox_checked_bg": (30, 140, 210, 210),
-    "login_checkbox_checked_border": (25, 120, 190, 255),
-    # Login UI — recover status feedback
-    "login_recover_success": (80, 210, 140, 220),
-    "login_recover_error": (235, 90, 90, 230),
-    # Login UI — primary action buttons
-    "login_primary_btn_top": (30, 130, 220, 210),
-    "login_primary_btn_bottom": (10, 100, 190, 190),
-    "login_primary_btn_hover_top": (50, 155, 245, 240),
-    "login_primary_btn_hover_bottom": (20, 120, 210, 220),
-    "login_primary_btn_pressed_top": (10, 90, 175, 220),
-    "login_primary_btn_pressed_bottom": (5, 70, 140, 200),
-    "login_primary_btn_disabled_bg": (70, 80, 95, 100),
-    # Login UI — back navigation button
-    "login_back_btn_text": (130, 142, 158, 200),
-    "login_back_btn_text_hover": (190, 200, 218, 220),
-    # Mode window — footer copyright label
-    "mode_footer_text": (160, 170, 185, 140),
-    "mode_footer_dim_text": (160, 170, 185, 200),
-    # Mode window — log-console toggle button
-    "mode_toggle_btn_hover": (90, 100, 118, 60),
-    "mode_toggle_btn_pressed": (90, 100, 118, 100),
-    # Mode window — log-splitter handle hover
-    "mode_splitter_handle_hover": (90, 100, 118, 80),
-    "mode_splitter_dim_handle_hover": (80, 88, 100, 255),
-}
+    Both modes run through this one function so that each token is the *same
+    semantic role* on the *same ramps* in both - only the anchors differ.
+    """
+    dark = mode == "dark"
+
+    ink = _DARK_INK if dark else _LIGHT_INK
+    paper = _DARK_PAPER if dark else _LIGHT_PAPER
+
+    # Two role-based neutral ramps. Both are authored on the *same* semantic
+    # scale in both modes (t has the same meaning), but each resolves toward
+    # the correct end of that mode's ink/paper axis - which is why surfaces
+    # come out light in light mode and dark in dark mode from one line.
+
+    def fg(t: float) -> RGB:
+        """Foreground/text ramp. t=0 = strongest (ink), t=1 = faintest.
+
+        Fades ink toward the surface tone, so faint text stays legible in
+        both modes instead of washing to pure white/black.
+        """
+        return _mix(ink, paper, t)
+
+    def surf(t: float) -> RGB:
+        """Surface/chrome ramp. t=0 = base panel tone, t=1 = most raised.
+
+        Light mode climbs toward white; dark mode climbs from the base panel
+        up to a lighter raised grey. Same t -> same perceived elevation.
+        """
+        if dark:
+            base = paper  # (31,37,44) base panel
+            top = _mix(paper, ink, 0.16)  # gently raised grey, still dark/cool
+        else:
+            base = _mix(paper, ink, 0.06)  # faintly-tinted off-white
+            top = (255, 255, 255)
+        return _mix(base, top, t)
+
+    def tint() -> RGB:
+        """Contrast overlay tint: white over dark surfaces, black over light.
+
+        For hairlines/grooves that are painted *as a translucent tint on top
+        of* a surface and must read against it in either mode.
+        """
+        return (255, 255, 255) if dark else (0, 0, 0)
+
+    def line(t: float) -> RGB:
+        """Chrome border/separator/handle ramp. t=0 subtlest, t=1 strongest.
+
+        A border is 'the surface, nudged toward more contrast'. In dark mode
+        that means slightly *lighter* than the panel; in light mode slightly
+        *darker*. Same t -> same perceived contrast against the surface in
+        either mode, so borders stop drifting between the two palettes.
+        """
+        if dark:
+            base = _mix(paper, ink, 0.30)  # subtle: just above the panel
+            top = _mix(paper, ink, 0.52)  # strong-ish cool grey line
+        else:
+            base = _mix(paper, ink, 0.36)  # subtle grey on white
+            top = _mix(paper, ink, 0.58)  # stronger grey line
+        return _mix(base, top, t)
+
+    # Accent, brightened slightly on dark so it holds contrast on dark glass.
+    accent = _shade(_ACCENT, 0.12) if dark else _ACCENT
+    # Solid raised-panel fill (opaque white in light, raised grey in dark).
+    glass = surf(1.0)
+
+    def sem(base: RGB, s: float = 0.0) -> RGB:
+        return _shade(base, s)
+
+    t: ColorTokens = {}  # type: ignore[assignment]
+
+    # ---- Core surfaces / text / accent ----
+    if dark:
+        t["bg_gradient_start"] = _a((27, 32, 38), 255)
+        t["bg_gradient_end"] = _a((35, 41, 48), 255)
+    else:
+        t["bg_gradient_start"] = _a((228, 235, 241), 255)
+        t["bg_gradient_end"] = _a((244, 247, 249), 255)
+    t["surface"] = _a(glass, 170 if dark else 160)
+    t["surface_border"] = _a(surf(0.9), 160 if dark else 220)
+    t["menu_item_hover"] = _a(surf(0.55) if dark else fg(0.90), 150)
+    t["text_primary"] = _a(fg(0.0), 255)
+    t["text_secondary"] = _a(fg(0.30), 200 if dark else 180)
+    t["accent"] = _a(accent, 255)
+    t["accent_translucent"] = _a(accent, 46 if dark else 38)
+    t["scrollbar_handle"] = _a(line(0.45), 120 if dark else 100)
+    t["scrollbar_handle_hover"] = _a(line(0.70), 190 if dark else 180)
+    t["overlay_dim"] = _a(surf(0.0) if dark else (164, 168, 172), 255)
+    t["danger"] = _a(sem(_DANGER, 0.06 if dark else 0.0), 255)
+    t["warning"] = _a(sem(_WARNING, 0.10 if dark else 0.0), 255)
+    t["success"] = _a(sem(_SUCCESS, 0.06 if dark else 0.0), 255)
+    if dark:
+        t["backdrop_fallback_start"] = _a((32, 38, 46), 255)
+        t["backdrop_fallback_end"] = _a((20, 24, 30), 255)
+        t["backdrop_frost"] = _a(surf(0.7), 70)
+        t["backdrop_dim"] = (0, 0, 0, 110)
+    else:
+        t["backdrop_fallback_start"] = _a((216, 230, 240), 255)
+        t["backdrop_fallback_end"] = _a((238, 244, 248), 255)
+        t["backdrop_frost"] = _a((238, 243, 247), 62)
+        t["backdrop_dim"] = (0, 0, 0, 76)
+
+    # ---- Log console — container / controls ----
+    t["log_surface"] = _a(glass, 140 if dark else 120)
+    t["log_surface_border"] = _a(surf(0.9), 180 if dark else 200)
+    t["log_control_bg"] = _a(surf(0.45) if dark else surf(1.0), 160)
+    t["log_control_bg_hover"] = _a(surf(0.60) if dark else surf(1.0), 200)
+    t["log_control_bg_focus"] = _a(surf(0.68) if dark else surf(1.0), 220)
+    t["log_control_border"] = _a(line(0.45), 160)
+    t["log_control_border_hover"] = _a(line(0.70), 200)
+    t["log_dropdown_bg"] = _a(surf(0.30) if dark else fg(0.96), 255)
+    t["log_dropdown_border"] = _a(surf(0.9) if dark else fg(0.78), 180)
+    t["log_separator"] = _a(line(0.40), 110)
+    t["log_btn_hover"] = _a(surf(0.55) if dark else surf(1.0), 180)
+    t["log_btn_pressed"] = _a(surf(0.68) if dark else surf(1.0), 220)
+    t["log_text"] = _a(fg(0.16) if dark else fg(0.12), 200)
+    t["log_match_highlight"] = _a(accent, 90)
+    # Per-level text colors — semantic hues, brightened on dark for legibility.
+    t["log_time"] = _a(sem(_INFO, 0.30 if dark else -0.02), 255)
+    t["log_location"] = _a(sem(_PURPLE, 0.42 if dark else -0.02), 255)
+    t["log_debug"] = _a(fg(0.58) if dark else fg(0.52), 255)
+    t["log_info"] = _a(sem(_SUCCESS, 0.18 if dark else -0.10), 255)
+    t["log_warning"] = _a(sem(_CAUTION, 0.06 if dark else -0.08), 255)
+    t["log_error"] = _a(sem(_DANGER, 0.10 if dark else -0.10), 255)
+    t["log_default"] = _a(fg(0.20) if dark else fg(0.0), 255)
+
+    # ---- Plot glass cards — paintEvent fills ----
+    t["plot_glass_base"] = _a(surf(0.35) if dark else surf(1.0), 160)
+    t["plot_glass_overlay"] = _a(surf(0.55) if dark else (228, 235, 241), 18)
+    t["plot_glass_shimmer_top"] = _a(surf(0.9) if dark else surf(1.0), 60 if dark else 100)
+    t["plot_glass_shimmer_mid"] = _a(surf(0.9) if dark else surf(1.0), 15 if dark else 20)
+    t["plot_glass_vignette_end"] = _a((10, 14, 22) if dark else (200, 218, 240), 30 if dark else 18)
+    t["plot_glass_rim"] = _a(surf(1.0) if dark else surf(1.0), 180 if dark else 230)
+    t["plot_glass_inset"] = _a(surf(0.7) if dark else (190, 210, 235), 70)
+    t["plot_glass_header_line"] = _a(surf(0.65) if dark else (195, 215, 238), 70)
+    # Plot text
+    t["plot_text_normal"] = _a(fg(0.14) if dark else fg(0.12), 200)
+    t["plot_text_bright"] = _a(fg(0.10) if dark else fg(0.12), 235)
+    t["plot_text_muted"] = _a(fg(0.28) if dark else fg(0.12), 155)
+    t["plot_text_dim"] = _a(fg(0.34) if dark else fg(0.12), 130 if dark else 110)
+    # Plot icon buttons
+    t["plot_icon_btn_hover_bg"] = _a(surf(0.55) if dark else surf(1.0), 160)
+    t["plot_icon_btn_hover_border"] = _a(surf(1.0) if dark else surf(1.0), 180 if dark else 200)
+    t["plot_icon_btn_pressed_bg"] = _a(sem(_ACCENT, -0.18) if dark else (180, 215, 255), 190)
+    # Plot dropdown menu
+    t["plot_menu_bg"] = _a(surf(0.35) if dark else (232, 242, 252), 248)
+    t["plot_menu_border"] = _a(surf(0.9) if dark else surf(1.0), 200 if dark else 230)
+    t["plot_menu_separator"] = _a(surf(0.9) if dark else (175, 200, 228), 90)
+    t["plot_menu_row_hover"] = _a(accent, 35 if dark else 28)
+    t["plot_swatch_border"] = _a(surf(1.0) if dark else surf(1.0), 180 if dark else 210)
+    # Device tabs (pill buttons)
+    t["plot_tab_bg"] = _a(surf(0.5) if dark else surf(1.0), 55)
+    t["plot_tab_border"] = _a(surf(0.9) if dark else surf(1.0), 110)
+    t["plot_tab_bg_hover"] = _a(surf(0.6) if dark else surf(1.0), 130)
+    t["plot_tab_bg_active"] = _a(surf(0.7) if dark else surf(1.0), 215)
+    t["plot_tab_border_active"] = _a(surf(1.0) if dark else surf(1.0), 255)
+    t["plot_tab_bg_active_hover"] = _a(surf(0.8) if dark else surf(1.0), 240)
+    # Plot data-line colors (content, identical both modes)
+    t["plot_data_primary"] = _a(_PLOT_PRIMARY, 255)
+    t["plot_data_secondary"] = _a(_PLOT_SECONDARY, 255)
+    t["plot_data_temperature"] = _a(_PLOT_TEMPERATURE, 255)
+    t["plot_data_device_accent"] = _a(_PLOT_DEVICE, 255)
+
+    # ---- Controls UI — toolbar ----
+    t["ctrl_toolbar_btn_disabled_text"] = _a(fg(0.14) if dark else fg(0.12), 90)
+    t["ctrl_toolbar_btn_pressed_bg"] = _a(surf(0.55) if dark else fg(0.90), 200)
+    t["ctrl_toolbar_separator"] = _a(tint(), 22)
+    # Progress bar
+    t["ctrl_progress_border"] = _a(tint(), 25)
+    t["ctrl_progress_chunk_start"] = _a(accent, 130)
+    t["ctrl_progress_chunk_end"] = _a(accent, 90)
+    # Temperature controller
+    t["ctrl_temp_ctrl_bg"] = _a(surf(0.4) if dark else fg(0.90), 80)
+    t["ctrl_temp_pid_header_text"] = _a(sem(accent, -0.06) if dark else sem(_ACCENT, -0.30), 220)
+    t["ctrl_temp_status_offline_bg"] = _a(surf(0.7) if dark else (150, 155, 160), 120)
+    t["ctrl_temp_status_offline_text"] = _a(fg(0.50) if dark else fg(0.12), 160)
+    t["ctrl_temp_status_border"] = _a(surf(1.0) if dark else surf(1.0), 160)
+    # Sliders
+    t["ctrl_slider_groove"] = _a(tint(), 30)
+    t["ctrl_slider_handle_border"] = _a(sem(_ACCENT, -0.12), 200)
+    t["ctrl_slider_track"] = _a(accent, 120)
+    t["ctrl_slider_disabled_handle"] = _a(line(0.55) if dark else (150, 170, 190), 140)
+    t["ctrl_slider_handle_hover"] = _a(sem(_ACCENT, 0.24), 255)
+    # Hairline divider
+    t["ctrl_hairline"] = _a(surf(0.7) if dark else (200, 210, 220), 130)
+    # Toggle row labels
+    t["ctrl_toggle_label_text"] = _a(fg(0.14) if dark else fg(0.12), 215)
+    # Device config back button
+    t["ctrl_back_btn_bg"] = _a(surf(0.55) if dark else surf(1.0), 40)
+    t["ctrl_back_btn_border"] = _a(surf(0.9) if dark else surf(1.0), 100)
+    t["ctrl_back_btn_hover_bg"] = _a(surf(0.7) if dark else surf(1.0), 80)
+    t["ctrl_back_btn_hover_border"] = _a(surf(1.0) if dark else surf(1.0), 150)
+    # Glass input fields
+    t["ctrl_input_bg"] = _a(surf(0.5) if dark else surf(1.0), 60)
+    t["ctrl_input_border"] = _a(surf(0.9) if dark else surf(1.0), 120)
+    t["ctrl_input_text"] = _a(fg(0.14) if dark else fg(0.12), 220)
+    t["ctrl_input_focus_bg"] = _a(surf(0.7) if dark else surf(1.0), 180)
+    t["ctrl_input_focus_border"] = _a(sem(_ACCENT, -0.06), 180)
+    # Animated combo box
+    t["combo_bg"] = _a(surf(0.5) if dark else surf(1.0), 150)
+    t["combo_border"] = _a(line(0.50), 150)
+    t["combo_bg_hover"] = _a(surf(0.6) if dark else surf(1.0), 200)
+    t["combo_border_hover"] = _a(line(0.72), 190)
+    t["combo_bg_focus"] = _a(surf(0.68) if dark else surf(1.0), 225)
+    t["combo_border_focus"] = _a(accent, 200)
+    t["combo_text"] = _a(fg(0.10) if dark else fg(0.06), 255)
+    t["combo_popup_bg"] = _a(surf(0.3) if dark else fg(0.96), 255)
+    t["combo_popup_border"] = _a(surf(0.9) if dark else fg(0.74), 220)
+    t["combo_selection_bg"] = _a(accent, 50 if dark else 40)
+    t["combo_selection_text"] = _a(sem(_ACCENT, 0.24) if dark else _ACCENT, 255)
+    # Temperature status dynamic states
+    t["ctrl_temp_ready_bg"] = _a(sem(_SUCCESS, 0.0), 220)
+    t["ctrl_temp_ready_text"] = _a((255, 255, 255), 230)
+    t["ctrl_temp_heating_bg"] = _a(sem(_WARNING, -0.14), 220)
+    t["ctrl_temp_heating_text"] = _a((255, 240, 180) if dark else (30, 20, 0), 200)
+    t["ctrl_temp_cooling_bg"] = _a(sem(_CAUTION, -0.06), 220)
+    t["ctrl_temp_cooling_text"] = _a((255, 220, 170) if dark else (30, 20, 0), 200)
+    # Amber pulse border
+    t["ctrl_pulse_border"] = _a(sem(_WARNING, 0.10), 230)
+    # Infobar readout
+    t["ctrl_infobar_text"] = _a(fg(0.40) if dark else fg(0.30), 190)
+
+    # ---- Controls window — menu bar (signed-in) ----
+    t["menubar_bg"] = _a(surf(0.3) if dark else (233, 239, 244), 255)
+    t["menubar_text"] = _a(fg(0.20) if dark else fg(0.18), 230)
+    t["menubar_item_hover_bg"] = _a(accent, 60)
+    t["menubar_item_disabled_text"] = _a(fg(0.42), 140)
+    t["menubar_border"] = _a(surf(0.9) if dark else surf(1.0), 200 if dark else 230)
+    t["menubar_separator"] = _a(line(0.35), 80 if dark else 70)
+    # Menu bar (signed-out / dimmed)
+    t["menubar_dim_bg"] = _a(surf(0.5) if dark else (163, 167, 171), 255)
+    t["menubar_dim_text"] = _a(fg(0.56) if dark else fg(0.12), 235)
+    t["menubar_dim_item_hover_bg"] = _a(fg(0.42) if dark else surf(1.0), 60)
+    t["menubar_dim_item_disabled_text"] = _a(fg(0.36) if dark else fg(0.34), 150)
+    t["menubar_dim_border"] = _a(surf(0.9) if dark else surf(1.0), 90)
+    t["menubar_dim_separator"] = _a(line(0.40) if dark else surf(1.0), 80)
+
+    # ---- Login UI ----
+    t["login_title_text"] = _a(fg(0.10) if dark else fg(0.18), 220)
+    t["login_body_text"] = _a(fg(0.34) if dark else fg(0.40), 220)
+    t["login_link_text"] = _a(fg(0.40) if dark else fg(0.40), 180)
+    t["login_link_text_hover"] = _a(fg(0.16) if dark else fg(0.10), 220)
+    t["login_caps_warning"] = _a(sem(_WARNING, -0.04 if dark else -0.20), 235)
+    # Checkbox
+    t["login_checkbox_text"] = _a(fg(0.26) if dark else fg(0.30), 220)
+    t["login_checkbox_border"] = _a(line(0.50) if dark else (150, 160, 170), 180)
+    t["login_checkbox_bg"] = _a(surf(0.3) if dark else surf(1.0), 120)
+    t["login_checkbox_hover_border"] = _a(accent, 150)
+    t["login_checkbox_checked_bg"] = _a(sem(_ACCENT, -0.10), 210)
+    t["login_checkbox_checked_border"] = _a(sem(_ACCENT, -0.18), 255)
+    # Recover status feedback
+    t["login_recover_success"] = _a(sem(_SUCCESS, -0.10 if not dark else 0.0), 220)
+    t["login_recover_error"] = _a(sem(_DANGER, -0.06 if not dark else 0.06), 230)
+    # Primary action buttons (top/bottom gradient stops)
+    t["login_primary_btn_top"] = _a(sem(_ACCENT, 0.14), 210)
+    t["login_primary_btn_bottom"] = _a(sem(_ACCENT, -0.10), 190)
+    t["login_primary_btn_hover_top"] = _a(sem(_ACCENT, 0.26), 240)
+    t["login_primary_btn_hover_bottom"] = _a(sem(_ACCENT, 0.0), 220)
+    t["login_primary_btn_pressed_top"] = _a(sem(_ACCENT, -0.14), 220)
+    t["login_primary_btn_pressed_bottom"] = _a(sem(_ACCENT, -0.34), 200)
+    t["login_primary_btn_disabled_bg"] = _a(fg(0.40) if dark else (150, 170, 190), 100)
+    # Back navigation button
+    t["login_back_btn_text"] = _a(fg(0.42) if dark else fg(0.40), 200)
+    t["login_back_btn_text_hover"] = _a(fg(0.16) if dark else fg(0.10), 220)
+
+    # ---- Mode window ----
+    t["mode_footer_text"] = _a(fg(0.36), 140)
+    t["mode_footer_dim_text"] = _a(fg(0.36) if dark else fg(0.14), 200)
+    t["mode_toggle_btn_hover"] = _a(fg(0.40) if dark else fg(0.52), 60 if dark else 45)
+    t["mode_toggle_btn_pressed"] = _a(fg(0.40) if dark else fg(0.52), 100 if dark else 80)
+    t["mode_splitter_handle_hover"] = _a(line(0.45), 80 if dark else 60)
+    t["mode_splitter_dim_handle_hover"] = _a(line(0.35) if dark else fg(0.56), 255)
+
+    # ---- Selectable option card (GlassOptionCard) ----
+    # Unchecked = a raised glass tile; checked = accent-tinted with a strong
+    # accent rim. Titles use the standard text ramp; checked title deepens to
+    # a dark accent (light) / brightens (dark) for emphasis.
+    t["option_card_bg"] = _a(surf(1.0), 130 if not dark else 150)
+    t["option_card_border"] = _a(line(0.30) if dark else (212, 219, 228), 190)
+    t["option_card_hover_bg"] = _a(surf(1.0), 180 if not dark else 200)
+    t["option_card_hover_border"] = _a(line(0.55), 210)
+    t["option_card_title"] = _a(fg(0.06), 230)
+    t["option_card_desc"] = _a(fg(0.30), 200)
+    t["option_card_radio_bg"] = _a(surf(1.0), 200)
+    t["option_card_radio_border"] = _a(line(0.50), 180)
+    t["option_card_checked_bg"] = _a(accent, 44 if dark else 35)
+    t["option_card_checked_border"] = _a(sem(_ACCENT, -0.28 if not dark else -0.02), 200)
+    t["option_card_checked_title"] = _a(
+        sem(_ACCENT, -0.46) if not dark else sem(_ACCENT, 0.30), 245
+    )
+    t["option_card_radio_checked"] = _a(sem(_ACCENT, -0.28 if not dark else 0.0), 235)
+
+    # ---- Glass input field (GlassLineEdit) ----
+    # Fills are neutral glass; error uses the danger hue at low alpha; the
+    # focus shimmer sweeps from a soft accent tint up to a bright peak.
+    t["input_glass_text"] = _a(fg(0.06), 230)
+    t["input_glass_selection_bg"] = _a(accent, 60)
+    t["input_glass_fill"] = _a(surf(1.0), 58)
+    t["input_glass_fill_focus"] = _a(surf(1.0), 100)
+    t["input_glass_fill_error"] = _a(sem(_DANGER, 0.62 if not dark else 0.30), 68)
+    t["input_glass_border"] = _a(surf(1.0), 105)
+    t["input_glass_border_error"] = _a(sem(_DANGER, 0.04 if not dark else 0.14), 150)
+    t["input_glass_shimmer_accent"] = _a(sem(_ACCENT, 0.58 if not dark else 0.30), 118)
+    t["input_glass_shimmer_peak"] = _a(surf(1.0), 240)
+
+    # ---- Account popup ----
+    # Avatar gradient/ring/shimmer/text are the brand mark - content, not
+    # chrome, so identical in both modes (same reasoning as plot_data_*).
+    t["account_avatar_grad_start"] = _a((0, 158, 210), 255)
+    t["account_avatar_grad_end"] = _a((0, 100, 160), 255)
+    t["account_avatar_ring"] = _a((255, 255, 255), 90)
+    t["account_avatar_shimmer"] = _a((255, 255, 255), 55)
+    t["account_avatar_text"] = _a((255, 255, 255), 235)
+    # Role badge chip - saturated fills read fine on either surface, so only
+    # the "no role" fallback (a neutral grey with ink-colored text) needs to
+    # flip its text between modes.
+    t["account_role_admin_bg"] = _a((0, 118, 174), 215)
+    t["account_role_admin_text"] = _a((255, 255, 255), 255)
+    t["account_role_operate_bg"] = _a((40, 155, 75), 200)
+    t["account_role_operate_text"] = _a((255, 255, 255), 255)
+    t["account_role_analyze_bg"] = _a((130, 80, 200), 200)
+    t["account_role_analyze_text"] = _a((255, 255, 255), 255)
+    t["account_role_capture_bg"] = _a((200, 125, 0), 200)
+    t["account_role_capture_text"] = _a((255, 255, 255), 255)
+    t["account_role_default_bg"] = _a((140, 150, 160), 160)
+    t["account_role_default_text"] = _a(fg(0.0), 180)
+
+    return t
+
+
+LIGHT: ColorTokens = _build("light")
+DARK: ColorTokens = _build("dark")
 
 PALETTES: dict[str, ColorTokens] = {"light": LIGHT, "dark": DARK}

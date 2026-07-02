@@ -25,7 +25,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
     """A QComboBox where every item has an associated checkbox.
 
     The combo box uses a :class:`~PyQt5.QtGui.QStandardItemModel` so that
-    each row can store a ``Qt.CheckState``.  When the user clicks an item in
+    each row can store a `Qt.CheckState`.  When the user clicks an item in
     the drop-down view its check state is toggled and the line-edit area of
     the combo box is updated to show a semicolon-separated list of all
     currently checked items.
@@ -45,7 +45,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
         Args:
             parent (QtWidgets.QWidget, optional): Parent widget. Defaults to
-                ``None``.
+                `None`.
         """
         super(CheckableComboBox, self).__init__(parent)
         self.view().pressed.connect(self.handle_item_pressed)
@@ -80,14 +80,14 @@ class CheckableComboBox(QtWidgets.QComboBox):
     def setEditable(self, editable: bool):
         """Control whether the line-edit accepts free-text input.
 
-        When *editable* is ``False`` the internal ``QLineEdit`` is kept
+        When *editable* is `False` the internal `QLineEdit` is kept
         read-only (unless items are checked, in which case it is temporarily
-        unlocked to display the generated label).  When ``True`` the
-        line-edit is always writable and shows a ``<val>; <min>-<max>``
+        unlocked to display the generated label).  When `True` the
+        line-edit is always writable and shows a `<val>; <min>-<max>`
         placeholder.
 
         Args:
-            editable (bool): ``True`` to allow free-text entry, ``False`` for
+            editable (bool): `True` to allow free-text entry, `False` for
                 display-only behaviour.
         """
         self._editable = editable
@@ -101,7 +101,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
     def _on_text_edited(self, text: str):
         """Track free-text edits so the popup can preserve them.
 
-        Connected to ``QLineEdit.textEdited`` when the widget is in editable
+        Connected to `QLineEdit.textEdited` when the widget is in editable
         mode.  Sets :attr:`_user_edited` and caches the current value in
         :attr:`_saved_user_text` so that :meth:`_restore_user_text_on_popup_click`
         can restore it after an item is clicked.
@@ -115,7 +115,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
     def handle_item_pressed(self, index):
         """Toggle the check state of the item at *index* when it is pressed.
 
-        Connected to the ``pressed`` signal of the internal list view.  After
+        Connected to the `pressed` signal of the internal list view.  After
         toggling, :meth:`check_items` is called to refresh the label.
 
         Args:
@@ -138,8 +138,8 @@ class CheckableComboBox(QtWidgets.QComboBox):
             index (int): Zero-based row index of the item to query.
 
         Returns:
-            bool: ``True`` if the item's check state is
-            ``Qt.Checked``, ``False`` otherwise.
+            bool: `True` if the item's check state is
+            `Qt.Checked`, `False` otherwise.
         """
         item = self.model().item(index, 0)
         return item.checkState() == QtCore.Qt.Checked
@@ -148,7 +148,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
         """Restore the cached free-text value after a popup item is clicked.
 
         Called by :meth:`handle_item_pressed` (and at the start of
-        :meth:`on_popup_closed`) when :attr:`_editable` is ``True`` and
+        :meth:`on_popup_closed`) when :attr:`_editable` is `True` and
         :attr:`_user_edited` is set, so that clicking a checkbox entry does not
         overwrite text the user has typed into the line-edit.
         """
@@ -179,7 +179,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
         """Collect checked row indices and refresh the display label.
 
         Iterates over all rows, builds a list of indices whose check state is
-        ``Qt.Checked``, then delegates label construction to
+        `Qt.Checked`, then delegates label construction to
         :meth:`update_label`.
         """
         checkedItems = []
@@ -193,7 +193,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
         Builds a semicolon-separated string from the labels of *item_list* and
         applies it to the line-edit area.  Editability of the underlying
-        ``QLineEdit`` is adjusted as follows:
+        `QLineEdit` is adjusted as follows:
 
         * **Non-editable mode, items checked** - the base class is temporarily
           made editable so that :meth:`~PyQt5.QtWidgets.QComboBox.setCurrentText`
@@ -210,8 +210,8 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
         Note:
             To display text different from the items in the list when a model
-            is set, the ``QComboBox`` must be made editable.  If it is not
-            editable, ``setCurrentText()`` will only succeed if the provided
+            is set, the `QComboBox` must be made editable.  If it is not
+            editable, `setCurrentText()` will only succeed if the provided
             string exactly matches an existing item's display text in the
             model.
         """

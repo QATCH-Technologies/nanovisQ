@@ -1,6 +1,6 @@
 """Dashboard UI module for the VisQAI viscosity prediction application.
 
-Provides the main ``DashboardUI`` widget that manages formulation configuration
+Provides the main `DashboardUI` widget that manages formulation configuration
 cards, viscosity predictions, evaluation, sample generation, optimization, and
 data import/export.
 
@@ -189,7 +189,7 @@ class DashboardUI(QtWidgets.QWidget):
         self._pending_eval_config = None
 
     def _load_database_data(self):
-        """Populate ``ingredients_by_type`` by fetching each ingredient category from the database via the ingredient controller."""
+        """Populate `ingredients_by_type` by fetching each ingredient category from the database via the ingredient controller."""
         # Fetch lists for each ingredient type
         self.ingredients_by_type["Protein"] = self.ing_ctrl.get_all_proteins()
         self.ingredients_by_type["Buffer"] = self.ing_ctrl.get_all_buffers()
@@ -1017,7 +1017,7 @@ class DashboardUI(QtWidgets.QWidget):
             event (QtCore.QEvent): The event to filter.
 
         Returns:
-            bool: Result of the parent ``eventFilter`` call.
+            bool: Result of the parent `eventFilter` call.
         """
         if source == self.left_widget and event.type() == QtCore.QEvent.Type.Resize:
             self._update_filter_geometry()
@@ -1141,8 +1141,8 @@ class DashboardUI(QtWidgets.QWidget):
         """Reveal and scroll to the card associated with a clicked point in the parity/eval plot.
 
         Args:
-            point_data (dict): Dictionary containing at least a ``card`` key
-                mapping to the ``FormulationConfigCard`` that was clicked.
+            point_data (dict): Dictionary containing at least a `card` key
+                mapping to the `FormulationConfigCard` that was clicked.
         """
         card = point_data.get("card")
         if not card:
@@ -1158,7 +1158,7 @@ class DashboardUI(QtWidgets.QWidget):
         """Collect all visible measured cards and trigger their predictions.
 
         Triggers prediction requests via the batch mechanism, then calls
-        ``_compute_evaluation`` once all predictions are ready.
+        `_compute_evaluation` once all predictions are ready.
 
         Args:
             config (dict): Evaluation configuration including metric key,
@@ -1203,8 +1203,8 @@ class DashboardUI(QtWidgets.QWidget):
     def _compute_evaluation(self, config):
         """Compute and display evaluation results.
 
-        For the ``true_vs_pred`` metric, builds parity data and calls
-        ``viz_panel.set_parity_data``. For other metrics, uses the ``Metrics``
+        For the `true_vs_pred` metric, builds parity data and calls
+        `viz_panel.set_parity_data`. For other metrics, uses the `Metrics`
         engine to score each card and annotates plot titles with average scores.
 
         Args:
@@ -1326,7 +1326,7 @@ class DashboardUI(QtWidgets.QWidget):
                 self.viz_panel.set_plot_title(f"Evaluation Results: {metric_name}")
 
     def run_sample_generation(self, num_samples, model_file, constraints_data):
-        """Launch a ``SampleGenerationWorker`` with the given constraints and display a cancellable progress dialog.
+        """Launch a `SampleGenerationWorker` with the given constraints and display a cancellable progress dialog.
 
         Args:
             num_samples (int): Number of samples to generate.
@@ -1365,7 +1365,7 @@ class DashboardUI(QtWidgets.QWidget):
         worker.start()
 
     def run_optimization(self, model_file, targets, constraints_data):
-        """Launch an ``OptimizationWorker`` with the given model, targets, and constraints.
+        """Launch an `OptimizationWorker` with the given model, targets, and constraints.
 
         Shows a loading overlay with cancel support and stores pre-optimization
         plot state for rollback on cancel.
@@ -1425,7 +1425,7 @@ class DashboardUI(QtWidgets.QWidget):
 
         Args:
             card_data (dict): Data dict for the optimized formulation card,
-                including an optional ``estimated_profile`` key.
+                including an optional `estimated_profile` key.
         """
         if getattr(self, "_opt_cancelled", False):
             return
@@ -1574,7 +1574,7 @@ class DashboardUI(QtWidgets.QWidget):
 
         Args:
             filter_data (dict): Filter configuration emitted by
-                ``PredictionFilterWidget``.
+                `PredictionFilterWidget`.
         """
         search_text = self.search_bar.text().lower()
 
@@ -1821,9 +1821,9 @@ class DashboardUI(QtWidgets.QWidget):
         self.update_placeholder_visibility()
 
     def add_prediction_card(self, data=None):
-        """Create and insert a new ``FormulationConfigCard`` at the end of the card list.
+        """Create and insert a new `FormulationConfigCard` at the end of the card list.
 
-        If ``data`` is provided, loads its contents and triggers a prediction
+        If `data` is provided, loads its contents and triggers a prediction
         for non-measured cards.
 
         Args:
@@ -1890,12 +1890,12 @@ class DashboardUI(QtWidgets.QWidget):
         """Update the plot series colour when a card's colour picker changes.
 
         Finds the data-series entry in the visualization panel whose
-        ``"config_name"`` matches the emitting card's name, updates its
-        ``"color"`` key, and triggers a full plot redraw.
+        `"config_name"` matches the emitting card's name, updates its
+        `"color"` key, and triggers a full plot redraw.
 
         Args:
             new_color (str): Hex colour string selected by the user (e.g.
-                ``"#2596be"``).
+                `"#2596be"`).
         """
         card = self.sender()
         if not isinstance(card, FormulationConfigCard):
@@ -1981,7 +1981,7 @@ class DashboardUI(QtWidgets.QWidget):
         anim.start()
 
     def import_run(self):
-        """Open a directory picker, launch an ``ImportWorker`` for the selected path(s), and display a cancellable progress dialog."""
+        """Open a directory picker, launch an `ImportWorker` for the selected path(s), and display a cancellable progress dialog."""
         # Retrieve Load Path from Preferences
         try:
             if (
@@ -2039,7 +2039,7 @@ class DashboardUI(QtWidgets.QWidget):
         """Buffer the raw import results emitted by the worker.
 
         Args:
-            results (list): List of ``Formulation`` objects returned by the
+            results (list): List of `Formulation` objects returned by the
                 import worker.
         """
         self._pending_results = results
@@ -2062,13 +2062,13 @@ class DashboardUI(QtWidgets.QWidget):
             self._pending_results = []  # Clear buffer
 
     def _process_imported_results(self, results):
-        """Convert imported ``Formulation`` objects into card data dicts and create cards for each.
+        """Convert imported `Formulation` objects into card data dicts and create cards for each.
 
         Sets their measured viscosity data and notifies the user of the total
         imported count.
 
         Args:
-            results (list): List of ``Formulation`` objects to process.
+            results (list): List of `Formulation` objects to process.
         """
         if not results:
             return
@@ -2255,7 +2255,7 @@ class DashboardUI(QtWidgets.QWidget):
                 )
 
     def run_prediction(self, config=None):
-        """Start a ``PredictionThread`` for the given config.
+        """Start a `PredictionThread` for the given config.
 
         If batch-collecting, queues the request instead. Stops any currently
         running task (adds it to zombie list) before launching the new one.
@@ -2310,8 +2310,8 @@ class DashboardUI(QtWidgets.QWidget):
         running.
 
         Args:
-            data_package (dict): Prediction results containing at minimum ``x``
-                (shear rates) and ``y`` (viscosities) arrays.
+            data_package (dict): Prediction results containing at minimum `x`
+                (shear rates) and `y` (viscosities) arrays.
         """
         if self._pending_color and "color" not in data_package:
             data_package["color"] = self._pending_color

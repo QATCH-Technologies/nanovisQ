@@ -433,8 +433,8 @@ class AnimatedDoubleSpinBox(_OdometerMixin, QtWidgets.QDoubleSpinBox):
         odometer -- each numeric column spins through the intermediate digits
         into its new value.
 
-    Constructor mirrors AnimatedComboBox: pass an ``up_icon_path``. If
-    ``down_icon_path`` is omitted the up chevron is flipped 180 degrees to
+    Constructor mirrors AnimatedComboBox: pass an `up_icon_path`. If
+    `down_icon_path` is omitted the up chevron is flipped 180 degrees to
     derive the down one, so a single asset works for both.
     """
 

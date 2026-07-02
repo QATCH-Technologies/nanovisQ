@@ -401,8 +401,8 @@ class Database:
         """Retrieve all ingredients of a specific subclass type.
 
         Args:
-            ing_type (str): The ingredient type name to filter by (e.g. ``"Protein"``,
-                ``"Buffer"``, ``"Salt"``).
+            ing_type (str): The ingredient type name to filter by (e.g. `"Protein"`,
+                `"Buffer"`, `"Salt"`).
 
         Returns:
             List[Ingredient]: A list of `Ingredient` subclass instances matching
@@ -413,15 +413,15 @@ class Database:
         return [self.get_ingredient(r[0]) for r in c.fetchall()]
 
     def get_max_enc_id(self, ing_type: str, min_enc_id: int, max_enc_id: int) -> Optional[int]:
-        """Return the highest ``enc_id`` for a given ingredient type within a range.
+        """Return the highest `enc_id` for a given ingredient type within a range.
 
         Args:
-            ing_type (str): The ingredient type name to query (e.g. ``"Protein"``).
-            min_enc_id (int): Lower bound of the ``enc_id`` range (inclusive).
-            max_enc_id (int): Upper bound of the ``enc_id`` range (inclusive).
+            ing_type (str): The ingredient type name to query (e.g. `"Protein"`).
+            min_enc_id (int): Lower bound of the `enc_id` range (inclusive).
+            max_enc_id (int): Upper bound of the `enc_id` range (inclusive).
 
         Returns:
-            Optional[int]: The maximum ``enc_id`` found within the range, or ``None``
+            Optional[int]: The maximum `enc_id` found within the range, or `None`
                 if no matching rows exist.
         """
         c = self.conn.cursor()
@@ -441,11 +441,11 @@ class Database:
 
         Args:
             name (str): The exact name of the ingredient to look up.
-            ing_type (str): The ingredient type name to match (e.g. ``"Protein"``).
+            ing_type (str): The ingredient type name to match (e.g. `"Protein"`).
 
         Returns:
             Optional[Ingredient]: The matching `Ingredient` subclass instance, or
-                ``None`` if no ingredient with the given name and type exists.
+                `None` if no ingredient with the given name and type exists.
         """
         c = self.conn.cursor()
         c.execute(
@@ -1302,7 +1302,7 @@ class Database:
 
         This method only resets the connection PRAGMAs; it does **not** commit
         the current transaction.  The caller is responsible for committing (via
-        ``_commit()``) or rolling back after calling this method.
+        `_commit()`) or rolling back after calling this method.
         """
         self.conn.execute("PRAGMA journal_mode = DELETE")
         self.conn.execute("PRAGMA synchronous = FULL")

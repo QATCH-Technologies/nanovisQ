@@ -22,7 +22,7 @@ class GlassWarningLabel(QtWidgets.QWidget):
 
     Renders as a soft blue-gray glass strip with an optional leading icon and
     informational (not alarming) text. Replaces the old loud orange warning.
-    Keeps a QLabel-like ``setText`` so existing call sites still work.
+    Keeps a QLabel-like `setText` so existing call sites still work.
 
     Attributes:
         icon_lbl (QtWidgets.QLabel): The label widget responsible for displaying

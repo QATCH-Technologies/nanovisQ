@@ -4,11 +4,11 @@ optimize_widget.py
 Overlay panel for configuring and launching differential-evolution-based
 formulation optimization within the VisQAI dashboard.
 
-Provides a self-contained PyQt5 ``QFrame`` overlay (``OptimizeWidget``) that
+Provides a self-contained PyQt5 `QFrame` overlay (`OptimizeWidget`) that
 lets users define one to five shear-rate / target-viscosity pairs and an
-optional set of ingredient constraints, then fire them at a chosen ``.visq``
-model file.  Layout conventions mirror ``GenerateSampleWidget`` and
-``EvaluationWidget`` so the three overlays feel visually consistent.
+optional set of ingredient constraints, then fire them at a chosen `.visq`
+model file.  Layout conventions mirror `GenerateSampleWidget` and
+`EvaluationWidget` so the three overlays feel visually consistent.
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
@@ -52,20 +52,20 @@ MAX_TARGETS = 5
 
 
 class _CompactCheckableComboBox(CheckableComboBox):
-    """A ``CheckableComboBox`` subclass that renders a concise selection summary.
+    """A `CheckableComboBox` subclass that renders a concise selection summary.
 
-    ``CheckableComboBox`` defaults to displaying a raw comma-separated string
+    `CheckableComboBox` defaults to displaying a raw comma-separated string
     of every checked item in the combo label.  This subclass overrides
-    ``paintEvent`` to show a friendlier summary: nothing when empty, the single
-    item name when exactly one is checked, or ``"N selected"`` otherwise.
+    `paintEvent` to show a friendlier summary: nothing when empty, the single
+    item name when exactly one is checked, or `"N selected"` otherwise.
     """
 
     def paintEvent(self, event):
         """Paint the combo box with a human-readable selection summary.
 
-        Overrides the default ``QComboBox`` paint path so the label area shows
-        ``"Select..."`` when nothing is checked, the item's own text when
-        exactly one is checked, or ``"N selected"`` (where *N* is the count)
+        Overrides the default `QComboBox` paint path so the label area shows
+        `"Select..."` when nothing is checked, the item's own text when
+        exactly one is checked, or `"N selected"` (where *N* is the count)
         when multiple items are checked.
 
         Args:
@@ -101,28 +101,28 @@ class _CompactCheckableComboBox(CheckableComboBox):
 class OptimizeWidget(QtWidgets.QFrame):
     """Overlay widget for configuring and launching formulation optimization.
 
-    Renders as a floating ``QFrame`` card over the dashboard.  Exposes:
+    Renders as a floating `QFrame` card over the dashboard.  Exposes:
 
-    * A model selector (populated from ``*.visq`` files in the assets folder,
+    * A model selector (populated from `*.visq` files in the assets folder,
       with an import button to copy additional files in).
     * A max-iterations spin box fed directly to the differential-evolution
       solver.
     * A scrollable list of shear-rate / target-viscosity pairs.
     * An optional scrollable list of ingredient constraints.
-    * An "Optimize" footer button that emits ``optimize_requested`` when all
+    * An "Optimize" footer button that emits `optimize_requested` when all
       required fields are valid.
 
     Attributes:
         ingredients_by_type (dict[str, list]): Mapping of ingredient category
-            name (e.g. ``"Protein"``, ``"Buffer"``) to a list of ingredient
+            name (e.g. `"Protein"`, `"Buffer"`) to a list of ingredient
             objects.  Used to populate constraint value combo boxes.
         assets_path (str): Absolute path to the VisQAI assets directory where
-            ``.visq`` model files are stored and discovered.
+            `.visq` model files are stored and discovered.
         target_rows (list[dict]): Live list of target-row state dicts, each
-            containing keys ``widget``, ``shear_cb``, and ``visc_spin``.
+            containing keys `widget`, `shear_cb`, and `visc_spin`.
         constraint_rows (list[dict]): Live list of constraint-row state dicts,
-            each containing keys ``widget``, ``ingredient``, ``attribute``,
-            ``condition``, ``value_stack``, ``value_cb``, and ``value_spin``.
+            each containing keys `widget`, `ingredient`, `attribute`,
+            `condition`, `value_stack`, `value_cb`, and `value_spin`.
     """
 
     optimize_requested = QtCore.pyqtSignal(str, list, list)
@@ -134,7 +134,7 @@ class OptimizeWidget(QtWidgets.QFrame):
 
         Sets up the drop-shadow card appearance, creates the assets directory
         if it does not already exist, and delegates full UI construction to
-        ``_init_ui``.  The widget starts hidden; callers must call ``show()``
+        `_init_ui`.  The widget starts hidden; callers must call `show()`
         explicitly.
 
         Args:
@@ -142,7 +142,7 @@ class OptimizeWidget(QtWidgets.QFrame):
                 category name to a list of ingredient objects.  Forwarded to
                 constraint-row helpers for populating value combo boxes.
             parent (QtWidgets.QWidget | None): Optional Qt parent widget.
-                Defaults to ``None``.
+                Defaults to `None`.
         """
         super().__init__(parent)
         self.ingredients_by_type = ingredients_by_type
@@ -167,7 +167,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         self._init_ui()
 
     def _init_ui(self):
-        """Build and wire all child widgets in a top-to-bottom ``QVBoxLayout``."""
+        """Build and wire all child widgets in a top-to-bottom `QVBoxLayout`."""
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(20, 15, 20, 20)
         layout.setSpacing(15)
@@ -338,11 +338,11 @@ class OptimizeWidget(QtWidgets.QFrame):
     def _populate_model_list(self):
         """Scan the assets directory and refresh the model combo box.
 
-        Clears the current combo contents, then glob-searches ``assets_path``
-        for ``*.visq`` files.  If none are found the combo is disabled and
-        shows ``"No models found"``; otherwise each file is added by basename
-        (with the full path stored as ``UserRole`` data) and
-        ``"VisQAI(base).visq"`` is pre-selected when present.
+        Clears the current combo contents, then glob-searches `assets_path`
+        for `*.visq` files.  If none are found the combo is disabled and
+        shows `"No models found"`; otherwise each file is added by basename
+        (with the full path stored as `UserRole` data) and
+        `"VisQAI(base).visq"` is pre-selected when present.
         """
         self.model_combo.clear()
         files = sorted(glob.glob(os.path.join(self.assets_path, "*.visq")))
@@ -358,13 +358,13 @@ class OptimizeWidget(QtWidgets.QFrame):
                 self.model_combo.setCurrentIndex(idx)
 
     def browse_model_file(self):
-        """Open a file dialog so the user can import a new ``.visq`` model.
+        """Open a file dialog so the user can import a new `.visq` model.
 
-        Tries ``ModelSelectionDialog`` first; falls back to the plain
-        ``QFileDialog.getOpenFileName`` if that dialog raises.  On a valid
-        selection the chosen file is copied into ``assets_path`` (unless it is
+        Tries `ModelSelectionDialog` first; falls back to the plain
+        `QFileDialog.getOpenFileName` if that dialog raises.  On a valid
+        selection the chosen file is copied into `assets_path` (unless it is
         already there), the model combo is refreshed, and the newly imported
-        file is made the active selection.  A critical ``QMessageBox`` is shown
+        file is made the active selection.  A critical `QMessageBox` is shown
         if the copy fails.
         """
         fname = None
@@ -464,14 +464,14 @@ class OptimizeWidget(QtWidgets.QFrame):
     def _remove_target_row(self, row_data):
         """Remove a target row from the list and update related UI state.
 
-        Schedules the row widget for deletion with ``deleteLater``, removes
-        the dict from ``target_rows``, re-shows ``lbl_no_targets`` when the
-        list becomes empty, re-enables ``btn_add_target``, and refreshes the
+        Schedules the row widget for deletion with `deleteLater`, removes
+        the dict from `target_rows`, re-shows `lbl_no_targets` when the
+        list becomes empty, re-enables `btn_add_target`, and refreshes the
         scroll height and validation state.
 
         Args:
             row_data (dict): The target-row state dict to remove, as previously
-                appended by ``add_target_row``.
+                appended by `add_target_row`.
         """
         row_data["widget"].deleteLater()
         self.target_rows.remove(row_data)
@@ -484,10 +484,10 @@ class OptimizeWidget(QtWidgets.QFrame):
     def _update_target_scroll_height(self):
         """Resize the targets scroll area to fit the current number of rows.
 
-        Sets the fixed height of ``targets_scroll`` to 30 px when empty, or to
-        ``min(n, 3) * 38 + 8`` px for *n* rows (capping visible rows at three
-        before scrolling activates).  Calls ``adjustSize()`` and emits
-        ``resized`` so the dashboard can reposition the overlay.
+        Sets the fixed height of `targets_scroll` to 30 px when empty, or to
+        `min(n, 3) * 38 + 8` px for *n* rows (capping visible rows at three
+        before scrolling activates).  Calls `adjustSize()` and emits
+        `resized` so the dashboard can reposition the overlay.
         """
         n = len(self.target_rows)
         if n == 0:
@@ -576,13 +576,13 @@ class OptimizeWidget(QtWidgets.QFrame):
     def _remove_constraint_row(self, row_data):
         """Remove a constraint row from the list and update related UI state.
 
-        Schedules the row widget for deletion with ``deleteLater``, removes
-        the dict from ``constraint_rows``, re-shows ``lbl_none`` when the list
+        Schedules the row widget for deletion with `deleteLater`, removes
+        the dict from `constraint_rows`, re-shows `lbl_none` when the list
         becomes empty, and refreshes the scroll height and validation state.
 
         Args:
             row_data (dict): The constraint-row state dict to remove, as
-                previously appended by ``add_constraint_row``.
+                previously appended by `add_constraint_row`.
         """
         row_data["widget"].deleteLater()
         self.constraint_rows.remove(row_data)
@@ -594,15 +594,15 @@ class OptimizeWidget(QtWidgets.QFrame):
     def _on_ingredient_changed(self, row_data):
         """Repopulate the Attribute combo when the Ingredient selection changes.
 
-        Clears and rebuilds ``cb_attribute`` based on the newly selected
-        ingredient type.  Proteins additionally expose a ``"Class"`` attribute.
+        Clears and rebuilds `cb_attribute` based on the newly selected
+        ingredient type.  Proteins additionally expose a `"Class"` attribute.
         Signals are blocked during the rebuild to prevent spurious cascades.
-        Delegates to ``_on_attribute_changed`` at the end to keep the
+        Delegates to `_on_attribute_changed` at the end to keep the
         downstream Condition and Value widgets in sync.
 
         Args:
             row_data (dict): The constraint-row state dict containing the
-                ``ingredient`` and ``attribute`` combo box references.
+                `ingredient` and `attribute` combo box references.
         """
         ing_type = row_data["ingredient"].currentText()
         cb_attr = row_data["attribute"]
@@ -624,20 +624,20 @@ class OptimizeWidget(QtWidgets.QFrame):
     def _on_attribute_changed(self, row_data):
         """Repopulate the Condition combo and switch the Value widget stack.
 
-        Updates ``cb_condition`` with comparison operators appropriate for the
+        Updates `cb_condition` with comparison operators appropriate for the
         selected attribute:
 
-        * ``"Concentration"`` -> numeric operators (``>``, ``>=``, …) and
-          switches ``value_stack`` to index 1 (spin box).
-        * ``"Type"`` or ``"Class"`` -> ``"is"`` / ``"is not"`` and switches
-          ``value_stack`` to index 0 (checkable combo).
+        * `"Concentration"` -> numeric operators (`>`, `>=`, …) and
+          switches `value_stack` to index 1 (spin box).
+        * `"Type"` or `"Class"` -> `"is"` / `"is not"` and switches
+          `value_stack` to index 0 (checkable combo).
 
-        Signals are blocked during the rebuild, then ``_populate_values`` is
+        Signals are blocked during the rebuild, then `_populate_values` is
         called to fill the value widget with the appropriate options.
 
         Args:
             row_data (dict): The constraint-row state dict containing the
-                ``attribute``, ``condition``, and ``value_stack`` references.
+                `attribute`, `condition`, and `value_stack` references.
         """
         attr_type = row_data["attribute"].currentText()
         cb_condition = row_data["condition"]
@@ -669,16 +669,16 @@ class OptimizeWidget(QtWidgets.QFrame):
         """Fill the Value combo box with options for the current attribute.
 
         Only operates when both an ingredient and an attribute have been
-        chosen (indices > 0).  For ``"Class"`` attributes on Proteins,
-        collects unique ``class_type`` values from the ingredient objects in
-        ``ingredients_by_type``; for ``"Type"`` attributes, uses ingredient
+        chosen (indices > 0).  For `"Class"` attributes on Proteins,
+        collects unique `class_type` values from the ingredient objects in
+        `ingredients_by_type`; for `"Type"` attributes, uses ingredient
         names; numeric attributes leave the spin box unchanged.  Calls
-        ``_validate`` at the end.
+        `_validate` at the end.
 
         Args:
             row_data (dict): The constraint-row state dict containing the
-                ``ingredient``, ``attribute``, ``value_stack``, and
-                ``value_cb`` references.
+                `ingredient`, `attribute`, `value_stack`, and
+                `value_cb` references.
         """
         ing_idx = row_data["ingredient"].currentIndex()
         attr_idx = row_data["attribute"].currentIndex()
@@ -721,10 +721,10 @@ class OptimizeWidget(QtWidgets.QFrame):
     def _update_scroll_height(self):
         """Resize the constraints scroll area to fit the current number of rows.
 
-        Sets the fixed height of ``scroll_area`` to 30 px when empty, or to
-        ``min(n, 3) * 36 + 10`` px for *n* rows (capping visible rows at three
-        before scrolling activates).  Calls ``adjustSize()`` and emits
-        ``resized`` so the dashboard can reposition the overlay.
+        Sets the fixed height of `scroll_area` to 30 px when empty, or to
+        `min(n, 3) * 36 + 10` px for *n* rows (capping visible rows at three
+        before scrolling activates).  Calls `adjustSize()` and emits
+        `resized` so the dashboard can reposition the overlay.
         """
         n = len(self.constraint_rows)
         self.scroll_area.setFixedHeight(30 if n == 0 else min(n, 3) * 36 + 10)
@@ -733,12 +733,12 @@ class OptimizeWidget(QtWidgets.QFrame):
 
     @staticmethod
     def _checked_items(combo_box) -> list:
-        """Return the text of every item whose check state is ``Qt.Checked``.
+        """Return the text of every item whose check state is `Qt.Checked`.
 
-        ``CheckableComboBox.getItems()`` returns all items in the model
+        `CheckableComboBox.getItems()` returns all items in the model
         regardless of check state and is therefore only useful as a
         "has any items" test.  This helper inspects the underlying
-        ``QStandardItemModel`` directly to find which items the user has
+        `QStandardItemModel` directly to find which items the user has
         actually ticked.
 
         Args:
@@ -761,16 +761,16 @@ class OptimizeWidget(QtWidgets.QFrame):
     def _validate(self):
         """Enable or disable footer buttons based on current form completeness.
 
-        Enables ``btn_optimize`` only when all three conditions hold:
+        Enables `btn_optimize` only when all three conditions hold:
 
         1. At least one target row exists.
-        2. The model combo is enabled (i.e. at least one ``.visq`` file was
+        2. The model combo is enabled (i.e. at least one `.visq` file was
            found or imported).
         3. Every constraint row has a valid ingredient, attribute, condition,
            and value selection (categorical rows must have at least one item
            checked).
 
-        ``btn_add_constraint`` is also disabled whenever any existing
+        `btn_add_constraint` is also disabled whenever any existing
         constraint row is incomplete, preventing partially filled rows from
         stacking  up.
         """
@@ -794,14 +794,14 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.btn_optimize.setEnabled(has_targets and has_model and constraints_ok)
 
     def emit_optimize(self):
-        """Collect form data and emit ``optimize_requested``.
+        """Collect form data and emit `optimize_requested`.
 
-        Iterates over ``target_rows`` to build a list of
-        ``{"shear_rate": int, "viscosity": float}`` dicts, falling back to
+        Iterates over `target_rows` to build a list of
+        `{"shear_rate": int, "viscosity": float}` dicts, falling back to
         10 000 s 1/s if a combo index is somehow out of range.  Iterates over
-        ``constraint_rows`` to build a list of
-        ``{"ingredient": str, "attribute": str, "condition": str, "values": ...}``
-        dicts, where ``values`` is a list of strings for categorical constraints
+        `constraint_rows` to build a list of
+        `{"ingredient": str, "attribute": str, "condition": str, "values": ...}`
+        dicts, where `values` is a list of strings for categorical constraints
         or a single float for numeric ones.
 
         Emits:
@@ -836,7 +836,7 @@ class OptimizeWidget(QtWidgets.QFrame):
     def close_widget(self):
         """Hide the overlay and notify the parent dashboard.
 
-        Calls ``hide()`` to make the widget invisible, then emits ``closed``
+        Calls `hide()` to make the widget invisible, then emits `closed`
         so the dashboard can reset any toggle button or pointer state without
         needing to poll widget visibility.
 

@@ -9,10 +9,10 @@ class SavedStateDot(QtWidgets.QWidget):
 
     This widget uses property animations to provide visual feedback for four
     distinct states:
-        * ``querying``: Red, pulsing (awaiting device response).
-        * ``blank``: Quiet gray (no pending changes/initial state).
-        * ``unsaved``: Amber, gently pulsing (changes waiting to be saved).
-        * ``saved``: Green, steady (confirmed state).
+        * `querying`: Red, pulsing (awaiting device response).
+        * `blank`: Quiet gray (no pending changes/initial state).
+        * `unsaved`: Amber, gently pulsing (changes waiting to be saved).
+        * `saved`: Green, steady (confirmed state).
 
     Attributes:
         _COLORS (Dict[str, Dict[str, QtGui.QColor]]): Color mapping for each

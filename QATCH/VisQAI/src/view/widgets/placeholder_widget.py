@@ -31,34 +31,34 @@ class PlaceholderWidget(QtWidgets.QWidget):
 
     Renders a single SVG icon scaled to 64 x 64 px with a cyan tint applied at
     construction time, followed by a word-wrapped message label.  Both elements
-    can be replaced at runtime via ``set_icon`` and ``set_message`` without
+    can be replaced at runtime via `set_icon` and `set_message` without
     rebuilding the widget.
 
-    Styling is delegated entirely to ``theme.qss`` via the object-name
-    selectors ``#placeholderWidget``, ``#placeholderIcon``, and
-    ``#placeholderText``, so visual changes require no Python edits.
+    Styling is delegated entirely to `theme.qss` via the object-name
+    selectors `#placeholderWidget`, `#placeholderIcon`, and
+    `#placeholderText`, so visual changes require no Python edits.
 
     Attributes:
         lbl_icon (QtWidgets.QLabel): Label that holds the scaled, tinted icon
-            pixmap.  Object name ``"placeholderIcon"``.
+            pixmap.  Object name `"placeholderIcon"`.
         lbl_text (QtWidgets.QLabel): Centre-aligned, word-wrapping label that
             displays the instructional message.  Object name
-            ``"placeholderText"``.
+            `"placeholderText"`.
     """
 
     def __init__(self, parent=None):
         """Construct the placeholder, load the default icon, and build the layout.
 
-        Sets up a vertically centred ``QVBoxLayout`` containing ``lbl_icon``
-        and ``lbl_text``.  The default icon is ``info-circle-svgrepo-com.svg``
-        resolved through ``Architecture.get_path()``.  If the pixmap loads
-        successfully it is tinted via ``_apply_icon_tint`` and scaled to
+        Sets up a vertically centred `QVBoxLayout` containing `lbl_icon`
+        and `lbl_text`.  The default icon is `info-circle-svgrepo-com.svg`
+        resolved through `Architecture.get_path()`.  If the pixmap loads
+        successfully it is tinted via `_apply_icon_tint` and scaled to
         64 x 64 px with smooth transformation; a null pixmap is silently
         skipped so the widget still renders with the message alone.
 
         Args:
             parent (QtWidgets.QWidget | None): Optional Qt parent widget.
-                Defaults to ``None``.
+                Defaults to `None`.
         """
         super().__init__(parent)
         self.setObjectName("placeholderWidget")
@@ -97,9 +97,7 @@ class PlaceholderWidget(QtWidgets.QWidget):
             )
 
         layout.addWidget(self.lbl_icon)
-        self.lbl_text = QtWidgets.QLabel(
-            "No data yet.\nClick the + button to add new data."
-        )
+        self.lbl_text = QtWidgets.QLabel("No data yet.\nClick the + button to add new data.")
         self.lbl_text.setObjectName("placeholderText")
         self.lbl_text.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.lbl_text.setWordWrap(True)
@@ -107,22 +105,20 @@ class PlaceholderWidget(QtWidgets.QWidget):
         layout.addWidget(self.lbl_text)
 
     def _apply_icon_tint(self, pixmap):
-        """Paint a flat cyan overlay onto *pixmap* in-place using ``SourceIn`` blending.
+        """Paint a flat cyan overlay onto *pixmap* in-place using `SourceIn` blending.
 
-        ``CompositionMode_SourceIn`` replaces every non-transparent pixel of
+        `CompositionMode_SourceIn` replaces every non-transparent pixel of
         the destination with the solid fill colour while preserving the source
         alpha channel.  The result is that the SVG silhouette retains its
         shape and transparency but adopts the theme's mid-cyan colour
-        (``#4EC4EB``).
+        (`#4EC4EB`).
 
         Args:
             pixmap (QtGui.QPixmap): The pixmap to tint.  Modified in-place;
                 must not be null.
         """
         painter = QtGui.QPainter(pixmap)
-        painter.setCompositionMode(
-            QtGui.QPainter.CompositionMode.CompositionMode_SourceIn
-        )
+        painter.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_SourceIn)
         painter.fillRect(pixmap.rect(), QtGui.QColor("#4EC4EB"))  # Cyan medium
         painter.end()
 
@@ -138,16 +134,16 @@ class PlaceholderWidget(QtWidgets.QWidget):
     def set_icon(self, icon_path, size=64):
         """Replace the placeholder icon with a new image file.
 
-        Loads the file at *icon_path* into a ``QPixmap``, applies the cyan
-        tint via ``_apply_icon_tint``, then scales the result to *size* x
-        *size* px using ``KeepAspectRatio`` and smooth transformation before
-        updating ``lbl_icon``.  If the pixmap is null (file not found or
+        Loads the file at *icon_path* into a `QPixmap`, applies the cyan
+        tint via `_apply_icon_tint`, then scales the result to *size* x
+        *size* px using `KeepAspectRatio` and smooth transformation before
+        updating `lbl_icon`.  If the pixmap is null (file not found or
         unsupported format) the existing icon is left unchanged.
 
         Args:
             icon_path (str): Absolute or relative path to the icon file.
                 SVG and all raster formats supported by Qt are accepted.
-            size (int): Target width and height in pixels.  Defaults to ``64``.
+            size (int): Target width and height in pixels.  Defaults to `64`.
         """
         pixmap = QtGui.QPixmap(icon_path)
         if not pixmap.isNull():

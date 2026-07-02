@@ -279,18 +279,18 @@ class FormulationController:
     ) -> bool:
         """Update lightweight metadata fields for a formulation without touching its components.
 
-        Delegates to `Database.update_formulation_metadata`. Only non-``None`` arguments
+        Delegates to `Database.update_formulation_metadata`. Only non-`None` arguments
         will trigger a database write, so callers may pass a single field to update.
 
         Args:
             id (int): The primary key of the formulation to update.
             icl (bool, optional): New value for the In-Concentration Loading flag.
-                If ``None``, the field is left unchanged.
+                If `None`, the field is left unchanged.
             last_model (str, optional): Identifier of the last predictive model run
-                against this formulation. If ``None``, the field is left unchanged.
+                against this formulation. If `None`, the field is left unchanged.
 
         Returns:
-            bool: ``True`` if at least one field was updated successfully, ``False``
+            bool: `True` if at least one field was updated successfully, `False`
                 if the formulation was not found or an error occurred.
         """
         return self.db.update_formulation_metadata(id, icl, last_model)

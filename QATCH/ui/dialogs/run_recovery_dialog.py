@@ -919,7 +919,7 @@ class RunRecoveryDialog(QWidget):
 
         A short debounce window after a popup closes prevents the same click
         from immediately re-opening the menu (e.g., when the user clicks the
-        filter button while the popup is already open and ``Qt.WindowType.Popup``
+        filter button while the popup is already open and `Qt.WindowType.Popup`
         is auto-dismissing it).
         """
         if getattr(self, "_filter_popup_just_closed", False):

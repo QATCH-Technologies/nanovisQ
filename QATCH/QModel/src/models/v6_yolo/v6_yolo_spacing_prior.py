@@ -89,12 +89,12 @@ class QModelV6YOLO_SpacingPrior:
 
     Attributes:
         pairs: Ordered list of consecutive POI transition identifiers,
-            such as ``["POI1->POI2", "POI2->POI3"]``.
+            such as `["POI1->POI2", "POI2->POI3"]`.
         gap: Mapping from POI transition identifiers to their fitted
             :class:`GapStat` distributions.
         frac_blend: Weight used when combining seconds-based and
-            span-fraction-based log-likelihoods. A value of ``0.0`` uses
-            only absolute gap durations, while ``1.0`` uses only relative
+            span-fraction-based log-likelihoods. A value of `0.0` uses
+            only absolute gap durations, while `1.0` uses only relative
             gap fractions.
         bound_lo_pct: Lower percentile used to estimate minimum feasible
             gap durations during fitting.
@@ -128,24 +128,24 @@ class QModelV6YOLO_SpacingPrior:
         from robust gap percentiles.
 
         Args:
-            configs_sec: Array of shape ``(N, P)`` containing complete POI
+            configs_sec: Array of shape `(N, P)` containing complete POI
                 configurations in seconds. Each row must be strictly
-                increasing and contain all POIs in ``POI_ORDER``.
+                increasing and contain all POIs in `POI_ORDER`.
             frac_blend: Weight used to combine fraction-based and
-                seconds-based likelihoods. ``0.0`` uses only seconds,
-                ``1.0`` uses only normalized fractions.
+                seconds-based likelihoods. `0.0` uses only seconds,
+                `1.0` uses only normalized fractions.
             bound_lo_pct: Lower percentile used when estimating minimum
                 feasible gap durations.
             bound_hi_pct: Upper percentile used when estimating maximum
                 feasible gap durations.
 
         Returns:
-            A fitted ``QModelV6YOLO_SpacingPrior`` instance containing
+            A fitted `QModelV6YOLO_SpacingPrior` instance containing
             spacing distributions for each consecutive POI pair.
 
         Raises:
-            AssertionError: If the number of POIs in ``configs_sec`` does
-                not match ``len(POI_ORDER)``.
+            AssertionError: If the number of POIs in `configs_sec` does
+                not match `len(POI_ORDER)`.
         """
         N, P = configs_sec.shape
         assert P == len(POI_ORDER), f"expected {len(POI_ORDER)} POIs, got {P}"
@@ -177,7 +177,7 @@ class QModelV6YOLO_SpacingPrior:
         """Compute statistics for a composed gap spanning multiple POIs.
 
         Constructs an approximate :class:`GapStat` for the interval
-        ``POI_ORDER[i] -> POI_ORDER[j]`` by composing the fitted statistics of
+        `POI_ORDER[i] -> POI_ORDER[j]` by composing the fitted statistics of
         the consecutive gaps between them. This allows spacing likelihoods to be
         evaluated when one or more intermediate POIs are absent.
 
@@ -188,24 +188,24 @@ class QModelV6YOLO_SpacingPrior:
         * Feasibility bounds are summed across component gaps.
         * Sample count is taken as the minimum count among component gaps.
 
-        For directly adjacent POIs (``j == i + 1``), the originally fitted
+        For directly adjacent POIs (`j == i + 1`), the originally fitted
         consecutive-gap statistic is returned unchanged.
 
         Results are cached to avoid repeatedly recomputing composed
         distributions for the same POI pair.
 
         Args:
-            i: Index of the starting POI in ``POI_ORDER``.
-            j: Index of the ending POI in ``POI_ORDER``. Must satisfy
-                ``j > i``.
+            i: Index of the starting POI in `POI_ORDER`.
+            j: Index of the ending POI in `POI_ORDER`. Must satisfy
+                `j > i`.
 
         Returns:
-            A ``GapStat`` representing the approximate distribution of the
-            composed gap spanning all consecutive intervals between ``i`` and
-            ``j``.
+            A `GapStat` representing the approximate distribution of the
+            composed gap spanning all consecutive intervals between `i` and
+            `j`.
 
         Raises:
-            ValueError: If ``j <= i``.
+            ValueError: If `j <= i`.
         """
         if j <= i:
             raise ValueError(f"composed_stat requires j > i, got ({i}, {j})")
@@ -247,8 +247,8 @@ class QModelV6YOLO_SpacingPrior:
         * A fraction-based likelihood using the gap as a fraction of the
         total span.
 
-        The blend weight is controlled by ``self.frac_blend``. A value of
-        ``0.0`` uses only absolute timing information, while ``1.0`` uses
+        The blend weight is controlled by `self.frac_blend`. A value of
+        `0.0` uses only absolute timing information, while `1.0` uses
         only relative spacing information.
 
         The returned value is a relative log-likelihood score intended for
@@ -269,7 +269,7 @@ class QModelV6YOLO_SpacingPrior:
 
         Notes:
             Invalid or non-positive gaps receive a large negative penalty.
-            If ``span_sec`` is not positive, the seconds-based likelihood is
+            If `span_sec` is not positive, the seconds-based likelihood is
             used for both components of the blend.
         """
         if not np.isfinite(gap_sec) or gap_sec <= 0:
@@ -299,10 +299,10 @@ class QModelV6YOLO_SpacingPrior:
         * The gap duration normalized by the total configuration span.
 
         The relative contribution of each component is controlled by
-        ``self.frac_blend``.
+        `self.frac_blend`.
 
         Args:
-            pair_idx: Index of the consecutive POI pair within ``self.pairs``.
+            pair_idx: Index of the consecutive POI pair within `self.pairs`.
             gap_sec: Observed gap duration in seconds.
             span_sec: Total configuration span in seconds. If non-positive,
                 the fraction-based likelihood is disabled and only the
@@ -318,7 +318,7 @@ class QModelV6YOLO_SpacingPrior:
         Notes:
             This method is intended for directly adjacent POI pairs. For
             gaps spanning one or more missing intermediate POIs, use
-            ``composed_stat()`` to obtain an appropriate composed
+            `composed_stat()` to obtain an appropriate composed
             distribution before evaluating the likelihood.
         """
         return self._stat_loglik(self.gap[self.pairs[pair_idx]], gap_sec, span_sec)
@@ -327,9 +327,9 @@ class QModelV6YOLO_SpacingPrior:
         """Compute the plausibility of a gap between two global POI indices.
 
         Evaluates an observed gap against the expected spacing distribution
-        between ``POI_ORDER[i]`` and ``POI_ORDER[j]``.
+        between `POI_ORDER[i]` and `POI_ORDER[j]`.
 
-        For adjacent POIs (``j == i + 1``), the likelihood is computed using
+        For adjacent POIs (`j == i + 1`), the likelihood is computed using
         the directly fitted gap statistics. For non-adjacent POIs, a composed
         spacing distribution is constructed from the intervening consecutive
         gaps and used instead. This allows meaningful scoring when one or more
@@ -337,12 +337,12 @@ class QModelV6YOLO_SpacingPrior:
 
         The score is a blended log-likelihood combining absolute gap duration
         and normalized span-fraction information according to
-        ``self.frac_blend``.
+        `self.frac_blend`.
 
         Args:
-            i: Index of the starting POI in ``POI_ORDER``.
-            j: Index of the ending POI in ``POI_ORDER``. Must satisfy
-                ``j > i``.
+            i: Index of the starting POI in `POI_ORDER`.
+            j: Index of the ending POI in `POI_ORDER`. Must satisfy
+                `j > i`.
             gap_sec: Observed gap duration in seconds between the two POIs.
             span_sec: Total configuration span in seconds. If non-positive,
                 the fraction-based likelihood component is disabled and only
@@ -354,7 +354,7 @@ class QModelV6YOLO_SpacingPrior:
             between the specified POIs.
 
         Raises:
-            ValueError: If ``j <= i``.
+            ValueError: If `j <= i`.
         """
         return self._stat_loglik(self.composed_stat(i, j), gap_sec, span_sec)
 
@@ -363,14 +363,14 @@ class QModelV6YOLO_SpacingPrior:
     ) -> float:
         """Compute a scoped spacing likelihood for a POI gap.
 
-        Evaluates the plausibility of the gap between ``POI_ORDER[i]`` and
-        ``POI_ORDER[j]`` while accounting for the fact that the observed span
+        Evaluates the plausibility of the gap between `POI_ORDER[i]` and
+        `POI_ORDER[j]` while accounting for the fact that the observed span
         may cover only a subset of the full POI sequence.
 
         The fraction-based component of the spacing prior is normally defined
         relative to the span of a complete configuration:
 
-        ``t(POI_last) - t(POI_first)``
+        `t(POI_last) - t(POI_first)`
 
         During decoding, however, only a prefix or partial configuration may
         be available. In that case, the observed span covers fewer gaps than
@@ -379,12 +379,12 @@ class QModelV6YOLO_SpacingPrior:
         fractions.
 
         To compensate, this method re-scopes the fraction model to the
-        decode-time span defined by ``span_lo`` and ``span_hi``. The expected
+        decode-time span defined by `span_lo` and `span_hi`. The expected
         fraction location is recomputed from the fitted seconds medians while
         preserving the fitted fraction dispersion.
 
         where the denominator is the expected span between the placed POIs
-        ``span_lo`` and ``span_hi``.
+        `span_lo` and `span_hi`.
 
         This allows the prior to enforce proportional spacing relationships
         even when only part of the POI sequence is present. Early observed
@@ -396,16 +396,16 @@ class QModelV6YOLO_SpacingPrior:
         original fitted fraction statistics are used unchanged.
 
         Args:
-            i: Index of the starting POI in ``POI_ORDER``.
-            j: Index of the ending POI in ``POI_ORDER``. Must satisfy
-                ``j > i``.
+            i: Index of the starting POI in `POI_ORDER`.
+            j: Index of the ending POI in `POI_ORDER`. Must satisfy
+                `j > i`.
             gap_sec: Observed gap duration in seconds.
             span_sec: Observed span duration in seconds between the currently
                 placed boundary POIs.
             span_lo: Index of the first placed POI defining the scoped span.
             span_hi: Index of the last placed POI defining the scoped span.
                 The span is interpreted as covering the gaps
-                ``[span_lo, span_hi)``.
+                `[span_lo, span_hi)`.
 
         Returns:
             A relative log-likelihood score, where larger values indicate
@@ -414,7 +414,7 @@ class QModelV6YOLO_SpacingPrior:
 
         Notes:
             If the scoped span corresponds to the full POI chain or
-            ``span_sec <= 0``, this method falls back to
+            `span_sec <= 0`, this method falls back to
             :meth:`_stat_loglik` using the original fitted statistics.
 
             For non-adjacent POIs, the likelihood is evaluated using a
@@ -453,18 +453,18 @@ class QModelV6YOLO_SpacingPrior:
         decision indicating whether the gap falls within an acceptable range.
 
         Args:
-            pair_idx: Index of the consecutive POI pair within ``self.pairs``.
+            pair_idx: Index of the consecutive POI pair within `self.pairs`.
             gap_sec: Observed gap duration in seconds.
             slack: Multiplicative tolerance applied to the learned bounds.
                 The effective feasibility interval becomes::
 
                     [min_gap_sec / slack, max_gap_sec * slack]
 
-                Values greater than ``1.0`` make the check more permissive.
+                Values greater than `1.0` make the check more permissive.
 
         Returns:
-            ``True`` if the gap is positive and falls within the slack-adjusted
-            feasibility bounds; otherwise ``False``.
+            `True` if the gap is positive and falls within the slack-adjusted
+            feasibility bounds; otherwise `False`.
 
         Notes:
             The underlying bounds are derived from robust percentiles of the
@@ -481,9 +481,9 @@ class QModelV6YOLO_SpacingPrior:
         """Check whether a gap between two global POIs is feasible.
 
         Applies a hard feasibility test to the observed gap between
-        ``POI_ORDER[i]`` and ``POI_ORDER[j]``.
+        `POI_ORDER[i]` and `POI_ORDER[j]`.
 
-        For adjacent POIs (``j == i + 1``), the learned feasibility bounds
+        For adjacent POIs (`j == i + 1`), the learned feasibility bounds
         for the corresponding consecutive gap are used directly. For
         non-adjacent POIs, feasibility bounds are composed across the
         intervening gaps using :meth:`composed_stat`, allowing the check to
@@ -493,24 +493,24 @@ class QModelV6YOLO_SpacingPrior:
         reduce sensitivity to borderline cases.
 
         Args:
-            i: Index of the starting POI in ``POI_ORDER``.
-            j: Index of the ending POI in ``POI_ORDER``. Must satisfy
-                ``j > i``.
+            i: Index of the starting POI in `POI_ORDER`.
+            j: Index of the ending POI in `POI_ORDER`. Must satisfy
+                `j > i`.
             gap_sec: Observed gap duration in seconds between the two POIs.
             slack: Multiplicative tolerance applied to the learned bounds.
                 The effective feasibility interval becomes::
 
                     [min_gap_sec / slack, max_gap_sec * slack]
 
-                Values greater than ``1.0`` make the feasibility check more
+                Values greater than `1.0` make the feasibility check more
                 permissive.
 
         Returns:
-            ``True`` if the gap is positive and falls within the
-            slack-adjusted feasibility bounds; otherwise ``False``.
+            `True` if the gap is positive and falls within the
+            slack-adjusted feasibility bounds; otherwise `False`.
 
         Raises:
-            ValueError: If ``j <= i``.
+            ValueError: If `j <= i`.
 
         Notes:
             This method performs a hard feasibility check and does not
@@ -583,11 +583,11 @@ class QModelV6YOLO_SpacingPrior:
 
             The saved structure includes:
 
-            * ``pairs``: Ordered POI transition identifiers.
-            * ``frac_blend``: Blend weight between seconds and fraction models.
-            * ``bound_lo_pct`` / ``bound_hi_pct``: Percentile bounds used
+            * `pairs`: Ordered POI transition identifiers.
+            * `frac_blend`: Blend weight between seconds and fraction models.
+            * `bound_lo_pct` / `bound_hi_pct`: Percentile bounds used
             during fitting.
-            * ``gap``: Mapping from POI transitions to fitted statistics.
+            * `gap`: Mapping from POI transitions to fitted statistics.
 
             This method does not store raw training data, only the learned
             statistical parameters.
@@ -616,17 +616,17 @@ class QModelV6YOLO_SpacingPrior:
             path: Path to the JSON file containing the serialized model.
 
         Returns:
-            A fully reconstructed ``QModelV6YOLO_SpacingPrior`` instance with
+            A fully reconstructed `QModelV6YOLO_SpacingPrior` instance with
             identical parameters and fitted gap statistics.
 
         Notes:
             This method assumes the input file exactly matches the schema
             produced by :meth:`save`. No schema migration or validation is
             performed. If the underlying dataclass definitions have changed,
-            loading may raise a ``TypeError`` or silently produce incorrect
+            loading may raise a `TypeError` or silently produce incorrect
             behavior.
 
-            Each entry in the stored ``gap`` dictionary is expanded using:
+            Each entry in the stored `gap` dictionary is expanded using:
 
                 GapStat(**v)
 

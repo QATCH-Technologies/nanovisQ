@@ -3,7 +3,7 @@ db_synchronizer.py
 
 Database synchronization utilities for NanovisQ.
 
-This module provides the ``DatabaseSynchronizer`` class, which compares a
+This module provides the `DatabaseSynchronizer` class, which compares a
 bundled (reference) SQLite database against a local user database and
 forward-migrates the local copy to match the bundled schema and seed data.
 
@@ -88,20 +88,20 @@ class DatabaseSynchronizer:
     ) -> bool:
         """Synchronize the local database with the bundled reference database.
 
-        Compares ``db_version`` metadata between the two databases.  When the
+        Compares `db_version` metadata between the two databases.  When the
         bundled version is newer the local schema is migrated (new tables /
         columns / indexes added) and seed data is upserted via
-        ``INSERT OR IGNORE``.
+        `INSERT OR IGNORE`.
 
         Args:
-            local_db: The open local ``Database`` instance to be updated.
+            local_db: The open local `Database` instance to be updated.
             bundled_db_path: Filesystem path to the bundled (reference)
                 database file.
-            dry_run: When ``True``, schema and seed changes are previewed in
+            dry_run: When `True`, schema and seed changes are previewed in
                 the log but the transaction is rolled back without committing.
 
         Returns:
-            ``True`` if a synchronization was committed, ``False`` if the
+            `True` if a synchronization was committed, `False` if the
             database was already up to date, a dry run was performed, or an
             error occurred.
         """
@@ -168,20 +168,20 @@ class DatabaseSynchronizer:
 
         Iterates over every non-system table in the bundled database and:
 
-        * Creates the table in ``main`` if it does not exist.
-        * Adds any columns that are present in ``bundled`` but missing from
-          ``main`` via ``ALTER TABLE … ADD COLUMN``.
-        * Creates any non-system indexes that exist in ``bundled`` but are
-          absent from ``main``.
+        * Creates the table in `main` if it does not exist.
+        * Adds any columns that are present in `bundled` but missing from
+          `main` via `ALTER TABLE … ADD COLUMN`.
+        * Creates any non-system indexes that exist in `bundled` but are
+          absent from `main`.
 
-        All ``CREATE TABLE`` and ``ALTER TABLE`` statements are collected first
+        All `CREATE TABLE` and `ALTER TABLE` statements are collected first
         and executed in a second pass so that the cursor is not advanced while
         iterating over the result set.  Index synchronization runs after all
         table and column migrations have been applied.
 
         Args:
-            c: An active SQLite cursor connected to ``main`` with the bundled
-                database attached as ``bundled``.
+            c: An active SQLite cursor connected to `main` with the bundled
+                database attached as `bundled`.
         """
         c.execute(
             "SELECT name, sql FROM bundled.sqlite_master "
@@ -279,19 +279,19 @@ class DatabaseSynchronizer:
     def _sync_seed_data(c: sqlite3.Cursor):
         """Upsert bundled seed data into the local database.
 
-        Uses ``INSERT OR IGNORE`` so that existing local rows are preserved.
+        Uses `INSERT OR IGNORE` so that existing local rows are preserved.
         The sync order is:
 
-        1. ``ingredient`` rows with ``enc_id < 8000`` (core / system
+        1. `ingredient` rows with `enc_id < 8000` (core / system
            ingredients only; user-created ingredients are skipped).
         2. All other non-system, non-formulation tables that exist in the
            bundled database (derived dynamically).
-        3. ``formulation``, ``formulation_component``, and
-           ``viscosity_profile`` tables, in that order.
+        3. `formulation`, `formulation_component`, and
+           `viscosity_profile` tables, in that order.
 
         Args:
-            c: An active SQLite cursor connected to ``main`` with the bundled
-                database attached as ``bundled``.
+            c: An active SQLite cursor connected to `main` with the bundled
+                database attached as `bundled`.
         """
         # Sync core ingredients
         c.execute(

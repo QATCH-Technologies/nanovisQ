@@ -113,11 +113,11 @@ class RecoveryFilterWidget(QWidget):
     duration, data points, and file size. It emits a signal when filters
     are applied or reset.
 
-    The popup is implemented as a transparent outer ``QWidget`` containing
-    an inner ``QFrame`` (``self._panel``). The outer container reserves
-    margin space around the inner frame so that a ``QGraphicsDropShadowEffect``
+    The popup is implemented as a transparent outer `QWidget` containing
+    an inner `QFrame` (`self._panel`). The outer container reserves
+    margin space around the inner frame so that a `QGraphicsDropShadowEffect`
     applied to the panel can render a soft, rounded shadow that follows the
-    panel's ``border-radius`` instead of the rectangular OS popup outline.
+    panel's `border-radius` instead of the rectangular OS popup outline.
 
     Attributes:
         filtersChanged (pyqtSignal): Signal emitted when the user clicks 'Apply'

@@ -803,7 +803,7 @@ class ImportMode(DataModeWidget):
     def _animate_chip_pop(self, chip, entering):
         """Bouncy scale + fade "pop", anchored on the chip's own center.
 
-        Uses ``_PopEffect`` (paint-time scale, not real geometry) so the
+        Uses `_PopEffect` (paint-time scale, not real geometry) so the
         chip's actual layout-managed size/position is never touched -
         animating that directly is what caused the earlier bugs.
         """
@@ -1103,7 +1103,7 @@ class ImportMode(DataModeWidget):
     def _populate_from_paths(self, names, parent=None):
         """Build tree items (folders AND files) from a flat list of archive paths.
 
-        ``parent`` is the per-source root node; paths nest beneath it. Files are
+        `parent` is the per-source root node; paths nest beneath it. Files are
         always included - visibility is governed by tree expansion, not a toggle.
         """
         roots = {}  # path-tuple -> QTreeWidgetItem
@@ -1133,7 +1133,7 @@ class ImportMode(DataModeWidget):
     def _ensure_path(self, roots, parts, leaf_is_dir, parent=None):
         """Create/lookup nested tree items for a path given as a list of parts.
 
-        ``parent`` is the per-source root node the top-level parts attach to.
+        `parent` is the per-source root node the top-level parts attach to.
         """
         src_root = parent
         parent = src_root

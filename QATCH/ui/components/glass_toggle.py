@@ -29,8 +29,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class GlassToggle(QtWidgets.QAbstractButton):
     """Pill-shaped animated toggle switch.
 
-    Inherits ``toggled(bool)`` from ``QAbstractButton`` - a drop-in
-    replacement for ``QCheckBox`` wherever only the checked state matters.
+    Inherits `toggled(bool)` from `QAbstractButton` - a drop-in
+    replacement for `QCheckBox` wherever only the checked state matters.
 
     Attributes:
         _anim_t (float): Thumb position 0.0 (off / left) → 1.0 (on / right).

@@ -44,7 +44,7 @@ LAYOUT (responsive redesign):
     * Date filter is Off / Today / Last-N {Hours,Days,Weeks}.
     * Existing-files policy is Merge / Replace / Skip (ids 2 / 1 / 3).
 
-The export pipeline is a full port of ``export_widget.Ui_Export``: CSV report
+The export pipeline is a full port of `export_widget.Ui_Export`: CSV report
 generation (with column expansion and per-run parsing), ZIP packaging, folder
 copytree with existing-files policy + date filtering, nested-folder flattening,
 and the export-history log entry.
@@ -1020,7 +1020,7 @@ class ExportMode(DataModeWidget):
 
     @staticmethod
     def _run_in_date_range(run_path, date_filter, date_filter_max):
-        """True if the newest file mtime in ``run_path`` falls within the
+        """True if the newest file mtime in `run_path` falls within the
         given [date_filter, date_filter_max) window."""
         try:
             files = os.listdir(run_path)
@@ -1791,13 +1791,13 @@ class ExportMode(DataModeWidget):
     def _export_task(self, abort, name, output_folder, date_filter, date_filter_max=None):
         """Export the selected runs to the chosen destination.
 
-        Faithful port of ``export_widget.Ui_Export.exportTask`` covering all
+        Faithful port of `export_widget.Ui_Export.exportTask` covering all
         three output formats (CSV report / ZIP archive / plain Folder), the
         existing-files policy, run-scope selection, date filtering, nested-folder
         flattening, and the export-history log entry.
 
-        ``abort`` is a no-arg callable returning True when the user cancels.
-        ``date_filter`` is the lower bound (0 = no filter); ``date_filter_max``
+        `abort` is a no-arg callable returning True when the user cancels.
+        `date_filter` is the lower bound (0 = no filter); `date_filter_max`
         is the optional upper bound from the date-range picker (None = open).
         """
         self._set_running(True)
@@ -2275,10 +2275,10 @@ class ExportMode(DataModeWidget):
     #  copytree - full port of Ui_Export.copytree
     # ------------------------------------------------------------------
     def _copytree(self, src, dst, policy, copied=0, skipped=0, date_filter=0, date_filter_max=None):
-        """Recursively copy ``src`` into ``dst`` honoring the existing-files
+        """Recursively copy `src` into `dst` honoring the existing-files
         policy and date filtering. Counts .xml files copied vs skipped.
 
-        ``policy``: POLICY_REPLACE overwrites all; POLICY_MERGE overwrites only
+        `policy`: POLICY_REPLACE overwrites all; POLICY_MERGE overwrites only
         when the source is >2s newer; POLICY_SKIP leaves existing files. New
         files are always copied. Direct port of the original.
         """
@@ -2532,7 +2532,7 @@ class ExportMode(DataModeWidget):
         """A frosted glass panel. Returns the QFrame with a `.body` QVBoxLayout
         for callers to populate (header + optional subtitle are pre-added).
 
-        ``header_right`` is an optional widget or layout (e.g. "Select all /
+        `header_right` is an optional widget or layout (e.g. "Select all /
         Clear" actions, an "Edit" link) docked to the right of the title,
         on the same line.
         """

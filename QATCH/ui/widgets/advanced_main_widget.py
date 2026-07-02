@@ -206,7 +206,7 @@ class _PerspectiveStage(QtWidgets.QWidget):
 
     # -- page management ---------------------------------------------------
     def set_page(self, index: int, widget: QtWidgets.QWidget) -> None:
-        """Adopt ``widget`` as the perspective at ``index`` (0=advanced, 1=device)."""
+        """Adopt `widget` as the perspective at `index` (0=advanced, 1=device)."""
         old = self._pages[index]
         if old is widget:
             return
@@ -274,7 +274,7 @@ class _PerspectiveStage(QtWidgets.QWidget):
 
     # -- transitions -------------------------------------------------------
     def slide_to(self, index: int, animated: bool = True) -> None:
-        """Slide to perspective ``index`` (0=advanced, 1=device)."""
+        """Slide to perspective `index` (0=advanced, 1=device)."""
         index = 1 if index else 0
         target = float(index)
         if not animated or not self.isVisible():
@@ -463,13 +463,13 @@ class AdvancedMainWidget(QtWidgets.QWidget):
 
     # -- perspective hosting --------------------------------------------------
     def set_advanced_perspective(self, widget: QtWidgets.QWidget) -> None:
-        """Registers ``widget`` as the advanced (index 0) perspective."""
+        """Registers `widget` as the advanced (index 0) perspective."""
         self.content_container = widget
         self.stage.set_page(0, widget)
         widget.show()
 
     def set_device_perspective(self, widget: QtWidgets.QWidget) -> None:
-        """Registers ``widget`` as the device-config (index 1) perspective."""
+        """Registers `widget` as the device-config (index 1) perspective."""
         self.device_container = widget
         self.stage.set_page(1, widget)
         widget.show()

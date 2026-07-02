@@ -13,7 +13,7 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
 
     Dismissing hides the badge but leaves the icon in its current state.
     Clicking anywhere on the badge body (other than the dismiss button)
-    emits ``action_requested``, identical to clicking the icon itself.
+    emits `action_requested`, identical to clicking the icon itself.
     """
 
     action_requested = QtCore.pyqtSignal()

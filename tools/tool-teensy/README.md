@@ -23,7 +23,7 @@ A typical usage from the command line may look like this:
 
 Required command line parameters:
 
-```
+``
 --mcu=<MCU> : Specify Processor. You must specify the target processor. This syntax is the same as used by gcc, which makes integrating with your Makefile easier, we also now support passing in a logical name. Valid options are:
 --mcu=imxrt1062 : 	Teensy 4.0
 --mcu=mk66fx1m0 : 	Teensy 3.6
@@ -45,7 +45,7 @@ Required command line parameters:
 --mcu=TEENSY36	: Teensy 3.6
 --mcu=TEENSY40	: Teensy 4.0
 --mcu=TEENSY41	: Teensy 4.1
-```
+``
 
 Caution: HEX files compiled with USB support must be compiled for the correct chip. If you load a file built for a different chip, often it will hang while trying to initialize the on-chip USB controller (each chip has a different PLL-based clock generator). On some PCs, this can "confuse" your USB port and a cold reboot may be required to restore USB functionality. When a Teensy has been programmed with such incorrect code, the reset button must be held down BEFORE the USB cable is connected, and then released only after the USB cable is fully connected.
 
@@ -80,14 +80,14 @@ SDK ?= /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Deve
 
 You can use teensy_loader_cli from your Makefile, to autoamtically program your freshly compiled code. Here is an example:
 
-```
+``
 # Create final output files (.hex, .eep) from ELF output file.
 %.hex: %.elf
         @echo
         @echo $(MSG_FLASH) $@
         $(OBJCOPY) -O $(FORMAT) -R .eeprom -R .fuse -R .lock -R .signature $< $@
         teensy_loader_cli --mcu=$(MCU) -w -v $@
-```
+``
 
 Make requires the white space before any command to be a tab character (not 8 spaces), so please make sure you use tab.
 

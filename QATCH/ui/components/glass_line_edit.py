@@ -3,6 +3,8 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.styles.theme_manager import ThemeManager
+
 # ---------------------------------------------------------------------------
 # Constants matching ui_login.py
 # ---------------------------------------------------------------------------
@@ -36,25 +38,41 @@ class GlassLineEdit(QtWidgets.QLineEdit):
 
         self.setFrame(False)
         self.setAutoFillBackground(False)
-        self.setStyleSheet("""
-            QLineEdit {
-                background: transparent;
-                border: none;
-                padding: 0px 15px;
-                color: rgba(38, 48, 58, 230);
-                font-size: 10pt;
-                selection-background-color: rgba(10, 163, 230, 60);
-                selection-color: rgba(0, 0, 0, 255);
-            }
-            QLineEdit QToolButton { 
-                background: transparent; 
-                border: none; 
-            }
-            QLineEdit QToolButton:hover {
-                background: rgba(255, 255, 255, 55);
-                border-radius: 12px;
-            }
-        """)
+        self._apply_text_qss()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    @staticmethod
+    def _rgba(rgba) -> str:
+        """Format a token (r, g, b, a) tuple as a CSS rgba() string."""
+        return f"rgba({rgba[0]}, {rgba[1]}, {rgba[2]}, {rgba[3]})"
+
+    def _apply_text_qss(self) -> None:
+        """Style text color and selection from the active palette. Fills and
+        borders are painted in paintEvent (also from tokens)."""
+        tok = ThemeManager.instance().tokens()
+        self.setStyleSheet(
+            "QLineEdit {"
+            "  background: transparent;"
+            "  border: none;"
+            "  padding: 0px 15px;"
+            f"  color: {self._rgba(tok['input_glass_text'])};"
+            "  font-size: 10pt;"
+            f"  selection-background-color: {self._rgba(tok['input_glass_selection_bg'])};"
+            f"  selection-color: {self._rgba(tok['text_primary'])};"
+            "}"
+            "QLineEdit QToolButton {"
+            "  background: transparent;"
+            "  border: none;"
+            "}"
+            "QLineEdit QToolButton:hover {"
+            f"  background: {self._rgba(tok['plot_icon_btn_hover_bg'])};"
+            "  border-radius: 12px;"
+            "}"
+        )
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_text_qss()
+        self.update()
 
     def set_error(self, on: bool) -> None:
         """Toggles the visual error state of the widget.
@@ -103,12 +121,13 @@ class GlassLineEdit(QtWidgets.QLineEdit):
 
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
+        tok = ThemeManager.instance().tokens()
         if self._in_error:
-            fill = QtGui.QColor(255, 220, 220, 68)
+            fill = QtGui.QColor(*tok["input_glass_fill_error"])
         elif self._focused:
-            fill = QtGui.QColor(255, 255, 255, 100)
+            fill = QtGui.QColor(*tok["input_glass_fill_focus"])
         else:
-            fill = QtGui.QColor(255, 255, 255, 58)
+            fill = QtGui.QColor(*tok["input_glass_fill"])
 
         p.setPen(QtCore.Qt.NoPen)
         p.setBrush(QtGui.QBrush(fill))
@@ -116,7 +135,7 @@ class GlassLineEdit(QtWidgets.QLineEdit):
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
         if self._in_error:
-            p.setPen(QtGui.QPen(QtGui.QColor(210, 55, 55, 150), 1.0))
+            p.setPen(QtGui.QPen(QtGui.QColor(*tok["input_glass_border_error"]), 1.0))
 
         elif self._focused:
             t = self._shimmer_t
@@ -125,8 +144,8 @@ class GlassLineEdit(QtWidgets.QLineEdit):
 
             if t < 1.0:
                 spread = 0.30
-                accent_color = QtGui.QColor(185, 218, 248, 115)  # Soft blue
-                peak_color = QtGui.QColor(255, 255, 255, 240)  # Bright white
+                accent_color = QtGui.QColor(*tok["input_glass_shimmer_accent"])  # Soft accent
+                peak_color = QtGui.QColor(*tok["input_glass_shimmer_peak"])  # Bright peak
 
                 grad.setColorAt(0.0, accent_color)
 
@@ -146,14 +165,14 @@ class GlassLineEdit(QtWidgets.QLineEdit):
 
                 grad.setColorAt(1.0, accent_color)
             else:
-                settled_color = QtGui.QColor(185, 218, 248, 130)
+                settled_color = QtGui.QColor(*tok["input_glass_shimmer_accent"])
                 grad.setColorAt(0.0, settled_color)
                 grad.setColorAt(1.0, settled_color)
 
             p.setPen(QtGui.QPen(QtGui.QBrush(grad), 1.5))
 
         else:
-            p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 105), 1.0))
+            p.setPen(QtGui.QPen(QtGui.QColor(*tok["input_glass_border"]), 1.0))
 
         p.drawRoundedRect(rect, r, r)
         p.end()

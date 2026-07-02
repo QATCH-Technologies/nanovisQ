@@ -1,9 +1,9 @@
 """
 ring_buffer.py
 
-This module provides a high-performance ``RingBuffer`` class backed by NumPy.
+This module provides a high-performance `RingBuffer` class backed by NumPy.
 This buffer maintains a fixed-size backing array and an internal write head.
-This guarantees ``O(1)`` time complexity for data insertion, preventing process stalls
+This guarantees `O(1)` time complexity for data insertion, preventing process stalls
 or synchronization issues during tight data-ingestion loops.
 
 References:
@@ -27,9 +27,9 @@ from typing import Any, Union
 
 
 class RingBuffer:
-    """An ``O(1)`` circular-buffer implementation backed by a numpy array.
+    """An `O(1)` circular-buffer implementation backed by a numpy array.
 
-    This replaces previous `np.roll`-based designs to avoid ``O(N)`` copy operations
+    This replaces previous `np.roll`-based designs to avoid `O(N)` copy operations
     per append. It maintains a fixed-size backing array and a write head, never
     reallocating after construction.
 
@@ -47,8 +47,8 @@ class RingBuffer:
             dtype (npt.DTypeLike, optional): The numpy data type of the array. Defaults to float.
 
         Raises:
-            TypeError: If ``size_max`` is not an integer.
-            ValueError: If ``size_max`` is less than or equal to zero.
+            TypeError: If `size_max` is not an integer.
+            ValueError: If `size_max` is less than or equal to zero.
         """
         if not isinstance(size_max, int):
             raise TypeError(f"size_max must be an integer, got {type(size_max).__name__}")
@@ -67,7 +67,7 @@ class RingBuffer:
         self._data: np.ndarray = np.full(size_max, default_value, dtype=dtype)
 
     def append(self, value: Any) -> None:
-        """Appends new data to the ring buffer in ``O(1)`` time.
+        """Appends new data to the ring buffer in `O(1)` time.
 
         If the buffer is full, the oldest sample is overwritten.
 
@@ -100,7 +100,7 @@ class RingBuffer:
     def get_partial(self) -> np.ndarray:
         """Returns only the valid, written samples in chronological order.
 
-        If no valid samples exist ``(size == 0)``, returns the default-filled array.
+        If no valid samples exist `(size == 0)`, returns the default-filled array.
 
         Returns:
             np.ndarray: A slice of the buffer containing only written data from oldest to newest.

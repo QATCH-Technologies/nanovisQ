@@ -44,18 +44,18 @@ from QATCH.common.architecture import Architecture
 class RestrictedPage(QWebEnginePage):
     """A QWebEnginePage that sandboxes navigation to a single allowed URL.
 
-    All main-frame navigations are checked against ``allowed_url``.
+    All main-frame navigations are checked against `allowed_url`.
     Navigations that would leave that page are blocked and the
-    ``navigation_blocked`` flag is set so that callers can distinguish a
-    deliberate block from a genuine network failure.  ``mailto:`` links are
+    `navigation_blocked` flag is set so that callers can distinguish a
+    deliberate block from a genuine network failure.  `mailto:` links are
     forwarded to the OS mail client rather than opening inside the view.
     New-window creation requests are suppressed entirely.
 
     Attributes:
         allowed_url (str): The URL string that main-frame navigation is
             restricted to.
-        navigation_blocked (bool): Set to ``True`` whenever a main-frame
-            navigation is refused, reset to ``False`` on allowed navigations.
+        navigation_blocked (bool): Set to `True` whenever a main-frame
+            navigation is refused, reset to `False` on allowed navigations.
     """
 
     def __init__(self, allowed_url, *args, **kwargs):
@@ -64,8 +64,8 @@ class RestrictedPage(QWebEnginePage):
         Args:
             allowed_url (str): The sole URL that main-frame navigation is
                 permitted to reach.
-            *args: Positional arguments forwarded to ``QWebEnginePage``.
-            **kwargs: Keyword arguments forwarded to ``QWebEnginePage``.
+            *args: Positional arguments forwarded to `QWebEnginePage`.
+            **kwargs: Keyword arguments forwarded to `QWebEnginePage`.
         """
         super().__init__(*args, **kwargs)
         self.allowed_url = allowed_url
@@ -81,8 +81,8 @@ class RestrictedPage(QWebEnginePage):
             url (QUrl): The URL to test.
 
         Returns:
-            bool: ``True`` if *url* has the same scheme, host, and path as the
-            allowed URL; ``False`` otherwise.
+            bool: `True` if *url* has the same scheme, host, and path as the
+            allowed URL; `False` otherwise.
         """
         return (
             url.scheme() == self._allowed_qurl.scheme()
@@ -95,11 +95,11 @@ class RestrictedPage(QWebEnginePage):
 
         Navigation policy:
 
-        * ``mailto:`` URLs are forwarded to the OS mail client and blocked
-          inside the web view; ``navigation_blocked`` is set so that the
-          resulting ``loadFinished(False)`` signal is not misinterpreted as a
+        * `mailto:` URLs are forwarded to the OS mail client and blocked
+          inside the web view; `navigation_blocked` is set so that the
+          resulting `loadFinished(False)` signal is not misinterpreted as a
           network error.
-        * Internal engine schemes (``data``, ``about``, ``blob``, ``qrc``) are
+        * Internal engine schemes (`data`, `about`, `blob`, `qrc`) are
           always permitted.
         * Main-frame navigations are only allowed when the destination matches
           the allowed URL exactly (scheme + host + path).
@@ -111,11 +111,11 @@ class RestrictedPage(QWebEnginePage):
             url (QUrl): The target URL of the navigation request.
             navigation_type (QWebEnginePage.NavigationType): The kind of
                 navigation event that triggered the request.
-            is_main_frame (bool): ``True`` if the request targets the main
+            is_main_frame (bool): `True` if the request targets the main
                 frame of the page.
 
         Returns:
-            bool: ``True`` to allow the navigation, ``False`` to block it.
+            bool: `True` to allow the navigation, `False` to block it.
         """
         # Hand mailto: links to the OS mail client, don't navigate the view.
         # Flag as blocked so a resulting loadFinished(False) is not treated
@@ -148,7 +148,7 @@ class RestrictedPage(QWebEnginePage):
                 requested by the page (e.g. tab, dialog).
 
         Returns:
-            None: Always returns ``None`` to prevent window creation.
+            None: Always returns `None` to prevent window creation.
         """
         return None
 
@@ -158,8 +158,8 @@ class RefreshButton(QPushButton):
 
     The rotation speed varies over each full revolution: it is slowest at the
     bottom of the cycle (0°/360°) and fastest at the top (180°), following a
-    ``speed = k·x² + min_speed`` curve.  This gives a more organic feel than a
-    constant-rate spin.  The animation is driven by an internal ``QTimer`` and
+    `speed = k·x² + min_speed` curve.  This gives a more organic feel than a
+    constant-rate spin.  The animation is driven by an internal `QTimer` and
     is started/stopped explicitly via :meth:`start_spin` and
     :meth:`stop_spin`.
 
@@ -176,7 +176,7 @@ class RefreshButton(QPushButton):
 
         Args:
             icon_path (str): Path to the icon image file to display and spin.
-            parent (QWidget, optional): Parent widget. Defaults to ``None``.
+            parent (QWidget, optional): Parent widget. Defaults to `None`.
         """
         super().__init__(parent)
         self.icon_path = icon_path
@@ -208,8 +208,8 @@ class RefreshButton(QPushButton):
         """Advance the rotation by one parabolic speed step and repaint the icon.
 
         Called on each timer tick.  Maps the current angle to a normalised
-        position ``x ∈ [-1, 1]`` and computes the angular step as
-        ``(max_speed - min_speed) * x² + min_speed``, producing the slowest
+        position `x ∈ [-1, 1]` and computes the angular step as
+        `(max_speed - min_speed) * x² + min_speed`, producing the slowest
         speed at 0°/360° and the fastest at 180°.  If the base pixmap is
         invalid the method returns immediately without doing anything.
         """
@@ -234,7 +234,7 @@ class RefreshButton(QPushButton):
 class OfflineViewer(QWebEngineView):
     """A QWebEngineView that retries failed loads and shows a styled offline page.
 
-    On a load failure the view attempts up to ``_max_retries`` automatic
+    On a load failure the view attempts up to `_max_retries` automatic
     retries with a 1.5-second delay between each attempt.  If all retries are
     exhausted it renders a self-contained HTML offline/error page that
     auto-redirects back to the target URL every 5 seconds.  Failures caused by
@@ -259,8 +259,8 @@ class OfflineViewer(QWebEngineView):
         so that the whitelist is enforced from the very first navigation.
 
         Args:
-            url (str, optional): The URL to load immediately. If ``None`` the
-                view is created in an empty state. Defaults to ``None``.
+            url (str, optional): The URL to load immediately. If `None` the
+                view is created in an empty state. Defaults to `None`.
         """
         super().__init__()
         self.target_url = url if url else ""
@@ -281,7 +281,7 @@ class OfflineViewer(QWebEngineView):
             self.setUrl(QUrl(url))
 
     def setUrl(self, url):
-        """Override setUrl to keep ``target_url`` in sync before delegating.
+        """Override setUrl to keep `target_url` in sync before delegating.
 
         Args:
             url (QUrl): The new URL to navigate to.
@@ -294,10 +294,10 @@ class OfflineViewer(QWebEngineView):
         pass
 
     def _retry_load(self):
-        """Retry loading ``target_url`` after a short delay.
+        """Retry loading `target_url` after a short delay.
 
-        Triggered by ``_retry_timer``.  Bypasses the :meth:`setUrl` override
-        so the ``target_url`` attribute is not reset during a retry cycle.
+        Triggered by `_retry_timer`.  Bypasses the :meth:`setUrl` override
+        so the `target_url` attribute is not reset during a retry cycle.
         """
         if self.target_url:
             super().setUrl(QUrl(self.target_url))
@@ -308,15 +308,15 @@ class OfflineViewer(QWebEngineView):
         On success the retry counter is reset.  On failure the method
         distinguishes three cases:
 
-        1. **Blocked navigation** - ``RestrictedPage.navigation_blocked`` is
-           ``True``; treated as a non-error and ignored.
+        1. **Blocked navigation** - `RestrictedPage.navigation_blocked` is
+           `True`; treated as a non-error and ignored.
         2. **Transient failure within retry budget** - the retry counter is
-           incremented and ``_retry_timer`` is armed for another attempt after
+           incremented and `_retry_timer` is armed for another attempt after
            1.5 seconds.
         3. **Retry budget exhausted** - :meth:`show_offline_page` is called.
 
         Args:
-            success (bool): ``True`` if the page loaded successfully.
+            success (bool): `True` if the page loaded successfully.
         """
         if success:
             self._retry_count = 0
@@ -338,11 +338,11 @@ class OfflineViewer(QWebEngineView):
         Reads the offline SVG icon from the application's icons directory,
         encodes it as a base64 data URI, and injects it into a self-contained
         HTML page.  The page includes a JavaScript snippet that redirects back
-        to ``target_url`` after 5 seconds so that the view recovers
+        to `target_url` after 5 seconds so that the view recovers
         automatically once connectivity is restored.
 
         If the offline icon file cannot be found a warning is printed and the
-        icon ``src`` attribute is left empty; the rest of the page still
+        icon `src` attribute is left empty; the rest of the page still
         renders correctly.
         """
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "offline.svg")
@@ -437,14 +437,14 @@ class WebViewer(QMainWindow):
     Composes an :class:`OfflineViewer` (with an embedded
     :class:`RestrictedPage`) with a thin status bar containing a
     :class:`RefreshButton` refresh control and a status label.  A
-    persistent ``QTimer`` drives ``QWebEngineView.update()`` at approximately
+    persistent `QTimer` drives `QWebEngineView.update()` at approximately
     60 FPS while a page is loaded so that animated content renders smoothly;
     the timer is suspended during page loads to avoid unnecessary GPU work.
 
     Attributes:
-        loaded (bool): ``True`` when the current page has finished loading
+        loaded (bool): `True` when the current page has finished loading
             successfully.
-        closing (bool): Set to ``True`` in :meth:`closeEvent` so that
+        closing (bool): Set to `True` in :meth:`closeEvent` so that
             in-flight callbacks can detect that the window is being torn down.
         browser (OfflineViewer): The embedded Chromium web view.
         refresh_btn (RefreshButton): The animated refresh / reload button.
@@ -459,7 +459,7 @@ class WebViewer(QMainWindow):
         Constructs the central widget hierarchy (browser + status bar),
         wires up all signals, and starts the initial page load.  The
         :class:`OfflineViewer` constructor performs the first
-        ``setUrl`` call so no additional navigation is needed here.
+        `setUrl` call so no additional navigation is needed here.
 
         Args:
             title (str): Window title text shown in the title bar.
@@ -545,12 +545,12 @@ class WebViewer(QMainWindow):
         timer according to the outcome:
 
         * **Success** or **blocked navigation** - label set to "Reload",
-          ``loaded`` flag set, render timer started.
+          `loaded` flag set, render timer started.
         * **Retry in progress** - label set to "Connecting..." with no alarm.
         * **All retries exhausted** - label set to "No connection...".
 
         Args:
-            success (bool): ``True`` if the page loaded without error.
+            success (bool): `True` if the page loaded without error.
         """
         self.refresh_btn.stop_spin()
         if success:
@@ -570,7 +570,7 @@ class WebViewer(QMainWindow):
     def closeEvent(self, event):
         """Handle the window close event by stopping the render timer.
 
-        Sets ``closing`` to ``True`` so that any in-flight asynchronous
+        Sets `closing` to `True` so that any in-flight asynchronous
         callbacks can detect that the window is being destroyed, then stops
         the render timer before accepting the event.
 
