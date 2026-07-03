@@ -1,42 +1,45 @@
 """
 glass_push_button.py
 
-A QPushButton subclass with a glass-morphism aesthetic and shimmer hover
-animation, intentionally mirroring the visual language of GlassLineEdit.
-
-Visual mapping
---------------
-  GlassLineEdit             ->   GlassPushButton
-  ─────────────────────────────────────────────
-  focusInEvent              ->   enterEvent
-  focusOutEvent             ->   leaveEvent
-  _focused fill (alpha 100)     ->   _hovered fill (alpha 100)
-  resting fill  (alpha 58)      ->   resting fill  (alpha 58)
-  shimmer sweep on focus    ->   shimmer sweep on hover
-  settled border (alpha 130)    ->   settled border (alpha 130)
+A QPushButton subclass matching the app's flat control system (see
+QATCH.ui.components.flat_paint). Also the single home for what used to be
+two separate classes - the old `GlassPushButton` (glass-morphism, pill
+radius) and `BorderlessActionButton` (flat text-link buttons) - since the
+new design spec defines one button family with a `ghost` variant covering
+the old borderless-link use case.
 
 Variants
 --------
-  "default"        Translucent white glass - secondary actions (Audit, Refresh, Back).
-  "primary"        Vertical blue gradient - primary CTA (Add / confirm).
-  "danger"         Red-tinted glass - destructive labelled actions (Delete).
-  "danger_confirm" Solid red - delete-button confirmation state.
-  "warning"        Amber-tinted glass - cautionary icon actions (Reset Password).
-  "neutral"        Grey-tinted glass - cancel / row audit icon actions.
+  "primary"             Solid accent fill - primary CTA (Initialize, Save).
+  "secondary"           Transparent fill, border_strong outline - default
+                         action (Advanced, Refresh, Cancel, Back...).
+  "ghost"                Transparent, accent-colored text, no border - quiet
+                         inline links (Forgot Password?, per-field
+                         Save/Reset/Default actions).
+  "destructive"          Solid error fill, white text - hard-confirm delete.
+  "destructive_outline"  Transparent, error-colored text + border - softer
+                         labelled destructive action before confirmation.
+  "icon_toolbar"          Vertical icon-above-label stack (not yet wired to
+                         any call site - available for future toolbar work).
+
+Old variant names ("default", "neutral", "danger", "danger_confirm") are
+accepted as aliases and resolve to the canonical names above, so existing
+call sites keep working unchanged. "warning" (unused anywhere in the app)
+is not carried forward; an unrecognized variant name falls back to
+"secondary".
 
 Usage
 -----
     btn = GlassPushButton(" Add", variant="primary")
     btn.setIcon(QtGui.QIcon(path))
     btn.setIconSize(QtCore.QSize(18, 18))
-    btn.setFixedHeight(34)               # height drives the pill radius
+    btn.setFixedHeight(34)
 
-    btn_del = GlassPushButton("", variant="danger")
-    btn_del.setFixedSize(28, 28)         # icon-only circle
+    btn_link = GlassPushButton("Reset", variant="ghost")   # was BorderlessActionButton
 
     # Switch state at runtime (e.g. delete -> confirmation mode):
-    btn_del.set_variant("danger_confirm")
-    btn_del.set_variant("danger")        # restore
+    btn_del.set_variant("destructive")
+    btn_del.set_variant("destructive_outline")   # restore
 """
 
 from __future__ import annotations
@@ -44,212 +47,42 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.styles.fonts import FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager
 
-# ---------------------------------------------------------------------------
-# Colour palettes
-# All colour data stored as plain RGBA tuples to avoid constructing QColor
-# objects at class-definition time (before any QApplication exists).
-#
-# Nested one level by theme mode ("light" / "dark") - see
-# QATCH.ui.styles.tokens for the app-wide palette this mirrors. A variant's
-# `text_role` name is mode-agnostic; what color it actually resolves to is
-# looked up in _TEXT_COLORS[mode], so most variants below keep identical
-# fill/border/shimmer values across modes (translucent overlays already read
-# fine on either background) - only "default"/"neutral"/"ghost" (low-alpha
-# washes that need a touch more presence on a near-black surface) and
-# "primary" (brightened slightly for vibrancy) actually differ.
-#
-# fills:      (normal, hover, pressed) - background RGBA tuples.
-#             None for "primary", which uses a vertical linear gradient.
-# grad:       ((top, bot) normal, hover, pressed) - used only by "primary".
-# border:     Resting border RGBA.
-# sh_accent:  Shimmer gradient wing colour RGBA  (matches GlassLineEdit).
-# sh_peak:    Shimmer gradient centre peak RGBA  (matches GlassLineEdit).
-# text_role:  Key into _TEXT_COLORS[mode] for QPalette.ButtonText.
-# ---------------------------------------------------------------------------
-_LIGHT_PALETTES: dict[str, dict] = {
-    "default": dict(
-        fills=(
-            (255, 255, 255, 58),  # normal
-            (255, 255, 255, 100),  # hover
-            (255, 255, 255, 140),  # pressed
-        ),
-        border=(255, 255, 255, 105),
-        sh_accent=(185, 218, 248, 115),
-        sh_peak=(255, 255, 255, 240),
-        text_role="dark",
-    ),
-    # Primary: blue gradient fill, white shimmer.
-    "primary": dict(
-        fills=None,  # drawn as a vertical gradient
-        grad=(
-            ((45, 165, 250, 210), (15, 125, 210, 190)),  # normal
-            ((65, 185, 255, 240), (25, 145, 230, 220)),  # hover
-            ((15, 115, 200, 220), (5, 95, 160, 200)),  # pressed
-        ),
-        border=(255, 255, 255, 100),
-        sh_accent=(185, 218, 248, 160),
-        sh_peak=(255, 255, 255, 240),
-        text_role="light",
-    ),
-    # Danger (labelled Delete button - restores here after confirmation).
-    "danger": dict(
-        fills=(
-            (220, 53, 69, 26),  # ~0.10
-            (220, 53, 69, 64),  # ~0.25
-            (220, 53, 69, 102),  # ~0.40
-        ),
-        border=(220, 53, 69, 77),  # ~0.30
-        sh_accent=(220, 53, 69, 160),
-        sh_peak=(255, 160, 160, 240),
-        text_role="danger",  # #B02A37
-    ),
-    # Danger-confirm (delete button while awaiting confirmation - solid red).
-    "danger_confirm": dict(
-        fills=(
-            (220, 53, 69, 102),  # ~0.40  normal
-            (220, 53, 69, 153),  # ~0.60  hover
-            (220, 53, 69, 204),  # ~0.80  pressed
-        ),
-        border=(220, 53, 69, 204),
-        sh_accent=(255, 160, 160, 200),
-        sh_peak=(255, 220, 220, 255),
-        text_role="light",
-    ),
-    # Warning (amber - Reset Password icon button).
-    "warning": dict(
-        fills=(
-            (255, 193, 7, 31),  # ~0.12
-            (255, 193, 7, 71),  # ~0.28
-            (255, 193, 7, 115),  # ~0.45
-        ),
-        border=(255, 193, 7, 128),  # ~0.50
-        sh_accent=(255, 193, 7, 160),
-        sh_peak=(255, 240, 150, 240),
-        text_role="dark",
-    ),
-    # Neutral (grey - Cancel / row-Audit icon button).
-    "neutral": dict(
-        fills=(
-            (108, 117, 125, 31),  # ~0.12
-            (108, 117, 125, 71),  # ~0.28
-            (108, 117, 125, 115),  # ~0.45
-        ),
-        border=(108, 117, 125, 115),
-        sh_accent=(108, 117, 125, 160),
-        sh_peak=(200, 210, 220, 240),
-        text_role="dark",
-    ),
-    # Ghost: near-invisible at rest, blue-accent wash on hover - for compact
-    # actions packed inside an already-bordered container (set_border_visible
-    # off), where the app's blue accent reads as "interactive" more clearly
-    # than a generic white opacity bump.
-    "ghost": dict(
-        fills=(
-            (10, 163, 230, 18),  # resting - barely-there tint
-            (10, 163, 230, 60),  # hover
-            (10, 163, 230, 100),  # pressed
-        ),
-        border=(10, 163, 230, 150),
-        sh_accent=(185, 218, 248, 140),
-        sh_peak=(255, 255, 255, 240),
-        text_role="dark",
-    ),
+_RADIUS = 7.0
+_RADIUS_ICON_TOOLBAR = 8.0
+
+# Old variant name -> canonical variant name. Unknown names (including the
+# retired "warning") fall through to "secondary" at resolve time.
+_VARIANT_ALIASES: dict[str, str] = {
+    "default": "secondary",
+    "neutral": "secondary",
+    "danger": "destructive_outline",
+    "danger_confirm": "destructive",
 }
 
-# Dark-mode variants. Saturated washes (danger/danger_confirm/warning) carry
-# enough presence on their own and are reused as-is from _LIGHT_PALETTES
-# below; only the low-alpha neutral-tone washes ("default"/"neutral"/
-# "ghost") get a touch more fill/border alpha so they stay perceivable
-# against a near-black surface, and "primary"'s gradient is brightened
-# slightly for vibrancy. text_role names are unchanged - see _TEXT_COLORS.
-_DARK_PALETTES: dict[str, dict] = {
-    "default": dict(
-        fills=(
-            (255, 255, 255, 70),  # normal
-            (255, 255, 255, 115),  # hover
-            (255, 255, 255, 155),  # pressed
-        ),
-        border=(255, 255, 255, 130),
-        sh_accent=(185, 218, 248, 130),
-        sh_peak=(255, 255, 255, 245),
-        text_role="dark",
-    ),
-    "primary": dict(
-        fills=None,
-        grad=(
-            ((55, 175, 255, 220), (20, 130, 215, 200)),  # normal
-            ((75, 195, 255, 245), (30, 150, 235, 230)),  # hover
-            ((20, 120, 205, 230), (10, 100, 165, 210)),  # pressed
-        ),
-        border=(255, 255, 255, 120),
-        sh_accent=(185, 218, 248, 170),
-        sh_peak=(255, 255, 255, 245),
-        text_role="light",
-    ),
-    "danger": _LIGHT_PALETTES["danger"],
-    "danger_confirm": _LIGHT_PALETTES["danger_confirm"],
-    "warning": _LIGHT_PALETTES["warning"],
-    "neutral": dict(
-        fills=(
-            (140, 148, 156, 40),  # normal
-            (140, 148, 156, 85),  # hover
-            (140, 148, 156, 130),  # pressed
-        ),
-        border=(140, 148, 156, 135),
-        sh_accent=(140, 148, 156, 175),
-        sh_peak=(210, 218, 226, 245),
-        text_role="dark",
-    ),
-    "ghost": dict(
-        fills=(
-            (45, 175, 240, 24),  # resting - barely-there tint
-            (45, 175, 240, 70),  # hover
-            (45, 175, 240, 115),  # pressed
-        ),
-        border=(45, 175, 240, 165),
-        sh_accent=(185, 218, 248, 155),
-        sh_peak=(255, 255, 255, 245),
-        text_role="dark",
-    ),
-}
-
-_PALETTES: dict[str, dict[str, dict]] = {"light": _LIGHT_PALETTES, "dark": _DARK_PALETTES}
-
-_TEXT_COLORS: dict[str, dict[str, QtGui.QColor]] = {
-    "light": {
-        "light": QtGui.QColor(255, 255, 255),
-        "dark": QtGui.QColor(51, 51, 51),  # #333
-        "danger": QtGui.QColor(176, 42, 55),  # #B02A37
-    },
-    "dark": {
-        "light": QtGui.QColor(255, 255, 255),
-        # "dark" role here means "not light, not danger" - on a dark
-        # surface that has to be a light color too, not literal dark text.
-        "dark": QtGui.QColor(225, 230, 235),
-        "danger": QtGui.QColor(255, 140, 140),
-    },
-}
+_CANONICAL_VARIANTS = frozenset(
+    {"primary", "secondary", "ghost", "destructive", "destructive_outline", "icon_toolbar"}
+)
 
 
 class GlassPushButton(QtWidgets.QPushButton):
-    """QPushButton with glass-morphism rendering and a shimmer sweep on hover.
+    """QPushButton with flat-design rendering, matching the app's flat
+    control system.
 
-    All fill, border, and shimmer effects are painted manually in paintEvent -
-    no QSS is used for backgrounds or borders.  A minimal QSS string (padding
-    and font-weight only) is applied so Qt's standard icon / text pipeline can
-    render on top unimpeded.
-
-    The shimmer algorithm is a direct port of GlassLineEdit's focus shimmer:
-    same 12 ms tick, same 0.022 step, same 0.30 spread, same accent / peak
-    colours for the "default" variant.  Hover maps to focus in the analogy.
+    All fill, border, and focus-ring colors are resolved fresh at paint
+    time from the active `flat_*` tokens (light/dark aware automatically -
+    no separate light/dark palette table needed). A minimal QSS string
+    (padding and font only) is applied so Qt's standard icon/text pipeline
+    can render on top unimpeded.
 
     Attributes:
-        _variant (str):       Active palette name.
-        _shimmer_t (float):   Sweep progress 0.0 -> 1.0, reset on each hover entry.
-        _hovered (bool):      True while the cursor is inside the widget.
-        _pressed_state (bool):True while a mouse button is held down.
+        _variant (str): Requested variant name (alias or canonical).
+        _hovered (bool): True while the cursor is inside the widget.
+        _pressed_state (bool): True while a mouse button is held down.
+        _border_visible (bool): False suppresses the border stroke.
     """
 
     def __init__(
@@ -257,45 +90,23 @@ class GlassPushButton(QtWidgets.QPushButton):
         text: str = "",
         parent: Optional[QtWidgets.QWidget] = None,
         *,
-        variant: str = "default",
+        variant: str = "secondary",
     ) -> None:
         super().__init__(text, parent)
         self._variant: str = variant
-        self._shimmer_t: float = 0.0
         self._hovered: bool = False
         self._pressed_state: bool = False
         self._border_visible: bool = True
+        self._icon_left: bool = False
 
-        # 12 ms / ~0.022 step -> matches GlassLineEdit tick exactly
-        self._timer = QtCore.QTimer(self)
-        self._timer.setInterval(12)
-        self._timer.timeout.connect(self._tick)
+        self._apply_qss(text)
 
-        self._apply_text_color(variant)
-
-        # Derive horizontal padding from whether the button has label text.
-        # Icon-only buttons (text == "") get zero padding so the icon centres
-        # naturally inside the widget's fixed size.
-        h_pad = 14 if text.strip() else 0
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                border: none;
-                font-weight: bold;
-                padding: 0px {h_pad}px;
-            }}
-        """)
-
-        # WA_Hover ensures enterEvent / leaveEvent fire correctly on all platforms
         self.setAttribute(QtCore.Qt.WA_Hover, True)
-        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
 
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
-        """Re-applies text color for the now-active mode and repaints with
-        the matching light/dark fill/border/shimmer palette."""
-        self._apply_text_color(self._variant)
         self.update()
 
     # ------------------------------------------------------------------
@@ -304,7 +115,7 @@ class GlassPushButton(QtWidgets.QPushButton):
     def set_icon_left(self, on: bool = True) -> None:
         """Left-align the icon while keeping the label text centered.
 
-        Padding accounts for the pill's rounded corner so the icon clears the
+        Padding accounts for the corner radius so the icon clears the
         curve. Use for labelled control buttons that want a leading glyph.
         """
         self._icon_left = on
@@ -314,82 +125,173 @@ class GlassPushButton(QtWidgets.QPushButton):
         """Switch the visual variant at runtime.
 
         Useful for transient state changes such as the delete button morphing
-        into a confirmation circle::
+        into a confirmation state::
 
-            btn.set_variant("danger_confirm")
-            btn.set_variant("danger")   # restore
+            btn.set_variant("destructive")
+            btn.set_variant("destructive_outline")   # restore
         """
         self._variant = variant
-        self._apply_text_color(variant)
         self.update()
 
     def set_border_visible(self, visible: bool) -> None:
-        """Hide the glass border entirely while keeping the fill + shimmer
-        hover effect - for compact actions that sit inside an already
-        bordered container (e.g. the USB picker box), where drawing a border
-        around the button too would be one border too many.
+        """Hide the border entirely while keeping the fill + hover effect -
+        for compact actions that sit inside an already-bordered container
+        (e.g. the USB picker box), where drawing a border around the button
+        too would be one border too many.
 
-        Also drops keyboard focus when borderless: the native focus
-        rectangle some styles draw around a focused QPushButton would look
-        like a stray grey border reappearing on click, with nothing (no
-        custom border) to frame it."""
+        Also drops keyboard focus when borderless: the focus ring this
+        widget would otherwise draw needs a border to sit outside of, and a
+        borderless button living inside another bordered container should
+        not introduce its own focus outline."""
         self._border_visible = visible
         if not visible:
             self.setFocusPolicy(QtCore.Qt.NoFocus)
         self.update()
 
+    def setEnabled(self, enabled: bool) -> None:  # noqa: N802
+        super().setEnabled(enabled)
+        self.setCursor(
+            QtGui.QCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
+            if not enabled
+            else QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        )
+        self.update()
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def _canonical_variant(self) -> str:
+        v = _VARIANT_ALIASES.get(self._variant, self._variant)
+        return v if v in _CANONICAL_VARIANTS else "secondary"
+
+    def _apply_qss(self, text: str) -> None:
+        variant = self._canonical_variant()
+        if variant == "icon_toolbar":
+            h_pad, v_pad = 4, 8
+        else:
+            h_pad = 18 if text.strip() else 0
+            v_pad = 9 if text.strip() else 0
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                padding: {v_pad}px {h_pad}px;
+                font-family: '{FONT_SANS_SEMIBOLD}';
+                font-size: 13px;
+            }}
+        """)
+
     @staticmethod
-    def _active_palettes() -> dict:
-        """Returns the variant->palette dict for the currently active
-        light/dark theme."""
-        return _PALETTES[ThemeManager.instance().mode().value]
+    def _lighten(color: QtGui.QColor, percent: int) -> QtGui.QColor:
+        return color.lighter(100 + percent)
 
-    def _apply_text_color(self, variant: str) -> None:
-        mode = ThemeManager.instance().mode().value
-        palettes = self._active_palettes()
-        role = palettes.get(variant, palettes["default"]).get("text_role", "dark")
-        text_colors = _TEXT_COLORS[mode]
-        color = text_colors.get(role, text_colors["dark"])
-        pal = self.palette()
-        pal.setColor(QtGui.QPalette.ButtonText, color)
-        self.setPalette(pal)
+    def _resolve_colors(self) -> dict:
+        """Resolves fill/text/border/ring colors for the current variant and
+        interaction state, read fresh from the active theme's flat_* tokens."""
+        tok = ThemeManager.instance().tokens()
+        variant = self._canonical_variant()
+        hovered = self._hovered
+        pressed = self._pressed_state
+        transparent = QtGui.QColor(0, 0, 0, 0)
 
-    @staticmethod
-    def _c(rgba: tuple) -> QtGui.QColor:
-        """Construct a QColor from a plain (r, g, b, a) tuple."""
-        return QtGui.QColor(*rgba)
+        def c(key: str) -> QtGui.QColor:
+            return QtGui.QColor(*tok[key])
 
-    # ------------------------------------------------------------------
-    # Timer (shimmer animation)
-    # ------------------------------------------------------------------
-    def _tick(self) -> None:
-        """Increments shimmer progress and triggers a repaint - identical to
-        GlassLineEdit._tick."""
-        self._shimmer_t = min(1.0, self._shimmer_t + 0.022)
-        self.update()
-        if self._shimmer_t >= 1.0:
-            self._timer.stop()
+        if not self.isEnabled():
+            return {
+                "fill": c("flat_surface2"),
+                "text": c("flat_text_muted"),
+                "border": c("flat_border"),
+                "border_width": 1.0,
+                "ring": None,
+                "shadow": False,
+            }
+
+        focus_ring = self.hasFocus() and self._border_visible
+
+        if variant == "primary":
+            if pressed:
+                fill = c("flat_accent_active")
+            elif hovered:
+                fill = c("flat_accent_hover")
+            else:
+                fill = c("flat_accent")
+            return {
+                "fill": fill, "text": c("flat_on_accent"), "border": fill, "border_width": 0.0,
+                "ring": c("flat_accent_ring") if focus_ring else None, "shadow": True,
+            }
+
+        if variant == "destructive":
+            base = c("flat_error")
+            fill = base.darker(125) if pressed else (base.darker(110) if hovered else base)
+            return {
+                "fill": fill, "text": QtGui.QColor(255, 255, 255), "border": fill,
+                "border_width": 0.0,
+                "ring": c("flat_error_ring") if focus_ring else None, "shadow": True,
+            }
+
+        if variant == "destructive_outline":
+            if pressed:
+                fill = c("flat_error_weak").darker(105)
+            elif hovered:
+                fill = c("flat_error_weak")
+            else:
+                fill = transparent
+            return {
+                "fill": fill, "text": c("flat_error"), "border": c("flat_error"),
+                "border_width": 1.0,
+                "ring": c("flat_error_ring") if focus_ring else None, "shadow": False,
+            }
+
+        if variant == "ghost":
+            if pressed:
+                fill = c("flat_accent_weak").darker(105)
+            elif hovered:
+                fill = c("flat_accent_weak")
+            else:
+                fill = transparent
+            return {
+                "fill": fill, "text": c("flat_accent"), "border": transparent,
+                "border_width": 0.0,
+                "ring": c("flat_accent_ring") if focus_ring else None, "shadow": False,
+            }
+
+        if variant == "icon_toolbar":
+            if hovered or pressed:
+                fill = c("flat_accent_weak")
+                text = c("flat_accent")
+            else:
+                fill = transparent
+                text = c("flat_text_muted")
+            return {
+                "fill": fill, "text": text, "border": transparent, "border_width": 0.0,
+                "ring": c("flat_accent_ring") if focus_ring else None, "shadow": False,
+            }
+
+        # "secondary" - also the fallback for any unrecognized variant name.
+        if pressed:
+            fill = c("flat_surface2").darker(105)
+        elif hovered:
+            fill = c("flat_surface2")
+        else:
+            fill = transparent
+        return {
+            "fill": fill, "text": c("flat_text"), "border": c("flat_border_strong"),
+            "border_width": 1.0,
+            "ring": c("flat_accent_ring") if focus_ring else None, "shadow": False,
+        }
 
     # ------------------------------------------------------------------
     # Event overrides
     # ------------------------------------------------------------------
     def enterEvent(self, event) -> None:
-        """Mouse enters: reset and start shimmer sweep - analogous to
-        GlassLineEdit.focusInEvent."""
         super().enterEvent(event)
         self._hovered = True
-        self._shimmer_t = 0.0
-        self._timer.start()
         self.update()
 
     def leaveEvent(self, event) -> None:
-        """Mouse leaves: stop sweep - analogous to GlassLineEdit.focusOutEvent."""
         super().leaveEvent(event)
         self._hovered = False
-        self._timer.stop()
         self.update()
 
     def mousePressEvent(self, event) -> None:
@@ -402,99 +304,80 @@ class GlassPushButton(QtWidgets.QPushButton):
         self._pressed_state = False
         self.update()
 
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        self.update()
+
+    def focusOutEvent(self, event) -> None:
+        super().focusOutEvent(event)
+        self.update()
+
     # ------------------------------------------------------------------
     # Painting
     # ------------------------------------------------------------------
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
-        """Paints the glass fill and animated border, then delegates icon /
-        text rendering to Qt's standard CE_PushButtonLabel pipeline.
+        """Paints the flat fill/border/focus-ring, then delegates icon/text
+        rendering to Qt's standard CE_PushButtonLabel pipeline (or a manual
+        vertical icon-above-label layout for the icon_toolbar variant).
 
         Guard against zero-height during size animations (cancel buttons
         start at 0x0 and expand).
         """
         w, h = self.width(), self.height()
         if h < 4:
-            # Widget is still animating open from 0x0 - nothing to draw yet.
             super().paintEvent(event)
             return
 
-        palettes = self._active_palettes()
-        pal = palettes.get(self._variant, palettes["default"])
-        # Pill radius: height/2 − 1 px inset, identical to GlassLineEdit
-        r = (h / 2.0) - 1.0
-        rect = QtCore.QRectF(1.0, 1.0, w - 2.0, h - 2.0)
+        variant = self._canonical_variant()
+        colors = self._resolve_colors()
+        radius = _RADIUS_ICON_TOOLBAR if variant == "icon_toolbar" else _RADIUS
 
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
-        p.setPen(QtCore.Qt.NoPen)
 
-        # ── Fill ─────────────────────────────────────────────────────
-        state_idx = 2 if self._pressed_state else (1 if self._hovered else 0)
+        # Subtle drop shadow under solid-fill variants (primary/destructive),
+        # drawn as a manually-offset translucent duplicate shape rather than
+        # a QGraphicsDropShadowEffect - this widget is hover-repainted, and
+        # wrapping it in a graphics effect risks the pixmap-caching ghosting
+        # documented for other continuously-repainted custom widgets in this
+        # app (see ui_controls.py's _PerspectiveAnimator docstring).
+        if colors["shadow"]:
+            tok = ThemeManager.instance().tokens()
+            shadow_rect = QtCore.QRectF(0.0, 1.0, float(w), float(h))
+            p.setPen(QtCore.Qt.NoPen)
+            p.setBrush(QtGui.QBrush(QtGui.QColor(*tok["flat_shadow"])))
+            p.drawRoundedRect(shadow_rect, radius, radius)
+            p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
-        if pal["fills"] is None:
-            # Primary variant: vertical linear gradient
-            stops = pal["grad"][state_idx]
-            gf = QtGui.QLinearGradient(0, 0, 0, h)
-            gf.setColorAt(0.0, self._c(stops[0]))
-            gf.setColorAt(1.0, self._c(stops[1]))
-            p.setBrush(QtGui.QBrush(gf))
-        else:
-            p.setBrush(QtGui.QBrush(self._c(pal["fills"][state_idx])))
-
-        p.drawRoundedRect(rect, r, r)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-
-        # ── Border / shimmer ─────────────────────────────────────────
-        # Algorithm mirrors GlassLineEdit paintEvent exactly:
-        # sweeping phase -> spread / peak gradient; settled phase -> solid accent.
-        if self._border_visible:
-            t = self._shimmer_t
-            sh_accent = self._c(pal["sh_accent"])
-            sh_peak = self._c(pal["sh_peak"])
-
-            if self._hovered and t < 1.0:
-                # Sweeping shimmer: bright peak chases t across the border
-                spread = 0.30
-                grad = QtGui.QLinearGradient(0.0, 0.0, float(w), 0.0)
-                grad.setColorAt(0.0, sh_accent)
-
-                pre = max(0.0, t - spread)
-                if pre > 0.0:
-                    grad.setColorAt(pre, sh_accent)
-
-                grad.setColorAt(max(0.0, t - spread * 0.12), sh_peak)
-                grad.setColorAt(min(1.0, t + spread * 0.12), sh_peak)
-
-                post = min(1.0, t + spread)
-                if post < 1.0:
-                    grad.setColorAt(post, sh_accent)
-
-                grad.setColorAt(1.0, sh_accent)
-                p.setPen(QtGui.QPen(QtGui.QBrush(grad), 1.5))
-
-            elif self._hovered:
-                # Settled: accent colour at slightly elevated alpha (mirrors
-                # GlassLineEdit's settled_color alpha 130 logic)
-                settled = QtGui.QColor(sh_accent)
-                settled.setAlpha(min(255, sh_accent.alpha() + 15))
-                p.setPen(QtGui.QPen(settled, 1.5))
-
-            else:
-                # Resting border - same as GlassLineEdit's unfocused pen
-                p.setPen(QtGui.QPen(self._c(pal["border"]), 1.0))
-
-            p.drawRoundedRect(rect, r, r)
+        border_width = colors["border_width"] if self._border_visible else 0.0
+        paint_flat_surface(
+            self,
+            radius=radius,
+            fill=colors["fill"],
+            border=colors["border"],
+            border_width=border_width,
+            ring=colors["ring"] if self._border_visible else None,
+            painter=p,
+        )
         p.end()
 
-        # ── Icon + text rendering ────────────────────────────────────
-        if getattr(self, "_icon_left", False) and not self.icon().isNull():
-            # Left-aligned icon, centered text. The icon is inset from the left
-            # edge by a padding that accounts for the pill's rounded corner so
-            # it doesn't collide with the curve; the text stays centered across
-            # the full button width (it may visually overlap the icon zone only
-            # if the label is very long, which these control labels are not).
+        # Apply the resolved text color to the palette so Qt's own label
+        # drawing (below) picks it up.
+        pal = self.palette()
+        pal.setColor(QtGui.QPalette.ButtonText, colors["text"])
+        self.setPalette(pal)
+
+        if variant == "icon_toolbar":
+            self._paint_icon_toolbar_label(colors["text"])
+            return
+
+        if self._icon_left and not self.icon().isNull():
+            # Left-aligned icon, centered text. The icon is inset from the
+            # left edge by a padding that accounts for the corner radius so
+            # it doesn't collide with the curve; the text stays centered
+            # across the full button width.
             isz = self.iconSize()
-            icon_pad = max(int(r * 0.6), 12)  # clear the rounded corner
+            icon_pad = max(int(radius * 0.6), 12)
             icon_y = (h - isz.height()) // 2
             pm = self.icon().pixmap(isz)
             painter = QtGui.QPainter(self)
@@ -504,8 +387,6 @@ class GlassPushButton(QtWidgets.QPushButton):
             painter.drawPixmap(icon_pad, icon_y, pm)
             painter.end()
 
-            # Centered text via the style pipeline, with the icon suppressed so
-            # it isn't drawn a second time (centered).
             sp = QtWidgets.QStylePainter(self)
             opt = QtWidgets.QStyleOptionButton()
             self.initStyleOption(opt)
@@ -514,11 +395,39 @@ class GlassPushButton(QtWidgets.QPushButton):
             sp.drawControl(QtWidgets.QStyle.CE_PushButtonLabel, opt)
             sp.end()
         else:
-            # ── Icon + text via Qt's standard rendering pipeline ─────────
-            # CE_PushButtonLabel draws only the icon and text - no background or
-            # border - so our custom-painted glass surface is not overwritten.
             sp = QtWidgets.QStylePainter(self)
             opt = QtWidgets.QStyleOptionButton()
             self.initStyleOption(opt)
             sp.drawControl(QtWidgets.QStyle.CE_PushButtonLabel, opt)
             sp.end()
+
+    def _paint_icon_toolbar_label(self, text_color: QtGui.QColor) -> None:
+        """Manual vertical icon-above-label layout for variant="icon_toolbar".
+
+        Qt's native CE_PushButtonLabel lays icon and text out horizontally;
+        the flat spec's toolbar buttons stack them vertically, so this is
+        drawn by hand instead of delegated.
+        """
+        w = self.width()
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.SmoothPixmapTransform)
+        if not self.isEnabled():
+            p.setOpacity(0.45)
+
+        icon = self.icon()
+        label_h = p.fontMetrics().height()
+        gap = 5
+
+        if not icon.isNull():
+            isz = self.iconSize()
+            icon_x = (w - isz.width()) // 2
+            icon_y = 8
+            p.drawPixmap(icon_x, icon_y, icon.pixmap(isz))
+            text_y = icon_y + isz.height() + gap
+        else:
+            text_y = 8
+
+        p.setPen(QtGui.QPen(text_color))
+        text_rect = QtCore.QRect(0, text_y, w, label_h)
+        p.drawText(text_rect, QtCore.Qt.AlignmentFlag.AlignHCenter, self.text())
+        p.end()

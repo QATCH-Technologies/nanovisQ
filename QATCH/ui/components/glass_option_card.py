@@ -1,7 +1,8 @@
 """
 glass_option_card.py
 
-A selectable "card" control: a frosted glass panel with a bold title and a
+A selectable "card" control matching the app's flat control system (see
+QATCH.ui.components.flat_paint): a flat panel with a bold title and a
 smaller description line beneath it. Cards are grouped via
 `GlassOptionCardGroup` for exclusive (radio-style) selection - used wherever
 a wireframe shows a labelled option instead of a plain segmented control
@@ -25,9 +26,57 @@ Usage
 
 from __future__ import annotations
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.styles.fonts import FONT_SANS, FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager
+
+
+class _RadioDot(QtWidgets.QWidget):
+    """A small custom-painted radio indicator: a ring, plus a centered
+    solid dot when checked.
+
+    A plain QFrame + QSS can express a ring (border + transparent fill) but
+    not a ring with an independently-sized concentric fill, so this is hand
+    -painted instead - matching this repo's existing convention of small
+    custom-painted indicator glyphs (see QATCH.ui.widgets.saved_state_dot).
+    """
+
+    _SIZE = 16
+    _DOT_D = 7
+    _RING_WIDTH = 1.5
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(self._SIZE, self._SIZE)
+        self._checked = False
+
+    def set_checked(self, checked: bool) -> None:
+        if checked != self._checked:
+            self._checked = checked
+            self.update()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        tok = ThemeManager.instance().tokens()
+        ring_color = QtGui.QColor(
+            *(tok["flat_accent"] if self._checked else tok["flat_border_strong"])
+        )
+
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        p.setPen(QtGui.QPen(ring_color, self._RING_WIDTH))
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        inset = self._RING_WIDTH / 2.0
+        p.drawEllipse(QtCore.QRectF(inset, inset, self._SIZE - 2 * inset, self._SIZE - 2 * inset))
+
+        if self._checked:
+            dot_color = QtGui.QColor(*tok["flat_accent"])
+            p.setPen(QtCore.Qt.NoPen)
+            p.setBrush(QtGui.QBrush(dot_color))
+            off = (self._SIZE - self._DOT_D) / 2.0
+            p.drawEllipse(QtCore.QRectF(off, off, self._DOT_D, self._DOT_D))
+
+        p.end()
 
 
 class GlassOptionCard(QtWidgets.QFrame):
@@ -42,20 +91,19 @@ class GlassOptionCard(QtWidgets.QFrame):
         self._checked = False
         self._title = title
         self._show_radio = show_radio
+        self._opacity_effect = None
 
         outer = QtWidgets.QHBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 10)
-        outer.setSpacing(10)
+        outer.setContentsMargins(15, 14, 15, 14)
+        outer.setSpacing(9)
 
         if show_radio:
-            self._radio_dot = QtWidgets.QFrame()
-            self._radio_dot.setObjectName("optionCardRadio")
-            self._radio_dot.setFixedSize(16, 16)
+            self._radio_dot = _RadioDot(self)
             outer.addWidget(self._radio_dot, 0, QtCore.Qt.AlignTop)
 
         text_col = QtWidgets.QVBoxLayout()
         text_col.setContentsMargins(0, 0, 0, 0)
-        text_col.setSpacing(2)
+        text_col.setSpacing(8)
         self._title_lbl = QtWidgets.QLabel(title)
         self._title_lbl.setObjectName("optionCardTitle")
         text_col.addWidget(self._title_lbl)
@@ -74,6 +122,8 @@ class GlassOptionCard(QtWidgets.QFrame):
     def _on_theme_changed(self, _mode: str) -> None:
         """Re-style from the active palette when the theme flips."""
         self._apply_qss()
+        if self._show_radio:
+            self._radio_dot.update()
 
     # ------------------------------------------------------------------
     def text(self):
@@ -96,10 +146,39 @@ class GlassOptionCard(QtWidgets.QFrame):
         if checked == self._checked:
             return
         self._checked = checked
+        if self._show_radio:
+            self._radio_dot.set_checked(checked)
         self._apply_qss()
 
+    def setCardEnabled(self, enabled: bool) -> None:
+        """Enables/disables the whole card, dimming it to 0.5 opacity when
+        disabled.
+
+        A `QGraphicsOpacityEffect` is safe here (unlike on the
+        continuously hover-animated glass buttons/toggle): this widget only
+        repaints on check-state or theme change, never on a timer or a
+        hover-driven cycle, so it doesn't hit the offscreen-pixmap-caching
+        ghosting failure mode documented for those other widgets (see
+        ui_controls.py's `_PerspectiveAnimator` docstring). Do not "fix"
+        this back to a manual per-paint opacity multiply without re-reading
+        that reasoning.
+        """
+        self.setEnabled(enabled)
+        self.setCursor(
+            QtCore.Qt.CursorShape.ArrowCursor
+            if not enabled
+            else QtCore.Qt.CursorShape.PointingHandCursor
+        )
+        if not enabled:
+            if self._opacity_effect is None:
+                self._opacity_effect = QtWidgets.QGraphicsOpacityEffect(self)
+            self._opacity_effect.setOpacity(0.5)
+            self.setGraphicsEffect(self._opacity_effect)
+        else:
+            self.setGraphicsEffect(None)
+
     def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton:
+        if event.button() == QtCore.Qt.LeftButton and self.isEnabled():
             self.clicked.emit()
         super().mousePressEvent(event)
 
@@ -115,51 +194,33 @@ class GlassOptionCard(QtWidgets.QFrame):
         if self._checked:
             frame_qss = f"""
                 QFrame#glassOptionCard {{
-                    background: {rgba(tok["option_card_checked_bg"])};
-                    border: 1.5px solid {rgba(tok["option_card_checked_border"])};
+                    background: {rgba(tok["flat_accent_weak"])};
+                    border: 1.5px solid {rgba(tok["flat_accent"])};
                     border-radius: 10px;
-                }}
-            """
-            title_color = rgba(tok["option_card_checked_title"])
-            radio_qss = f"""
-                QFrame#optionCardRadio {{
-                    background: {rgba(tok["option_card_radio_checked"])};
-                    border: 1px solid {rgba(tok["option_card_radio_checked"])};
-                    border-radius: 8px;
                 }}
             """
         else:
             frame_qss = f"""
                 QFrame#glassOptionCard {{
-                    background: {rgba(tok["option_card_bg"])};
-                    border: 1px solid {rgba(tok["option_card_border"])};
+                    background: {rgba(tok["flat_surface"])};
+                    border: 1px solid {rgba(tok["flat_border"])};
                     border-radius: 10px;
                 }}
                 QFrame#glassOptionCard:hover {{
-                    background: {rgba(tok["option_card_hover_bg"])};
-                    border: 1px solid {rgba(tok["option_card_hover_border"])};
-                }}
-            """
-            title_color = rgba(tok["option_card_title"])
-            radio_qss = f"""
-                QFrame#optionCardRadio {{
-                    background: {rgba(tok["option_card_radio_bg"])};
-                    border: 1px solid {rgba(tok["option_card_radio_border"])};
-                    border-radius: 8px;
+                    background: {rgba(tok["flat_surface2"])};
+                    border: 1px solid {rgba(tok["flat_border_strong"])};
                 }}
             """
         self.setStyleSheet(frame_qss)
         self._title_lbl.setStyleSheet(
-            f"QLabel#optionCardTitle {{ color: {title_color}; font-size: 13px; "
-            "font-weight: 700; background: transparent; }"
+            f"QLabel#optionCardTitle {{ color: {rgba(tok['flat_text'])}; "
+            f"font-family: '{FONT_SANS_SEMIBOLD}'; font-size: 13px; background: transparent; }}"
         )
         if self._desc_lbl is not None:
             self._desc_lbl.setStyleSheet(
-                f"QLabel#optionCardDesc {{ color: {rgba(tok['option_card_desc'])}; "
-                "font-size: 11px; background: transparent; }"
+                f"QLabel#optionCardDesc {{ color: {rgba(tok['flat_text_muted'])}; "
+                f"font-family: '{FONT_SANS}'; font-size: 11.5px; background: transparent; }}"
             )
-        if self._show_radio:
-            self._radio_dot.setStyleSheet(radio_qss)
 
 
 class GlassOptionCardGroup(QtCore.QObject):

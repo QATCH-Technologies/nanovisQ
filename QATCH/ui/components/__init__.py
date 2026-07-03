@@ -1,7 +1,6 @@
 from .animated_combo_box import AnimatedComboBox
 from .plot_status_banner import PlotStatusBanner
 from .animated_spin_box import AnimatedDoubleSpinBox, AnimatedSpinBox
-from .borderless_action_button import BorderlessActionButton
 from .glass_card import GlassCard
 from .glass_dialog import GlassDialog
 from .glass_line_edit import GlassLineEdit
@@ -16,7 +15,6 @@ from .run_controls_button import RunControls
 __all__ = [
     "AnimatedComboBox",
     "AnimatedDoubleSpinBox",
-    "BorderlessActionButton",
     "AnimatedSpinBox",
     "GlassLineEdit",
     "GlassOptionCard",

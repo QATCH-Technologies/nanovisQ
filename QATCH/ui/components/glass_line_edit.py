@@ -3,41 +3,41 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.styles.fonts import FONT_SANS
 from QATCH.ui.styles.theme_manager import ThemeManager
 
-# ---------------------------------------------------------------------------
-# Constants matching ui_login.py
-# ---------------------------------------------------------------------------
-_INPUT_H: int = 34
-_BTN_H: int = 34
+_RADIUS = 7.0
 
 
 class GlassLineEdit(QtWidgets.QLineEdit):
-    """A custom QLineEdit with a translucent glass aesthetic and shimmer animations.
+    """A QLineEdit styled to match the app's flat control system.
 
-    This widget overrides the standard QPaintEvent to manually render a frosted
-    glass background and a dynamic border. On focus, a 'shimmer' sweep effect
-    animates across the border. Visual states for 'error' and 'focused' are
-    handled through manual painting rather than QSS.
+    Chrome (fill/border/focus-ring) is painted manually in `paintEvent` via
+    `QATCH.ui.components.flat_paint.paint_flat_surface`; text/cursor
+    rendering is left to the base `QLineEdit` implementation. Visual states
+    - default, hover, focused, disabled, error - are resolved from the
+    "flat_*" tokens in `QATCH.ui.styles.tokens` so the widget follows
+    light/dark theme changes automatically.
+
+    Leading icons and a trailing password-reveal button are supported via
+    Qt's native `QLineEdit.addAction()` (no custom widget code needed -
+    already used elsewhere in the app, e.g. `create_user_widget.py`).
 
     Attributes:
-        _shimmer_t (float): Animation progress normalized from 0.0 to 1.0.
-        _focused (bool): Internal state tracking focus for rendering logic.
-        _in_error (bool): Internal state tracking validation failure for rendering logic.
+        _hovered (bool): True while the cursor is inside the widget.
+        _in_error (bool): True while `set_error(True)` is active.
     """
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        """Initializes the line edit with custom styles and animation timers."""
+        """Initializes the line edit with the flat control chrome."""
         super().__init__(parent)
-        self._shimmer_t: float = 0.0
-        self._focused: bool = False
+        self._hovered: bool = False
         self._in_error: bool = False
-        self._timer = QtCore.QTimer(self)
-        self._timer.setInterval(12)
-        self._timer.timeout.connect(self._tick)
 
         self.setFrame(False)
         self.setAutoFillBackground(False)
+        self.setAttribute(QtCore.Qt.WA_Hover, True)
         self._apply_text_qss()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
@@ -47,30 +47,42 @@ class GlassLineEdit(QtWidgets.QLineEdit):
         return f"rgba({rgba[0]}, {rgba[1]}, {rgba[2]}, {rgba[3]})"
 
     def _apply_text_qss(self) -> None:
-        """Style text color and selection from the active palette. Fills and
-        borders are painted in paintEvent (also from tokens)."""
+        """Style text color, font, and selection from the active palette.
+        Fill/border/ring are painted in paintEvent (also from tokens)."""
         tok = ThemeManager.instance().tokens()
+        text_color = tok["flat_text_muted"] if not self.isEnabled() else tok["flat_text"]
         self.setStyleSheet(
             "QLineEdit {"
             "  background: transparent;"
             "  border: none;"
-            "  padding: 0px 15px;"
-            f"  color: {self._rgba(tok['input_glass_text'])};"
-            "  font-size: 10pt;"
-            f"  selection-background-color: {self._rgba(tok['input_glass_selection_bg'])};"
-            f"  selection-color: {self._rgba(tok['text_primary'])};"
+            "  padding: 9px 12px;"
+            f"  color: {self._rgba(text_color)};"
+            f"  font-family: '{FONT_SANS}';"
+            "  font-size: 13px;"
+            f"  selection-background-color: {self._rgba(tok['flat_accent_weak'])};"
+            f"  selection-color: {self._rgba(tok['flat_accent'])};"
             "}"
             "QLineEdit QToolButton {"
             "  background: transparent;"
             "  border: none;"
             "}"
             "QLineEdit QToolButton:hover {"
-            f"  background: {self._rgba(tok['plot_icon_btn_hover_bg'])};"
+            f"  background: {self._rgba(tok['flat_surface2'])};"
             "  border-radius: 12px;"
             "}"
         )
+        self.setCursor(
+            QtCore.Qt.CursorShape.ForbiddenCursor
+            if not self.isEnabled()
+            else QtCore.Qt.CursorShape.IBeamCursor
+        )
 
     def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_text_qss()
+        self.update()
+
+    def setEnabled(self, enabled: bool) -> None:  # noqa: N802
+        super().setEnabled(enabled)
         self._apply_text_qss()
         self.update()
 
@@ -78,102 +90,59 @@ class GlassLineEdit(QtWidgets.QLineEdit):
         """Toggles the visual error state of the widget.
 
         Args:
-            on (bool): If True, the widget paints with a red 'error' theme.
+            on (bool): If True, the widget paints with the error border/ring.
         """
         if on != self._in_error:
             self._in_error = on
             self.update()
 
-    def _tick(self) -> None:
-        """Increments the shimmer progress and triggers a repaint."""
-        self._shimmer_t = min(1.0, self._shimmer_t + 0.022)
+    def enterEvent(self, event: QtCore.QEvent) -> None:
+        super().enterEvent(event)
+        self._hovered = True
         self.update()
-        if self._shimmer_t >= 1.0:
-            self._timer.stop()
+
+    def leaveEvent(self, event: QtCore.QEvent) -> None:
+        super().leaveEvent(event)
+        self._hovered = False
+        self.update()
 
     def focusInEvent(self, event: QtGui.QFocusEvent) -> None:
-        """Handles focus entry: resets error and triggers the shimmer animation."""
         super().focusInEvent(event)
-        self._focused = True
-        self._in_error = False
-        self._shimmer_t = 0.0
-        self._timer.start()
         self.update()
 
     def focusOutEvent(self, event: QtGui.QFocusEvent) -> None:
-        """Handles focus exit: stops the shimmer animation."""
         super().focusOutEvent(event)
-        self._focused = False
-        self._timer.stop()
         self.update()
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Manually paints the glass background and animated border.
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        """Paints the flat fill/border/focus-ring, then delegates text and
+        cursor rendering to the base QLineEdit implementation."""
+        tok = ThemeManager.instance().tokens()
 
-        This method executes before the standard QLineEdit paint event to
-        draw the underlying 'glass' container. It then delegates text and
-        cursor rendering back to the base class.
-        """
-        # Calculate geometry
-        radius = self.height() / 2.0
-        r = radius - 1.0
-        rect = QtCore.QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        if not self.isEnabled():
+            fill = QtGui.QColor(*tok["flat_surface2"])
+            border = QtGui.QColor(*tok["flat_border"])
+            ring = None
+        elif self._in_error:
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_error"])
+            ring = QtGui.QColor(*tok["flat_error_ring"])
+        elif self.hasFocus():
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_accent"])
+            ring = QtGui.QColor(*tok["flat_accent_ring"])
+        elif self._hovered:
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_border_strong"])
+            ring = None
+        else:
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_border"])
+            ring = None
 
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
-        tok = ThemeManager.instance().tokens()
-        if self._in_error:
-            fill = QtGui.QColor(*tok["input_glass_fill_error"])
-        elif self._focused:
-            fill = QtGui.QColor(*tok["input_glass_fill_focus"])
-        else:
-            fill = QtGui.QColor(*tok["input_glass_fill"])
-
-        p.setPen(QtCore.Qt.NoPen)
-        p.setBrush(QtGui.QBrush(fill))
-        p.drawRoundedRect(rect, r, r)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-
-        if self._in_error:
-            p.setPen(QtGui.QPen(QtGui.QColor(*tok["input_glass_border_error"]), 1.0))
-
-        elif self._focused:
-            t = self._shimmer_t
-            width = float(self.width())
-            grad = QtGui.QLinearGradient(0.0, 0.0, width, 0.0)
-
-            if t < 1.0:
-                spread = 0.30
-                accent_color = QtGui.QColor(*tok["input_glass_shimmer_accent"])  # Soft accent
-                peak_color = QtGui.QColor(*tok["input_glass_shimmer_peak"])  # Bright peak
-
-                grad.setColorAt(0.0, accent_color)
-
-                # Pre-peak
-                pre = max(0.0, t - spread)
-                if pre > 0.0:
-                    grad.setColorAt(pre, accent_color)
-
-                # Peak
-                grad.setColorAt(max(0.0, t - spread * 0.12), peak_color)
-                grad.setColorAt(min(1.0, t + spread * 0.12), peak_color)
-
-                # Post-peak
-                post = min(1.0, t + spread)
-                if post < 1.0:
-                    grad.setColorAt(post, accent_color)
-
-                grad.setColorAt(1.0, accent_color)
-            else:
-                settled_color = QtGui.QColor(*tok["input_glass_shimmer_accent"])
-                grad.setColorAt(0.0, settled_color)
-                grad.setColorAt(1.0, settled_color)
-
-            p.setPen(QtGui.QPen(QtGui.QBrush(grad), 1.5))
-
-        else:
-            p.setPen(QtGui.QPen(QtGui.QColor(*tok["input_glass_border"]), 1.0))
-
-        p.drawRoundedRect(rect, r, r)
+        paint_flat_surface(self, radius=_RADIUS, fill=fill, border=border, ring=ring, painter=p)
         p.end()
+
         super().paintEvent(event)

@@ -4,17 +4,21 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.styles.fonts import FONT_MONO_MEDIUM
 from QATCH.ui.styles.theme_manager import ThemeManager
 
-# The persistent rounded glass chrome (background, border, radius, hover/focus
-# states) lives in the "ANIMATED SPIN BOX" section of
-# QATCH/ui/styles/app_theme.qss, scoped by objectName ("AnimatedSpinBox" /
-# "AnimatedDoubleSpinBox"). It reuses the ANIMATED COMBO BOX tokens so spin
-# boxes sit visually beside the animated combos as a matched set, and both
-# repaint automatically on theme change via ThemeManager's app-wide
-# stylesheet. Only the parts Qt Style Sheets can't reach - the custom chevron
-# pixmaps and the odometer overlay's painted colors - are retinted in Python,
-# below.
+# Chrome (fill/border/radius/hover/focus-ring/error) is painted in Python via
+# `_OdometerMixin._paint_chrome`, matching the app's flat control system (see
+# QATCH.ui.components.flat_paint) - the same reasoning as AnimatedComboBox:
+# Qt Style Sheets have no box-shadow, so the focus ring can't be expressed in
+# QSS alone. Only the parts a paintEvent can't reach - the custom chevron
+# pixmaps and the odometer overlay's painted colors - are handled here in
+# addition to the chrome; the base QSS in app_theme.qss is trimmed to just
+# suppressing the native up/down button region and giving the widget (and
+# its internal line-edit sub-control) a transparent backdrop.
+
+_RADIUS = 7.0
 
 
 def _tinted_pixmap(source: QtGui.QPixmap, color: QtGui.QColor) -> QtGui.QPixmap:
@@ -30,36 +34,31 @@ def _tinted_pixmap(source: QtGui.QPixmap, color: QtGui.QColor) -> QtGui.QPixmap:
 
 
 class _SpinArrow(QtWidgets.QLabel):
-    """A clickable chevron that brightens on hover and flashes on press.
+    """A clickable chevron that recolors (idle -> accent) on hover/press.
 
     Unlike the combo box arrow (which is mouse-transparent and purely
     decorative), these chevrons are the interactive step controls, so mouse
-    events are enabled. Visual feedback is driven by a smooth opacity fade,
-    matching the soft glass language. Holding the button auto-repeats the step
-    via a QTimer so press-and-hold ramps the value like a native spin box.
+    events are enabled. Visual feedback is a direct pixmap swap between a
+    precomputed idle-tint and active-tint pixmap - matching the flat design's
+    "recolor on hover" language rather than the old opacity-fade. Holding the
+    button auto-repeats the step via a QTimer so press-and-hold ramps the
+    value like a native spin box.
     """
 
     stepped = QtCore.pyqtSignal()
 
-    _IDLE_OPACITY = 0.55
-    _ACTIVE_OPACITY = 1.0
     _REPEAT_DELAY_MS = 350
     _REPEAT_INTERVAL_MS = 60
 
-    def __init__(self, pixmap: QtGui.QPixmap, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
-        self.setPixmap(pixmap)
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background: transparent; border: none;")
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
-        self._opacity = QtWidgets.QGraphicsOpacityEffect(self)
-        self._opacity.setOpacity(self._IDLE_OPACITY)
-        self.setGraphicsEffect(self._opacity)
-
-        self._fade = QtCore.QPropertyAnimation(self._opacity, b"opacity", self)
-        self._fade.setDuration(120)
-        self._fade.setEasingCurve(QtCore.QEasingCurve.OutQuad)
+        self._idle_pixmap = QtGui.QPixmap()
+        self._active_pixmap = QtGui.QPixmap()
+        self._active = False
 
         # Auto-repeat while pressed: an initial delay, then a steady interval.
         self._repeat_timer = QtCore.QTimer(self)
@@ -69,25 +68,31 @@ class _SpinArrow(QtWidgets.QLabel):
         self._delay_timer.setSingleShot(True)
         self._delay_timer.timeout.connect(self._begin_repeat)
 
-    def _fade_to(self, value: float) -> None:
-        self._fade.stop()
-        self._fade.setEndValue(value)
-        self._fade.start()
+    def set_pixmaps(self, idle: QtGui.QPixmap, active: QtGui.QPixmap) -> None:
+        self._idle_pixmap = idle
+        self._active_pixmap = active
+        self._apply_pixmap()
+
+    def _apply_pixmap(self) -> None:
+        self.setPixmap(self._active_pixmap if self._active else self._idle_pixmap)
 
     def _begin_repeat(self) -> None:
         self._repeat_timer.start(self._REPEAT_INTERVAL_MS)
 
     def enterEvent(self, event: QtCore.QEvent) -> None:
-        self._fade_to(self._ACTIVE_OPACITY)
+        self._active = True
+        self._apply_pixmap()
         super().enterEvent(event)
 
     def leaveEvent(self, event: QtCore.QEvent) -> None:
-        self._fade_to(self._IDLE_OPACITY)
+        self._active = False
+        self._apply_pixmap()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self._opacity.setOpacity(self._ACTIVE_OPACITY)
+            self._active = True
+            self._apply_pixmap()
             self.stepped.emit()
             self._delay_timer.start(self._REPEAT_DELAY_MS)
         super().mousePressEvent(event)
@@ -113,8 +118,8 @@ class _OdometerOverlay(QtWidgets.QWidget):
     through the translucency.
 
     This version instead:
-      * Paints its OWN opaque background (matching the glass body) so nothing
-        underneath shows through -- no need to recolour the line edit.
+      * Paints its OWN opaque background (matching the flat body fill) so
+        nothing underneath shows through -- no need to recolour the line edit.
       * Treats each numeric column as a continuous reel. Rolling 7 -> 2 actually
         travels through the intermediate digits (7,6,5,4,3,2 going down, or
         7,8,9,0,1,2 going up), so the column visibly spins like a mechanical
@@ -304,24 +309,110 @@ class _OdometerOverlay(QtWidgets.QWidget):
 
 
 class _OdometerMixin:
-    """Shared chevron + odometer + theme wiring for the int and double spin boxes."""
+    """Shared chrome, chevron, odometer, and theme wiring for the int and
+    double spin boxes."""
+
+    def _init_flat_chrome(self) -> None:
+        self._hovered = False
+        self._in_error = False
+        self.setAttribute(QtCore.Qt.WA_Hover, True)
+        self.setStyleSheet("padding-left: 12px;")
+        f = QtGui.QFont(FONT_MONO_MEDIUM)
+        f.setPixelSize(14)
+        self.setFont(f)
+        if self.lineEdit() is not None:
+            self.lineEdit().setFont(f)
+
+    def set_error(self, on: bool) -> None:
+        """Toggles the visual error state (border/ring + value text color)."""
+        if on != self._in_error:
+            self._in_error = on
+            self._apply_text_palette()
+            self.update()
+
+    def _apply_text_palette(self) -> None:
+        tok = ThemeManager.instance().tokens()
+        if not self.isEnabled():
+            color = QtGui.QColor(*tok["flat_text_muted"])
+        elif self._in_error:
+            color = QtGui.QColor(*tok["flat_error"])
+        else:
+            color = QtGui.QColor(*tok["flat_text"])
+        pal = self.palette()
+        pal.setColor(QtGui.QPalette.Text, color)
+        self.setPalette(pal)
+
+    def enterEvent(self, event: QtCore.QEvent) -> None:
+        super().enterEvent(event)
+        self._hovered = True
+        self.update()
+
+    def leaveEvent(self, event: QtCore.QEvent) -> None:
+        super().leaveEvent(event)
+        self._hovered = False
+        self.update()
+
+    def setEnabled(self, enabled: bool) -> None:  # noqa: N802
+        super().setEnabled(enabled)
+        self._apply_text_palette()
+        self.update()
+
+    def _paint_chrome(self) -> None:
+        """Paints the flat fill/border/focus-ring behind the native internal
+        line-edit sub-control (a real child widget, painted separately by
+        Qt immediately afterward - no need to delegate to it here)."""
+        tok = ThemeManager.instance().tokens()
+
+        if not self.isEnabled():
+            fill = QtGui.QColor(*tok["flat_surface2"])
+            border = QtGui.QColor(*tok["flat_border"])
+            ring = None
+        elif self._in_error:
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_error"])
+            ring = QtGui.QColor(*tok["flat_error_ring"])
+        elif self.hasFocus():
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_accent"])
+            ring = QtGui.QColor(*tok["flat_accent_ring"])
+        elif self._hovered:
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_border_strong"])
+            ring = None
+        else:
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_border"])
+            ring = None
+
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        paint_flat_surface(self, radius=_RADIUS, fill=fill, border=border, ring=ring, painter=p)
+        p.end()
 
     def _init_chevrons(self, up_icon_path: str, down_icon_path: Optional[str]) -> None:
         self._up_source, self._down_source = _make_chevrons(up_icon_path, down_icon_path)
-        self._up_arrow = _SpinArrow(QtGui.QPixmap(), self)
-        self._down_arrow = _SpinArrow(QtGui.QPixmap(), self)
+        self._up_arrow = _SpinArrow(self)
+        self._down_arrow = _SpinArrow(self)
         self._up_arrow.stepped.connect(self.stepUp)
         self._down_arrow.stepped.connect(self.stepDown)
         self._retint_chevrons()
 
     def _retint_chevrons(self) -> None:
-        color = ThemeManager.instance().color("combo_text")
-        self._up_arrow.setPixmap(_tinted_pixmap(self._up_source, color))
-        self._down_arrow.setPixmap(_tinted_pixmap(self._down_source, color))
+        tok = ThemeManager.instance().tokens()
+        idle = QtGui.QColor(*tok["flat_text_muted"])
+        active = QtGui.QColor(*tok["flat_accent"])
+        self._up_arrow.set_pixmaps(
+            _tinted_pixmap(self._up_source, idle), _tinted_pixmap(self._up_source, active)
+        )
+        self._down_arrow.set_pixmaps(
+            _tinted_pixmap(self._down_source, idle), _tinted_pixmap(self._down_source, active)
+        )
 
     def _on_theme_changed(self, _mode: Optional[str] = None) -> None:
         self._retint_chevrons()
         self._retint_odometer()
+        self._apply_text_palette()
+        self.update()
 
     def _init_odometer(self) -> None:
         # Tabular (monospaced) figures: every digit gets the same advance in the
@@ -345,6 +436,7 @@ class _OdometerMixin:
 
         self._odometer = _OdometerOverlay(self)
         self._retint_odometer()
+        self._apply_text_palette()
 
         self._prev_value = self.value()
         self._prev_text = self.text()
@@ -379,13 +471,12 @@ class _OdometerMixin:
         self._odometer.roll(old_text, new_text, self._step_direction)
 
     def _retint_odometer(self) -> None:
-        # combo_text matches the glass body's own text color; combo_popup_bg is
-        # the family's opaque solid (used for the combo dropdown backing), which
-        # reads as a seamless continuation of the translucent glass body in both
-        # themes without needing a separate token pair.
-        tok = ThemeManager.instance()
-        self._odometer.set_color(tok.color("combo_text"))
-        self._odometer.set_background(tok.color("combo_popup_bg"))
+        # flat_text matches the internal line-edit's own text color; flat_surface
+        # is the body's own fill, so the overlay reads as a seamless
+        # continuation of the flat chrome in both themes.
+        tok = ThemeManager.instance().tokens()
+        self._odometer.set_color(QtGui.QColor(*tok["flat_text"]))
+        self._odometer.set_background(QtGui.QColor(*tok["flat_surface"]))
         self._odometer.update()
 
     def _position_odometer(self) -> None:
@@ -423,12 +514,15 @@ class _OdometerMixin:
 
 
 class AnimatedDoubleSpinBox(_OdometerMixin, QtWidgets.QDoubleSpinBox):
-    """A QDoubleSpinBox styled and animated to match AnimatedComboBox.
+    """A QDoubleSpinBox styled and animated to match the app's flat control
+    system (and AnimatedComboBox).
 
-    Visual + motion parity with the animated combos:
-      * Rounded translucent glass body with the same hover / focus glow.
+    Visual + motion identity:
+      * Flat rounded body (radius 7px) with hover / focus-ring / error states,
+        painted the same way as GlassLineEdit/AnimatedComboBox.
       * Custom stacked up/down chevrons (native step buttons suppressed) that
-        brighten on hover, flash on press, and auto-repeat on hold.
+        recolor (idle -> accent) on hover, flash on press, and auto-repeat on
+        hold.
       * On every value change the digits roll vertically like a mechanical
         odometer -- each numeric column spins through the intermediate digits
         into its new value.
@@ -449,6 +543,7 @@ class AnimatedDoubleSpinBox(_OdometerMixin, QtWidgets.QDoubleSpinBox):
         self.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
+        self._init_flat_chrome()
         self._init_chevrons(up_icon_path, down_icon_path)
         self._init_odometer()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
@@ -458,11 +553,21 @@ class AnimatedDoubleSpinBox(_OdometerMixin, QtWidgets.QDoubleSpinBox):
         _layout_chevrons(self, self._up_arrow, self._down_arrow)
         self._position_odometer()
 
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        # Deliberately skips super().paintEvent(): QAbstractSpinBox's base
+        # implementation draws the full CC_SpinBox complex control (frame +
+        # buttons), which - like QComboBox's CC_ComboBox - erases whatever
+        # was painted immediately before it even with a "transparent" QSS
+        # background. The internal line-edit sub-control is a real child
+        # widget, so it still paints its own text/cursor on top afterward
+        # without needing that call.
+        self._paint_chrome()
+
 
 class AnimatedSpinBox(_OdometerMixin, QtWidgets.QSpinBox):
     """Integer counterpart to AnimatedDoubleSpinBox with identical styling.
 
-    Shares the glass chrome, chevron behaviour, and the odometer digit-roll on
+    Shares the flat chrome, chevron behaviour, and the odometer digit-roll on
     value changes.
     """
 
@@ -477,6 +582,7 @@ class AnimatedSpinBox(_OdometerMixin, QtWidgets.QSpinBox):
         self.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
+        self._init_flat_chrome()
         self._init_chevrons(up_icon_path, down_icon_path)
         self._init_odometer()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
@@ -485,6 +591,10 @@ class AnimatedSpinBox(_OdometerMixin, QtWidgets.QSpinBox):
         super().resizeEvent(event)
         _layout_chevrons(self, self._up_arrow, self._down_arrow)
         self._position_odometer()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        # See AnimatedDoubleSpinBox.paintEvent for why super() is skipped.
+        self._paint_chrome()
 
 
 # ----------------------------------------------------------------- shared utils

@@ -41,7 +41,6 @@ from QATCH.processors.Device import serial as DeviceSerial
 from QATCH.ui.components import (
     AnimatedComboBox,
     AnimatedDoubleSpinBox,
-    BorderlessActionButton,
     FLUXControl,
     GlassPushButton,
     GlassToggle,
@@ -1370,11 +1369,11 @@ class UIControls:
         )
         self.device_pid_dot = _make_dot(self.device_pid_action, self.device_pid_input)
 
-        self.device_config_default = BorderlessActionButton("Default")
+        self.device_config_default = GlassPushButton("Default", variant="ghost")
         self.device_config_default.clicked.connect(self.on_device_config_default)
-        self.device_config_save = BorderlessActionButton("Save", tone="primary")
+        self.device_config_save = GlassPushButton("Save", variant="ghost")
         self.device_config_save.clicked.connect(self.on_device_config_save)
-        self.device_config_reset = BorderlessActionButton("Reset")
+        self.device_config_reset = GlassPushButton("Reset", variant="ghost")
         self.device_config_reset.clicked.connect(self.on_device_config_reset)
 
         # Constant Temperature Calibration
@@ -1435,11 +1434,11 @@ class UIControls:
             self.temp_cal_measure_action, self.temp_cal_measure_input
         )
 
-        self.temp_cal_default = BorderlessActionButton("Default")
+        self.temp_cal_default = GlassPushButton("Default", variant="ghost")
         self.temp_cal_default.clicked.connect(self.on_temp_cal_default)
-        self.temp_cal_save = BorderlessActionButton("Save", tone="primary")
+        self.temp_cal_save = GlassPushButton("Save", variant="ghost")
         self.temp_cal_save.clicked.connect(self.on_temp_cal_save)
-        self.temp_cal_reset = BorderlessActionButton("Reset")
+        self.temp_cal_reset = GlassPushButton("Reset", variant="ghost")
         self.temp_cal_reset.clicked.connect(self.on_temp_cal_reset)
 
         # Lid Pogo Distance
@@ -1508,11 +1507,11 @@ class UIControls:
         )
         self.lid_pogo_delay_dot = _make_dot(self.lid_pogo_delay_action, self.lid_pogo_delay_field)
 
-        self.lid_pogo_default = BorderlessActionButton("Default")
+        self.lid_pogo_default = GlassPushButton("Default", variant="ghost")
         self.lid_pogo_default.clicked.connect(self.on_lid_pogo_default)
-        self.lid_pogo_save = BorderlessActionButton("Save", tone="primary")
+        self.lid_pogo_save = GlassPushButton("Save", variant="ghost")
         self.lid_pogo_save.clicked.connect(self.on_lid_pogo_save)
-        self.lid_pogo_reset = BorderlessActionButton("Reset")
+        self.lid_pogo_reset = GlassPushButton("Reset", variant="ghost")
         self.lid_pogo_reset.clicked.connect(self.on_lid_pogo_reset)
 
         # Sectioned layout
@@ -1609,11 +1608,11 @@ class UIControls:
         dev_top_row.addLayout(temp_section, 1)
 
         # Global action buttons (Default All / Reset All / Save All)
-        self.device_default_all = BorderlessActionButton("Default All")
+        self.device_default_all = GlassPushButton("Default All", variant="ghost")
         self.device_default_all.clicked.connect(self.on_device_default_all)
-        self.device_reset_all = BorderlessActionButton("Reset All")
+        self.device_reset_all = GlassPushButton("Reset All", variant="ghost")
         self.device_reset_all.clicked.connect(self.on_device_reset_all)
-        self.device_save_all = BorderlessActionButton("Save All", tone="primary")
+        self.device_save_all = GlassPushButton("Save All", variant="ghost")
         self.device_save_all.clicked.connect(self.on_device_save_all)
 
         all_btn_row = QtWidgets.QHBoxLayout()
@@ -3627,7 +3626,7 @@ class UIControls:
     def _sign_out_current_user(self) -> None:
         """Sign out the current user and reset UI state to anonymous mode."""
         try:
-            main_win = getattr(self.parent.parent, "MainWin", None)
+            main_win = getattr(self.parent.parent, "mode_window", None)
             if main_win is None:
                 return
 
@@ -3651,7 +3650,7 @@ class UIControls:
             self.parent.manage.setText("&Manage Users...")
             self.parent.ui.tool_User.setText("Anonymous")
 
-            analyze_proc = getattr(self.parent.parent, "AnalyzeProc", None)
+            analyze_proc = getattr(self.parent.parent, "analyze_process", None)
             if analyze_proc:
                 analyze_proc.tool_User.setText("Anonymous")
 
@@ -3675,7 +3674,7 @@ class UIControls:
 
             # Resolve main application window safely
             main_app = getattr(self.parent, "parent", None)
-            main_win = getattr(main_app, "MainWin", None)
+            main_win = getattr(main_app, "mode_window", None)
 
             if main_win is not None:
                 parent_win = main_win.centralWidget() or main_win

@@ -79,6 +79,12 @@ class QATCH:
         QtCore.QCoreApplication.setApplicationName("nanovisQ")
         self._app = QApplication(argv)
 
+        # Register bundled fonts (IBM Plex Sans/Mono, used by the flat
+        # control components) before any window is constructed.
+        from QATCH.ui.styles.fonts import register_app_fonts
+
+        register_app_fonts()
+
         # Apply the persisted light/dark theme app-wide before any window
         # (including the pre-login sign-in screen) is constructed.
         from QATCH.ui.styles.theme_manager import ThemeManager

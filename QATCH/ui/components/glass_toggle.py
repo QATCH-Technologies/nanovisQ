@@ -1,13 +1,13 @@
 """
 glass_toggle.py
 
-Animated toggle switch that matches the glass-morphism aesthetic of
-GlassLineEdit and GlassPushButton.
+Animated toggle switch matching the app's flat control system (see
+QATCH.ui.components.flat_paint).
 
-Track colour interpolates from a soft grey (off) to the primary blue
-accent (on) - the same blue used by GlassPushButton's "primary" variant
-(rgba 45, 165, 250).  A white thumb slides left / right with an
-OutCubic easing over 150 ms.
+Track color interpolates from a neutral grey (off) to the accent color
+(on) - both driven by the "flat_*" tokens in QATCH.ui.styles.tokens so the
+toggle stays in sync with light/dark theme changes. A knob slides left /
+right with an OutCubic easing over 150 ms.
 
 Usage
 -----
@@ -25,6 +25,9 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.styles.theme_manager import ThemeManager
+
 
 class GlassToggle(QtWidgets.QAbstractButton):
     """Pill-shaped animated toggle switch.
@@ -37,18 +40,9 @@ class GlassToggle(QtWidgets.QAbstractButton):
     """
 
     # ── Geometry ──────────────────────────────────────────────────────
-    _TRACK_W: int = 40
-    _TRACK_H: int = 22
-    _THUMB_D: int = 16  # diameter; margin = (_TRACK_H - _THUMB_D) / 2 = 3 px
-
-    # ── Colours (plain tuples - QColor constructed at paint time) ─────
-    # Track: off = muted glass grey, on = primary-button blue
-    _TRACK_OFF = (180, 185, 195, 140)
-    _TRACK_ON = (45, 165, 250, 200)
-
-    # Track border: off and on states
-    _BORDER_OFF = (160, 165, 175, 80)
-    _BORDER_ON = (30, 140, 220, 120)
+    _TRACK_W: int = 42
+    _TRACK_H: int = 23
+    _THUMB_D: int = 18  # diameter; margin = (_TRACK_H - _THUMB_D) / 2 = 2.5 px
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
@@ -66,6 +60,11 @@ class GlassToggle(QtWidgets.QAbstractButton):
         # toggled fires after the internal checked state flips, so
         # _anim_t correctly approaches the new target.
         self.toggled.connect(self._start_anim)
+
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        self.update()
 
     # ------------------------------------------------------------------
     # Animation
@@ -102,32 +101,31 @@ class GlassToggle(QtWidgets.QAbstractButton):
         w, h = self.width(), self.height()
         r = h / 2.0  # track corner radius - full pill
 
+        tok = ThemeManager.instance().tokens()
+
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
+        if not self.isEnabled():
+            p.setOpacity(0.45)
 
-        # ── Track fill (interpolated colour) ─────────────────────────
-        lo, hi = self._TRACK_OFF, self._TRACK_ON
+        # ── Track fill (interpolated colour, no border per spec) ──────
+        lo, hi = tok["flat_track"], tok["flat_accent"]
         track_color = QtGui.QColor(
             self._lerp(lo[0], hi[0], t),
             self._lerp(lo[1], hi[1], t),
             self._lerp(lo[2], hi[2], t),
             self._lerp(lo[3], hi[3], t),
         )
-        p.setPen(QtCore.Qt.NoPen)
-        p.setBrush(QtGui.QBrush(track_color))
-        p.drawRoundedRect(QtCore.QRectF(0.0, 0.0, w, h), r, r)
-
-        # ── Track border ─────────────────────────────────────────────
-        lo_b, hi_b = self._BORDER_OFF, self._BORDER_ON
-        border_color = QtGui.QColor(
-            self._lerp(lo_b[0], hi_b[0], t),
-            self._lerp(lo_b[1], hi_b[1], t),
-            self._lerp(lo_b[2], hi_b[2], t),
-            self._lerp(lo_b[3], hi_b[3], t),
+        ring = QtGui.QColor(*tok["flat_accent_ring"]) if self.hasFocus() else None
+        paint_flat_surface(
+            self,
+            radius=r,
+            fill=track_color,
+            border=track_color,
+            border_width=0.0,
+            ring=ring,
+            painter=p,
         )
-        p.setPen(QtGui.QPen(border_color, 1.0))
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.drawRoundedRect(QtCore.QRectF(0.5, 0.5, w - 1.0, h - 1.0), r, r)
 
         # ── Thumb ────────────────────────────────────────────────────
         margin = (h - self._THUMB_D) / 2.0
@@ -136,13 +134,18 @@ class GlassToggle(QtWidgets.QAbstractButton):
         thumb_x = x_left + (x_right - x_left) * t
         thumb = QtCore.QRectF(thumb_x, margin, self._THUMB_D, self._THUMB_D)
 
-        # Soft drop shadow (offset 1 px down, low alpha)
+        # Soft drop shadow (offset 1 px down, flat_shadow token)
         p.setPen(QtCore.Qt.NoPen)
-        p.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 35)))
+        p.setBrush(QtGui.QBrush(QtGui.QColor(*tok["flat_shadow"])))
         p.drawEllipse(thumb.adjusted(0.0, 1.0, 0.0, 1.0))
 
-        # Thumb face
-        p.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 245)))
+        # Thumb face: knob token when off, literal white when on (spec's
+        # "on" knob is always white in both themes; the "off" knob follows
+        # the flat_knob token, which differs subtly between themes).
+        knob_color = (
+            QtGui.QColor(255, 255, 255) if self.isChecked() else QtGui.QColor(*tok["flat_knob"])
+        )
+        p.setBrush(QtGui.QBrush(knob_color))
         p.drawEllipse(thumb)
 
         p.end()

@@ -4,21 +4,32 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.styles.fonts import FONT_SANS, FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
-# TODO: This is stilll not quite working the way I want it to...
-# TODO: Needs a drop menu border that is theme aware.
-# TODO: Drop menu needs to be same relative shape and size as the pill box.
-# TODO: Close animation needs to happen ALWAYS, on toggle click and clicking off an open drop menu.
+_RADIUS = 7.0
 
 
-class _FixedHeightDelegate(QtWidgets.QStyledItemDelegate):
-    """Forces every row to a fixed pixel height so the popup's computed height
-    matches the rows exactly (no overshoot / trailing empty space)."""
+class _FlatItemDelegate(QtWidgets.QStyledItemDelegate):
+    """Fixed-height row delegate that paints the flat design's per-item
+    states directly: hover wash, selected wash + accent text + checkmark.
 
-    def __init__(self, row_height: int, parent: Optional[QtCore.QObject] = None) -> None:
+    A full `paint()` override (not QSS) is used because Qt Style Sheets
+    can't conditionally draw an extra glyph (the selected-row checkmark),
+    and this repo's flat control system already migrates chrome that QSS
+    can't express (focus rings, etc.) to paintEvent-style drawing elsewhere
+    - this keeps the same approach for the popup rows.
+    """
+
+    _ROW_RADIUS = 6.0
+
+    def __init__(
+        self, row_height: int, combo: "AnimatedComboBox", parent: Optional[QtCore.QObject] = None
+    ) -> None:
         super().__init__(parent)
         self._row_height = row_height
+        self._combo = combo
 
     def sizeHint(
         self, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex
@@ -26,6 +37,61 @@ class _FixedHeightDelegate(QtWidgets.QStyledItemDelegate):
         size = super().sizeHint(option, index)
         size.setHeight(self._row_height)
         return size
+
+    def paint(
+        self,
+        painter: QtGui.QPainter,
+        option: QtWidgets.QStyleOptionViewItem,
+        index: QtCore.QModelIndex,
+    ) -> None:
+        tok = ThemeManager.instance().tokens()
+        rect = QtCore.QRectF(option.rect)
+        is_selected = index.row() == self._combo.currentIndex()
+        is_hover = bool(option.state & QtWidgets.QStyle.State_MouseOver)
+
+        painter.save()
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setPen(QtCore.Qt.NoPen)
+
+        row_rect = rect.adjusted(0.0, 1.0, 0.0, -1.0)
+        if is_selected:
+            painter.setBrush(QtGui.QColor(*tok["flat_accent_weak"]))
+            painter.drawRoundedRect(row_rect, self._ROW_RADIUS, self._ROW_RADIUS)
+            text_color = QtGui.QColor(*tok["flat_accent"])
+            font = QtGui.QFont(FONT_SANS_SEMIBOLD)
+        elif is_hover:
+            painter.setBrush(QtGui.QColor(*tok["flat_surface2"]))
+            painter.drawRoundedRect(row_rect, self._ROW_RADIUS, self._ROW_RADIUS)
+            text_color = QtGui.QColor(*tok["flat_text"])
+            font = QtGui.QFont(FONT_SANS)
+        else:
+            text_color = QtGui.QColor(*tok["flat_text"])
+            font = QtGui.QFont(FONT_SANS)
+        font.setPixelSize(13)
+        painter.setFont(font)
+
+        text_right_pad = 26 if is_selected else 10
+        text_rect = rect.adjusted(10.0, 0.0, -text_right_pad, 0.0)
+        painter.setPen(text_color)
+        painter.drawText(
+            text_rect, QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft,
+            index.data(),
+        )
+
+        if is_selected:
+            check_pen = QtGui.QPen(text_color, 1.8)
+            check_pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+            check_pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(check_pen)
+            cx = rect.right() - 18.0
+            cy = rect.center().y()
+            path = QtGui.QPainterPath()
+            path.moveTo(cx - 4.0, cy)
+            path.lineTo(cx - 1.0, cy + 3.0)
+            path.lineTo(cx + 5.0, cy - 4.0)
+            painter.drawPath(path)
+
+        painter.restore()
 
 
 class _RoundedPopup(QtWidgets.QFrame):
@@ -57,7 +123,7 @@ class _RoundedPopup(QtWidgets.QFrame):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(3, 4, 3, 4)
+        lay.setContentsMargins(5, 5, 5, 5)
         lay.setSpacing(0)
 
         self._view = QtWidgets.QListView(self)
@@ -82,7 +148,7 @@ class _RoundedPopup(QtWidgets.QFrame):
 
         The view is given a fixed height equal to its content so the surrounding
         layout cannot hand it a slack row; the window height is that plus the
-        view's frame/viewport margins and the 1px layout margins. Returns the
+        view's frame/viewport margins and the layout margins. Returns the
         total window height so the owner can place + animate it.
         """
         view = self._view
@@ -102,52 +168,17 @@ class _RoundedPopup(QtWidgets.QFrame):
     def view(self) -> QtWidgets.QListView:
         return self._view
 
-    @staticmethod
-    def _contrast_border(bg: QtGui.QColor) -> QtGui.QColor:
-        """A border color that stands out against `bg`.
-
-        Uses perceived luminance: a dark background gets a lighter edge, a light
-        background gets a darker one. The shift is a fixed step in HSL lightness
-        so it's always a clear, theme-consistent outline.
-        """
-        # Rec. 601 luma as a cheap perceived-brightness measure (0..255).
-        luma = 0.299 * bg.red() + 0.587 * bg.green() + 0.114 * bg.blue()
-        h, s, l, a = bg.getHslF()
-        if luma < 128:
-            l = min(1.0, l + 0.28)  # dark bg -> lighten the edge
-        else:
-            l = max(0.0, l - 0.28)  # light bg -> darken the edge
-        edge = QtGui.QColor()
-        edge.setHslF(h, s, l, 1.0)
-        return edge
-
     def apply_theme(self, font: QtGui.QFont, row_h: int) -> None:
         tok = ThemeManager.instance().tokens()
-        bg = tok_css(tok["combo_popup_bg"])
-        text = tok_css(tok["combo_text"])
-        # Selected/hover colors: fall back gracefully if the tokens are absent.
-        try:
-            sel_bg = tok_css(tok["combo_popup_sel_bg"])
-        except (KeyError, TypeError):
-            sel_bg = tok_css(tok["combo_popup_border"])
-        try:
-            sel_text = tok_css(tok["combo_popup_sel_text"])
-        except (KeyError, TypeError):
-            sel_text = text
+        bg = tok_css(tok["flat_surface"])
+        border = tok_css(tok["flat_border"])
         r = self._radius
         inner = max(r - 2, 0)
         self._view.setFont(font)
-        # Make the edge contrast with the popup's OWN background (not the text or
-        # whatever content sits underneath), so the outline is always visible
-        # against the popup regardless of what it overlaps. Dark popup -> lighter
-        # edge; light popup -> darker edge. Theme-aware because it's derived from
-        # the live background token.
-        bg_col = ThemeManager.instance().color("combo_popup_bg")
-        border = self._contrast_border(bg_col).name()
         self.setStyleSheet(f"""
             QFrame#roundedComboPopup {{
                 background-color: {bg};
-                border: 2px solid {border};
+                border: 1px solid {border};
                 border-radius: {r}px;
             }}
             QListView#roundedComboView {{
@@ -156,20 +187,6 @@ class _RoundedPopup(QtWidgets.QFrame):
                 outline: none;
                 border-radius: {inner}px;
                 padding: 0px;
-            }}
-            QListView#roundedComboView::item {{
-                color: {text};
-                padding: 0px 10px;
-                margin: 0px;
-                border-radius: 5px;
-            }}
-            QListView#roundedComboView::item:selected {{
-                background-color: {sel_bg};
-                color: {sel_text};
-            }}
-            QListView#roundedComboView::item:hover {{
-                background-color: {sel_bg};
-                color: {sel_text};
             }}
         """)
 
@@ -234,8 +251,9 @@ class _RoundedPopup(QtWidgets.QFrame):
 
 class AnimatedComboBox(QtWidgets.QComboBox):
     """A QComboBox that slides its rounded drop-down open/closed and spins its
-    chevron. The list is hosted in a `_RoundedPopup` we own; the slide is a
-    mask reveal (0..1) so it actually repaints on a `Qt::Popup` window.
+    chevron, styled to match the app's flat control system. The list is
+    hosted in a `_RoundedPopup` we own; the slide is a mask reveal (0..1) so
+    it actually repaints on a `Qt::Popup` window.
     """
 
     _POPUP_RADIUS = 8
@@ -245,11 +263,13 @@ class AnimatedComboBox(QtWidgets.QComboBox):
         super().__init__(parent)
         self.setObjectName("AnimatedComboBox")
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.setAttribute(QtCore.Qt.WA_Hover, True)
+        self._hovered = False
 
         # --- Custom popup (owned by us) ---
         self._popup = _RoundedPopup(self._POPUP_RADIUS, self)
         self._popup.view().setModel(self.model())
-        self._row_delegate = _FixedHeightDelegate(self._ROW_HEIGHT, self._popup.view())
+        self._row_delegate = _FlatItemDelegate(self._ROW_HEIGHT, self, self._popup.view())
         self._popup.view().setItemDelegate(self._row_delegate)
         self._popup.view().clicked.connect(self._on_item_clicked)
         self._popup.closed.connect(self._on_popup_closed)
@@ -266,8 +286,8 @@ class AnimatedComboBox(QtWidgets.QComboBox):
         self.arrow_lbl.setStyleSheet("background: transparent; border: none;")
 
         self._icon_source = QtGui.QPixmap(icon_path).scaled(
-            11,
-            11,
+            15,
+            15,
             QtCore.Qt.AspectRatioMode.KeepAspectRatio,
             QtCore.Qt.TransformationMode.SmoothTransformation,
         )
@@ -288,6 +308,7 @@ class AnimatedComboBox(QtWidgets.QComboBox):
         self._slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         self._slide.finished.connect(self._on_slide_finished)
 
+        self._apply_text_qss()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     # ---- public API ---------------------------------------------------------
@@ -295,6 +316,26 @@ class AnimatedComboBox(QtWidgets.QComboBox):
     def set_arrow_color(self, color: Optional[QtGui.QColor]) -> None:
         self._arrow_override = QtGui.QColor(color) if color is not None else None
         self._retint_arrow()
+
+    # ---- text / font ----------------------------------------------------------
+
+    def _apply_text_qss(self) -> None:
+        tok = ThemeManager.instance().tokens()
+        text_color = tok["flat_text_muted"] if not self.isEnabled() else tok["flat_text"]
+        r, g, b, a = text_color
+        self.setStyleSheet(f"""
+            QComboBox#AnimatedComboBox {{
+                color: rgba({r}, {g}, {b}, {a});
+                font-family: '{FONT_SANS}';
+                font-size: 13px;
+                padding-left: 12px;
+            }}
+        """)
+
+    def setEnabled(self, enabled: bool) -> None:  # noqa: N802
+        super().setEnabled(enabled)
+        self._apply_text_qss()
+        self.update()
 
     # ---- arrow tinting ------------------------------------------------------
 
@@ -312,15 +353,19 @@ class AnimatedComboBox(QtWidgets.QComboBox):
     def _current_arrow_color(self) -> QtGui.QColor:
         if self._arrow_override is not None:
             return self._arrow_override
-        return ThemeManager.instance().color("combo_text")
+        tok = ThemeManager.instance().tokens()
+        key = "flat_accent" if self._popup_open else "flat_text_muted"
+        return QtGui.QColor(*tok[key])
 
     def _retint_arrow(self) -> None:
         self._base_pixmap = self._tinted_pixmap(self._icon_source, self._current_arrow_color())
         self._on_spin_frame(self._current_angle)
 
     def _on_theme_changed(self, _mode: Optional[str] = None) -> None:
+        self._apply_text_qss()
         self._retint_arrow()
         self._popup.apply_theme(self.font(), self._ROW_HEIGHT)
+        self.update()
 
     # ---- geometry helpers ---------------------------------------------------
 
@@ -345,6 +390,7 @@ class AnimatedComboBox(QtWidgets.QComboBox):
 
         self._popup_open = True
         self._closing = False
+        self._retint_arrow()
         self._popup.apply_theme(self.font(), self._ROW_HEIGHT)
 
         # Deterministic: size to N rows of the delegate's known height, pinning
@@ -362,6 +408,7 @@ class AnimatedComboBox(QtWidgets.QComboBox):
         self._slide.setEndValue(1.0)
         self._slide.start()
         self._spin_to(180.0)
+        self.update()
 
     def hidePopup(self) -> None:  # noqa: N802 (Qt override)
         if not self._popup_open or self._closing:
@@ -381,6 +428,8 @@ class AnimatedComboBox(QtWidgets.QComboBox):
             self._just_closed_ms = QtCore.QDateTime.currentMSecsSinceEpoch()
             self._popup.close_animated()  # the only path allowed to truly hide
             self._popup.set_reveal(1.0)  # reset for next open
+            self._retint_arrow()
+            self.update()
 
     def _on_dismiss_requested(self) -> None:
         # Popup tried to auto-hide (outside click / item click). Run the
@@ -395,6 +444,8 @@ class AnimatedComboBox(QtWidgets.QComboBox):
             self._just_closed_ms = QtCore.QDateTime.currentMSecsSinceEpoch()
             self._spin_to(0.0)
             self._popup.set_reveal(1.0)
+            self._retint_arrow()
+            self.update()
 
     def _on_item_clicked(self, index: QtCore.QModelIndex) -> None:
         self.setCurrentIndex(index.row())
@@ -420,3 +471,60 @@ class AnimatedComboBox(QtWidgets.QComboBox):
             transform, QtCore.Qt.TransformationMode.SmoothTransformation
         )
         self.arrow_lbl.setPixmap(rotated)
+
+    # ---- event overrides ------------------------------------------------------
+
+    def enterEvent(self, event) -> None:
+        super().enterEvent(event)
+        self._hovered = True
+        self.update()
+
+    def leaveEvent(self, event) -> None:
+        super().leaveEvent(event)
+        self._hovered = False
+        self.update()
+
+    # ---- painting ------------------------------------------------------------
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        """Paints the flat fill/border/focus-ring, then delegates the
+        current-item label to Qt's native CE_ComboBoxLabel pipeline.
+
+        Deliberately does NOT call `super().paintEvent(event)`: QComboBox's
+        base implementation draws the full CC_ComboBox complex control
+        (panel + arrow + label), and even with QSS "background: transparent"
+        that panel-drawing step erases whatever was painted immediately
+        before it (a QStyleSheetStyle quirk - the "transparent" background is
+        applied with a replacing, not blending, composition step). Drawing
+        only CE_ComboBoxLabel directly - the same technique GlassPushButton
+        uses for CE_PushButtonLabel - sidesteps the panel/arrow drawing
+        (and its erase) entirely.
+        """
+        tok = ThemeManager.instance().tokens()
+
+        if not self.isEnabled():
+            fill = QtGui.QColor(*tok["flat_surface2"])
+            border = QtGui.QColor(*tok["flat_border"])
+            ring = None
+        elif self._popup_open or self.hasFocus():
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_accent"])
+            ring = QtGui.QColor(*tok["flat_accent_ring"])
+        elif self._hovered:
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_border_strong"])
+            ring = None
+        else:
+            fill = QtGui.QColor(*tok["flat_surface"])
+            border = QtGui.QColor(*tok["flat_border"])
+            ring = None
+
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        paint_flat_surface(self, radius=_RADIUS, fill=fill, border=border, ring=ring, painter=p)
+        p.end()
+
+        opt = QtWidgets.QStyleOptionComboBox()
+        self.initStyleOption(opt)
+        sp = QtWidgets.QStylePainter(self)
+        sp.drawControl(QtWidgets.QStyle.CE_ComboBoxLabel, opt)

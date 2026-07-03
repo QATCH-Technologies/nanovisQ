@@ -323,6 +323,33 @@ class ColorTokens(TypedDict):
     account_role_default_bg: RGBA
     account_role_default_text: RGBA
 
+    # ---- Flat control system (Pushbutton, Line Edit, Combo Box, Spin Box,
+    # Toggle, Option Card) - literal values from the app's flat design spec.
+    # Unlike the rest of this file, these are NOT derived through the
+    # fg()/surf()/line() ramps: they are fixed external spec colors (already
+    # converted from the spec's OKLCH values to sRGB) that don't mirror
+    # between light/dark, so deriving them would drift from the spec. See
+    # _FLAT_LIGHT / _FLAT_DARK below.
+    flat_text: RGBA
+    flat_text_muted: RGBA
+    flat_surface: RGBA
+    flat_surface2: RGBA
+    flat_border: RGBA
+    flat_border_strong: RGBA
+    flat_accent: RGBA
+    flat_accent_hover: RGBA
+    flat_accent_active: RGBA
+    flat_accent_weak: RGBA
+    flat_accent_ring: RGBA
+    flat_on_accent: RGBA
+    flat_error: RGBA
+    flat_error_weak: RGBA
+    flat_error_ring: RGBA
+    flat_track: RGBA
+    flat_knob: RGBA
+    flat_shadow: RGBA
+    flat_menu_shadow: RGBA
+
 
 def _build(mode: str) -> ColorTokens:
     """Derives a full ColorTokens palette for `mode` ('light' | 'dark').
@@ -657,5 +684,58 @@ def _build(mode: str) -> ColorTokens:
 
 LIGHT: ColorTokens = _build("light")
 DARK: ColorTokens = _build("dark")
+
+# =====================================================================
+# Flat control system overlay
+# =====================================================================
+# Literal RGBA values from the flat design spec (already converted from the
+# spec's OKLCH custom properties to sRGB). Applied as an overlay on top of
+# the derived palettes above rather than folded into _build(), since these
+# are fixed target colors for a specific control family, not anchors meant
+# to participate in the app-wide ramp system.
+_FLAT_LIGHT: dict = {
+    "flat_text": (45, 52, 56, 255),
+    "flat_text_muted": (109, 114, 119, 255),
+    "flat_surface": (253, 253, 254, 255),
+    "flat_surface2": (238, 240, 242, 255),
+    "flat_border": (206, 209, 212, 255),
+    "flat_border_strong": (165, 172, 177, 255),
+    "flat_accent": (0, 138, 195, 255),
+    "flat_accent_hover": (0, 120, 175, 255),
+    "flat_accent_active": (0, 102, 156, 255),
+    "flat_accent_weak": (217, 243, 255, 255),
+    "flat_accent_ring": (0, 138, 195, 71),
+    "flat_on_accent": (255, 255, 255, 255),
+    "flat_error": (201, 47, 51, 255),
+    "flat_error_weak": (255, 235, 232, 255),
+    "flat_error_ring": (201, 47, 51, 61),
+    "flat_track": (196, 200, 203, 255),
+    "flat_knob": (255, 255, 255, 255),
+    "flat_shadow": (20, 30, 45, 26),
+    "flat_menu_shadow": (20, 30, 45, 41),
+}
+_FLAT_DARK: dict = {
+    "flat_text": (212, 216, 219, 255),
+    "flat_text_muted": (129, 135, 140, 255),
+    "flat_surface": (42, 46, 49, 255),
+    "flat_surface2": (31, 35, 38, 255),
+    "flat_border": (67, 73, 77, 255),
+    "flat_border_strong": (99, 106, 111, 255),
+    "flat_accent": (30, 151, 208, 255),
+    "flat_accent_hover": (74, 172, 226, 255),
+    "flat_accent_active": (0, 132, 188, 255),
+    "flat_accent_weak": (36, 68, 87, 255),
+    "flat_accent_ring": (30, 151, 208, 115),
+    "flat_on_accent": (249, 252, 255, 255),
+    "flat_error": (236, 91, 87, 255),
+    "flat_error_weak": (87, 40, 37, 255),
+    "flat_error_ring": (236, 91, 87, 89),
+    "flat_track": (72, 78, 82, 255),
+    "flat_knob": (239, 242, 244, 255),
+    "flat_shadow": (0, 0, 0, 89),
+    "flat_menu_shadow": (0, 0, 0, 140),
+}
+LIGHT.update(_FLAT_LIGHT)  # type: ignore[typeddict-item]
+DARK.update(_FLAT_DARK)  # type: ignore[typeddict-item]
 
 PALETTES: dict[str, ColorTokens] = {"light": LIGHT, "dark": DARK}
