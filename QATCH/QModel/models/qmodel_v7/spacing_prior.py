@@ -80,8 +80,16 @@ class SpacingPrior:
         configs_sec: (N, P) array of POI times in seconds, strictly ascending
         rows (complete fills only). P must equal len(POI_ORDER).
         """
-        N, P = configs_sec.shape
-        assert P == len(POI_ORDER), f"expected {len(POI_ORDER)} POIs, got {P}"
+        configs_sec = np.asarray(configs_sec, dtype=float)
+        if configs_sec.ndim != 2 or configs_sec.shape[1] != len(POI_ORDER):
+            raise ValueError(
+                f"expected (N, {len(POI_ORDER)}) POI configurations, got {configs_sec.shape}"
+            )
+        if not np.all(np.isfinite(configs_sec)):
+            raise ValueError("configs_sec must contain only finite values")
+        if not np.all(np.diff(configs_sec, axis=1) > 0):
+            raise ValueError("configs_sec rows must be strictly ascending")
+        _, P = configs_sec.shape
         span = configs_sec[:, -1] - configs_sec[:, 0]
         span = np.where(span < 1e-9, np.nan, span)
         pairs = [f"{POI_ORDER[i]}->{POI_ORDER[i+1]}" for i in range(P - 1)]
@@ -93,6 +101,8 @@ class SpacingPrior:
             g_sec = g_sec[np.isfinite(g_sec) & (g_sec > 0)]
             g_frac = (configs_sec[:, i + 1] - configs_sec[:, i]) / span
             g_frac = g_frac[np.isfinite(g_frac) & (g_frac > 0)]
+            if g_sec.size == 0 or g_frac.size == 0:
+                raise ValueError(f"no valid positive gaps found for {pairs[i]}")
             ls = np.log(g_sec)
             lf = np.log(g_frac)
             prior.gap[pairs[i]] = GapStat(
