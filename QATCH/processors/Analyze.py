@@ -32,8 +32,9 @@ from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,
     DropEffectCorrection,
 )
-from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
-from QATCH.QModel.src.models.v6_yolo.v6_yolo import QModelV6YOLO
+from QATCH.QModel.models.static_v4_fusion.v4_fusion import QModelV4Fusion
+from QATCH.QModel.models.v6_yolo.v6_yolo import QModelV6YOLO
+from QATCH.QModel.models.qmodel_v7.v7_yolo import QModelV7 as QModelV7YOLO
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 
@@ -55,21 +56,25 @@ USE_NEW_FILL_METHOD = True
 # while sharing a single executor prevents spawning runaway threads on rapid UI clicks.
 _LOAD_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="visq-load")
 
+
 def _shutdown_executor() -> None:
     """
     Ensures the background executor tears down cleanly when the application exits.
-    
-    - wait=False: Prevents the main application thread from hanging indefinitely 
+
+    - wait=False: Prevents the main application thread from hanging indefinitely
                   if a background task is currently stuck or executing.
-    - cancel_futures=True: Ensures any pending tasks in the queue that haven't 
+    - cancel_futures=True: Ensures any pending tasks in the queue that haven't
                            started yet are immediately discarded (Requires Python 3.9+).
     """
     _LOAD_EXECUTOR.shutdown(wait=False, cancel_futures=True)
 
+
 # Register the cleanup handler to fire automatically upon Python interpreter exit
 atexit.register(_shutdown_executor)
- 
+
 _DEV_MODE_TTL_SECONDS = 30.0
+
+
 ###############################################################################
 # Elaborate on the raw data gathered from the SerialProcess in parallel timing
 ###############################################################################
@@ -79,6 +84,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
     progressUpdate = QtCore.pyqtSignal()
     v4_predict_progress = QtCore.pyqtSignal(int, str)
     v6_predict_progress = QtCore.pyqtSignal(int, str)
+    v7_predict_progress = QtCore.pyqtSignal(int, str)
 
     @staticmethod
     def Lookup_ST(surfactant, concentration):
@@ -400,9 +406,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.QModel_v4_modules_loaded = False
         self.QModel_v4_predictor = None
 
-        # QModel v6 (YOLO26) Constants
+        # QModel Volta Constants
         self.QModel_v6_modules_loaded = False
         self.QModel_v6_predictor = None
+
+        # QModel Onyx Constants
+        self.QModel_v7_modules_loaded = False
+        self.QModel_v7_predictor = None
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
@@ -569,8 +579,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tBtn_Load.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
 
         # Apply style sheet to preserve arrow, but remove its hover effect
-        self.tBtn_Load.setStyleSheet(
-            """
+        self.tBtn_Load.setStyleSheet("""
             /* Keep the arrow visible but remove any hover effect */
             QToolButton::menu-indicator {
                 background: transparent;
@@ -582,8 +591,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 background: transparent;
                 border: none;
             }
-            """
-        )
+            """)
 
         self.tool_Load.addWidget(self.tBtn_Load)
 
@@ -914,7 +922,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel6_predict:
+        if Constants.QModel7_predict:
+            self.cBox_Models.setCurrentIndex(3)
+        elif Constants.QModel6_predict:
             self.cBox_Models.setCurrentIndex(2)
         elif Constants.QModel4_predict:
             self.cBox_Models.setCurrentIndex(1)
@@ -972,11 +982,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         results_figure = pg.PlotWidget()
         results_figure.setBackground("w")
         plot_text = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        plot_text.setHtml(
-            "<span style='font-size: 10pt'><b>No Results To View</b><br/> \
+        plot_text.setHtml("<span style='font-size: 10pt'><b>No Results To View</b><br/> \
                             Load a run, follow the prompts to select points,<br/> \
-                            and press \"Analyze\" action to view results.</span>"
-        )
+                            and press \"Analyze\" action to view results.</span>")
         it = plot_text.textItem
         option = it.document().defaultTextOption()
         option.setAlignment(QtCore.Qt.AlignCenter)
@@ -1222,17 +1230,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
         self.v4_predict_progress.connect(self._QModel_v4_progress_update)
         self.v6_predict_progress.connect(self._QModel_v6_progress_update)
+        self.v7_predict_progress.connect(self._QModel_v7_progress_update)
 
     def _show_analyze_plot_overlay(self) -> None:
         """Creates and displays a progress overlay on the analysis plot.
 
-        This method initializes a placeholder ``pg.PlotWidget``, embeds a 
-        semi-transparent status overlay (containing a label and a progress bar), 
-        and inserts it into the results splitter. The overlay is wrapped in a 
+        This method initializes a placeholder ``pg.PlotWidget``, embeds a
+        semi-transparent status overlay (containing a label and a progress bar),
+        and inserts it into the results splitter. The overlay is wrapped in a
         ``QGraphicsProxyWidget`` to float above the ``PlotItem``.
 
-        The overlay is automatically centered within the ViewBox using a 
-        single-shot timer to ensure layout calculations are complete before 
+        The overlay is automatically centered within the ViewBox using a
+        single-shot timer to ensure layout calculations are complete before
         positioning.
         """
         self._hide_analyze_plot_overlay()
@@ -1243,7 +1252,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         plot_text.setHtml("<span style='font-size: 10pt'>Analyze in-progress...</span>")
         plot_text.setPos(0.5, 0.5)
 
-        plot_text.setFlag(plot_text.GraphicsItemFlag.ItemHasNoContents, False) 
+        plot_text.setFlag(plot_text.GraphicsItemFlag.ItemHasNoContents, False)
         results_figure.addItem(plot_text)
         self.results_split.replaceWidget(1, results_figure)
         self.results_split.setEnabled(False)
@@ -1323,21 +1332,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _update_analyze_plot_overlay(self, value: int, status: str) -> None:
         """Updates the progress percentage and status message on the plot overlay.
 
-        This method updates the visual state of the ``QProgressBar`` and 
-        ``QLabel`` stored in the overlay tuple. It caps the progress bar value 
-        at 99 to prevent it from showing a "Complete" state before the 
-        finalization logic triggers. It also forces a UI event loop process 
+        This method updates the visual state of the ``QProgressBar`` and
+        ``QLabel`` stored in the overlay tuple. It caps the progress bar value
+        at 99 to prevent it from showing a "Complete" state before the
+        finalization logic triggers. It also forces a UI event loop process
         to ensure the display refreshes during long-running operations.
 
         Args:
             value: The current progress percentage, typically between 0 and 100.
                 The visual bar is capped at 99 internally.
-            status: A string description of the current analysis step (e.g., 
+            status: A string description of the current analysis step (e.g.,
                 "Calculating FFT...", "Filtering data...").
 
         Note:
-            This method calls ``QCoreApplication.processEvents()``, which 
-            temporarily allows the UI to stay responsive but should be used 
+            This method calls ``QCoreApplication.processEvents()``, which
+            temporarily allows the UI to stay responsive but should be used
             cautiously to avoid re-entrancy issues.
         """
         overlay = getattr(self, "_analyze_overlay", None)
@@ -1354,15 +1363,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """Removes the analysis progress overlay and handles task termination state.
 
         This method cleans up the graphics overlay by detaching the proxy widget
-        from the scene. If the underlying analysis task finished successfully, 
-        the progress bar is briefly set to 100%. If the task failed (based on 
+        from the scene. If the underlying analysis task finished successfully,
+        the progress bar is briefly set to 100%. If the task failed (based on
         the worker's exit code), a warning dialog is displayed to the user.
 
-        The method is designed to be idempotent and is safe to call even if the 
+        The method is designed to be idempotent and is safe to call even if the
         overlay has already been removed or was never initialized.
 
         Raises:
-            RuntimeError: Silently handles cases where the underlying Qt objects 
+            RuntimeError: Silently handles cases where the underlying Qt objects
                 have already been deleted by the C++ runtime.
         """
         overlay = getattr(self, "_analyze_overlay", None)
@@ -1392,18 +1401,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _show_qmodel_plot_overlay(self) -> None:
         """Embeds a dimming layer and progress overlay into the main graph widget.
 
-        This method initializes a visual overlay for QModel inference. Unlike the 
-        analysis plot, this does not replace the widget; instead, it layers a 
-        semi-transparent ``QGraphicsRectItem`` over the existing plot to "dim" it, 
-        then places a progress bar and label on top. 
+        This method initializes a visual overlay for QModel inference. Unlike the
+        analysis plot, this does not replace the widget; instead, it layers a
+        semi-transparent ``QGraphicsRectItem`` over the existing plot to "dim" it,
+        then places a progress bar and label on top.
 
-        The dimming rectangle and the progress widget are both parented to the 
-        ``PlotItem``'s graphics item and managed via a tracking tuple for 
+        The dimming rectangle and the progress widget are both parented to the
+        ``PlotItem``'s graphics item and managed via a tracking tuple for
         dynamic resizing and eventual removal.
 
         Note:
-            Uses a single-shot timer to execute centering logic (``_center``) 
-            to ensure that the ``ViewBox`` geometry is fully calculated before 
+            Uses a single-shot timer to execute centering logic (``_center``)
+            to ensure that the ``ViewBox`` geometry is fully calculated before
             the dimming rectangle is drawn.
         """
         self._hide_qmodel_plot_overlay()
@@ -1461,6 +1470,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         proxy.setWidget(container)
         proxy.setParentItem(plot_item.graphicsItem())
         proxy.setZValue(1000)
+
         def _center() -> None:
             try:
                 vb_rect = vb.mapRectToItem(plot_item.graphicsItem(), vb.boundingRect())
@@ -1481,26 +1491,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _update_qmodel_plot_overlay(self, pct: int, status: str, is_error: bool = False) -> None:
         """Updates the QModel overlay with smoothed progress and status text.
 
-        This method implements a animation pattern to decouple 
-        the UI refresh rate from the worker signal frequency. It uses a 
-        high-precision range (0-10,000) and a 60 FPS timer to animate the 
-        progress bar toward the target value using a liquid ease-out effect 
+        This method implements a animation pattern to decouple
+        the UI refresh rate from the worker signal frequency. It uses a
+        high-precision range (0-10,000) and a 60 FPS timer to animate the
+        progress bar toward the target value using a liquid ease-out effect
         (interpolating 10% of the remaining distance per frame).
 
-        The animation protects the UI from 'jitter' caused by rapid, successive 
+        The animation protects the UI from 'jitter' caused by rapid, successive
         progress updates from the inference worker.
 
         Args:
-            pct: The current progress percentage (0-100). The visual target 
+            pct: The current progress percentage (0-100). The visual target
                 is capped at 99 internally until the hide method is called.
-            status: A human-readable string describing the current inference 
+            status: A human-readable string describing the current inference
                 step.
             is_error: If True, forces the overlay to treat the state as a failure,
         """
         overlay = getattr(self, "_qmodel_overlay", None)
         if overlay is None:
             return
-            
+
         proxy, dim_rect, progress_bar, status_label = overlay
         error_detected = is_error or "error" in status.lower() or "failed" in status.lower()
         is_finished = pct >= 100 or error_detected
@@ -1508,16 +1518,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if pct > 0 and progress_bar.maximum() == 0:
             progress_bar.setRange(0, 10000)
         target_value = 10000 if is_finished else int(min(pct, 99) * 100)
-        
+
         if not hasattr(progress_bar, "_chase_timer"):
             progress_bar._target_value = 0
             progress_bar._current_float = float(progress_bar.value())
             progress_bar._chase_timer = QtCore.QTimer()
             progress_bar._chase_timer.setInterval(16)
-            
+
             def chase_target():
                 diff = progress_bar._target_value - progress_bar._current_float
-                
+
                 if abs(diff) < 5.0:
                     progress_bar._current_float = float(progress_bar._target_value)
                     progress_bar.setValue(int(progress_bar._current_float))
@@ -1525,7 +1535,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 else:
                     progress_bar._current_float += diff * 0.10
                     progress_bar.setValue(int(progress_bar._current_float))
-                    
+
             progress_bar._chase_timer.timeout.connect(chase_target)
 
         progress_bar._target_value = target_value
@@ -1534,7 +1544,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         if status and len(status):
             status_label.setText(status)
-            
+
         QtCore.QCoreApplication.processEvents()
         if is_finished:
             if getattr(self, "_qmodel_is_fading", False):
@@ -1559,20 +1569,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
             anim.valueChanged.connect(update_opacity)
             anim.finished.connect(lambda: self._hide_qmodel_plot_overlay(failed=error_detected))
             anim.finished.connect(lambda: setattr(self, "_qmodel_is_fading", False))
-            
-            self._qmodel_fade_anim = anim 
-            
+
+            self._qmodel_fade_anim = anim
+
             QtCore.QTimer.singleShot(800, anim.start)
+
     def _hide_qmodel_plot_overlay(self, failed: bool = False) -> None:
         """Removes the QModel dimming layer and progress overlay.
 
-        This method performs a comprehensive cleanup of the QModel UI state. It 
-        stops the internal animation timer (Target Chaser), optionally snaps 
-        the progress bar to 100% on success, and removes both the 
+        This method performs a comprehensive cleanup of the QModel UI state. It
+        stops the internal animation timer (Target Chaser), optionally snaps
+        the progress bar to 100% on success, and removes both the
         ``QGraphicsProxyWidget`` and the ``QGraphicsRectItem`` from the scene.
 
         Args:
-            failed: If True, skips the 100% progress snap and displays a 
+            failed: If True, skips the 100% progress snap and displays a
                 warning popup. Defaults to False.
         """
         overlay = getattr(self, "_qmodel_overlay", None)
@@ -1713,12 +1724,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def action_sort_by_name(self, obj: Any) -> None:
         """Sets the run sorting order to alphabetical by name and updates the UI.
 
-        Updates the internal sort order state to 0 (name), triggers a refresh 
-        of the run selection combobox, and applies bold CSS styling to the 
+        Updates the internal sort order state to 0 (name), triggers a refresh
+        of the run selection combobox, and applies bold CSS styling to the
         'sort by name' label while resetting the 'sort by date' label.
 
         Args:
-            obj (Any): The event object passed by the Qt signal (e.g., a 
+            obj (Any): The event object passed by the Qt signal (e.g., a
                 QMouseEvent), or None if called programmatically.
         """
         self.sort_order = 0
@@ -1733,12 +1744,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def action_sort_by_date(self, obj: Any) -> None:
         """Sets the run sorting order to chronological by date and updates the UI.
 
-        Updates the internal sort order state to 1 (date), triggers a refresh 
-        of the run selection combobox, and applies bold CSS styling to the 
+        Updates the internal sort order state to 1 (date), triggers a refresh
+        of the run selection combobox, and applies bold CSS styling to the
         'sort by date' label while resetting the 'sort by name' label.
 
         Args:
-            obj (Any): The event object passed by the Qt signal (e.g., a 
+            obj (Any): The event object passed by the Qt signal (e.g., a
                 QMouseEvent), or None if called programmatically.
         """
         self.sort_order = 1
@@ -1773,11 +1784,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         results_figure = pg.PlotWidget()
         results_figure.setBackground("w")
         plot_text = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        plot_text.setHtml(
-            "<span style='font-size: 10pt'><b>No Results To View</b><br/> \
+        plot_text.setHtml("<span style='font-size: 10pt'><b>No Results To View</b><br/> \
                             Load a run, follow the prompts to select points,<br/> \
-                            and press \"Analyze\" action to view results.</span>"
-        )
+                            and press \"Analyze\" action to view results.</span>")
         it = plot_text.textItem
         option = it.document().defaultTextOption()
         option.setAlignment(QtCore.Qt.AlignCenter)
@@ -2135,6 +2144,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Constants.ModelData_predict = True if index >= 0 else False
             Constants.QModel4_predict = True if index >= 1 else False
             Constants.QModel6_predict = True if index >= 2 else False
+            Constants.QModel7_predict = True if index >= 3 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -2288,7 +2298,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.initials = None
 
         self.clear()
-
 
     def clear(self):
         self.text_Created.clear()
@@ -2743,18 +2752,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _scan_run(data_device: str, data_folder: str, parse_xml: bool = True) -> Dict[str, Any]:
         """Scans a single run to fetch its file list and extract metadata.
 
-        Worker (thread-safe): for one run, fetches its file list and, if 
-        parse_xml is True, extracts the 'start' metric and 'run_name' 
-        parameter from its XML metadata. 
+        Worker (thread-safe): for one run, fetches its file list and, if
+        parse_xml is True, extracts the 'start' metric and 'run_name'
+        parameter from its XML metadata.
 
-        This method uses ElementTree (much faster than minidom on small 
-        documents) and reports warnings or errors via the returned dictionary 
+        This method uses ElementTree (much faster than minidom on small
+        documents) and reports warnings or errors via the returned dictionary
         instead of modifying shared state directly.
 
         Args:
             data_device (str): The name of the device associated with the run.
             data_folder (str): The specific folder name containing the run data.
-            parse_xml (bool, optional): Whether to parse the XML file for 
+            parse_xml (bool, optional): Whether to parse the XML file for
                 metadata. Defaults to True.
 
         Returns:
@@ -2778,21 +2787,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             "warnings": [],
             "error": None,
         }
- 
+
         try:
-            data_files = FileStorage.DEV_get_logged_data_files(
-                data_device, data_folder
-            )
+            data_files = FileStorage.DEV_get_logged_data_files(data_device, data_folder)
             result["files"] = data_files or []
- 
+
             if not parse_xml:
                 return result
- 
+
             root = None
- 
-            zn = os.path.join(
-                Constants.log_prefer_path, data_device, data_folder, "audit.zip"
-            )
+
+            zn = os.path.join(Constants.log_prefer_path, data_device, data_folder, "audit.zip")
             if FileManager.file_exists(zn):
                 with pyzipper.AESZipFile(
                     zn,
@@ -2804,21 +2809,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         zf.testzip()
                     except Exception:
-                        zf.setpassword(
-                            hashlib.sha256(zf.comment).hexdigest().encode()
-                        )
+                        zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
                     files = zf.namelist()
-                    xml_filename = next(
-                        (x for x in files if x.endswith(".xml")), None
-                    )
+                    xml_filename = next((x for x in files if x.endswith(".xml")), None)
                     if xml_filename is not None:
                         with zf.open(xml_filename, "r") as fh:
                             xml_bytes = fh.read()
                         root = ET.fromstring(xml_bytes)
             else:
-                xml_filename = next(
-                    (x for x in result["files"] if x.endswith(".xml")), None
-                )
+                xml_filename = next((x for x in result["files"] if x.endswith(".xml")), None)
                 if xml_filename is None:
                     result["warnings"].append(
                         f'WARNING: XML file not found in data files for run "{data_folder}"'
@@ -2835,7 +2834,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     )
                     if os.path.exists(xml_path):
                         root = ET.parse(xml_path).getroot()
- 
+
             if root is not None:
                 for m in root.iter("metric"):
                     if m.get("name") == "start":
@@ -2845,31 +2844,28 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     if p.get("name") == "run_name":
                         result["run_name"] = p.get("value")
                         break
- 
+
         except Exception as e:
             result["error"] = str(e)
- 
+
         return result
-    
+
     def _apply_scan_results(
-        self, 
-        scan_results: List[Dict[str, Any]], 
-        data_device: str, 
-        unchecked_runs: List[str]
+        self, scan_results: List[Dict[str, Any]], data_device: str, unchecked_runs: List[str]
     ) -> None:
         """Merges the background scan results into the shared state dictionaries.
 
-        Iterates through the parsed results from the background thread, logs any 
-        warnings or errors, and updates the internal state trackers (`run_names`, 
-        `run_timestamps`, and `run_devices`). Also handles cleaning up runs that 
+        Iterates through the parsed results from the background thread, logs any
+        warnings or errors, and updates the internal state trackers (`run_names`,
+        `run_timestamps`, and `run_devices`). Also handles cleaning up runs that
         are empty or no longer exist on the filesystem.
 
         Args:
-            scan_results (List[Dict[str, Any]]): A list of dictionaries containing 
+            scan_results (List[Dict[str, Any]]): A list of dictionaries containing
                 the parsed metadata for each run (typically the output from `_scan_run`).
             data_device (str): The name of the device associated with these runs.
-            unchecked_runs (List[str]): A list of dict keys (formatted as 
-                "{folder}:{device}") representing runs that were previously known 
+            unchecked_runs (List[str]): A list of dict keys (formatted as
+                "{folder}:{device}") representing runs that were previously known
                 but need verification of their continued existence.
         """
         for r in scan_results:
@@ -2877,7 +2873,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             dict_key = r["dict_key"]
             data_files = r["files"]
 
-            for msg in r["warnings"]: Log.w(msg)
+            for msg in r["warnings"]:
+                Log.w(msg)
             if r["error"] is not None:
                 Log.e(f'Error getting timestamp from XML for run "{data_folder}"!')
                 Log.d(f"Error message: {r['error']}")
@@ -2908,10 +2905,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _refresh_cbox_runs(self) -> None:
         """Sorts the cached run data and repopulates the UI run selection combobox.
 
-        This method takes the current state of `run_timestamps`, sorts them based on 
-        the user's selected preference (alphabetical by name or chronological by date), 
-        and filters them according to the selected device or active batch subsets. 
-        It then updates the `cBox_Runs` widget and adjusts the UI layout width 
+        This method takes the current state of `run_timestamps`, sorts them based on
+        the user's selected preference (alphabetical by name or chronological by date),
+        and filters them according to the selected device or active batch subsets.
+        It then updates the `cBox_Runs` widget and adjusts the UI layout width
         to fit the new content.
 
         The sorting logic follows:
@@ -2920,18 +2917,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         # Define sorting configuration for readability: {order_index: (sort_key_index, reverse_bool)}
         # item[0] is the dict_key (name-based), item[1] is the timestamp
-        sort_config = {
-            0: (0, False),  # Name: Ascending
-            1: (1, True)    # Date: Descending
-        }
-        
+        sort_config = {0: (0, False), 1: (1, True)}  # Name: Ascending  # Date: Descending
+
         key_idx, is_reverse = sort_config.get(self.sort_order, (1, True))
 
         # Sort the items based on the current UI selection
         self.sorted_runs: List[Tuple[str, str]] = sorted(
-            self.run_timestamps.items(),
-            key=lambda item: item[key_idx].lower(),
-            reverse=is_reverse
+            self.run_timestamps.items(), key=lambda item: item[key_idx].lower(), reverse=is_reverse
         )
 
         display_runs: List[str] = []
@@ -2952,9 +2944,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             formatted_display_name = f"{run_name} ({captured_date})"
 
             # Filter: Check if we are restricted to a specific batch subset
-            if hasattr(self, "_batched_runs") and self._batched_runs and formatted_display_name not in self._batched_runs:
+            if (
+                hasattr(self, "_batched_runs")
+                and self._batched_runs
+                and formatted_display_name not in self._batched_runs
+            ):
                 continue
-                    
+
             # Filter: Check device ownership
             if show_all or selected_device == device_name:
                 display_runs.append(formatted_display_name)
@@ -2966,7 +2962,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Reset internal lookup caches if they exist
         if hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache = {}
-        
+
         # Dynamically resize the combobox and associated widgets
         new_width = max(self.cBox_Runs.sizeHint().width(), 200)
         self.cBox_Runs.setFixedWidth(new_width)
@@ -2975,18 +2971,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def find_most_recent_run(self) -> None:
         """Initiates an asynchronous background scan to find the most recent run across all devices.
 
-        This method prepares the UI by disabling buttons and initializing the progress 
-        bar. It then identifies all available devices from the `cBox_Devices` combobox 
-        and launches a `RunScanWorker` thread to scan each device's file system 
-        without freezing the main UI thread. 
+        This method prepares the UI by disabling buttons and initializing the progress
+        bar. It then identifies all available devices from the `cBox_Devices` combobox
+        and launches a `RunScanWorker` thread to scan each device's file system
+        without freezing the main UI thread.
 
-        The results are processed incrementally via the `_on_find_most_recent_scanned` 
+        The results are processed incrementally via the `_on_find_most_recent_scanned`
         slot as each device scan completes.
         """
         # Prevent user interaction during initial scan
         self.enable_buttons(False, False)
         self._update_progress_value(1, "Loading runs...")
-        self.progressBar.setValue(0) 
+        self.progressBar.setValue(0)
 
         # Collect device names and existing cache keys for the worker
         devices: List[str] = [
@@ -2996,40 +2992,40 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._async_best_date: str = "0 / No Date"
         self._async_best_dev_idx: int = 0
         self.multi_scan_worker = RunScanWorker(devices, known_keys, parent=self)
-        
+
         # Connect the signal to the handler that merges results and updates the UI
         self.multi_scan_worker.scan_finished.connect(self._on_find_most_recent_scanned)
-        
+
         self.multi_scan_worker.start()
 
     @QtCore.pyqtSlot(list, str, list, bool)
     def _on_find_most_recent_scanned(
-        self, 
-        scan_results: List[Dict[str, Any]], 
-        data_device: str, 
-        unchecked_runs: List[str], 
-        is_last: bool
+        self,
+        scan_results: List[Dict[str, Any]],
+        data_device: str,
+        unchecked_runs: List[str],
+        is_last: bool,
     ) -> None:
         """Handles the incremental results from the background most-recent-run scan.
 
-        This slot is triggered whenever the `RunScanWorker` finishes scanning a 
-        specific device. It updates the internal state with the new results and 
-        tracks the globally "most recent" run across all processed devices. Once 
+        This slot is triggered whenever the `RunScanWorker` finishes scanning a
+        specific device. It updates the internal state with the new results and
+        tracks the globally "most recent" run across all processed devices. Once
         the final device is scanned, it finalizes the UI state.
 
         Args:
-            scan_results (List[Dict[str, Any]]): The metadata results for the 
+            scan_results (List[Dict[str, Any]]): The metadata results for the
                 runs found on the scanned device.
             data_device (str): The name of the device that was just scanned.
-            unchecked_runs (List[str]): List of run keys to be verified/removed 
+            unchecked_runs (List[str]): List of run keys to be verified/removed
                 if they no longer exist on disk.
-            is_last (bool): Flag indicating if this was the last device in the 
+            is_last (bool): Flag indicating if this was the last device in the
                 scanning queue.
         """
         # Merge results from this device into the main state dictionaries
         self._apply_scan_results(scan_results, data_device, unchecked_runs)
         dev_idx: int = self.cBox_Devices.findText(data_device)
-        
+
         if dev_idx != -1:
             for r in scan_results:
                 timestamp: str = r.get("timestamp") or "0 / No Date"
@@ -3043,7 +3039,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 f"{self.cBox_Devices.itemText(self._async_best_dev_idx)} "
                 f"from {self._async_best_date}."
             )
-            
+
             self.cBox_Devices.setCurrentIndex(self._async_best_dev_idx)
             self.action_sort_by_date(None)
             self.enable_buttons()
@@ -3051,21 +3047,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def update_run(self, idx: int) -> None:
         """Initiates an asynchronous background scan for runs associated with a specific device.
 
-        This method serves as the entry point for refreshing the run list when a user 
-        selects a new device or a manual refresh is triggered. It disables UI 
-        interaction, identifies the target device based on the provided index, and 
+        This method serves as the entry point for refreshing the run list when a user
+        selects a new device or a manual refresh is triggered. It disables UI
+        interaction, identifies the target device based on the provided index, and
         offloads the file system scanning and XML parsing to a `RunScanWorker` thread.
 
-        The results are processed by the `_on_single_device_scanned` slot once the 
+        The results are processed by the `_on_single_device_scanned` slot once the
         background task completes.
 
         Args:
-            idx (int): The index of the device in the `cBox_Devices` combobox 
+            idx (int): The index of the device in the `cBox_Devices` combobox
                 to be scanned.
         """
         self.enable_buttons(False, False)
         data_device: str = self.cBox_Devices.itemText(idx)
-        
+
         # Provide the worker with current cache keys to avoid redundant XML parsing
         known_keys: List[str] = list(self.run_timestamps.keys())
         self.single_scan_worker = RunScanWorker([data_device], known_keys, parent=self)
@@ -3074,26 +3070,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     @QtCore.pyqtSlot(list, str, list, bool)
     def _on_single_device_scanned(
-        self, 
-        scan_results: List[Dict[str, Any]], 
-        data_device: str, 
-        unchecked_runs: List[str], 
-        is_last: bool
+        self,
+        scan_results: List[Dict[str, Any]],
+        data_device: str,
+        unchecked_runs: List[str],
+        is_last: bool,
     ) -> None:
         """Handles the results of a background scan for a single device selection.
 
-        This slot is triggered when the `RunScanWorker` completes the scanning 
-        process for the currently selected device. It updates the internal state 
-        dictionaries with the new results, refreshes the run selection combobox 
+        This slot is triggered when the `RunScanWorker` completes the scanning
+        process for the currently selected device. It updates the internal state
+        dictionaries with the new results, refreshes the run selection combobox
         to reflect changes, and re-enables the UI buttons for user interaction.
 
         Args:
-            scan_results (List[Dict[str, Any]]): A list of dictionaries containing 
+            scan_results (List[Dict[str, Any]]): A list of dictionaries containing
                 parsed run metadata (timestamp, name, files, etc.) for the device.
             data_device (str): The name of the device that was scanned.
-            unchecked_runs (List[str]): Keys of runs that were previously cached 
+            unchecked_runs (List[str]): Keys of runs that were previously cached
                 but were not found during this scan and should be purged.
-            is_last (bool): Flag indicating if this was the final device in the 
+            is_last (bool): Flag indicating if this was the final device in the
                 worker's queue (always True for single-device updates).
         """
         self._apply_scan_results(scan_results, data_device, unchecked_runs)
@@ -3104,12 +3100,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         Asynchronously schedules the loading of QModel predictive models.
 
-        This method submits the heavy model-loading routines to a background thread pool 
-        executor (`_LOAD_EXECUTOR`). It is fully idempotent and safe to call repeatedly 
+        This method submits the heavy model-loading routines to a background thread pool
+        executor (`_LOAD_EXECUTOR`). It is fully idempotent and safe to call repeatedly
         (e.g., in a polling loop or UI refresh cycle).
 
         Configuration constraints:
-            - Models are only loaded if their respective prediction flags 
+            - Models are only loaded if their respective prediction flags
             (`QModel4_predict` / `QModel6_predict`) are active in `Constants`.
             - Models are skipped if they are already successfully loaded.
             - Models are skipped if a loading task is already in-flight (tracked via futures).
@@ -3119,36 +3115,49 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self._qmodel_v4_future = None
         if not hasattr(self, "_qmodel_v6_future"):
             self._qmodel_v6_future = None
+        if not hasattr(self, "_qmodel_v7_future"):
+            self._qmodel_v7_future = None
 
-        # QModel V4 (Fusion) Preload
+        # QModel Indus Preload
         try:
             requires_v4 = getattr(Constants, "QModel4_predict", False)
             is_v4_pending = self._qmodel_v4_future is not None
-            
+
             if requires_v4 and not self.QModel_v4_modules_loaded and not is_v4_pending:
                 self._qmodel_v4_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v4)
-                
-        except Exception as e:
-            Log.e("ERROR", f"Failed to schedule 'QModel v4 (Fusion)' preload. Details: {e}")
 
-        # QModel V6 (YOLO26) Preload
+        except Exception as e:
+            Log.e("ERROR", f"Failed to schedule 'QModel Indus' preload. Details: {e}")
+
+        # QModel Volta Preload
         try:
             requires_v6 = getattr(Constants, "QModel6_predict", False)
             is_v6_pending = self._qmodel_v6_future is not None
-            
+
             if requires_v6 and not self.QModel_v6_modules_loaded and not is_v6_pending:
                 self._qmodel_v6_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v6)
-                
+
         except Exception as e:
-            Log.e("ERROR", f"Failed to schedule 'QModel v6 (YOLO26)' preload. Details: {e}")
+            Log.e("ERROR", f"Failed to schedule 'QModel Volta' preload. Details: {e}")
+
+        # QModel Onyx Preload
+        try:
+            requires_v7 = getattr(Constants, "QModel7_predict", False)
+            is_v7_pending = self._qmodel_v7_future is not None
+
+            if requires_v7 and not self.QModel_v7_modules_loaded and not is_v7_pending:
+                self._qmodel_v7_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v7)
+
+        except Exception as e:
+            Log.e("ERROR", f"Failed to schedule 'QModel Onyx' preload. Details: {e}")
 
     @staticmethod
-    def _load_qmodel_v4() -> 'QModelV4Fusion':
+    def _load_qmodel_v4() -> "QModelV4Fusion":
         """
         Instantiates and loads the V4 Fusion prediction model into memory.
 
-        This worker method performs heavy disk I/O to load PyTorch model weights 
-        (.pth files) for both regressors and classifiers. It is designed to be 
+        This worker method performs heavy disk I/O to load PyTorch model weights
+        (.pth files) for both regressors and classifiers. It is designed to be
         executed safely off the main UI thread via a concurrent futures executor.
 
         Returns:
@@ -3158,10 +3167,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Architecture.get_path(),
             "QATCH",
             "QModel",
-            "SavedModels",
+            "assets",
             "qmodel_v4_fusion",
         )
-        
+
         return QModelV4Fusion(
             reg_path_1=os.path.join(base_path, "poi_model_mini_window_0_1600.pth"),
             reg_path_2=os.path.join(base_path, "poi_model_mini_window_1_1600.pth"),
@@ -3171,12 +3180,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
 
     @staticmethod
-    def _load_qmodel_v6() -> 'QModelV6YOLO':
+    def _load_qmodel_v6() -> "QModelV6YOLO":
         """
         Instantiates and loads the V6 YOLO26 prediction model into memory.
 
-        This worker method constructs the asset map and performs heavy disk I/O 
-        to load the YOLO-based PyTorch weights (.pt files) for various detectors 
+        This worker method constructs the asset map and performs heavy disk I/O
+        to load the YOLO-based PyTorch weights (.pt files) for various detectors
         and classifiers. It is designed to be executed off the main UI thread.
 
         Returns:
@@ -3186,10 +3195,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Architecture.get_path(),
             "QATCH",
             "QModel",
-            "SavedModels",
+            "assets",
             "qmodel_v6_yolo",
         )
-        
+
         # Map out the required weights files for the YOLO26 model suite
         model_assets = {
             "spacing_prior": os.path.join(base_path, "spacing_prior.json"),
@@ -3204,91 +3213,154 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 "poi5_fine": os.path.join(base_path, "detectors", "eof_detector", "eof.pt"),
             },
         }
-        
+
         return QModelV6YOLO(model_assets=model_assets)
- 
+
+    @staticmethod
+    def _load_qmodel_v7() -> "QModelV7YOLO":
+        """
+        Instantiates and loads the V7 YOLO26+ prediction model into memory.
+
+        This worker method constructs the asset map and performs heavy disk I/O
+        to load the YOLO-based PyTorch weights (.pt files) for various detectors
+        and classifiers, plus the V7-specific spacing-prior decode and zoom
+        refinement assets. It is designed to be executed off the main UI thread.
+
+        Returns:
+            QModelV7YOLO: A fully initialized V7 prediction model ready for inference.
+        """
+        base_path = os.path.join(
+            Architecture.get_path(),
+            "QATCH",
+            "QModel",
+            "assets",
+            "qmodel_v7",
+        )
+
+        # Map out the required weights files for the YOLO26+ model suite. The
+        # zoom-refiner detectors are optional (see QModelV6YOLO.ZOOM_REFINE_MAP
+        # in v7_yolo.py); absent files simply keep refine_pois a no-op.
+        model_assets = {
+            "spacing_prior": os.path.join(base_path, "spacing_prior.json"),
+            "fill_classifier": os.path.join(
+                base_path, "classifiers", "fill_classifier", "type_cls.pt"
+            ),
+            "detectors": {
+                "init": os.path.join(base_path, "detectors", "init_detector", "init.pt"),
+                "ch1": os.path.join(base_path, "detectors", "ch1_detector", "ch1.pt"),
+                "ch2": os.path.join(base_path, "detectors", "ch2_detector", "ch2.pt"),
+                "ch3": os.path.join(base_path, "detectors", "ch3_detector", "ch3.pt"),
+                # "poi5_fine": os.path.join(base_path, "detectors", "eof_detector", "eof.pt"),
+                "ch1_zoom": os.path.join(
+                    base_path, "detectors", "ch1_zoom_detector", "ch1_zoom.pt"
+                ),
+                "ch2_zoom": os.path.join(
+                    base_path, "detectors", "ch2_zoom_detector", "ch2_zoom.pt"
+                ),
+                "ch3_zoom": os.path.join(
+                    base_path, "detectors", "ch3_zoom_detector", "ch3_zoom.pt"
+                ),
+            },
+        }
+
+        return QModelV7YOLO(model_assets=model_assets)
+
     def _await_qmodels(self, timeout: float = 120.0) -> None:
         """
         Blocks the calling thread until in-flight prediction models finish loading.
 
-        This method resolves the asynchronous futures generated by `_load_qmodels()`. 
-        Once a future completes, it installs the resulting model instance onto the 
+        This method resolves the asynchronous futures generated by `_load_qmodels()`.
+        Once a future completes, it installs the resulting model instance onto the
         class and updates the corresponding load-state flags.
 
         Args:
-            timeout: Maximum seconds to wait for a model load to complete before 
+            timeout: Maximum seconds to wait for a model load to complete before
                     a TimeoutError is raised. Defaults to 120.0 seconds.
 
         Notes:
-            - Errors encountered during model instantiation are caught and logged 
+            - Errors encountered during model instantiation are caught and logged
             (not raised), mimicking the original synchronous `try/except` behavior.
-            - Future attributes are explicitly nulled out after resolution to 
+            - Future attributes are explicitly nulled out after resolution to
             prevent memory leaks and allow for clean reloading later.
         """
-        # Resolve QModel V4 (Fusion)
+        # Resolve QModel Indus
         v4_fut = getattr(self, "_qmodel_v4_future", None)
-        
+
         if v4_fut is not None and not getattr(self, "QModel_v4_modules_loaded", False):
             try:
                 # Block and wait for the thread pool to return the loaded V4 model
                 self.QModel_v4_predictor = v4_fut.result(timeout=timeout)
                 self.QModel_v4_modules_loaded = True
-                Log.i(TAG, "'QModel v4 (Fusion)' modules loaded successfully.")
+                Log.i(TAG, "'QModel Indus' modules loaded successfully.")
             except Exception as e:
-                Log.e(TAG, f"Failed to load 'QModel v4 (Fusion)' modules. Details: {e}")
+                Log.e(TAG, f"Failed to load 'QModel Indus' modules. Details: {e}")
             finally:
                 self._qmodel_v4_future = None
 
-        # Resolve QModel V6 (YOLO26)
+        # Resolve QModel Volta
         v6_fut = getattr(self, "_qmodel_v6_future", None)
-        
+
         if v6_fut is not None and not getattr(self, "QModel_v6_modules_loaded", False):
             try:
                 # Block and wait for the thread pool to return the loaded V6 model
                 self.QModel_v6_predictor = v6_fut.result(timeout=timeout)
                 self.QModel_v6_modules_loaded = True
-                Log.i(TAG, "'QModel v6 (YOLO26)' modules loaded successfully.")
+                Log.i(TAG, "'QModel Volta' modules loaded successfully.")
             except Exception as e:
-                Log.e(TAG, f"Failed to load 'QModel v6 (YOLO26)' modules. Details: {e}")
+                Log.e(TAG, f"Failed to load 'QModel Volta' modules. Details: {e}")
             finally:
                 self._qmodel_v6_future = None
-  
+
+        # Resolve QModel Onyx
+        v7_fut = getattr(self, "_qmodel_v7_future", None)
+
+        if v7_fut is not None and not getattr(self, "QModel_v7_modules_loaded", False):
+            try:
+                # Block and wait for the thread pool to return the loaded V7 model
+                self.QModel_v7_predictor = v7_fut.result(timeout=timeout)
+                self.QModel_v7_modules_loaded = True
+                Log.i(TAG, "'QModel Onyx' modules loaded successfully.")
+            except Exception as e:
+                Log.e(TAG, f"Failed to load 'QModel Onyx' modules. Details: {e}")
+            finally:
+                self._qmodel_v7_future = None
+
     def _check_dev_mode_cached(self, force_refresh: bool = False) -> bool:
         """
         Retrieves the developer mode status, utilizing a time-to-live (TTL) cache.
 
-        This acts as a high-performance wrapper around `UserProfiles.checkDevMode()`. 
-        Because checking dev mode requires file system I/O, the result is cached for 
-        `_DEV_MODE_TTL_SECONDS` to prevent UI bottlenecks during rapid reloads or 
+        This acts as a high-performance wrapper around `UserProfiles.checkDevMode()`.
+        Because checking dev mode requires file system I/O, the result is cached for
+        `_DEV_MODE_TTL_SECONDS` to prevent UI bottlenecks during rapid reloads or
         frequent polling.
 
         Args:
-            force_refresh: If True, bypasses the cache, forces a fresh file system 
+            force_refresh: If True, bypasses the cache, forces a fresh file system
                         read, and resets the TTL timer. Defaults to False.
 
         Returns:
             bool: True if developer mode is active, False otherwise.
         """
         now = monotonic()
-        
+
         # Evaluate cache validity
         is_missing = not hasattr(self, "_dev_mode_cache_value")
         is_expired = (now - getattr(self, "_dev_mode_cache_time", 0.0)) > _DEV_MODE_TTL_SECONDS
-        
+
         if force_refresh or is_missing or is_expired:
             # Cache miss or invalidation: fetch fresh data and reset the timer
             self._dev_mode_cache_value = UserProfiles.checkDevMode()
             self._dev_mode_cache_time = now
-            
+
         return self._dev_mode_cache_value
-  
+
     def _compute_folder_from_run(self, run_string: str) -> str:
         """
         Extracts the parent folder identifier from a formatted run string.
 
-        This acts as a cache-miss fallback for resolving a folder name. It parses 
-        the base folder name by stripping the run suffix (e.g., "(Run 1)"), then 
-        performs an O(N) reverse lookup in `self.run_names` to find the corresponding 
+        This acts as a cache-miss fallback for resolving a folder name. It parses
+        the base folder name by stripping the run suffix (e.g., "(Run 1)"), then
+        performs an O(N) reverse lookup in `self.run_names` to find the corresponding
         key prefix.
 
         Args:
@@ -3307,17 +3379,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 key for key, value in self.run_names.items() if value == folder_name
             )
             return matching_key.split(":", 1)[0]
-            
+
         except StopIteration:
             return folder_name
- 
+
     def get_folder_from_run(self, run_string: str) -> str:
         """
         Retrieves the folder identifier for a given run string using a memoized cache.
 
-        This acts as a high-performance wrapper around `_compute_folder_from_run`. 
-        It prevents redundant O(N) reverse dictionary lookups by caching previously 
-        resolved run strings in memory, which is especially useful during rapid UI 
+        This acts as a high-performance wrapper around `_compute_folder_from_run`.
+        It prevents redundant O(N) reverse dictionary lookups by caching previously
+        resolved run strings in memory, which is especially useful during rapid UI
         refreshes or batch processing.
 
         Args:
@@ -3329,32 +3401,32 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Lazy-initialize the cache dictionary if it doesn't exist
         if not hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache = {}
-            
+
         # Return the cached result immediately if it's already been computed
         if run_string in self._run_to_folder_cache:
             return self._run_to_folder_cache[run_string]
-            
+
         # Cache miss
         folder = self._compute_folder_from_run(run_string)
         self._run_to_folder_cache[run_string] = folder
-        
+
         return folder
-    
+
     def load_all_from_folder(self, from_folder: Optional[str] = None) -> None:
         """
         Initiates a batch-loading process for all unanalyzed runs within a selected directory.
 
-        This method scans a target directory (either the root data folder or a specific 
-        device folder) for runs. It uses a ThreadPoolExecutor to rapidly scan the file 
-        system for runs that lack an 'analyze-1.zip' file. Unanalyzed runs are queued 
+        This method scans a target directory (either the root data folder or a specific
+        device folder) for runs. It uses a ThreadPoolExecutor to rapidly scan the file
+        system for runs that lack an 'analyze-1.zip' file. Unanalyzed runs are queued
         up in the UI, and the first run is automatically loaded.
 
         Args:
-            from_folder: An optional absolute path to bypass the file dialog. 
+            from_folder: An optional absolute path to bypass the file dialog.
                         Must be a subdirectory of `Constants.log_prefer_path`.
         """
         # Guard: Check for unsaved changes
-        self.action_cancel()  
+        self.action_cancel()
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
@@ -3379,8 +3451,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Parse the directory depth to determine intent (Root vs Device vs Single Run)
         rel_path = os.path.relpath(selected_directory, Constants.log_prefer_path)
-        path_parts = [p for p in rel_path.replace('\\', '/').split('/') if p and p != '.']
-        
+        path_parts = [p for p in rel_path.replace("\\", "/").split("/") if p and p != "."]
+
         all_runs = []
 
         if len(path_parts) == 0:
@@ -3388,13 +3460,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             for dev_name in getattr(self.parent, "data_devices", []):
                 for run in FileStorage.DEV_get_logged_data_folders(dev_name):
                     all_runs.append((dev_name, run))
-                    
+
         elif len(path_parts) == 1:
             # Device folder selected: gather all runs for this specific device
             dev_name = path_parts[0]
             for run in FileStorage.DEV_get_logged_data_folders(dev_name):
                 all_runs.append((dev_name, run))
-                
+
         else:
             # Single run folder selected (depth >= 2)
             Log.w("User selected a single run folder for batch loading")
@@ -3407,8 +3479,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Filter out unnamed runs before dispatching to threads
         scan_items = [
-            (dev, run) for dev, run in all_runs 
-            if "_unnamed" not in dev and "_unnamed" not in run
+            (dev, run) for dev, run in all_runs if "_unnamed" not in dev and "_unnamed" not in run
         ]
 
         # Parallel I/O Scan: Check for missing 'analyze-1.zip' files
@@ -3423,7 +3494,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         new_runs = []
         if scan_items:
-            with ThreadPoolExecutor(max_workers=min(8, len(scan_items)), thread_name_prefix="batch-scan") as ex:
+            with ThreadPoolExecutor(
+                max_workers=min(8, len(scan_items)), thread_name_prefix="batch-scan"
+            ) as ex:
                 for dev, run, files in ex.map(_scan, scan_items):
                     if files and "analyze-1.zip" not in files:
                         new_runs.append(run)
@@ -3438,9 +3511,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Synchronize found runs with the UI Combo Box
         # Build a fast O(1) lookup dictionary: {"RunBaseName": "RunBaseName (idx)"}
         combo_texts = [self.cBox_Runs.itemText(i) for i in range(self.cBox_Runs.count())]
-        run_name_to_combo_text = {
-            text.rsplit(" ", 1)[0]: text for text in combo_texts
-        }
+        run_name_to_combo_text = {text.rsplit(" ", 1)[0]: text for text in combo_texts}
 
         sorted_new_runs = []
         for new_run in new_runs:
@@ -3452,7 +3523,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Apply batch state and trigger the first load
         self._batched_runs = sorted_new_runs
         self.showRunsFromAllDevices_clicked()
-        
+
         # Clear the folder cache since the cBox_Runs items have been entirely replaced
         if hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache.clear()
@@ -3468,20 +3539,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
             f"<b>SUCCESS: {len(sorted_new_runs)} runs found for batch processing.</b><br/><br/>"
             "When finished analyzing a run (or to skip a run), <br/>"
             'click "Load" again to move to the next queued run.<br/>'
-            "You'll get another popup when the batch is finished."
+            "You'll get another popup when the batch is finished.",
         )
-    
+
     def load_run(self) -> None:
         """
         Prepares the UI and application state for loading a new analysis run.
 
-        This method acts as a pre-flight coordinator. It ensures unsaved changes 
-        are handled, verifies Developer Mode compliance (for encrypted results), 
-        evaluates auto-signing session keys, resets the plotting UI into a "Loading" 
+        This method acts as a pre-flight coordinator. It ensures unsaved changes
+        are handled, verifies Developer Mode compliance (for encrypted results),
+        evaluates auto-signing session keys, resets the plotting UI into a "Loading"
         state, and finally queues the actual heavy data-load operation on the event loop.
         """
         # Guard: Check for unsaved changes before proceeding
-        self.action_cancel()  
+        self.action_cancel()
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
             return
@@ -3491,13 +3562,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Developer Mode & Encryption Compliance
         enabled, error, expires = self._check_dev_mode_cached()
-        
+
         if not enabled and (error or expires):
             PopUp.warning(
                 self,
                 "Developer Mode Expired",
                 "Developer Mode has expired and these analysis results will be encrypted.\n"
-                "An admin must renew or disable 'Developer Mode' to suppress this warning."
+                "An admin must renew or disable 'Developer Mode' to suppress this warning.",
             )
 
         # Handle Auto-Sign Session Keys
@@ -3510,7 +3581,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if os.path.exists(Constants.auto_sign_key_path):
                 with open(Constants.auto_sign_key_path, "r") as f:
                     auto_sign_key = f.readline().strip()
-                    
+
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
                     session_key = f.readline().strip()
@@ -3541,11 +3612,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._text1 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
         self._text1.setHtml("<span style='font-size: 14pt'>Loading data for analysis... </span>")
         self._text1.setPos(0.5, 0.50)
-        
+
         self._text2 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
         self._text2.setHtml("<span style='font-size: 10pt'>(may take a few seconds) </span>")
         self._text2.setPos(0.5, 0.40)
-        
+
         self._text3 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
         # self._text3.setHtml("<span style='font-size: 10pt'>Please be more patient with longer runs. </span>")
         self._text3.setHtml("")
@@ -3554,14 +3625,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Clear plotting canvases and apply Loading text
         primary_ax = self.graphWidget
         plot_elements = [primary_ax, self.graphWidget1, self.graphWidget2, self.graphWidget3]
-        
+
         for plot_item in plot_elements:
             if plot_item is not None:
                 plot_item.clear()
                 plot_item.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
                 plot_item.setXRange(min=0, max=1)
                 plot_item.setYRange(min=0, max=1)
-                
+
                 # Inject text onto the main plotting axis
                 if plot_item is primary_ax:
                     plot_item.addItem(self._text1, ignoreBounds=True)
@@ -3580,17 +3651,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._update_analyze_progress(75, "Reading Run Data...")
         QtWidgets.QApplication.processEvents()
         QtCore.QTimer.singleShot(0, self.action_load_run)
- 
+
     def action_load_run(self) -> None:
         """
         Executes the final stages of loading a run and triggers data analysis.
 
         This method acts as the execution phase following `loadRun()`. It handles:
-        1. Batch Processing Navigation: If in batch mode and the current run is 
-        already loaded, it auto-increments the UI to the next run in the queue, 
+        1. Batch Processing Navigation: If in batch mode and the current run is
+        already loaded, it auto-increments the UI to the next run in the queue,
         or exits batch mode if the queue is finished.
         2. Model Synchronization: Blocks until background ML models finish loading.
-        3. Data Analysis: Dispatches the selected run to the parent coordinator 
+        3. Data Analysis: Dispatches the selected run to the parent coordinator
         for processing and resets UI interaction states.
         """
         try:
@@ -3617,13 +3688,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # Reset state and trigger analysis
             self.moved_markers = [False, False, False, False, False, False]
-            
+
             # Use the memoized folder lookup to prevent redundant file system reads
             folder_name = self.get_folder_from_run(self.cBox_Runs.currentText())
             device_name = self.cBox_Devices.currentText()
-            
+
             self.parent.analyze_data(device_name, folder_name, None)
-            
+
             # Re-enable the UI controls post-analysis
             self.enable_buttons()
 
@@ -3738,7 +3809,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if getattr(self, "_qmodel_overlay", None) is None:
             self._show_qmodel_plot_overlay()
         self._update_qmodel_plot_overlay(pct, status or "")
-        
+
+    def _QModel_v7_progress_update(self, pct: int, status: Optional[str]):
+        if getattr(self, "_qmodel_overlay", None) is None:
+            self._show_qmodel_plot_overlay()
+        self._update_qmodel_plot_overlay(pct, status or "")
+
     def _restore_qmodel_predictions(self):
         try:
             if self.model_engine == "None":
@@ -3772,23 +3848,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
-            if Constants.QModel6_predict:
-                Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
+            if Constants.QModel7_predict:
+                Log.w("Auto-fitting points with QModel Onyx... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
-                        predictor = self.QModel_v6_predictor
-                        # self._QModel_create_new_progress_dialog()
-                        # self.progressBarDiag.setRange(0, 100)
+                        predictor = self.QModel_v7_predictor
                         predict_result, detected_channels = predictor.predict(
-                            file_buffer=fh, progress_signal=self.v6_predict_progress
+                            file_buffer=fh, progress_signal=self.v7_predict_progress
                         )
                         # Restoring predictions restores the channel count.
                         self.parent.num_channels = detected_channels
                         Log.i(
                             TAG,
-                            f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)",
+                            f"QModel Onyx Inference Complete. Detected Config: {detected_channels} Channel(s)",
                         )
                         predictions = []
                         candidates = []
@@ -3806,7 +3880,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_run_this_load = True
                         self.model_result = predictions
                         self.model_candidates = candidates
-                        self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+                        self.model_engine = f"QModel Onyx - {detected_channels}ch"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             poi_vals = self.model_result.copy()
                             if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -3818,13 +3892,64 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 except Exception as e:
                     import traceback
 
-                    Log.e(TAG, f"Error using 'QModel v6 (YOLO26)': {e}")
+                    Log.e(TAG, f"Error using 'QModel Onyx': {e}")
+                    for line in traceback.format_tb(sys.exc_info()[2]):
+                        Log.d(line.strip())
+                    self.model_result = -1  # Trigger fallback handling
+                    # raise e
+            if self.model_result == -1 and Constants.QModel6_predict:
+                Log.w("Auto-fitting points with QModel Volta... (may take a few seconds)")
+                QtCore.QCoreApplication.processEvents()
+                try:
+                    with secure_open(self.loaded_datapath, "r", "capture") as f:
+                        fh = BytesIO(f.read())
+                        predictor = self.QModel_v6_predictor
+                        # self._QModel_create_new_progress_dialog()
+                        # self.progressBarDiag.setRange(0, 100)
+                        predict_result, detected_channels = predictor.predict(
+                            file_buffer=fh, progress_signal=self.v6_predict_progress
+                        )
+                        # Restoring predictions restores the channel count.
+                        self.parent.num_channels = detected_channels
+                        Log.i(
+                            TAG,
+                            f"QModel Volta Inference Complete. Detected Config: {detected_channels} Channel(s)",
+                        )
+                        predictions = []
+                        candidates = []
+                        for i in range(6):
+                            poi_key = f"POI{i+1}"
+                            data = predict_result.get(poi_key, {})
+                            indices = data.get("indices", [-1])
+                            confidences = data.get("confidences", [-1])
+                            if not indices:
+                                indices = [-1]
+                            if not confidences:
+                                confidences = [-1]
+                            predictions.append(indices[0])
+                            candidates.append((indices, confidences))
+                        self.model_run_this_load = True
+                        self.model_result = predictions
+                        self.model_candidates = candidates
+                        self.model_engine = f"QModel Volta - {detected_channels}ch"
+                        if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                            poi_vals = self.model_result.copy()
+                            if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                # Correct POST point to End-of-fill + 2
+                                poi_vals[2] = poi_vals[1] + 2
+                        else:
+                            self.model_result = -1  # Invalid result format
+
+                except Exception as e:
+                    import traceback
+
+                    Log.e(TAG, f"Error using 'QModel Volta': {e}")
                     for line in traceback.format_tb(sys.exc_info()[2]):
                         Log.d(line.strip())
                     self.model_result = -1  # Trigger fallback handling
                     # raise e
             if self.model_result == -1 and Constants.QModel4_predict:
-                Log.w("Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
+                Log.w("Auto-fitting points with QModel Indus... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3850,7 +3975,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_run_this_load = True
                         self.model_result = predictions
                         self.model_candidates = candidates
-                        self.model_engine = "QModel v4 (Fusion)"
+                        self.model_engine = "QModel Indus"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             poi_vals = self.model_result.copy()
                             if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -3871,7 +3996,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     Log.e(e)
                     Log.e(
                         TAG,
-                        f"Error using 'QModel v4 (Fusion)'... Using a fallback model for auto-fitting.",
+                        f"Error using 'QModel Indus'... Using a fallback model for auto-fitting.",
                     )
                     raise e  # debug only
                     self.model_result = -1  # try fallback model
@@ -3902,7 +4027,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         resonance_frequency,
                         dissipation,
                     )
-                    self.model_engine = "ModelData"
+                    self.model_engine = "Tweed"
                     if isinstance(self.model_result, list):
                         poi_vals.clear()
                         # show point with highest confidence for each:
@@ -4089,23 +4214,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel6_predict:
-                    Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
+                if Constants.QModel7_predict:
+                    Log.w(
+                        "Auto-fitting points with QModel Onyx... (may take a few seconds)"
+                    )
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predictor = self.QModel_v6_predictor
-                            # self._QModel_create_new_progress_dialog()
-                            # self.progressBarDiag.setRange(0, 100)
+                            predictor = self.QModel_v7_predictor
                             predict_result, detected_channels = predictor.predict(
-                                file_buffer=fh, progress_signal=self.v6_predict_progress
+                                file_buffer=fh, progress_signal=self.v7_predict_progress
                             )
                             if not self.parent.num_channels:
                                 self.parent.num_channels = detected_channels
                             Log.i(
                                 TAG,
-                                f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)",
+                                f"QModel Onyx Inference Complete. Detected Config: {detected_channels} Channel(s)",
                             )
 
                             predictions = []
@@ -4124,7 +4249,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+                            self.model_engine = f"QModel Onyx - {detected_channels}ch"
                             if isinstance(self.model_result, list) and len(self.model_result) == 6:
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -4137,14 +4262,68 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         # --- ERROR HANDLING ---
                         import traceback
 
-                        Log.e(TAG, f"Error using 'QModel v6 (YOLO26)': {e}")
+                        Log.e(TAG, f"Error using 'QModel Onyx': {e}")
+                        # Print full stack trace to debug log
+                        for line in traceback.format_tb(sys.exc_info()[2]):
+                            Log.d(line.strip())
+                        self.model_result = -1  # Trigger fallback handling
+                        # raise e # Uncomment for strict debugging
+                if self.model_result == -1 and Constants.QModel6_predict:
+                    Log.w("Auto-fitting points with QModel Volta... (may take a few seconds)")
+                    QtCore.QCoreApplication.processEvents()
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v6_predictor
+                            # self._QModel_create_new_progress_dialog()
+                            # self.progressBarDiag.setRange(0, 100)
+                            predict_result, detected_channels = predictor.predict(
+                                file_buffer=fh, progress_signal=self.v6_predict_progress
+                            )
+                            if not self.parent.num_channels:
+                                self.parent.num_channels = detected_channels
+                            Log.i(
+                                TAG,
+                                f"QModel Volta Inference Complete. Detected Config: {detected_channels} Channel(s)",
+                            )
+
+                            predictions = []
+                            candidates = []
+                            for i in range(6):
+                                poi_key = f"POI{i+1}"
+                                data = predict_result.get(poi_key, {})
+                                indices = data.get("indices", [-1])
+                                confidences = data.get("confidences", [-1])
+                                if not indices:
+                                    indices = [-1]
+                                if not confidences:
+                                    confidences = [-1]
+                                predictions.append(indices[0])
+                                candidates.append((indices, confidences))
+                            self.model_run_this_load = True
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = f"QModel Volta - {detected_channels}ch"
+                            if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
+                            else:
+                                self.model_result = -1  # Invalid result format
+
+                    except Exception as e:
+                        # --- ERROR HANDLING ---
+                        import traceback
+
+                        Log.e(TAG, f"Error using 'QModel Volta': {e}")
                         # Print full stack trace to debug log
                         for line in traceback.format_tb(sys.exc_info()[2]):
                             Log.d(line.strip())
                         self.model_result = -1  # Trigger fallback handling
                         # raise e # Uncomment for strict debugging
                 if self.model_result == -1 and Constants.QModel4_predict:
-                    Log.w("Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
+                    Log.w("Auto-fitting points with QModel Indus... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -4170,7 +4349,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 candidates.append(best_pair)
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = "QModel v4 (Fusion)"
+                            self.model_engine = "QModel Indus"
                             if isinstance(self.model_result, list) and len(self.model_result) == 6:
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -4190,7 +4369,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v4 (Fusion)'... Using a fallback model for auto-fitting."
+                            "Error using 'QModel Indus'... Using a fallback model for auto-fitting."
                         )
                         raise e  # debug only
                         self.model_result = -1  # try fallback model
@@ -4214,7 +4393,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             diss=self.data_diss,
                             start_at=model_starting_points,
                         )
-                        self.model_engine = "ModelData"
+                        self.model_engine = "Tweed"
                         if isinstance(self.model_result, list):
                             poi_vals.clear()
                             # show point with highest confidence for each:
@@ -4331,7 +4510,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
                     poi_vals.append(cur_idx)
 
-                if self.model_engine == "ModelData" and Constants.ModelData_predict:
+                if self.model_engine == "Tweed" and Constants.ModelData_predict:
                     try:
                         # Run Model again, to get an initial automatic fine tuning of points prior to user input
                         model_starting_points = poi_vals.copy()  # NOTE: len(poi_vals) must equal 6
@@ -4342,7 +4521,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             diss=self.data_diss,
                             start_at=model_starting_points,
                         )
-                        self.model_engine = "ModelData"
+                        self.model_engine = "Tweed"
                         if isinstance(self.model_result, list):
                             poi_vals.clear()
                             # show point with highest confidence for each:
@@ -4410,7 +4589,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.e("Error: An exception occurred while sorting POI markers.")
                             Log.e(f"Error Details: {str(e)}")
 
-                else:  # self.model_engine != "ModelData":
+                else:  # self.model_engine != "Tweed":
                     # do nothing here if "QModel v2" or "None"
                     pass
 
@@ -4673,7 +4852,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.analyze_work.finished.connect(self.enable_buttons)
 
                 # New progress dialog popup instead of run progress bar...
-                self._show_analyze_plot_overlay()                                    # creates figure + overlay on main thread
+                self._show_analyze_plot_overlay()  # creates figure + overlay on main thread
                 self.analyze_work.progress.connect(self._update_analyze_plot_overlay)
                 self.analyze_work.finished.connect(self._hide_analyze_plot_overlay)
                 # self._create_analyze_progress_dialog()
@@ -5368,14 +5547,89 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel6_predict and self.prior_points_in_xml:
+                if Constants.QModel7_predict and self.prior_points_in_xml:
                     self.model_result = poi_vals
-                    self.model_engine = "QModel v6 (YOLO26) skipped (using prior points)"
+                    self.model_engine = "QModel Onyx skipped (using prior points)"
+
+                if self.model_result == -1 and Constants.QModel7_predict:
+                    Log.w(
+                        "Auto-fitting points with QModel Onyx... (may take a few seconds)"
+                    )
+                    self._text1.setHtml(
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel Onyx... </span>"
+                    )
+                    self.graphWidget.addItem(self._text2, ignoreBounds=True)
+                    QtCore.QCoreApplication.processEvents()
+
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v7_predictor
+                            predict_result, detected_channels = predictor.predict(
+                                file_buffer=fh, progress_signal=self.v7_predict_progress
+                            )
+                            # Analysis only updates num_channels if not present.
+                            if not self.parent.num_channels:
+                                self.parent.num_channels = detected_channels
+
+                            predictions = []
+                            candidates = []
+                            for i in range(6):
+                                poi_key = f"POI{i+1}"
+                                data = predict_result.get(poi_key, {})
+                                poi_indices = data.get("indices", [-1])
+                                poi_confidences = data.get("confidences", [-1])
+                                if not poi_indices:
+                                    poi_indices = [-1]
+                                if not poi_confidences:
+                                    poi_confidences = [-1]
+                                best_pair = (poi_indices[0], poi_confidences[0])
+                                predictions.append(best_pair[0])
+                                candidates.append(
+                                    candidates_tuple := (poi_indices, poi_confidences)
+                                )
+                            self.model_run_this_load = True
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = f"QModel Onyx - {detected_channels}ch"
+                            if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
+                            else:
+                                self.model_result = -1
+
+                    except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
+                        Log.e(e)
+                        Log.e(
+                            TAG,
+                            "Error using 'QModel Onyx'... Using a fallback model for auto-fitting.",
+                        )
+                        # raise e  # debug only
+                        self.model_result = -1  # try fallback model
+
+                if (
+                    self.model_result == -1
+                    and Constants.QModel6_predict
+                    and self.prior_points_in_xml
+                ):
+                    self.model_result = poi_vals
+                    self.model_engine = "QModel Volta skipped (using prior points)"
 
                 if self.model_result == -1 and Constants.QModel6_predict:
-                    Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
+                    Log.w("Auto-fitting points with QModel Volta... (may take a few seconds)")
                     self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v6 (YOLO26)... </span>"
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel Volta... </span>"
                     )
                     self.graphWidget.addItem(self._text2, ignoreBounds=True)
                     QtCore.QCoreApplication.processEvents()
@@ -5415,7 +5669,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+                            self.model_engine = f"QModel Volta - {detected_channels}ch"
                             if isinstance(self.model_result, list) and len(self.model_result) == 6:
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -5437,18 +5691,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.e(e)
                         Log.e(
                             TAG,
-                            "Error using 'QModel v6 (YOLO26)'... Using a fallback model for auto-fitting.",
+                            "Error using 'QModel Volta'... Using a fallback model for auto-fitting.",
                         )
                         # raise e  # debug only
                         self.model_result = -1  # try fallback model
                 # if Constants.QModel4_predict and self.prior_points_in_xml:
-                #     # skip running QModel v4 if prior points are available (it's too slow)
+                #     # skip running QModel Indus if prior points are available (it's too slow)
                 #     self.model_result = poi_vals
-                #     self.model_engine = "QModel v4 (Fusion) skipped (using prior points)"
+                #     self.model_engine = "QModel Indus skipped (using prior points)"
                 if self.model_result == -1 and Constants.QModel4_predict:
-                    Log.w("Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
+                    Log.w("Auto-fitting points with QModel Indus... (may take a few seconds)")
                     self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v4 (Fusion)... </span>"
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel Indus... </span>"
                     )
                     self.graphWidget.addItem(self._text2, ignoreBounds=True)
                     QtCore.QCoreApplication.processEvents()
@@ -5477,7 +5731,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = "QModel v4 (Fusion)"
+                            self.model_engine = "QModel Indus"
                             if isinstance(self.model_result, list) and len(self.model_result) == 6:
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -5497,7 +5751,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v4 (Fusion)'... Using a fallback model for auto-fitting."
+                            "Error using 'QModel Indus'... Using a fallback model for auto-fitting."
                         )
                         raise e  # debug only
                         self.model_result = -1  # try fallback model
@@ -5507,7 +5761,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_result = self.dataModel.IdentifyPoints(
                             data_path, relative_time, resonance_frequency, dissipation
                         )
-                        self.model_engine = "ModelData"
+                        self.model_engine = "Tweed"
                         if isinstance(self.model_result, list):
                             poi_vals.clear()
                             # show point with highest confidence for each:
@@ -7064,13 +7318,9 @@ class AnalyzerWorker(QtCore.QObject):
             t_filling = line1_x[-1]
             Log.i(f"t_filling = {t_filling} secs")
             if enable_bandaid_code and t_filling > 1.5:  # t_filling > 1 sec
-                Log.w(
-                    "Applying polynomial correction to initial fill region (for long runs)"
-                )
+                Log.w("Applying polynomial correction to initial fill region (for long runs)")
                 line1_y = np.sqrt(np.polyval([0.1, 0.9, 0], normal_y)) * distances[0]
-                line1_y_fit = (
-                    np.sqrt(np.polyval([0.1, 0.9, 0], best_fit_pts)) * distances[0]
-                )
+                line1_y_fit = np.sqrt(np.polyval([0.1, 0.9, 0], best_fit_pts)) * distances[0]
             else:
                 line1_y = np.sqrt(normal_y) * distances[0]
                 line1_y_fit = np.sqrt(best_fit_pts) * distances[0]
@@ -7395,9 +7645,7 @@ class AnalyzerWorker(QtCore.QObject):
                         try:
                             time = next(x for x, t in enumerate(xs) if t > time)
                         except StopIteration:
-                            Log.d(
-                                "Re-interpreting user input as an index, not a timestamp"
-                            )
+                            Log.d("Re-interpreting user input as an index, not a timestamp")
                             time = int(time)
                     if not done:
                         return
@@ -7603,9 +7851,7 @@ class AnalyzerWorker(QtCore.QObject):
             idx_of_normal_pts_to_retain = []
             for p in normal_pts:
                 try:
-                    midpoint_p_i = (
-                        next(x for x, y in enumerate(ys_normal) if y >= p) + tp
-                    )
+                    midpoint_p_i = next(x for x, y in enumerate(ys_normal) if y >= p) + tp
                 except StopIteration:
                     Log.w(f"Failed to find 1st channel dissipation @ {p:0.1f}")
                     continue
@@ -7965,7 +8211,7 @@ class AnalyzerWorker(QtCore.QObject):
             ax6.plot(log_velocity_20p, log_position_20p, ".", color="red")
             ax6.plot(log_velocity_46, log_position_46, ":", color="orange")
             ax6.plot(log_velocity_46, best_fit_pts, "-", color="blue")
-            ax6.plot(best_fill_idx, best_fill_pts, "s", color="black") # initial fill (avg)
+            ax6.plot(best_fill_idx, best_fill_pts, "s", color="black")  # initial fill (avg)
             try:
                 for i in range(-len(distances), 0):
                     ax6.plot(log_velocity_46[i], log_position_46[i], "d", color="black")
@@ -8102,7 +8348,9 @@ class AnalyzerWorker(QtCore.QObject):
 
             fig4 = plt.figure(figsize=(12, 6))
             fig4.set_layout_engine(None)  # full control, no auto-layout adjustments
-            fig4.subplots_adjust(left=0.10, right=0.99, top=0.92, bottom=0.22, wspace=0.0, hspace=0.0)
+            fig4.subplots_adjust(
+                left=0.10, right=0.99, top=0.92, bottom=0.22, wspace=0.0, hspace=0.0
+            )
             ax7 = fig4.add_subplot(111)
 
             high_shear_5x = 0
@@ -8140,9 +8388,7 @@ class AnalyzerWorker(QtCore.QObject):
                         freq_factor_15MHz = float(
                             Constants.get_batch_param(batch, "freq_factor_15MHz")
                         )
-                        high_shear_15y = (
-                            (frequency_shift * freq_factor_15MHz) ** 2
-                        ) / DENSITY
+                        high_shear_15y = ((frequency_shift * freq_factor_15MHz) ** 2) / DENSITY
                         Log.i(
                             f"15MHz High shear = ((f2-f0) * {freq_factor_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
                         )
@@ -8156,22 +8402,15 @@ class AnalyzerWorker(QtCore.QObject):
                         bandaid_compensate_high_shear_viscosity = False
                         if bandaid_compensate_high_shear_viscosity:
                             E3 = (
-                                ys_freq[all_times[FILL_IDX]]
-                                - ys_freq[all_times[START_IDX]]
+                                ys_freq[all_times[FILL_IDX]] - ys_freq[all_times[START_IDX]]
                             )  # from CAL file (Freq_fill)
-                            D = dissipation_shift - (
-                                (0.023112 * (E3) / DENSITY - 4.6868) * 1e-6
-                            )
+                            D = dissipation_shift - ((0.023112 * (E3) / DENSITY - 4.6868) * 1e-6)
                             high_shear_15y = (
                                 (D * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
                             ) / DENSITY
                         else:
                             high_shear_15y = (
-                                (
-                                    dissipation_shift * diss_factor1_15MHz
-                                    - diss_factor2_15MHz
-                                )
-                                ** 2
+                                (dissipation_shift * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
                             ) / DENSITY
                         Log.i(f"d0 = {d0:1.4E}")
                         Log.i(f"d2 = {d2:1.4E}")
@@ -8186,9 +8425,7 @@ class AnalyzerWorker(QtCore.QObject):
                             Log.i(
                                 f"15MHz High shear = ((d2-d0) * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
                             )
-                    high_shear_15x = self.correctHighShear(
-                        high_shear_15x, high_shear_15y
-                    )
+                    high_shear_15x = self.correctHighShear(high_shear_15x, high_shear_15y)
                     ax7.plot(high_shear_15x, high_shear_15y, "bd")
                     ax7.errorbar(
                         high_shear_15x,
@@ -8203,9 +8440,7 @@ class AnalyzerWorker(QtCore.QObject):
 
                     if True:
                         data_path_fun = data_path.replace("_3rd.csv", "_lower.csv")
-                        fun_file_exists = secure_open.file_exists(
-                            data_path_fun, "capture"
-                        )
+                        fun_file_exists = secure_open.file_exists(data_path_fun, "capture")
 
                     if (
                         frequency_shift < 900 and fun_file_exists
@@ -8256,9 +8491,7 @@ class AnalyzerWorker(QtCore.QObject):
                                     f"Failed to locate POI_{i} @ timestamp {xs[all_times[i]] - xs[0]} from fundamental dataset. Attempting to proceed with index 0..."
                                 )
                             Log.d(f"time[{i}] must be >= {xs[all_times[i]] - xs[0]}")
-                            Log.d(
-                                f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}"
-                            )
+                            Log.d(f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}")
                             times_fun.append(t_fun)
                         ys_freq_fun = (
                             np.average(resonance_frequency_fun[0 : times_fun[FILL_IDX]])
@@ -8295,15 +8528,11 @@ class AnalyzerWorker(QtCore.QObject):
                         Log.i(f"f0 = {f0:2.2f} Hz")
                         Log.i(f"f2 = {f2:2.2f} Hz")
                         Log.i(f"f2-f0 = {f2-f0} Hz")
-                        if f2 - f0 > float(
-                            Constants.get_batch_param(batch, "freq_delta_5MHz")
-                        ):
+                        if f2 - f0 > float(Constants.get_batch_param(batch, "freq_delta_5MHz")):
                             freq_factor_5MHz = float(
                                 Constants.get_batch_param(batch, "freq_factor_5MHz")
                             )
-                            high_shear_5y = (
-                                ((f2 - f0) * freq_factor_5MHz) ** 2
-                            ) / DENSITY
+                            high_shear_5y = (((f2 - f0) * freq_factor_5MHz) ** 2) / DENSITY
                             Log.i(
                                 f"5MHz High shear = ((f2-f0) * {freq_factor_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
                             )
@@ -8323,9 +8552,7 @@ class AnalyzerWorker(QtCore.QObject):
                             Log.i(
                                 f"5MHz High shear = ((d2-d0) * {diss_factor1_5MHz}-{diss_factor2_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
                             )
-                        high_shear_5x = self.correctHighShear(
-                            high_shear_5x, high_shear_5y
-                        )
+                        high_shear_5x = self.correctHighShear(high_shear_5x, high_shear_5y)
                         ax7.plot(high_shear_5x, high_shear_5y, "bd")
                         ax7.errorbar(
                             high_shear_5x,
@@ -8336,9 +8563,7 @@ class AnalyzerWorker(QtCore.QObject):
                             capsize=3,
                         )
                     else:
-                        Log.w(
-                            "5 MHz high-shear calculation not available from dataset."
-                        )
+                        Log.w("5 MHz high-shear calculation not available from dataset.")
                         if not fun_file_exists:
                             Log.w(
                                 "The 5 MHz mode does not exist in the dataset for this captured run."
@@ -8359,9 +8584,7 @@ class AnalyzerWorker(QtCore.QObject):
 
                     if not ratio < ratio_limit:
                         Log.w("Reason: Ratio threshold limit exceeded.")
-                        Log.d(
-                            f"Detail: Must be less than {ratio_limit}. Actual: {ratio:2.2f}."
-                        )
+                        Log.d(f"Detail: Must be less than {ratio_limit}. Actual: {ratio:2.2f}.")
             else:
                 Log.w("5 MHz high-shear calculation not available from dataset.")
                 Log.w("15 MHz high-shear calculation not available from dataset.")
@@ -8645,11 +8868,7 @@ class AnalyzerWorker(QtCore.QObject):
                             / ((mp * mv * 6) * (2 / 3 + 1 / 3 / n))
                         )
                         mid_shear = (
-                            6
-                            * mv
-                            / Constants.channel_thickness
-                            * (2 / 3 + 1 / 3 / n)
-                            * 1e-3
+                            6 * mv / Constants.channel_thickness * (2 / 3 + 1 / 3 / n) * 1e-3
                         )
                         # Use to show the old positions:
                         # ax7.scatter(
@@ -8678,7 +8897,9 @@ class AnalyzerWorker(QtCore.QObject):
                     Log.d(
                         f"Trendline must be within range from {min_fit_end:2.2f} to {max_fit_end:2.2f}"
                     )
-                    Log.d(f"Initial Fill Trendline ranges from {local_visc_array.min():2.2f} to {local_visc_array.max():2.2f}")
+                    Log.d(
+                        f"Initial Fill Trendline ranges from {local_visc_array.min():2.2f} to {local_visc_array.max():2.2f}"
+                    )
                     if (
                         min_fit_end > local_visc_array.min() or max_fit_end < local_visc_array.max()
                     ):  # Trendline is outside the allowable range
@@ -8911,11 +9132,7 @@ class AnalyzerWorker(QtCore.QObject):
                     )
                     visc_interp = float(interp_func(shear_interp))
                     i_l, i_r = next(
-                        (
-                            (i - 1, i)
-                            for i, s in enumerate(in_shear_san_60_80)
-                            if s > shear_interp
-                        ),
+                        ((i - 1, i) for i, s in enumerate(in_shear_san_60_80) if s > shear_interp),
                         (-1, len(in_shear_san_60_80)),
                     )
                     if i_l == -1 or i_r == len(in_shear_san_60_80):
@@ -9497,19 +9714,19 @@ class AnalyzerWorker(QtCore.QObject):
 
         if None in [ax, text]:
             return None
-        
+
         if candidates is None:
             candidates = [
-                {"pos": (0.50, 0.95), "ha": "center", "va": "top",    "priority": 0},
+                {"pos": (0.50, 0.95), "ha": "center", "va": "top", "priority": 0},
                 {"pos": (0.50, 0.05), "ha": "center", "va": "bottom", "priority": 1},
-                {"pos": (0.95, 0.95), "ha": "right",  "va": "top",    "priority": 2},
-                {"pos": (0.05, 0.05), "ha": "left",   "va": "bottom", "priority": 3},
-                {"pos": (0.95, 0.05), "ha": "right",  "va": "bottom", "priority": 4},
-                {"pos": (0.05, 0.95), "ha": "left",   "va": "top",    "priority": 5},
+                {"pos": (0.95, 0.95), "ha": "right", "va": "top", "priority": 2},
+                {"pos": (0.05, 0.05), "ha": "left", "va": "bottom", "priority": 3},
+                {"pos": (0.95, 0.05), "ha": "right", "va": "bottom", "priority": 4},
+                {"pos": (0.05, 0.95), "ha": "left", "va": "top", "priority": 5},
             ]
 
         # Sort candidates by priority (ascending)
-        candidates = sorted(candidates, key=lambda x: x['priority'])
+        candidates = sorted(candidates, key=lambda x: x["priority"])
 
         if pad is None:
             pad = 10
@@ -9564,10 +9781,10 @@ class AnalyzerWorker(QtCore.QObject):
             x0, y0, x1, y1 = bbox
 
             inside = (
-                (pts[:, 0] >= x0 - pad) &
-                (pts[:, 0] <= x1 + pad) &
-                (pts[:, 1] >= y0 - pad) &
-                (pts[:, 1] <= y1 + pad)
+                (pts[:, 0] >= x0 - pad)
+                & (pts[:, 0] <= x1 + pad)
+                & (pts[:, 1] >= y0 - pad)
+                & (pts[:, 1] <= y1 + pad)
             )
             return int(np.sum(inside))
 
@@ -9588,13 +9805,16 @@ class AnalyzerWorker(QtCore.QObject):
             priority = c.get("priority", 0)
 
             t = ax.text(
-                x, y, text,
+                x,
+                y,
+                text,
                 transform=ax.transAxes,
-                ha=ha, va=va,
+                ha=ha,
+                va=va,
                 color=color,
                 fontsize=fontsize,
                 bbox=dict(facecolor="white", alpha=0.7, edgecolor="none") if bbox else None,
-                zorder=10
+                zorder=10,
             )
 
             # force render so bbox is correct
@@ -9667,7 +9887,8 @@ class AnalyzerWorker(QtCore.QObject):
         except Exception as e:
             Log.e("ERROR:", e)
         return np.round(output, 2)
-    
+
+
 class ResizeFilter(QtCore.QObject):
     def __init__(self, worker, parent=None):
         super().__init__(parent)
@@ -9692,38 +9913,38 @@ class ResizeFilter(QtCore.QObject):
             # resize event finished, hysteresis elapsed: redraw!
             self.worker.place_text_avoiding_data()
             self._draw_pending = False
-        
 
 
 class RunScanWorker(QtCore.QThread):
     """Background thread to handle run scanning without freezing the UI.
-    
-    This worker offloads heavy filesystem I/O and XML parsing from the main 
-    event loop. It iterates through a list of devices, identifies data folders, 
-    and uses a ThreadPoolExecutor to parse individual run metadata in parallel 
+
+    This worker offloads heavy filesystem I/O and XML parsing from the main
+    event loop. It iterates through a list of devices, identifies data folders,
+    and uses a ThreadPoolExecutor to parse individual run metadata in parallel
     within this background thread.
-    
+
     Attributes:
-        scan_finished (QtCore.pyqtSignal): Signal emitted after each device is 
+        scan_finished (QtCore.pyqtSignal): Signal emitted after each device is
             processed. Emits:
             - List[Dict[str, Any]]: The parsed scan results.
             - str: The name of the device just scanned.
             - List[str]: Keys of runs that were not found on disk.
             - bool: True if this was the last device in the queue.
     """
+
     scan_finished = QtCore.pyqtSignal(list, str, list, bool)
 
     def __init__(
-        self, 
-        devices_to_scan: List[str], 
-        known_timestamps: List[str], 
-        parent: Optional[QtCore.QObject] = None
+        self,
+        devices_to_scan: List[str],
+        known_timestamps: List[str],
+        parent: Optional[QtCore.QObject] = None,
     ) -> None:
         """Initializes the worker with device and cache context.
 
         Args:
             devices_to_scan (List[str]): List of device names to be audited.
-            known_timestamps (List[str]): Current keys in the timestamp cache 
+            known_timestamps (List[str]): Current keys in the timestamp cache
                 to determine if a run needs a fresh XML parse.
             parent (Optional[QtCore.QObject]): The Qt parent object.
         """
@@ -9733,20 +9954,18 @@ class RunScanWorker(QtCore.QThread):
 
     def run(self) -> None:
         """Executes the background scanning logic.
-        
-        For each device, it identifies existing folders and calculates which 
-        cached runs are missing. It then uses a thread pool to perform parallel 
+
+        For each device, it identifies existing folders and calculates which
+        cached runs are missing. It then uses a thread pool to perform parallel
         scans of individual run folders.
         """
         num_devices = len(self.devices_to_scan)
-        
+
         for i, data_device in enumerate(self.devices_to_scan):
             # Fetch directories, excluding internal naming conventions
             runs = FileStorage.DEV_get_logged_data_folders(data_device)
             runs = [x for x in runs if x != "_unnamed"]
-            unchecked_runs = [
-                x for x in self.known_timestamps if x.endswith(data_device)
-            ]
+            unchecked_runs = [x for x in self.known_timestamps if x.endswith(data_device)]
 
             scan_args = []
             for run in runs:
@@ -9758,15 +9977,13 @@ class RunScanWorker(QtCore.QThread):
             scan_results: List[Dict[str, Any]] = []
             if scan_args:
                 with ThreadPoolExecutor(
-                    max_workers=min(8, len(scan_args)), 
-                    thread_name_prefix=f"scan-{data_device}"
+                    max_workers=min(8, len(scan_args)), thread_name_prefix=f"scan-{data_device}"
                 ) as ex:
-                    scan_results = list(
-                        ex.map(lambda a: AnalyzeProcess._scan_run(*a), scan_args)
-                    )
+                    scan_results = list(ex.map(lambda a: AnalyzeProcess._scan_run(*a), scan_args))
 
-            is_last = (i == num_devices - 1)
+            is_last = i == num_devices - 1
             self.scan_finished.emit(scan_results, data_device, unchecked_runs, is_last)
+
 
 class TableView(QtWidgets.QTableWidget):
 
