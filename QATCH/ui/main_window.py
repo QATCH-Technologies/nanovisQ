@@ -365,6 +365,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Configures the database file for VisQ.AI (if missing or out-of-date).
         # NOTE: This must be done before instantiating the `VisQAIWindow` class
         self._configure_database(exec_migrations=False)
+
         self.visq_window = VisQAIWindow(self)
         self.tec_worker = TECWorker()
         self.mode_window = ModeWindow(self)
@@ -712,13 +713,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.w("Analysis aborted by user due to bad run detection.")
                 return
 
-        # self.AnalyzeProc.cBox_Devices.clear()
-        # self.AnalyzeProc.cBox_Runs.clear()
-        # self.AnalyzeProc.cBox_Devices.addItems(self.data_devices)
-        # self.AnalyzeProc.cBox_Devices.setFixedWidth(self.AnalyzeProc.cBox_Devices.sizeHint().width())
-        # set by device change handler: self.AnalyzeProc.cBox_Runs.addItems(self.data_folders)
-        # self.AnalyzeProc.cBox_Devices.setCurrentText(data_device)
-        # self.AnalyzeProc.cBox_Runs.setCurrentText(data_folder)
+        # self.analyze_process.cBox_Devices.clear()
+        # self.analyze_process.cBox_Runs.clear()
+        # self.analyze_process.cBox_Devices.addItems(self.data_devices)
+        # self.analyze_process.cBox_Devices.setFixedWidth(self.analyze_process.cBox_Devices.sizeHint().width())
+        # set by device change handler: self.analyze_process.cBox_Runs.addItems(self.data_folders)
+        # self.analyze_process.cBox_Devices.setCurrentText(data_device)
+        # self.analyze_process.cBox_Runs.setCurrentText(data_folder)
         try:
             xml_path = data_path[0:-3] + "xml"
             # set always, even if not found
@@ -930,12 +931,12 @@ class MainWindow(QtWidgets.QMainWindow):
         #     Log.w(
         #         f"Not signed in: User with role {action_role.name} is required to perform this action.")
         #     Log.i("Please sign in to continue.")
-        #     self.ControlsWin.set_user_profile()  # prompt for sign-in
+        #     self.controls_window.set_user_profile()  # prompt for sign-in
         #     check_result = UserProfiles().check(
-        #         self.ControlsWin.userrole, action_role)  # check again
+        #         self.controls_window.userrole, action_role)  # check again
         # if not check_result:  # no user signed in or user not authorized
         #     Log.w(
-        #         f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
+        #         f"ACTION DENIED: User with role {self.controls_window.userrole.name} does not have permission to {action_role.name}.")
         #     return  # deny action
 
         # User check required, but no user signed in.
@@ -1506,9 +1507,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Window closed without stopping the capture, application will stop...",
             )
             self.stop()
-            # self.ControlsWin.close()
-            # self.PlotsWin.close()
-            # self.InfoWin.close()
+            # self.controls_window.close()
+            # self.plots_window.close()
+            # self.info_window.close()
             # evnt.accept()
 
         if hasattr(self, "tecThread"):
@@ -1541,7 +1542,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.controls_window.ui.chBox_MultiAuto.setEnabled(enabled)
         self.controls_window.ui.toggle_Cartridge.setEnabled(enabled)
         self.controls_window.ui.pButton_ResetApp.setEnabled(enabled)
-        # self.ControlsWin.ui.lTemp.setEnabled(enabled)
+        # self.controls_window.ui.lTemp.setEnabled(enabled)
         self.controls_window.ui.slTemp.setEnabled(enabled)
         self.controls_window.ui.pTemp.setEnabled(enabled)
         self.tec_worker.set_slider_enable(enabled)
@@ -1555,7 +1556,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.controls_window.ui.pTemp.setText("Stop Temp Control")
             self.tec_worker._tec_update_now = True
             QtCore.QTimer.singleShot(1000, self.tec_worker.update_now.emit)
-            # self.tecWorker.update_now.emit()
+            # self.tec_worker.update_now.emit()
 
         self.controls_window.ui.pButton_Stop.setEnabled(not enabled)
         self.controls_window.ui.sBox_Samples.setEnabled(not enabled)  # insert
@@ -1593,7 +1594,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.controls_window.ui.tool_Reset.setEnabled(enabled)
         self.controls_window.ui.tool_TempControl.setEnabled(enable_temp)
-        # self.ControlsWin.ui.tool_Advanced.setEnabled(enabled)
+        # self.controls_window.ui.tool_Advanced.setEnabled(enabled)
 
         # macOS immediate 'repaint()' to force visual state changes
         # (like button highlighting or disabling) main thread is
@@ -4512,7 +4513,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 - info_message (str): A descriptive message for the user.
 
         Side Effects:
-            Updates the stylesheet of `self.ControlsWin.ui.infostatus` to match
+            Updates the stylesheet of `self.controls_window.ui.infostatus` to match
             the current state (Yellow for processing, Red for errors).
         """
 
@@ -7677,7 +7678,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     do_launch_inline,
                 )
 
-            # threading.Thread(target=self.ControlsWin.close,).start()
+            # threading.Thread(target=self.controls_window.close,).start()
             return None, None
         else:
             return self.get_web_info(return_info)

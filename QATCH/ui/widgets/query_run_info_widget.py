@@ -1266,13 +1266,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.sign.clear()
 
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(f"User: {new_username}")
-                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
-                self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui.tool_User.setText(new_username)
-                self.parent.AnalyzeProc.tool_User.setText(new_username)
-                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText("&Change Password...")
+                self.parent.controls_window.username.setText(f"User: {new_username}")
+                self.parent.controls_window.userrole = UserRoles(new_userrole)
+                self.parent.controls_window.signinout.setText("&Sign Out")
+                self.parent.controls_window.ui.tool_User.setText(new_username)
+                self.parent.analyze_process.tool_User.setText(new_username)
+                if self.parent.controls_window.userrole != UserRoles.ADMIN:
+                    self.parent.controls_window.manage.setText("&Change Password...")
             else:
                 Log.d("User switched users to the same user profile. Nothing to change.")
             # PopUp.warning(self, Constants.app_title, "User has been switched.\n\nPlease sign now.")
@@ -1280,12 +1280,12 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         else:
             if new_username == None and not UserProfiles.session_info()[0]:
                 Log.d("User session invalidated. Switch users credentials incorrect.")
-                self.parent.ControlsWin.username.setText("User: [NONE]")
-                self.parent.ControlsWin.userrole = UserRoles.NONE
-                self.parent.ControlsWin.signinout.setText("&Sign In")
-                self.parent.ControlsWin.manage.setText("&Manage Users...")
-                self.parent.ControlsWin.ui.tool_User.setText("Anonymous")
-                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
+                self.parent.controls_window.username.setText("User: [NONE]")
+                self.parent.controls_window.userrole = UserRoles.NONE
+                self.parent.controls_window.signinout.setText("&Sign In")
+                self.parent.controls_window.manage.setText("&Manage Users...")
+                self.parent.controls_window.ui.tool_User.setText("Anonymous")
+                self.parent.analyze_process.tool_User.setText("Anonymous")
                 PopUp.warning(
                     self,
                     Constants.app_title,
@@ -1293,13 +1293,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 )
             if new_username != None and UserProfiles.session_info()[0]:
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(f"User: {new_username}")
-                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
-                self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui.tool_User.setText(new_username)
-                self.parent.AnalyzeProc.tool_User.setText(new_username)
-                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText("&Change Password...")
+                self.parent.controls_window.username.setText(f"User: {new_username}")
+                self.parent.controls_window.userrole = UserRoles(new_userrole)
+                self.parent.controls_window.signinout.setText("&Sign Out")
+                self.parent.controls_window.ui.tool_User.setText(new_username)
+                self.parent.analyze_process.tool_User.setText(new_username)
+                if self.parent.controls_window.userrole != UserRoles.ADMIN:
+                    self.parent.controls_window.manage.setText("&Change Password...")
                 PopUp.warning(
                     self,
                     Constants.app_title,
@@ -1333,11 +1333,11 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
     def show(self):
         super(QueryRunInfoWidget, self).show()
         min_width = 500
-        if not hasattr(self, "parent") or not hasattr(self.parent, "AnalyzeProc"):
+        if not hasattr(self, "parent") or not hasattr(self.parent, "analyze_process"):
             # Fallback to default positioning if parent window not available
             self.resize(min_width, self.height())
             return
-        winAnalyze = self.parent.AnalyzeProc
+        winAnalyze = self.parent.analyze_process
         if not hasattr(winAnalyze, "tBtn_Info") or not hasattr(winAnalyze, "tool_Cancel"):
             self.resize(min_width, self.height())
             return

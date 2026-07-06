@@ -120,9 +120,9 @@ class RenameOutputFilesWorker(QtCore.QObject):
             color_err (str): The hex color code for the text formatting.
             labelbar (str): The message to display in the infobar.
         """
-        if self.main_window and hasattr(self.main_window, "ControlsWin"):
+        if self.main_window and hasattr(self.main_window, "controls_window"):
             text = f"<font color=#0000ff> Infobar </font><font color={color_err}>{labelbar}</font>"
-            self.main_window.ControlsWin.ui.infobar.setText(text)
+            self.main_window.controls_window.ui.infobar.setText(text)
 
     def interp_temps(self, new_files: List[str]) -> None:
         """Starts the temperature interpolation process for the given files.
@@ -435,7 +435,7 @@ class RenameOutputFilesWorker(QtCore.QObject):
             # Finalize UI and Threads
             self.indicate_finalizing()
             user_name = (
-                "" if not self.main_window else self.main_window.ControlsWin.username.text()[6:]
+                "" if not self.main_window else self.main_window.controls_window.username.text()[6:]
             )
 
             for r_dir, r_path, r_good in runs_to_query:

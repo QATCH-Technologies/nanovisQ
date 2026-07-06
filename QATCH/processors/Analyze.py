@@ -1669,13 +1669,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.sign.clear()
 
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(f"User: {new_username}")
-                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
-                self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui.tool_User.setText(new_username)
-                self.parent.AnalyzeProc.tool_User.setText(new_username)
-                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText("&Change Password...")
+                self.parent.controls_window.username.setText(f"User: {new_username}")
+                self.parent.controls_window.userrole = UserRoles(new_userrole)
+                self.parent.controls_window.signinout.setText("&Sign Out")
+                self.parent.controls_window.ui.tool_User.setText(new_username)
+                self.parent.analyze_process.tool_User.setText(new_username)
+                if self.parent.controls_window.userrole != UserRoles.ADMIN:
+                    self.parent.controls_window.manage.setText("&Change Password...")
             else:
                 Log.d("User switched users to the same user profile. Nothing to change.")
             # PopUp.warning(self, Constants.app_title, "User has been switched.\n\nPlease sign now.")
@@ -1683,12 +1683,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         else:
             if new_username == None and not UserProfiles.session_info()[0]:
                 Log.d("User session invalidated. Switch users credentials incorrect.")
-                self.parent.ControlsWin.username.setText("User: [NONE]")
-                self.parent.ControlsWin.userrole = UserRoles.NONE
-                self.parent.ControlsWin.signinout.setText("&Sign In")
-                self.parent.ControlsWin.manage.setText("&Manage Users...")
-                self.parent.ControlsWin.ui.tool_User.setText("Anonymous")
-                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
+                self.parent.controls_window.username.setText("User: [NONE]")
+                self.parent.controls_window.userrole = UserRoles.NONE
+                self.parent.controls_window.signinout.setText("&Sign In")
+                self.parent.controls_window.manage.setText("&Manage Users...")
+                self.parent.controls_window.ui.tool_User.setText("Anonymous")
+                self.parent.analyze_process.tool_User.setText("Anonymous")
                 PopUp.warning(
                     self,
                     Constants.app_title,
@@ -1696,13 +1696,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
             if new_username != None and UserProfiles.session_info()[0]:
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(f"User: {new_username}")
-                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
-                self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui.tool_User.setText(new_username)
-                self.parent.AnalyzeProc.tool_User.setText(new_username)
-                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText("&Change Password...")
+                self.parent.controls_window.username.setText(f"User: {new_username}")
+                self.parent.controls_window.userrole = UserRoles(new_userrole)
+                self.parent.controls_window.signinout.setText("&Sign Out")
+                self.parent.controls_window.ui.tool_User.setText(new_username)
+                self.parent.analyze_process.tool_User.setText(new_username)
+                if self.parent.controls_window.userrole != UserRoles.ADMIN:
+                    self.parent.controls_window.manage.setText("&Change Password...")
                 PopUp.warning(
                     self,
                     Constants.app_title,
@@ -2142,8 +2142,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         except:
             Log.e(TAG, "Failed to set model dropdown menu in Advanced Settings")
         try:
-            self.parent.ControlsWin.q_version_v1.setChecked(True if index == 0 else False)
-            self.parent.ControlsWin.q_version_v4.setChecked(True if index == 1 else False)
+            self.parent.controls_window.q_version_v1.setChecked(True if index == 0 else False)
+            self.parent.controls_window.q_version_v4.setChecked(True if index == 1 else False)
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
@@ -5271,7 +5271,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             is_good = run.getAttribute("ruling")
 
             # Get the username from the parent control, if available.
-            user_name = None if self.parent == None else self.parent.ControlsWin.username.text()[6:]
+            user_name = None if self.parent == None else self.parent.controls_window.username.text()[6:]
             # check signatures of XML, render a new QueryRunInfo() and allow saving changes
             # (when editing runinfo, append to existing audit, not overwrite as new CAPTURE).
             if hasattr(self, "bThread"):
@@ -6688,9 +6688,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.getPoints()  # confirm and run full analysis for prior-result view
 
     # def _position_floating_widget(self):
-    #     pos_X = 20 + self.parent.MainWin.pos().x() + self.parent.MainWin.ui0.modemenu.width() + \
+    #     pos_X = 20 + self.parent.mode_window.pos().x() + self.parent.mode_window.ui0.modemenu.width() + \
     #         (self.width() - self.QModel_widget.width()) // 2
-    #     pos_Y = self.parent.MainWin.pos().y() + 250
+    #     pos_Y = self.parent.mode_window.pos().y() + 250
     #     self.QModel_widget.move(pos_X, pos_Y)
 
     def _log_model_confidences(self):

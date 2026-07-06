@@ -31,7 +31,7 @@ class RunInfoWindow(QtWidgets.QWidget):
                 ask4info = False
                 # self.indicate_finalizing()
                 self.bThread.append(QtCore.QThread())
-                # None if self.parent == None else self.parent.ControlsWin.username.text()[6:]
+                # None if self.parent == None else self.parent.controls_window.username.text()[6:]
                 user_name = "Alexander J. Ross"
                 # TODO: more secure to pass user_hash (filename)
                 self.bWorker.append(
