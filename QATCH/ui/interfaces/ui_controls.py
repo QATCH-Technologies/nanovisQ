@@ -3093,7 +3093,7 @@ class UIControls:
 
         num_devices = getattr(self, "multiplex_plots", 1)
 
-        plots_win = getattr(self.parent.parent, "PlotsWin", None)
+        plots_win = getattr(self.parent.parent, "plots_window", None)
         if plots_win and hasattr(plots_win, "ui2"):
             left_pane = plots_win.ui2.left_pane
             for i in range(num_devices):
@@ -3137,7 +3137,7 @@ class UIControls:
         # Reset device states.
         num_devices = getattr(self, "multiplex_plots", 1)
 
-        plots_win = getattr(self.parent.parent, "PlotsWin", None)
+        plots_win = getattr(self.parent.parent, "plots_window", None)
         if plots_win and hasattr(plots_win, "ui2"):
             left_pane = plots_win.ui2.left_pane
             for i in range(num_devices):

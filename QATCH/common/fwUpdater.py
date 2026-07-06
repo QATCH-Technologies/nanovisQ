@@ -154,7 +154,7 @@ class FW_Updater(QtCore.QObject):
                         if UserConstants.REQ_ADMIN_UPDATES:
                             action_role = UserRoles.ADMIN
                             check_result = UserProfiles().check(
-                                parent.ControlsWin.userrole, action_role
+                                parent.controls_window.userrole, action_role
                             )
                         if askPermission and check_result == True:
                             question = "Device is running "
@@ -200,13 +200,13 @@ class FW_Updater(QtCore.QObject):
                             doUpdate = parent.ReadyToShow
 
                         if doUpdate:
-                            parent.ControlsWin.ui.infobar.setText(
+                            parent.controls_window.ui.infobar.setText(
                                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
                                     "#333333",
                                     "Programming device firmware... please wait...",
                                 )
                             )
-                            parent.ControlsWin.ui.infobar.repaint()
+                            parent.controls_window.ui.infobar.repaint()
 
                             # # They said "YES" or we did not ask, attempt the update
                             multistep = f" ({i} of {num_ports})" if num_ports > 1 else ""
@@ -280,7 +280,7 @@ class FW_Updater(QtCore.QObject):
                                 self._port_changed = False
                                 self._port = port
 
-                            parent.ControlsWin.ui.infobar.setText(
+                            parent.controls_window.ui.infobar.setText(
                                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
                                     "#333333", ""
                                 )
@@ -920,8 +920,8 @@ class UpdaterTask(QtCore.QThread):
             #     PopUp.warning(parent, "Unknown Teensy HW Type", "Unknown hardware device. Cannot proceed.\nPlease check HW type and try again.")
             #     return result, output, error
 
-        # parent.ControlsWin.ui.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333","Programming device firmware... please wait..."))
-        # parent.ControlsWin.ui.infobar.repaint()
+        # parent.controls_window.ui.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333","Programming device firmware... please wait..."))
+        # parent.controls_window.ui.infobar.repaint()
 
         if self._serial.is_open == True or port == None:
             # NOTE: LEGACY UPDATES NO LONGER SUPPORTED (FLASHERX BOOTLOADER REQUIRED)
@@ -1233,7 +1233,7 @@ class UpdaterTask(QtCore.QThread):
                 # Log.d("GUI: Normal repaint events")
                 # Log.d("GUI: Toggle progress mode")
 
-        # parent.ControlsWin.ui.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333",""))
+        # parent.controls_window.ui.infobar.setText("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333",""))
 
         # Append results to the log file
         path_to_log = os.path.join(os.getcwd(), Constants.log_export_path)
@@ -1406,7 +1406,7 @@ class UpdaterTask(QtCore.QThread):
             finally:
                 self.close()
 
-        parent.ControlsWin.ui.infobar.setText(
+        parent.controls_window.ui.infobar.setText(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333", "")
         )
 

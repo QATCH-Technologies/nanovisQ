@@ -662,7 +662,7 @@ class VisQAIWindow(BaseVisQAIWindow):
             Log.w("Database closed: backup failed")
 
         # Check if MainWin exists before accessing to prevent startup crash!
-        if hasattr(self.parent, "MainWin") and self.parent.mode_window is not None:
+        if hasattr(self.parent, "mode_window") and self.parent.mode_window is not None:
             try:
                 # Highlight the selected toolkit item in the floating menu
                 self.parent.mode_window.ui.floating_widget.setActiveItem(index)
@@ -767,7 +767,7 @@ class VisQAIWindow(BaseVisQAIWindow):
             Log.d(tag=self.TAG, msg="Database objects disabled on VisQ.AI not enabled.")
 
             # Check if MainWin exists before accessing to prevent startup crash!
-            if hasattr(self.parent, "MainWin") and self.parent.mode_window is not None:
+            if hasattr(self.parent, "mode_window") and self.parent.mode_window is not None:
                 try:
                     # Remove highlighted tool item from floating menu widget
                     self.parent.mode_window.ui.floating_widget.setActiveItem(-1)
