@@ -77,6 +77,7 @@ class _GlassCard(QtWidgets.QFrame):
             shimmer_height=50.0,
             draw_vignette=True,
             header_line_y=_HEADER_H,
+            opaque_base=True,
         )
 
 

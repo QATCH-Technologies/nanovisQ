@@ -55,6 +55,7 @@ def paint_glass_surface(
     draw_vignette: bool = True,
     header_line_y: Optional[float] = None,
     rim: bool = True,
+    opaque_base: bool = False,
 ) -> None:
     """Paints the standard frosted-glass surface into `widget`.
 
@@ -74,6 +75,10 @@ def paint_glass_surface(
         header_line_y: If set, draws a 1px divider across the widget at this
             y (used by dialogs with a titled header).
         rim: Whether to draw the outer/inner border strokes.
+        opaque_base: If True, the base fill ignores the token's alpha and
+            paints fully opaque (same tint color, no see-through). Use for
+            surfaces — like modal dialogs — where content bleeding through
+            the card would hurt readability.
     """
     owns_painter = painter is None
     p = painter or QtGui.QPainter(widget)
@@ -87,7 +92,10 @@ def paint_glass_surface(
     p.setClipPath(clip)
 
     # Base fill + faint tint overlay
-    p.fillRect(rect, _c(tokens["plot_glass_base"]))
+    base_color = _c(tokens["plot_glass_base"])
+    if opaque_base:
+        base_color.setAlpha(255)
+    p.fillRect(rect, base_color)
     p.fillRect(rect, _c(tokens["plot_glass_overlay"]))
 
     # Top-down shimmer
