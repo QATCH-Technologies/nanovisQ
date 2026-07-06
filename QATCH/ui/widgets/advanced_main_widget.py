@@ -20,14 +20,36 @@ import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 
 from QATCH.common.architecture import Architecture
+from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.styles.fonts import FONT_SANS_SEMIBOLD
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+
+
+def _tinted_pixmap(src: QtGui.QPixmap, color: QtGui.QColor) -> QtGui.QPixmap:
+    """Returns a copy of `src` fully painted in `color`, preserving alpha.
+
+    Uses SourceAtop composition so the tint respects the original alpha
+    channel - transparent SVG areas stay transparent. Mirrors the
+    established `_tinted_icon` pattern in account_popup.py.
+    """
+    if src.isNull():
+        return src
+    dst = QtGui.QPixmap(src.size())
+    dst.fill(QtCore.Qt.GlobalColor.transparent)
+    p = QtGui.QPainter(dst)
+    p.drawPixmap(0, 0, src)
+    p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+    p.fillRect(dst.rect(), color)
+    p.end()
+    return dst
 
 
 class _InfoIcon(QtWidgets.QLabel):
     """Info icon (SVG) that brightens on hover and shows a tooltip.
 
-    Loads an SVG from the provided path. The icon is rendered at reduced
-    opacity at rest and full opacity on hover, giving a subtle hover effect
-    without needing a second asset.
+    Loads an SVG from the provided path. The icon is tinted with the
+    `flat_text_muted` token at rest and `flat_accent` on hover, refreshing
+    automatically on light/dark theme changes.
 
     Attributes:
         _DISPLAY_SIZE (int): The display size (width and height) of the icon in pixels.
@@ -50,38 +72,27 @@ class _InfoIcon(QtWidgets.QLabel):
         self.setStyleSheet("background: transparent; border: none;")
         self.setToolTip(tooltip)
 
-        src = QtGui.QPixmap(icon_path)
-        if not src.isNull():
-            src = src.scaled(
+        self._src = QtGui.QPixmap(icon_path)
+        if not self._src.isNull():
+            self._src = self._src.scaled(
                 self._DISPLAY_SIZE,
                 self._DISPLAY_SIZE,
                 QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             )
-        self._pix_rest = self._with_opacity(src, 0.55)
-        self._pix_hover = self._with_opacity(src, 1.0)
-        self.setPixmap(self._pix_rest)
+        self._hovered = False
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
-    @staticmethod
-    def _with_opacity(src: QtGui.QPixmap, opacity: float) -> QtGui.QPixmap:
-        """Creates a copy of the given pixmap with a specific opacity applied.
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
 
-        Args:
-            src (QtGui.QPixmap): The source pixmap to modify.
-            opacity (float): The desired opacity level (0.0 to 1.0).
-
-        Returns:
-            QtGui.QPixmap: A new pixmap rendered with the requested opacity.
-        """
-        if src.isNull():
-            return src
-        out = QtGui.QPixmap(src.size())
-        out.fill(QtCore.Qt.GlobalColor.transparent)
-        p = QtGui.QPainter(out)
-        p.setOpacity(opacity)
-        p.drawPixmap(0, 0, src)
-        p.end()
-        return out
+    def _apply_theme(self) -> None:
+        if self._src.isNull():
+            return
+        tok = ThemeManager.instance().tokens()
+        color = tok["flat_accent"] if self._hovered else tok["flat_text_muted"]
+        self.setPixmap(_tinted_pixmap(self._src, QtGui.QColor(*color)))
 
     def enterEvent(self, event) -> None:  # noqa: N802
         """Handles the mouse enter event to brighten the icon.
@@ -89,8 +100,8 @@ class _InfoIcon(QtWidgets.QLabel):
         Args:
             event (QtCore.QEvent): The triggering hover event.
         """
-        if not self._pix_hover.isNull():
-            self.setPixmap(self._pix_hover)
+        self._hovered = True
+        self._apply_theme()
 
     def leaveEvent(self, event) -> None:  # noqa: N802
         """Handles the mouse leave event to dim the icon back to rest state.
@@ -98,21 +109,24 @@ class _InfoIcon(QtWidgets.QLabel):
         Args:
             event (QtCore.QEvent): The triggering hover leave event.
         """
-        if not self._pix_rest.isNull():
-            self.setPixmap(self._pix_rest)
+        self._hovered = False
+        self._apply_theme()
 
 
 class _AdvancedInnerPanel(QtWidgets.QWidget):
     """Inner panel for the advanced settings popup.
 
-    Handles the custom painting of the frosted white base, shimmer, and dual
-    borders to simulate a glass-like material.
+    Styled as a flat card (see QATCH.ui.components.flat_paint) - a solid
+    `flat_surface` fill with a 1px `flat_border` stroke - matching the
+    account popup and the rest of the flat control system, rather than the
+    old frosted-glass recipe. Repaints automatically on light/dark theme
+    changes.
 
     Attributes:
         _RADIUS (float): The corner radius of the panel.
     """
 
-    _RADIUS: float = 10.0
+    _RADIUS: float = 12.0
 
     def __init__(self, parent=None) -> None:
         """Initializes the _AdvancedInnerPanel.
@@ -123,41 +137,27 @@ class _AdvancedInnerPanel(QtWidgets.QWidget):
         super().__init__(parent)
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        self.update()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
-        """Paints the frosted-glass visual effect on the widget surface.
+        """Paints the flat card surface (fill + border) on the widget.
 
         Args:
             event (QtGui.QPaintEvent): The paint event parameters provided by Qt.
         """
+        tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
-
-        rect_f = QtCore.QRectF(self.rect())
-        r = self._RADIUS
-
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, r, r)
-        p.setClipPath(clip)
-
-        # Base
-        p.fillRect(self.rect(), QtGui.QColor(255, 255, 255, 235))
-        p.fillRect(self.rect(), QtGui.QColor(228, 235, 241, 28))
-
-        # Top shimmer
-        shimmer = QtGui.QLinearGradient(0, 0, 0, 44)
-        shimmer.setColorAt(0.0, QtGui.QColor(255, 255, 255, 80))
-        shimmer.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
-        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        # Dual borders
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 220), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), r, r)
-        p.setPen(QtGui.QPen(QtGui.QColor(200, 210, 220, 90), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(1.5, 1.5, -1.5, -1.5), r - 1.5, r - 1.5)
-
+        paint_flat_surface(
+            self,
+            radius=self._RADIUS,
+            fill=QtGui.QColor(*tok["flat_surface"]),
+            border=QtGui.QColor(*tok["flat_border"]),
+            painter=p,
+        )
         p.end()
 
 
@@ -408,16 +408,23 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         gear.setScaledContents(True)
         gear.setStyleSheet("background: transparent; border: none;")
         _gear_pix = QtGui.QPixmap(os.path.join(icons_dir, "gear.svg"))
-        if not _gear_pix.isNull():
-            gear.setPixmap(_gear_pix)
-        header.addWidget(gear, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         title = QtWidgets.QLabel("Advanced Options")
-        title.setStyleSheet(
-            "QLabel { color: rgba(28, 40, 52, 235); font-size: 14px; "
-            "font-weight: bold; background: transparent; border: none; }"
-        )
+        header.addWidget(gear, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         header.addWidget(title, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        def _restyle_header(_mode: str = "") -> None:
+            tok = ThemeManager.instance().tokens()
+            if not _gear_pix.isNull():
+                gear.setPixmap(_tinted_pixmap(_gear_pix, QtGui.QColor(*tok["flat_text_muted"])))
+            title.setStyleSheet(
+                f"QLabel {{ color: {tok_css(tok['flat_text'])}; "
+                f"font-family: '{FONT_SANS_SEMIBOLD}'; font-size: 14px; "
+                "background: transparent; border: none; }"
+            )
+
+        _restyle_header()
+        ThemeManager.instance().themeChanged.connect(_restyle_header)
 
         # Info icon
         info = _InfoIcon(

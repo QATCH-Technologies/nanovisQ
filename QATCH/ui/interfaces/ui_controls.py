@@ -42,6 +42,7 @@ from QATCH.ui.components import (
     AnimatedComboBox,
     AnimatedDoubleSpinBox,
     FLUXControl,
+    GlassLineEdit,
     GlassPushButton,
     GlassToggle,
     NumberIconButton,
@@ -633,8 +634,7 @@ class UIControls:
         self.cBox_Speed = AnimatedComboBox(icon_path=self._combo_chevron)
         self.cBox_Speed.setEditable(False)
         self.cBox_Speed.setObjectName("cBox_Speed")
-        if USE_FULLSCREEN:
-            self.cBox_Speed.setFixedHeight(50)
+        self.cBox_Speed.setFixedHeight(34)
         self.Layout_controls.addWidget(self.cBox_Speed, 4, 1, 1, 1)
 
         # Shared control-button sizing (thick enough for icon + label).
@@ -654,8 +654,7 @@ class UIControls:
         self.cBox_Port = AnimatedComboBox(icon_path=self._combo_chevron)
         self.cBox_Port.setEditable(False)
         self.cBox_Port.setObjectName("cBox_Port")
-        if USE_FULLSCREEN:
-            self.cBox_Port.setFixedHeight(50)
+        self.cBox_Port.setFixedHeight(34)
         self.Layout_controls.addWidget(self.cBox_Port, 2, 1, 1, 1)
 
         # Identify button
@@ -699,8 +698,7 @@ class UIControls:
         # Operation mode - source
         self.cBox_Source = AnimatedComboBox(icon_path=self._combo_chevron)
         self.cBox_Source.setObjectName("cBox_Source")
-        if USE_FULLSCREEN:
-            self.cBox_Source.setFixedHeight(50)
+        self.cBox_Source.setFixedHeight(34)
         self.Layout_controls.addWidget(self.cBox_Source, 2, 0, 1, 1)
 
         # Frequency hopping toggle
@@ -964,8 +962,7 @@ class UIControls:
         self.cBox_MultiMode.setObjectName("cBox_MultiMode")
         self.cBox_MultiMode.addItems(["1 Channel", "2 Channels", "3 Channels", "4 Channels"])
         self.cBox_MultiMode.setCurrentIndex(0)
-        if USE_FULLSCREEN:
-            self.cBox_MultiMode.setFixedHeight(50)
+        self.cBox_MultiMode.setFixedHeight(34)
 
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
         self.pButton_PlateConfig = GlassPushButton(variant="default")
@@ -1253,14 +1250,9 @@ class UIControls:
         )
 
         # Back Button + Title
-        self.back_btn = QtWidgets.QPushButton()
-        self.back_btn.setIcon(
-            QtGui.QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "left-arrow.svg"))
-        )
+        self.back_btn = GlassPushButton(variant="ghost")
         self.back_btn.setIconSize(QtCore.QSize(18, 18))
         self.back_btn.setFixedSize(32, 32)
-        self.back_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.back_btn.setObjectName("DeviceBackBtn")
         self.back_btn.setToolTip("Back to Advanced Options")
         self.back_btn.clicked.connect(self.on_device_config_editor_close)
 
@@ -1270,9 +1262,6 @@ class UIControls:
         self.device_config_icon.setFixedSize(18, 18)
         self.device_config_icon.setScaledContents(True)
         self.device_config_icon.setStyleSheet("background: transparent; border: none;")
-        _dev_gear = QtGui.QPixmap(os.path.join(_dev_icons_dir, "gear.svg"))
-        if not _dev_gear.isNull():
-            self.device_config_icon.setPixmap(_dev_gear)
         self.device_config_title = DeviceConfigLabel("Configuration Editor for Device")
         self.device_config_title.setObjectName("DeviceConfigTitle")
         self.ConfigBannerWidget = self.device_config_title
@@ -1344,10 +1333,10 @@ class UIControls:
             return dot
 
         # Device Name
-        self.device_name_input = QtWidgets.QLineEdit()
-        self.device_name_input.setObjectName("CtrlInputPill")
+        self.device_name_input = GlassLineEdit()
         self.device_name_input.setValidator(self.validDeviceName)
         self.device_name_input.setMinimumWidth(160)
+        self.device_name_input.setFixedHeight(34)
         self.device_name_action = self.device_name_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
@@ -1357,10 +1346,10 @@ class UIControls:
         self.device_name_dot = _make_dot(self.device_name_action, self.device_name_input)
 
         # Device Position ID
-        self.device_pid_input = QtWidgets.QLineEdit()
-        self.device_pid_input.setObjectName("CtrlInputPill")
+        self.device_pid_input = GlassLineEdit()
         self.device_pid_input.setValidator(self.validDevicePid)
         self.device_pid_input.setMinimumWidth(160)
+        self.device_pid_input.setFixedHeight(34)
         self.device_pid_action = self.device_pid_input.addAction(
             self.blankIcon, QtWidgets.QLineEdit.TrailingPosition
         )
@@ -1644,6 +1633,8 @@ class UIControls:
 
         ThemeManager.instance().themeChanged.connect(lambda _: self._refresh_toolbar_icons())
         self._refresh_toolbar_icons()
+        ThemeManager.instance().themeChanged.connect(lambda _: self._refresh_advanced_panel_icons())
+        self._refresh_advanced_panel_icons()
 
     def on_text_edit(self, text: str, action: QtWidgets.QAction) -> None:
         """Updates the action's visual state based on whether the input text is empty.
@@ -2871,6 +2862,48 @@ class UIControls:
         for btn, icon_name in buttons_icons:
             if btn is not None:
                 btn.setIcon(self._tinted_icon(os.path.join(icon_dir, icon_name), color))
+
+    def _refresh_advanced_panel_icons(self) -> None:
+        """Recolors the raw SVG glyphs inside the Advanced/Device panels.
+
+        These icons (search, refresh, gear, back-arrow, start/stop/clear/
+        reset...) carry a fixed dark-gray fill baked into the SVG, so like
+        the toolbar icons they need re-tinting from the active `flat_*`
+        tokens on every theme change or they stay illegible in dark mode.
+        """
+        tok = ThemeManager.instance().tokens()
+        text_color = QtGui.QColor(*tok["flat_text"])
+        muted_color = QtGui.QColor(*tok["flat_text_muted"])
+        accent_color = QtGui.QColor(*tok["flat_accent"])
+        icon_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+
+        buttons_icons = [
+            (getattr(self, "pButton_ID", None), "search.svg", text_color),
+            (getattr(self, "pButton_Refresh", None), "refresh-cw.svg", text_color),
+            (getattr(self, "pButton_Configure", None), "gear.svg", text_color),
+            (getattr(self, "pButton_PlateConfig", None), "gear.svg", text_color),
+            (getattr(self, "pButton_Start", None), "play-filled.svg", text_color),
+            (getattr(self, "pButton_Stop", None), "stop-filled.svg", text_color),
+            (getattr(self, "pButton_Clear", None), "clear-plot.svg", text_color),
+            (getattr(self, "pButton_ResetApp", None), "factory-reset.svg", text_color),
+            (getattr(self, "back_btn", None), "left-arrow.svg", accent_color),
+        ]
+        for btn, icon_name, color in buttons_icons:
+            if btn is not None:
+                btn.setIcon(self._tinted_icon(os.path.join(icon_dir, icon_name), color))
+
+        device_config_icon = getattr(self, "device_config_icon", None)
+        if device_config_icon is not None:
+            gear_pix = QtGui.QPixmap(os.path.join(icon_dir, "gear.svg"))
+            if not gear_pix.isNull():
+                dst = QtGui.QPixmap(gear_pix.size())
+                dst.fill(QtCore.Qt.GlobalColor.transparent)
+                p = QtGui.QPainter(dst)
+                p.drawPixmap(0, 0, gear_pix)
+                p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+                p.fillRect(dst.rect(), muted_color)
+                p.end()
+                device_config_icon.setPixmap(dst)
 
     def action_next_port(self) -> None:
         """Advance the FLUX controller to the next port.

@@ -19,6 +19,8 @@ Variants
   "destructive"          Solid error fill, white text - hard-confirm delete.
   "destructive_outline"  Transparent, error-colored text + border - softer
                          labelled destructive action before confirmation.
+  "ghost_danger"          Transparent, error-colored text, no border - quiet
+                         destructive links (Sign Out).
   "icon_toolbar"          Vertical icon-above-label stack (not yet wired to
                          any call site - available for future toolbar work).
 
@@ -64,7 +66,15 @@ _VARIANT_ALIASES: dict[str, str] = {
 }
 
 _CANONICAL_VARIANTS = frozenset(
-    {"primary", "secondary", "ghost", "destructive", "destructive_outline", "icon_toolbar"}
+    {
+        "primary",
+        "secondary",
+        "ghost",
+        "ghost_danger",
+        "destructive",
+        "destructive_outline",
+        "icon_toolbar",
+    }
 )
 
 
@@ -98,6 +108,7 @@ class GlassPushButton(QtWidgets.QPushButton):
         self._pressed_state: bool = False
         self._border_visible: bool = True
         self._icon_left: bool = False
+        self._menu_row: bool = False
 
         self._apply_qss(text)
 
@@ -119,6 +130,18 @@ class GlassPushButton(QtWidgets.QPushButton):
         curve. Use for labelled control buttons that want a leading glyph.
         """
         self._icon_left = on
+        self.update()
+
+    def set_menu_row(self, on: bool = True) -> None:
+        """Lays the button out as a full-width, left-aligned menu row: icon
+        at a fixed inset, text immediately after it (not centered) - for
+        borderless popup menu items (e.g. the account dropdown's "Manage
+        Users" / "Sign Out" rows). Implies `set_icon_left(True)`.
+        """
+        self._menu_row = on
+        if on:
+            self._icon_left = True
+        self._apply_qss(self.text())
         self.update()
 
     def set_variant(self, variant: str) -> None:
@@ -256,6 +279,19 @@ class GlassPushButton(QtWidgets.QPushButton):
                 "ring": c("flat_accent_ring") if focus_ring else None, "shadow": False,
             }
 
+        if variant == "ghost_danger":
+            if pressed:
+                fill = c("flat_error_weak").darker(105)
+            elif hovered:
+                fill = c("flat_error_weak")
+            else:
+                fill = transparent
+            return {
+                "fill": fill, "text": c("flat_error"), "border": transparent,
+                "border_width": 0.0,
+                "ring": c("flat_error_ring") if focus_ring else None, "shadow": False,
+            }
+
         if variant == "icon_toolbar":
             if hovered or pressed:
                 fill = c("flat_accent_weak")
@@ -371,6 +407,10 @@ class GlassPushButton(QtWidgets.QPushButton):
             self._paint_icon_toolbar_label(colors["text"])
             return
 
+        if self._menu_row:
+            self._paint_menu_row_label(colors["text"])
+            return
+
         if self._icon_left and not self.icon().isNull():
             # Left-aligned icon, centered text. The icon is inset from the
             # left edge by a padding that accounts for the corner radius so
@@ -430,4 +470,40 @@ class GlassPushButton(QtWidgets.QPushButton):
         p.setPen(QtGui.QPen(text_color))
         text_rect = QtCore.QRect(0, text_y, w, label_h)
         p.drawText(text_rect, QtCore.Qt.AlignmentFlag.AlignHCenter, self.text())
+        p.end()
+
+    def _paint_menu_row_label(self, text_color: QtGui.QColor) -> None:
+        """Left-aligned icon + left-aligned text for variant=set_menu_row(True).
+
+        Hand-painted rather than delegated to CE_PushButtonLabel + QSS
+        text-align: Qt's stylesheet engine does not reliably resolve a
+        shorthand `padding` against a differing effective left inset for
+        icon-suppressed text the way this needs, so direct drawing is used
+        instead - the same reasoning as `_paint_icon_toolbar_label`.
+        """
+        w, h = self.width(), self.height()
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.SmoothPixmapTransform)
+        if not self.isEnabled():
+            p.setOpacity(0.45)
+
+        icon = self.icon()
+        icon_pad = 12
+        gap = 10
+        text_x = icon_pad
+        if not icon.isNull():
+            isz = self.iconSize()
+            icon_y = (h - isz.height()) // 2
+            p.drawPixmap(icon_pad, icon_y, icon.pixmap(isz))
+            text_x = icon_pad + isz.width() + gap
+
+        font = QtGui.QFont(FONT_SANS_SEMIBOLD)
+        font.setPixelSize(13)
+        p.setFont(font)
+        p.setPen(QtGui.QPen(text_color))
+        text_rect = QtCore.QRect(text_x, 0, w - text_x - 12, h)
+        p.drawText(
+            text_rect, QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft,
+            self.text(),
+        )
         p.end()

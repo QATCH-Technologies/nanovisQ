@@ -1,22 +1,24 @@
 from typing import Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.styles.theme_manager import ThemeManager
 
 
 class ControlsWidget(QtWidgets.QWidget):
-    """Container that provides the toolbar's gradient backdrop.
+    """Container that provides the toolbar's card backdrop.
 
-    Renders the same cool-blue gradient palette used by GlassCard in
-    ui_login when no live backdrop is available, overlaid with the standard
-    white-tint, shimmer, and dual-border glass language.
+    Painted as a flat card (see QATCH.ui.components.flat_paint) using the
+    same `surface`/`surface_border` tokens as the Mode sidebar and Log
+    console, so the toolbar reads as part of the same panel family instead
+    of the old frosted-glass look.
 
     Attributes:
         _RADIUS (float): The corner radius applied to the container's
-            glass geometry.
+            card geometry.
     """
 
-    _RADIUS: float = 10.0
+    _RADIUS: float = 12.0
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         """Initializes the ControlsWidget with transparency-aware attributes.
@@ -36,11 +38,7 @@ class ControlsWidget(QtWidgets.QWidget):
         ThemeManager.instance().themeChanged.connect(lambda _: self.update())
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
-        """Performs custom painting to render the frosted-glass toolbar background.
-
-        The painting sequence applies a frosted-white base with a soft blue
-        tint, a three-stop shimmer gradient, a bottom vignette for grounding,
-        and double-stroke borders to provide a clean glass-like edge.
+        """Paints the flat card surface (fill + border) behind the toolbar.
 
         Args:
             event (QtGui.QPaintEvent): The paint event provided by the system.
@@ -48,41 +46,11 @@ class ControlsWidget(QtWidgets.QWidget):
         tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
-
-        rect_f = QtCore.QRectF(self.rect())
-
-        # Clip to rounded rectangle
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
-        p.setClipPath(clip)
-
-        # Base
-        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_base"]))
-        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_overlay"]))
-
-        # Top shimmer
-        shimmer = QtGui.QLinearGradient(0, 0, 0, 40)
-        shimmer.setColorAt(0.0, QtGui.QColor(*tok["plot_glass_shimmer_top"]))
-        shimmer.setColorAt(0.5, QtGui.QColor(*tok["plot_glass_shimmer_mid"]))
-        shimmer.setColorAt(1.0, QtGui.QColor(*tok["plot_glass_shimmer_mid"][:3], 0))
-        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        # Bottom vignette
-        vg = QtGui.QLinearGradient(0, self.height() - 30, 0, self.height())
-        vg.setColorAt(0.0, QtGui.QColor(*tok["plot_glass_vignette_end"][:3], 0))
-        vg.setColorAt(1.0, QtGui.QColor(*tok["plot_glass_vignette_end"]))
-        p.fillRect(self.rect(), QtGui.QBrush(vg))
-
-        # Borders
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_rim"]), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
-        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_inset"]), 1.0))
-        p.drawRoundedRect(
-            rect_f.adjusted(1.5, 1.5, -1.5, -1.5),
-            self._RADIUS - 1.5,
-            self._RADIUS - 1.5,
+        paint_flat_surface(
+            self,
+            radius=self._RADIUS,
+            fill=QtGui.QColor(*tok["surface"]),
+            border=QtGui.QColor(*tok["surface_border"]),
+            painter=p,
         )
-
         p.end()

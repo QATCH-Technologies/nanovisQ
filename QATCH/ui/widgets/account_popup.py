@@ -1,8 +1,10 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from typing import Optional
 import os
+from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.components.glass_push_button import GlassPushButton
 from QATCH.common.architecture import Architecture
+from QATCH.ui.styles.fonts import FONT_SANS, FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
 
@@ -72,16 +74,19 @@ class AvatarLabel(QtWidgets.QWidget):
 
 
 class AccountInnerPanel(QtWidgets.QWidget):
-    """Inner glass-morphism panel for the account popup.
+    """Inner panel for the account popup, styled to match the app's flat
+    control system (see QATCH.ui.components.flat_paint) - a flat card with
+    a 1px border, not the frosted-glass recipe used elsewhere.
 
-    Paints the frosted-glass background with rounded corners.  The outer
-    :class:`GlassAccountPopup` applies a :class:`QGraphicsDropShadowEffect`
+    The outer :class:`AccountPopup` applies a :class:`QGraphicsDropShadowEffect`
     to this widget so the shadow follows the painted alpha mask, producing
     a soft, rounded drop shadow.  This mirrors the pattern used by
-    `RecoveryFilterWidget` to avoid the rectangular OS popup outline.
+    `RecoveryFilterWidget` to avoid the rectangular OS popup outline. Safe
+    here (unlike hover-animated custom-painted widgets) because this panel
+    only repaints on theme change, never on a hover/animation cycle.
     """
 
-    _RADIUS: float = 10.0
+    _RADIUS: float = 12.0
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
@@ -92,39 +97,17 @@ class AccountInnerPanel(QtWidgets.QWidget):
     def _on_theme_changed(self, _mode: str) -> None:
         self.update()
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
         tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
-
-        rect_f = QtCore.QRectF(self.rect())
-        _R = self._RADIUS
-
-        clip = QtGui.QPainterPath()
-        clip.addRoundedRect(rect_f, _R, _R)
-        p.setClipPath(clip)
-
-        # Frosted glass base - same "glass card" tokens as GlassDialog/plot
-        # cards, so the popup matches the app's other frosted surfaces in
-        # both light and dark mode.
-        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_base"]))
-        p.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_overlay"]))
-
-        # Top shimmer
-        shimmer_rgb = tok["plot_glass_shimmer_top"][:3]
-        shimmer = QtGui.QLinearGradient(0, 0, 0, 44)
-        shimmer.setColorAt(0.0, QtGui.QColor(*tok["plot_glass_shimmer_top"]))
-        shimmer.setColorAt(1.0, QtGui.QColor(*shimmer_rgb, 0))
-        p.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        # Dual borders (outer rim, inner inset)
-        p.setClipping(False)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_rim"]), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), _R, _R)
-        p.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_inset"]), 1.0))
-        p.drawRoundedRect(rect_f.adjusted(1.5, 1.5, -1.5, -1.5), _R - 1.5, _R - 1.5)
-
+        paint_flat_surface(
+            self,
+            radius=self._RADIUS,
+            fill=QtGui.QColor(*tok["flat_surface"]),
+            border=QtGui.QColor(*tok["flat_border"]),
+            painter=p,
+        )
         p.end()
 
 
@@ -290,15 +273,19 @@ class AccountPopup(QtWidgets.QWidget):
 
         self._manage_btn: Optional[GlassPushButton] = None
         if show_manage:
-            self._manage_btn = GlassPushButton(" Manage Users…")
-            self._manage_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+            self._manage_btn = GlassPushButton("Manage Users", variant="ghost")
+            self._manage_btn.set_menu_row(True)
+            self._manage_btn.setFixedHeight(34)
+            self._manage_btn.setIconSize(QtCore.QSize(16, 16))
             self._manage_btn.clicked.connect(self._on_manage_users)
             layout.addWidget(self._manage_btn)
 
         self._sign_out_btn: Optional[GlassPushButton] = None
         if show_sign_out:
-            self._sign_out_btn = GlassPushButton(" Sign Out")
-            self._sign_out_btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+            self._sign_out_btn = GlassPushButton("Sign Out", variant="ghost_danger")
+            self._sign_out_btn.set_menu_row(True)
+            self._sign_out_btn.setFixedHeight(34)
+            self._sign_out_btn.setIconSize(QtCore.QSize(16, 16))
             self._sign_out_btn.clicked.connect(self._on_sign_out)
             layout.addWidget(self._sign_out_btn)
 
@@ -317,41 +304,6 @@ class AccountPopup(QtWidgets.QWidget):
     }
     _ROLE_DEFAULT_TOKEN_KEYS = ("account_role_default_bg", "account_role_default_text")
 
-    @staticmethod
-    def _apply_action_button_style(
-        btn: GlassPushButton,
-        base_rgba: tuple,
-        bg_alphas: tuple,
-        border_alphas: tuple,
-        text_alpha: int,
-    ) -> None:
-        """Styles a GlassPushButton as a labelled glass action row - a
-        translucent wash of *base_rgba*'s hue at the given (normal, hover,
-        pressed) alpha levels, with left-aligned icon + text."""
-        r, g, b, _ = base_rgba
-        bg_n, bg_h, bg_p = bg_alphas
-        bd_n, bd_h, bd_p = border_alphas
-        btn.setStyleSheet(f"""
-            QPushButton {{
-                background: rgba({r}, {g}, {b}, {bg_n});
-                color: rgba({r}, {g}, {b}, {text_alpha});
-                border: 1px solid rgba({r}, {g}, {b}, {bd_n});
-                border-radius: 5px;
-                padding: 8px 14px 8px 12px;
-                text-align: left;
-                font-size: 12px;
-                font-weight: bold;
-            }}
-            QPushButton:hover  {{
-                background: rgba({r}, {g}, {b}, {bg_h});
-                border: 1px solid rgba({r}, {g}, {b}, {bd_h});
-            }}
-            QPushButton:pressed {{
-                background: rgba({r}, {g}, {b}, {bg_p});
-                border: 1px solid rgba({r}, {g}, {b}, {bd_p});
-            }}
-        """)
-
     def _on_theme_changed(self, _mode: str) -> None:
         self._apply_theme()
 
@@ -359,59 +311,53 @@ class AccountPopup(QtWidgets.QWidget):
         tok = ThemeManager.instance().tokens()
 
         self._name_lbl.setStyleSheet(
-            f"color: {tok_css(tok['text_primary'])}; font-weight: bold; font-size: 13px; "
-            "background: transparent; border: none;"
+            f"color: {tok_css(tok['flat_text'])}; font-family: '{FONT_SANS_SEMIBOLD}'; "
+            "font-size: 13px; background: transparent; border: none;"
         )
         self._initials_lbl.setStyleSheet(
-            f"color: {tok_css(tok['text_secondary'])}; font-size: 10px; "
-            "background: transparent; border: none;"
+            f"color: {tok_css(tok['flat_text_muted'])}; font-family: '{FONT_SANS}'; "
+            "font-size: 10px; background: transparent; border: none;"
         )
 
         bg_key, fg_key = self._ROLE_TOKEN_KEYS.get(self._role_name, self._ROLE_DEFAULT_TOKEN_KEYS)
         self._role_badge.setStyleSheet(
             f"background: {tok_css(tok[bg_key])}; color: {tok_css(tok[fg_key])}; "
-            "border-radius: 3px; padding: 1px 6px; font-size: 10px; "
-            "font-weight: bold; border: none;"
+            f"font-family: '{FONT_SANS_SEMIBOLD}'; border-radius: 4px; padding: 1px 7px; "
+            "font-size: 10px; border: none;"
         )
 
         if self._last_lbl is not None:
             self._last_lbl.setStyleSheet(
-                f"color: {tok_css(tok['text_secondary'])}; font-size: 10px; "
-                "background: transparent; border: none; padding-left: 1px;"
+                f"color: {tok_css(tok['flat_text_muted'])}; font-family: '{FONT_SANS}'; "
+                "font-size: 10px; background: transparent; border: none; padding-left: 1px;"
             )
         if self._status_lbl is not None:
-            r, g, b, _ = tok["warning"]
             self._status_lbl.setStyleSheet(
-                f"color: rgba({r}, {g}, {b}, 200); font-size: 10px; font-style: italic; "
-                "background: transparent; border: none; padding-left: 1px;"
+                f"color: {tok_css(tok['flat_error'])}; font-family: '{FONT_SANS}'; "
+                "font-size: 10px; font-style: italic; background: transparent; "
+                "border: none; padding-left: 1px;"
             )
         if self._divider is not None:
             self._divider.setStyleSheet(
-                f"QFrame {{ background: {tok_css(tok['ctrl_hairline'])}; "
+                f"QFrame {{ background: {tok_css(tok['flat_border'])}; "
                 "border: none; max-height: 1px; }}"
             )
 
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
         if self._manage_btn is not None:
-            self._apply_action_button_style(
-                self._manage_btn, tok["accent"], (18, 35, 70), (55, 110, 160), 230
-            )
-            icon_path = os.path.join(icons_dir, "user-circle.svg")
+            icon_path = os.path.join(icons_dir, "manage_users.svg")
             if os.path.exists(icon_path):
-                self._manage_btn.setIcon(_tinted_icon(icon_path, QtGui.QColor(*tok["accent"][:3])))
-                self._manage_btn.setIconSize(QtCore.QSize(16, 16))
+                self._manage_btn.setIcon(
+                    _tinted_icon(icon_path, QtGui.QColor(*tok["flat_accent"][:3]))
+                )
 
         if self._sign_out_btn is not None:
-            self._apply_action_button_style(
-                self._sign_out_btn, tok["danger"], (16, 38, 75), (60, 120, 170), 235
-            )
             icon_path = os.path.join(icons_dir, "sign-out.svg")
             if os.path.exists(icon_path):
                 self._sign_out_btn.setIcon(
-                    _tinted_icon(icon_path, QtGui.QColor(*tok["danger"][:3]))
+                    _tinted_icon(icon_path, QtGui.QColor(*tok["flat_error"][:3]))
                 )
-                self._sign_out_btn.setIconSize(QtCore.QSize(16, 16))
 
     # -- public API -----------------------------------------------------------
 

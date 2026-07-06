@@ -1,6 +1,8 @@
 from typing import Optional
 from PyQt5 import QtWidgets
 
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+
 
 class DeviceConfigLabel(QtWidgets.QLabel):
     """Title label for the device-config perspective that stays banner-compatible.
@@ -10,6 +12,12 @@ class DeviceConfigLabel(QtWidgets.QLabel):
     and `text` methods, ensuring that existing string parsing logic (like
     `endswith` checks) in the parent application continues to function
     uninterrupted.
+
+    Colors come from the "flat_*" tokens (see QATCH.ui.styles.tokens). Since
+    the rendered text is HTML (inline `style=` spans, needed for the device
+    -handle "chip"), colors are baked into the markup at render time rather
+    than living in a stylesheet - so a theme change re-renders the current
+    text from scratch instead of just re-polishing a QSS rule.
 
     Attributes:
         _PREFIX (str): The legacy prefix expected by external logic.
@@ -24,6 +32,11 @@ class DeviceConfigLabel(QtWidgets.QLabel):
         super().__init__(parent)
         self._raw_text: str = ""
         self.setText(text)
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        # Re-render the current raw text so the baked-in HTML colors refresh.
+        super().setText(self._render(self._raw_text))
 
     def setText(self, text: str) -> None:  # noqa: N802
         """Sets the raw banner text and updates the rendered display.
@@ -63,19 +76,22 @@ class DeviceConfigLabel(QtWidgets.QLabel):
         if raw.startswith(self._PREFIX):
             handle = raw[len(self._PREFIX) :].strip()
 
+        tok = ThemeManager.instance().tokens()
+
         # Build the styled base title
         base = (
-            f"<span style='color: rgba(28,40,52,235); font-size:14px; "
+            f"<span style='color: {tok_css(tok['flat_text'])}; font-size:14px; "
             f"font-weight:bold;'>{self._DISPLAY_BASE}</span>"
         )
 
         if handle:
-            # Render handle as a stylized UI chip
+            # Render handle as a stylized UI chip, tinted from the accent tokens.
+            r, g, b, _ = tok["flat_accent"]
             chip = (
                 "<span style='"
-                "background: rgba(10,163,230,38); "
-                "color: rgba(12,110,160,255); "
-                "border: 1px solid rgba(10,163,230,120); "
+                f"background: {tok_css(tok['flat_accent_weak'])}; "
+                f"color: {tok_css(tok['flat_accent'])}; "
+                f"border: 1px solid rgba({r},{g},{b},120); "
                 "border-radius: 7px; "
                 "padding: 1px 7px; "
                 "font-size: 12px; font-weight: bold; "

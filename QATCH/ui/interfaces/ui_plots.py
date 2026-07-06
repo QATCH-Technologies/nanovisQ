@@ -26,6 +26,7 @@ from pyqtgraph import GraphicsLayoutWidget
 from QATCH.common.architecture import Architecture
 from QATCH.common.fwUpdater import FW_UPDATE
 from QATCH.core.constants import Constants
+from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode, tok_css
 from QATCH.ui.styles.tokens import PALETTES
@@ -336,7 +337,7 @@ class PlotContainer(QtWidgets.QWidget):
     grid_changed = QtCore.pyqtSignal(str, bool)
 
     # UI Constants
-    _R = 10.0
+    _R = 12.0
     _M = 3
     _HEADER_H = 28
 
@@ -624,59 +625,31 @@ class PlotContainer(QtWidgets.QWidget):
         return menu
 
     def paintEvent(self, ev: QtGui.QPaintEvent) -> None:  # noqa: N802
-        """Handles the custom painting of the widget.
+        """Paints the flat card surface (fill + border) behind the plot.
 
-        Overrides the standard Qt paint event to draw a stylized background using
-        multiple graphical layers. It dynamically fetches color tokens from the
-        ThemeManager to render semi-transparent base layers, linear gradients for
-        a top shimmer and bottom vignette, and precise inner and outer borders
-        to create a polished 3D glass aesthetic.
+        Uses the same `surface`/`surface_border` tokens as the Mode sidebar
+        and Log console (see QATCH.ui.components.flat_paint) so plot cards
+        read as part of the same panel family rather than the old frosted
+        glass look.
 
         Args:
             ev (QtGui.QPaintEvent): The paint event parameters provided by the
-                Qt framework. (Note: The entire widget rectangle is typically
-                repainted, so the event's specific rect/region is not actively queried).
+                Qt framework.
         """
         tok = ThemeManager.instance().tokens()
         painter = QtGui.QPainter(self)
         painter.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
-
-        rect = QtCore.QRectF(self.rect())
-        path = QtGui.QPainterPath()
-        path.addRoundedRect(rect, self._R, self._R)
-        painter.setClipPath(path)
-
-        # Base layers
-        painter.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_base"]))
-        painter.fillRect(self.rect(), QtGui.QColor(*tok["plot_glass_overlay"]))
-
-        # Top gradient
-        shimmer = QtGui.QLinearGradient(0, 0, 0, 40)
-        shimmer.setColorAt(0, QtGui.QColor(*tok["plot_glass_shimmer_top"]))
-        shimmer.setColorAt(0.5, QtGui.QColor(*tok["plot_glass_shimmer_mid"]))
-        shimmer.setColorAt(1, QtGui.QColor(0, 0, 0, 0))
-        painter.fillRect(self.rect(), QtGui.QBrush(shimmer))
-
-        # Bottom gradient
-        vignette = QtGui.QLinearGradient(0, self.height() - 30, 0, self.height())
-        vignette.setColorAt(0, QtGui.QColor(0, 0, 0, 0))
-        vignette.setColorAt(1, QtGui.QColor(*tok["plot_glass_vignette_end"]))
-        painter.fillRect(self.rect(), QtGui.QBrush(vignette))
-
-        painter.setClipping(False)
-        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-
-        # Outer rim
-        painter.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_rim"]), 1.0))
-        painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), self._R, self._R)
-
-        # Inner inset
-        painter.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_inset"]), 1.0))
-        painter.drawRoundedRect(rect.adjusted(1.5, 1.5, -1.5, -1.5), self._R - 1.5, self._R - 1.5)
+        paint_flat_surface(
+            self,
+            radius=self._R,
+            fill=QtGui.QColor(*tok["surface"]),
+            border=QtGui.QColor(*tok["surface_border"]),
+            painter=painter,
+        )
 
         # Header separator line
         if self.has_header:
-            painter.setPen(QtGui.QPen(QtGui.QColor(*tok["plot_glass_header_line"]), 1.0))
+            painter.setPen(QtGui.QPen(QtGui.QColor(*tok["surface_border"]), 1.0))
             y_line = self._HEADER_H + self._M
             painter.drawLine(0, y_line, self.width(), y_line)
 

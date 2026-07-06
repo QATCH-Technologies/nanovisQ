@@ -628,20 +628,6 @@ QLabel#CtrlToggleLabel {
     color: {{CTRL_TOGGLE_LABEL_TEXT}};
 }
 
-/* ---- Device config back button ---- */
-QPushButton#DeviceBackBtn {
-    background: {{CTRL_BACK_BTN_BG}};
-    border: 1px solid {{CTRL_BACK_BTN_BORDER}};
-    border-radius: 16px;
-}
-QPushButton#DeviceBackBtn:hover {
-    background: {{CTRL_BACK_BTN_HOVER_BG}};
-    border: 1px solid {{CTRL_BACK_BTN_HOVER_BORDER}};
-}
-QPushButton#DeviceBackBtn:pressed {
-    background: {{CTRL_BACK_BTN_BG}};
-}
-
 /* ---- Device config title ---- */
 QLabel#DeviceConfigTitle {
     color: {{PLOT_TEXT_BRIGHT}};
@@ -658,19 +644,6 @@ QLineEdit#CtrlIconBox {
     border-radius: 6px;
     padding: 4px 8px;
     color: {{CTRL_INPUT_TEXT}};
-}
-
-/* ---- Glass pill QLineEdit (device name / PID inputs) ---- */
-QLineEdit#CtrlInputPill {
-    background: {{CTRL_INPUT_BG}};
-    border: 1px solid {{CTRL_INPUT_BORDER}};
-    border-radius: 14px;
-    padding: 5px 12px;
-    color: {{CTRL_INPUT_TEXT}};
-}
-QLineEdit#CtrlInputPill:focus {
-    background: {{CTRL_INPUT_FOCUS_BG}};
-    border: 1px solid {{CTRL_INPUT_FOCUS_BORDER}};
 }
 
 /* ---- Infobar readout ---- */
