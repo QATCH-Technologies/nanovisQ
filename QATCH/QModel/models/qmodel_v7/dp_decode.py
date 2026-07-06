@@ -226,7 +226,13 @@ def _span_conditioned_decode(
     best_chosen: Optional[Dict[str, Candidate]] = None
     best_score = -1e18
     for f in cand[first]:
-        for l in cand[last]:
+        for last_cand in cand[last]:
+            span = last_cand.time - f.time
+            if span <= 0:
+                continue
+            sub = dict(cand)
+            sub[first] = [f]
+            sub[last] = [last_cand]
             span = l.time - f.time
             if span <= 0:
                 continue
