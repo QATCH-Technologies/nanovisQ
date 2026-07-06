@@ -393,7 +393,13 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    list_predict_models = ["ModelData", "QModel v4 (Fusion)", "QModel V6 (YOLO26)"]
+    list_predict_models = [
+        "Tweed",
+        "QModel Indus",
+        "QModel Volta",
+        "QModel Onyx",
+    ]
+    QModel7_predict = True
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True

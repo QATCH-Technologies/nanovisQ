@@ -136,6 +136,7 @@ class ControlsWindow(BaseWindow):
             q_version_v1 (QtWidgets.QAction): Toggle for ModelData v1 prediction model.
             q_version_v4 (QtWidgets.QAction): Toggle for QModel Fusion v4 prediction model.
             q_version_v6 (QtWidgets.QAction): Toggle for QModel YOLO v6 prediction model.
+            q_version_v7 (QtWidgets.QAction): Toggle for QModel Onyx (v7) prediction model.
         """
         self._menu_target = target  # real menu bar lives on MainWin, not here
         self.menubar = []
@@ -208,20 +209,26 @@ class ControlsWindow(BaseWindow):
         self.menubar[3].addSeparator()
         from QATCH.models.ModelData import __release__ as model_data_release
         from QATCH.models.ModelData import __version__ as model_data_version
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+        from QATCH.QModel.models.static_v4_fusion.__init__ import (
             __release__ as qmodel4_release,
         )
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+        from QATCH.QModel.models.static_v4_fusion.__init__ import (
             __version__ as qmodel4_version,
         )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+        from QATCH.QModel.models.v6_yolo.__init__ import (
             __release__ as qmodel6_release,
         )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+        from QATCH.QModel.models.v6_yolo.__init__ import (
             __version__ as qmodel6_version,
         )
+        from QATCH.QModel.models.qmodel_v7.__init__ import (
+            __release__ as qmodel7_release,
+        )
+        from QATCH.QModel.models.qmodel_v7.__init__ import (
+            __version__ as qmodel7_version,
+        )
 
-        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (3 available)")
+        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (4 available)")
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
             "ModelData v{} ({})".format(model_data_version, model_data_release),
@@ -244,7 +251,16 @@ class ControlsWindow(BaseWindow):
             ),
         )
         self.q_version_v6.setCheckable(True)
-        if Constants.QModel6_predict:
+        self.q_version_v7 = self.menubar[5].addAction(
+            "QModel Onyx v{} ({})".format(qmodel7_version, qmodel7_release),
+            lambda: self.parent.analyze_process.set_new_prediction_model(
+                Constants.list_predict_models[3]
+            ),
+        )
+        self.q_version_v7.setCheckable(True)
+        if Constants.QModel7_predict:
+            self.q_version_v7.setChecked(True)
+        elif Constants.QModel6_predict:
             self.q_version_v6.setChecked(True)
         elif Constants.QModel4_predict:
             self.q_version_v4.setChecked(True)

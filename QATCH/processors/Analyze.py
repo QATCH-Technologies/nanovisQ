@@ -35,8 +35,9 @@ from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,
     DropEffectCorrection,
 )
-from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
-from QATCH.QModel.src.models.v6_yolo.v6_yolo import QModelV6YOLO
+from QATCH.QModel.models.static_v4_fusion.v4_fusion import QModelV4Fusion
+from QATCH.QModel.models.v6_yolo.v6_yolo import QModelV6YOLO
+from QATCH.QModel.models.qmodel_v7.v7_yolo import QModelV7
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 
@@ -73,6 +74,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
     progressUpdate = QtCore.pyqtSignal()
     v4_predict_progress = QtCore.pyqtSignal(int, str)
     v6_predict_progress = QtCore.pyqtSignal(int, str)
+    v7_predict_progress = QtCore.pyqtSignal(int, str)
 
     @staticmethod
     def Lookup_ST(surfactant, concentration):
@@ -397,6 +399,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # QModel v6 (YOLO26) Constants
         self.QModel_v6_modules_loaded = False
         self.QModel_v6_predictor = None
+
+        # QModel Onyx (v7) Constants
+        self.QModel_v7_modules_loaded = False
+        self.QModel_v7_predictor = None
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
@@ -906,7 +912,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel6_predict:
+        if Constants.QModel7_predict:
+            self.cBox_Models.setCurrentIndex(3)
+        elif Constants.QModel6_predict:
             self.cBox_Models.setCurrentIndex(2)
         elif Constants.QModel4_predict:
             self.cBox_Models.setCurrentIndex(1)
@@ -1212,6 +1220,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
         self.v4_predict_progress.connect(self._QModel_v4_progress_update)
         self.v6_predict_progress.connect(self._QModel_v6_progress_update)
+        self.v7_predict_progress.connect(self._QModel_v7_progress_update)
 
     def _show_analyze_plot_overlay(self) -> None:
         """Creates and displays a progress overlay on the analysis plot.
@@ -2125,6 +2134,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Constants.ModelData_predict = True if index >= 0 else False
             Constants.QModel4_predict = True if index >= 1 else False
             Constants.QModel6_predict = True if index >= 2 else False
+            Constants.QModel7_predict = True if index >= 3 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -3104,6 +3114,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self._qmodel_v4_future = None
         if not hasattr(self, "_qmodel_v6_future"):
             self._qmodel_v6_future = None
+        if not hasattr(self, "_qmodel_v7_future"):
+            self._qmodel_v7_future = None
 
         # QModel V4 (Fusion) Preload
         try:
@@ -3127,6 +3139,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
         except Exception as e:
             Log.e("ERROR", f"Failed to schedule 'QModel v6 (YOLO26)' preload. Details: {e}")
 
+        # QModel Onyx (v7) Preload
+        try:
+            requires_v7 = getattr(Constants, "QModel7_predict", False)
+            is_v7_pending = self._qmodel_v7_future is not None
+
+            if requires_v7 and not self.QModel_v7_modules_loaded and not is_v7_pending:
+                self._qmodel_v7_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v7)
+
+        except Exception as e:
+            Log.e("ERROR", f"Failed to schedule 'QModel Onyx' preload. Details: {e}")
+
     @staticmethod
     def _load_qmodel_v4() -> "QModelV4Fusion":
         """
@@ -3143,7 +3166,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Architecture.get_path(),
             "QATCH",
             "QModel",
-            "SavedModels",
+            "assets",
             "qmodel_v4_fusion",
         )
 
@@ -3171,7 +3194,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Architecture.get_path(),
             "QATCH",
             "QModel",
-            "SavedModels",
+            "assets",
             "qmodel_v6_yolo",
         )
 
@@ -3191,6 +3214,49 @@ class AnalyzeProcess(QtWidgets.QWidget):
         }
 
         return QModelV6YOLO(model_assets=model_assets)
+
+    @staticmethod
+    def _load_qmodel_v7() -> "QModelV7":
+        """
+        Instantiates and loads the QModel Onyx (v7) prediction model into memory.
+
+        This worker method constructs the asset map and performs heavy disk I/O
+        to load the YOLO-based PyTorch weights (.pt files) for various detectors
+        and classifiers, plus the v7-specific spacing-prior decode and zoom
+        refinement assets. It is designed to be executed off the main UI thread.
+
+        Returns:
+            QModelV7: A fully initialized v7 prediction model ready for inference.
+        """
+        base_path = os.path.join(
+            Architecture.get_path(),
+            "QATCH",
+            "QModel",
+            "assets",
+            "qmodel_v7",
+        )
+
+        # Map out the required weights files for the YOLO26+ model suite. The
+        # zoom-refiner detectors are optional (see QModelV7.ZOOM_REFINE_MAP in
+        # v7_yolo.py); absent files simply keep refine_pois a no-op.
+        model_assets = {
+            "spacing_prior": os.path.join(base_path, "spacing_prior.json"),
+            "fill_classifier": os.path.join(
+                base_path, "classifiers", "fill_classifier", "type_cls.pt"
+            ),
+            "detectors": {
+                "init": os.path.join(base_path, "detectors", "init_detector", "init.pt"),
+                "ch1": os.path.join(base_path, "detectors", "ch1_detector", "ch1.pt"),
+                "ch2": os.path.join(base_path, "detectors", "ch2_detector", "ch2.pt"),
+                "ch3": os.path.join(base_path, "detectors", "ch3_detector", "ch3.pt"),
+                "poi5_fine": os.path.join(base_path, "detectors", "eof_detector", "eof.pt"),
+                "ch1_zoom": os.path.join(base_path, "detectors", "ch1_zoom_detector", "ch1_zoom.pt"),
+                "ch2_zoom": os.path.join(base_path, "detectors", "ch2_zoom_detector", "ch2_zoom.pt"),
+                "ch3_zoom": os.path.join(base_path, "detectors", "ch3_zoom_detector", "ch3_zoom.pt"),
+            },
+        }
+
+        return QModelV7(model_assets=model_assets)
 
     def _await_qmodels(self, timeout: float = 120.0) -> None:
         """
@@ -3237,6 +3303,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.e(TAG, f"Failed to load 'QModel v6 (YOLO26)' modules. Details: {e}")
             finally:
                 self._qmodel_v6_future = None
+
+        # Resolve QModel Onyx (v7)
+        v7_fut = getattr(self, "_qmodel_v7_future", None)
+
+        if v7_fut is not None and not getattr(self, "QModel_v7_modules_loaded", False):
+            try:
+                # Block and wait for the thread pool to return the loaded v7 model
+                self.QModel_v7_predictor = v7_fut.result(timeout=timeout)
+                self.QModel_v7_modules_loaded = True
+                Log.i(TAG, "'QModel Onyx' modules loaded successfully.")
+            except Exception as e:
+                Log.e(TAG, f"Failed to load 'QModel Onyx' modules. Details: {e}")
+            finally:
+                self._qmodel_v7_future = None
 
     def _check_dev_mode_cached(self, force_refresh: bool = False) -> bool:
         """
@@ -3696,6 +3776,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self._show_qmodel_plot_overlay()
         self._update_qmodel_plot_overlay(pct, status or "")
 
+    def _QModel_v7_progress_update(self, pct: int, status: Optional[str]):
+        if getattr(self, "_qmodel_overlay", None) is None:
+            self._show_qmodel_plot_overlay()
+        self._update_qmodel_plot_overlay(pct, status or "")
+
     def _restore_qmodel_predictions(self):
         try:
             if self.model_engine == "None":
@@ -3729,7 +3814,56 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
-            if Constants.QModel6_predict:
+            if Constants.QModel7_predict:
+                Log.w("Auto-fitting points with QModel Onyx... (may take a few seconds)")
+                QtCore.QCoreApplication.processEvents()
+                try:
+                    with secure_open(self.loaded_datapath, "r", "capture") as f:
+                        fh = BytesIO(f.read())
+                        predictor = self.QModel_v7_predictor
+                        predict_result, detected_channels = predictor.predict(
+                            file_buffer=fh, progress_signal=self.v7_predict_progress
+                        )
+                        # Restoring predictions restores the channel count.
+                        self.parent.num_channels = detected_channels
+                        Log.i(
+                            TAG,
+                            f"QModel Onyx Inference Complete. Detected Config: {detected_channels} Channel(s)",
+                        )
+                        predictions = []
+                        candidates = []
+                        for i in range(6):
+                            poi_key = f"POI{i+1}"
+                            data = predict_result.get(poi_key, {})
+                            indices = data.get("indices", [-1])
+                            confidences = data.get("confidences", [-1])
+                            if not indices:
+                                indices = [-1]
+                            if not confidences:
+                                confidences = [-1]
+                            predictions.append(indices[0])
+                            candidates.append((indices, confidences))
+                        self.model_run_this_load = True
+                        self.model_result = predictions
+                        self.model_candidates = candidates
+                        self.model_engine = f"QModel Onyx - {detected_channels}ch"
+                        if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                            poi_vals = self.model_result.copy()
+                            if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                # Correct POST point to End-of-fill + 2
+                                poi_vals[2] = poi_vals[1] + 2
+                        else:
+                            self.model_result = -1  # Invalid result format
+
+                except Exception as e:
+                    import traceback
+
+                    Log.e(TAG, f"Error using 'QModel Onyx': {e}")
+                    for line in traceback.format_tb(sys.exc_info()[2]):
+                        Log.d(line.strip())
+                    self.model_result = -1  # Trigger fallback handling
+                    # raise e
+            if self.model_result == -1 and Constants.QModel6_predict:
                 Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
@@ -4046,7 +4180,59 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel6_predict:
+                if Constants.QModel7_predict:
+                    Log.w("Auto-fitting points with QModel Onyx... (may take a few seconds)")
+                    QtCore.QCoreApplication.processEvents()
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v7_predictor
+                            predict_result, detected_channels = predictor.predict(
+                                file_buffer=fh, progress_signal=self.v7_predict_progress
+                            )
+                            if not self.parent.num_channels:
+                                self.parent.num_channels = detected_channels
+                            Log.i(
+                                TAG,
+                                f"QModel Onyx Inference Complete. Detected Config: {detected_channels} Channel(s)",
+                            )
+
+                            predictions = []
+                            candidates = []
+                            for i in range(6):
+                                poi_key = f"POI{i+1}"
+                                data = predict_result.get(poi_key, {})
+                                indices = data.get("indices", [-1])
+                                confidences = data.get("confidences", [-1])
+                                if not indices:
+                                    indices = [-1]
+                                if not confidences:
+                                    confidences = [-1]
+                                predictions.append(indices[0])
+                                candidates.append((indices, confidences))
+                            self.model_run_this_load = True
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = f"QModel Onyx - {detected_channels}ch"
+                            if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
+                            else:
+                                self.model_result = -1  # Invalid result format
+
+                    except Exception as e:
+                        # --- ERROR HANDLING ---
+                        import traceback
+
+                        Log.e(TAG, f"Error using 'QModel Onyx': {e}")
+                        # Print full stack trace to debug log
+                        for line in traceback.format_tb(sys.exc_info()[2]):
+                            Log.d(line.strip())
+                        self.model_result = -1  # Trigger fallback handling
+                        # raise e # Uncomment for strict debugging
+                if self.model_result == -1 and Constants.QModel6_predict:
                     Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
@@ -5427,25 +5613,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """Orchestrates the POI auto-fitting fallback chain.
 
         Attempts to predict POIs the current fallback strategy:
-            1. QModel v6 (YOLO26)
-            2. QModel v4 (Fusion)
-            3. ModelData.
-
-                    try:
-                        with secure_open(self.loaded_datapath, "r", "capture") as f:
-                            fh = BytesIO(f.read())
-                            predictor = self.QModel_v6_predictor
-                            # self._QModel_create_new_progress_dialog()
-                            # self.progressBarDiag.setRange(0, 100)
-                            predict_result, detected_channels = predictor.predict(
-                                file_buffer=fh, progress_signal=self.v6_predict_progress
-                            )
-                            # QtCore.QTimer.singleShot(
-                            #     1000, self.progressBarDiag.hide
-                            # )  # hide after use
-                            # Analysis only updates num_channels if not present.
-                            if not self.parent.num_channels:
-                                self.parent.num_channels = detected_channels
+            1. QModel Onyx (v7)
+            2. QModel v6 (YOLO26)
+            3. QModel v4 (Fusion)
+            4. ModelData.
 
         Args:
             poi_vals: Current list of POI values.
@@ -5466,7 +5637,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.model_candidates = None
         self.model_engine = "None"
 
-        poi_vals = self._try_qmodel_v6(poi_vals)
+        poi_vals = self._try_qmodel_v7(poi_vals)
+
+        if self.model_result == -1:
+            poi_vals = self._try_qmodel_v6(poi_vals)
 
         if self.model_result == -1:
             poi_vals = self._try_qmodel_v4(poi_vals)
@@ -5479,6 +5653,80 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # If partial markers exist, force manual entry for the middle points
         if self.poi_markers:
             return [poi_vals[0], poi_vals[-1]]
+
+        return poi_vals
+
+    def _try_qmodel_v7(self, poi_vals: List[int]) -> List[int]:
+        """Attempts POI prediction using the QModel Onyx (v7) engine.
+
+        NOTE: The POST point is not predicted with this model and is simply filled!
+
+        Args:
+            poi_vals: The current list of POI indices.
+
+        Returns:
+            The updated list of POI indices if successful; otherwise, returns
+            the original `poi_vals` and sets `self.model_result` to -1 for fallback.
+        """
+        if not Constants.QModel7_predict:
+            return poi_vals
+
+        # Skip inference if XML already provided a full set of valid points
+        if self.prior_points_in_xml:
+            self.model_result = poi_vals
+            self.model_engine = "QModel Onyx skipped (using prior points)"
+            return poi_vals
+
+        msg = "Auto-fitting points with QModel Onyx..."
+        Log.w(f"{msg} (may take a few seconds)")
+        self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
+        self.graphWidget.addItem(self._text2, ignoreBounds=True)
+        QtCore.QCoreApplication.processEvents()
+
+        try:
+            # File access and inference
+            with secure_open(self.loaded_datapath, "r", "capture") as f:
+                fh = BytesIO(f.read())
+
+            predict_result, detected_channels = self.QModel_v7_predictor.predict(
+                file_buffer=fh, progress_signal=self.v7_predict_progress
+            )
+
+            if not self.parent.num_channels:
+                self.parent.num_channels = detected_channels
+
+            # Extract predictions
+            predictions = []
+            candidates = []
+
+            for i in range(6):
+                data = predict_result.get(f"POI{i + 1}", {})
+                indices = data.get("indices", [-1]) or [-1]
+                confidences = data.get("confidences", [-1]) or [-1]
+
+                predictions.append(indices[0])
+                candidates.append((indices, confidences))
+
+            # Update model state
+            self.model_run_this_load = True
+            self.model_result = predictions
+            self.model_candidates = candidates
+            self.model_engine = f"QModel Onyx - {detected_channels}ch"
+
+            # Validate
+            # NOTE: Legacy POI3 (POST point) is ignored here!
+            if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                poi_vals = list(self.model_result)
+                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                    poi_vals[2] = poi_vals[1] + 2
+            else:
+                self.model_result = -1
+
+        except Exception as e:
+            self._log_traceback(debug=True)
+            Log.e(f"Error using 'QModel Onyx': {e}")
+            Log.e(TAG, "Falling back to next available model.")
+            self.model_result = -1
 
         return poi_vals
 

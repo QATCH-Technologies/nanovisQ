@@ -9,9 +9,13 @@
 **/__pycache__
 **/*.log
 
-# Ignore all files in "assets" folder
-**/assets/**
+# Ignore all files in "assets" folders, EXCEPT QATCH/QModel/assets (model
+# weights for QModel v4/v6/v7 are committed to the repo).
+QATCH/VisQAI/assets/**
+QATCH/VisQAI/test/assets/**
+QATCH/VisQAI/test/test_models/assets/**
 
 # But explicitly include "VisQAI-base.visq" and "app.db" assets
-!**/assets/VisQAI-base.visq
-!**/assets/app.db
+!QATCH/VisQAI/assets/VisQAI-base.visq
+!QATCH/VisQAI/assets/app.db
+!QATCH/VisQAI/test/assets/app.db

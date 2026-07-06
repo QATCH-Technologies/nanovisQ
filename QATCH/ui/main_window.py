@@ -61,7 +61,8 @@ from QATCH.processors.updater import (
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
-from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
+from QATCH.QModel.models.v6_yolo.v6_yolo_live import DropEpochSignal as DropEpochSignal_v6
+from QATCH.QModel.models.qmodel_v7.v7_yolo_live import DropEpochSignal as DropEpochSignal_v7
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner
 from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
@@ -4432,8 +4433,11 @@ class MainWindow(QtWidgets.QMainWindow):
                             except Exception as e:
                                 Log.e(TAG, f"Failed to place fill-event marker: {e}")
                 if pred_int == -1 and not self._drop_epoch_sent:
+                    DropEpochSignalCls = (
+                        DropEpochSignal_v7 if Constants.QModel7_predict else DropEpochSignal_v6
+                    )
                     self.worker._forecaster_in.put(
-                        DropEpochSignal(float(self.worker.get_t1_buffer(0)[-1]))
+                        DropEpochSignalCls(float(self.worker.get_t1_buffer(0)[-1]))
                     )
                     self._drop_epoch_sent = True
                 elif pred_int == 3:
