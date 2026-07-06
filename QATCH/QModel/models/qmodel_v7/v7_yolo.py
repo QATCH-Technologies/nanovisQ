@@ -855,6 +855,28 @@ class QModelV7:
             t_new = float(det["time"])
             if abs(t_new - t_c) > QModelV7Config.REFINE_MAX_SHIFT_FRAC * (w1 - w0):
                 continue  # latched onto a different event; keep decode pick
+            ordered_ids = [1, 2, 4, 5, 6]
+            pos = ordered_ids.index(poi_id)
+            prev_t = next(
+                (
+                    float(final_results[p]["time"])
+                    for p in reversed(ordered_ids[:pos])
+                    if p in final_results and "time" in final_results[p]
+                ),
+                None,
+            )
+            next_t = next(
+                (
+                    float(final_results[p]["time"])
+                    for p in ordered_ids[pos + 1 :]
+                    if p in final_results and "time" in final_results[p]
+                ),
+                None,
+            )
+            if (prev_t is not None and t_new <= prev_t) or (
+                next_t is not None and t_new >= next_t
+            ):
+                continue
             meta["used"] = True
             meta["moved"][self.POI_MAP[poi_id]] = {
                 "from": t_c,
