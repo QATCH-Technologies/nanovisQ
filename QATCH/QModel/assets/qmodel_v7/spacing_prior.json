@@ -5,7 +5,7 @@
     "POI3->POI4",
     "POI4->POI5"
   ],
-  "frac_blend": 0.5,
+  "frac_blend": 0.7,
   "bound_lo_pct": 0.5,
   "bound_hi_pct": 99.5,
   "gap": {

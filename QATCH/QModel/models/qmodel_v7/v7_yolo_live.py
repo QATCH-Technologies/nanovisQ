@@ -28,7 +28,9 @@ import sys
 from logging.handlers import QueueHandler
 from queue import Empty
 from typing import Dict, NamedTuple, Optional, Tuple
+
 import pandas as pd
+
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 
@@ -174,21 +176,13 @@ class QModelV7Live(QModelV7FillClassifier):
             return
 
         mask = (
-            self._data[QModelV7DataProcessor.COL_TIME]
-            >= QModelV7DataProcessor.BASELINE_START_TIME
-        ) & (
-            self._data[QModelV7DataProcessor.COL_TIME]
-            <= QModelV7DataProcessor.BASELINE_END_TIME
-        )
+            self._data[QModelV7DataProcessor.COL_TIME] >= QModelV7DataProcessor.BASELINE_START_TIME
+        ) & (self._data[QModelV7DataProcessor.COL_TIME] <= QModelV7DataProcessor.BASELINE_END_TIME)
         if mask.sum() < 10:
             return  # not enough baseline data yet
 
-        self._cached_baseline_freq = self._data.loc[
-            mask, QModelV7DataProcessor.COL_FREQ
-        ].mean()
-        self._cached_baseline_diss = self._data.loc[
-            mask, QModelV7DataProcessor.COL_DISS
-        ].mean()
+        self._cached_baseline_freq = self._data.loc[mask, QModelV7DataProcessor.COL_FREQ].mean()
+        self._cached_baseline_diss = self._data.loc[mask, QModelV7DataProcessor.COL_DISS].mean()
         Log.i(
             self.TAG,
             f"Baseline locked: freq={self._cached_baseline_freq:.2f}, diss={self._cached_baseline_diss:.6f}",
@@ -603,7 +597,7 @@ class QModelV7LiveProcess(multiprocessing.Process):
 
         # Store config to initialize model inside run()
         v6_base_path = os.path.join(
-            Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v6_yolo"
+            Architecture.get_path(), "QATCH", "QModel", "assets", "qmodel_v7"
         )
         type_cls_asset = os.path.join(v6_base_path, "classifiers", "fill_classifier", "type_cls.pt")
         self.model_path = type_cls_asset
@@ -647,9 +641,9 @@ class QModelV7LiveProcess(multiprocessing.Process):
             Log.i(self.TAG, "YOLO Live Process Started and Model Loaded.")
 
             if enable_vis:
+                import cv2
                 import matplotlib.pyplot as plt
                 import numpy as np
-                import cv2
 
                 plt.ion()
                 fig, ax = plt.subplots(figsize=(5, 5))

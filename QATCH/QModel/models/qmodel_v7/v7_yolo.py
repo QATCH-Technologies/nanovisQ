@@ -97,18 +97,22 @@ except ImportError:
 # decode_config path in QModelV7.predict degrades to a no-op and the
 # pipeline behaves exactly as before.
 try:
-    from QATCH.QModel.models.qmodel_v7.dp_decode import (
+    from QATCH.QModel.models.qmodel_v7.v7_decode import (
         Candidate,
         dp_decode,
         score_configuration,
     )
-    from QATCH.QModel.models.qmodel_v7.spacing_prior import SpacingPrior
+    from QATCH.QModel.models.qmodel_v7.v7_spacing_prior import SpacingPrior
 
     _DECODE_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     try:
-        from dp_decode import Candidate, dp_decode, score_configuration
-        from spacing_prior import SpacingPrior
+        from QATCH.QModel.models.qmodel_v7.v7_decode import (
+            Candidate,
+            dp_decode,
+            score_configuration,
+        )
+        from QATCH.QModel.models.qmodel_v7.v7_spacing_prior import SpacingPrior
 
         _DECODE_AVAILABLE = True
     except (ImportError, ModuleNotFoundError):
@@ -168,7 +172,18 @@ class QModelV7Config:
 
     # --- Configuration-Prior Decode Settings ---
     # Weight of the spacing log-likelihood relative to detection confidence.
+    # Scalar, or set DECODE_LAMBDA_PAIRS to weight edges individually — the
+    # prior's value is not uniform across the chain: on sharp well-detected
+    # events (POI2->POI3) a broad gap prior mostly drags correct detections,
+    # while on ambiguous late events it is the main defence. Sweep with
+    # sweep_decode.py --edge3-scales; do not hand-pick.
     DECODE_LAMBDA: float = 0.25
+    # e.g. {"POI2->POI3": 0.5} — unlisted pairs default to DECODE_LAMBDA.
+    DECODE_LAMBDA_PAIRS: Optional[Dict[str, float]] = {
+        "POI1->POI2": 0.0,  # analytic init exclusion (unchanged)
+        "POI2->POI3": 0.125,  # edge3_scale 0.5 x base lambda
+        "POI3->POI4": 0.125,
+    }
     # Weight on summed (clipped) detection confidence.
     DECODE_CONF_WEIGHT: float = 1.0
     # Multiplicative slack on the learned hard gap bounds.
@@ -199,7 +214,7 @@ class QModelV7Config:
     # guard (always accept the decode optimum). Raising it trades a few
     # missed fixes for fewer regressions on runs where the cascade was
     # already right; tune it with sweep_decode.py, not by hand.
-    DECODE_MIN_MARGIN: float = 2.0
+    DECODE_MIN_MARGIN: float = 0.25
 
     # Progress Signal Steps
     PROG_LOAD_DATA: int = 10
@@ -725,11 +740,15 @@ class QModelV7:
         }
 
         try:
+            lam_eff: Any = QModelV7Config.DECODE_LAMBDA
+            if QModelV7Config.DECODE_LAMBDA_PAIRS:
+                base = float(QModelV7Config.DECODE_LAMBDA)
+                lam_eff = {p: QModelV7Config.DECODE_LAMBDA_PAIRS.get(p, base) for p in prior.pairs}
             result = dp_decode(
                 cands,
                 present,
                 prior,
-                lam=QModelV7Config.DECODE_LAMBDA,
+                lam=lam_eff,
                 conf_weight=QModelV7Config.DECODE_CONF_WEIGHT,
                 feas_slack=QModelV7Config.DECODE_FEAS_SLACK,
                 max_candidates=QModelV7Config.DECODE_MAX_CANDIDATES,
@@ -755,7 +774,7 @@ class QModelV7:
             cascade_score = score_configuration(
                 cascade_chosen,
                 prior,
-                lam=QModelV7Config.DECODE_LAMBDA,
+                lam=lam_eff,
                 conf_weight=QModelV7Config.DECODE_CONF_WEIGHT,
             )
             if result.total_score < cascade_score + margin:
@@ -873,9 +892,7 @@ class QModelV7:
                 ),
                 None,
             )
-            if (prev_t is not None and t_new <= prev_t) or (
-                next_t is not None and t_new >= next_t
-            ):
+            if (prev_t is not None and t_new <= prev_t) or (next_t is not None and t_new >= next_t):
                 continue
             meta["used"] = True
             meta["moved"][self.POI_MAP[poi_id]] = {

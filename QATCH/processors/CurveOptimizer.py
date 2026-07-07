@@ -9,7 +9,7 @@ processing, numerical operations, plotting, and optimization.
 Author(s):
     Alexander Ross (alexander.ross@qatchtech.com)
     Paul MacNichol (paul.macnichol@qatchtech.com)
-    
+
 Date:
 Date:
     2026-04-29
@@ -18,11 +18,12 @@ Version:
     v12.0.1
 """
 
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from scipy.optimize import minimize
 from scipy.signal import savgol_filter
+
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 
@@ -816,10 +817,10 @@ class DropEffectCorrection(CurveOptimizer):
         corrected_rf = original_rf.copy()
 
         # Detect drop effects independently for each curve.
-        (drop_effects_diss, smooth_diss) = self._detect_drop_effects_for_column(
+        drop_effects_diss, smooth_diss = self._detect_drop_effects_for_column(
             "Dissipation", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
         )
-        (drop_effects_rf, smooth_rf) = self._detect_drop_effects_for_column(
+        drop_effects_rf, smooth_rf = self._detect_drop_effects_for_column(
             "Resonance_Frequency", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
         )
         drop_effects = list(set(drop_effects_diss + drop_effects_rf))
