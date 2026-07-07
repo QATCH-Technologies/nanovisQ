@@ -9,8 +9,7 @@ processing, numerical operations, plotting, and optimization.
 Author(s):
     Alexander Ross (alexander.ross@qatchtech.com)
     Paul MacNichol (paul.macnichol@qatchtech.com)
-    
-Date:
+
 Date:
     2026-04-29
 
@@ -23,6 +22,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from scipy.signal import savgol_filter
+from scipy.interpolate import PchipInterpolator
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 
@@ -514,6 +514,163 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             raise
 
 
+##########################################
+# Additive-step drop-effect removal (replaces the earlier bridge-style inserts
+# used in DropEffectCorrection.correct_drop_effects: cosine blend, then
+# slope-matched PCHIP bridge).
+#
+# A drop effect is an ADDITIVE STEP ARTIFACT: the droplet permanently shifts
+# the level of both channels, and everything recorded after the drop rides on
+# the shifted level. Bridging over the region (however smoothly) preserves
+# that shift as a bump in the series instead of removing it. The correct
+# repair is:
+#
+#   1. Locate the drop instant (steepest sample-to-sample change in the core).
+#   2. Estimate the step height `delta` as the gap between quadratic trend
+#      extrapolations fitted to guard-banded flanks on either side of the
+#      core, both evaluated at the drop instant. Evaluating both fits at the
+#      same time point cancels the genuine fill trend, isolating the
+#      artifact.
+#   3. Subtract `delta` from EVERY sample at/after the end of the transient
+#      core (this is the step removal -- the permanent shift is intended).
+#   4. Patch the short transient core with a PCHIP interpolant between the
+#      pre-flank trend and the now-shifted post-flank trend, add
+#      flank-resampled noise texture, and feather the seams.
+##########################################
+
+# Samples excluded on each side of the core before fitting flank trends, so
+# transient leakage (and savgol window bleed) doesn't contaminate the fits.
+GUARD_SAMPLES = 3
+
+# Flank window length (samples) for the quadratic trend fits.
+FLANK_SAMPLES = 30
+
+# Knots per flank for the core patch interpolant.
+PATCH_KNOTS = 4
+
+# Patch-knot flank reach (samples).
+PATCH_FLANK = 12
+
+# Seam crossfade length (samples).
+FEATHER_SAMPLES = 3
+
+# Scale on resampled flank residuals used as noise texture in the patch.
+RESIDUAL_SCALE = 0.7
+
+
+def _flank_fits(times, ysm, anchor_idx, post_idx):
+    """Quadratic trend fits on guard-banded flanks either side of the core."""
+    n = len(ysm)
+    pre_sl = slice(
+        max(0, anchor_idx - GUARD_SAMPLES - FLANK_SAMPLES), max(1, anchor_idx - GUARD_SAMPLES + 1)
+    )
+    post_sl = slice(
+        min(n - 2, post_idx + GUARD_SAMPLES), min(n, post_idx + GUARD_SAMPLES + FLANK_SAMPLES + 1)
+    )
+    p_pre = np.polyfit(times[pre_sl], ysm[pre_sl], 2)
+    p_post = np.polyfit(times[post_sl], ysm[post_sl], 2)
+    return p_pre, p_post
+
+
+def _drop_instant(raw, core_start, core_end):
+    """Index of the steepest single-sample change inside the core."""
+    d = np.abs(np.diff(raw[core_start : core_end + 1]))
+    return core_start + int(np.argmax(d)) if d.size else core_start
+
+
+def estimate_step_delta(times, raw, ysm, core_start, core_end):
+    """Trend-compensated step height across the transient core.
+
+    Both flank fits are evaluated at the drop instant; their gap is the step.
+    Because both fits extrapolate the *genuine* trend to the same time point,
+    the fill dynamics cancel and only the artifact height remains.
+    """
+    anchor_idx = max(0, core_start - 1)
+    post_idx = min(core_end + 1, len(raw) - 1)
+    p_pre, p_post = _flank_fits(times, ysm, anchor_idx, post_idx)
+    td = times[_drop_instant(raw, core_start, core_end)]
+    return float(np.polyval(p_post, td) - np.polyval(p_pre, td))
+
+
+def remove_drop_step(
+    times, raw, corrected, ysm, core_start, core_end, rng=None, min_significance=3.0
+):
+    """Remove one drop-effect step from `corrected` in place; returns delta.
+
+    Args:
+        times: full Relative_time array.
+        raw: original (uncorrected) signal -- used only to find the drop instant.
+        corrected: working corrected array; modified in place. The step
+            estimate is computed on THIS array's smooth trend so multi-region
+            (right-to-left) processing chains correctly.
+        ysm: savgol-smoothed version of `corrected` (window ~11, poly 3).
+            Recompute between regions when processing multiple drops.
+        core_start, core_end: tight detected core of the transient (use the
+            detection streak, NOT a padded region -- padding was a bridge
+            concept; step removal wants the shortest interval containing the
+            discontinuity so trend extrapolation distances stay small).
+        rng: numpy Generator (seed for reproducible reanalysis).
+        min_significance: skip correction if |delta| is below this multiple of
+            the pre-flank residual noise sigma (guards against "correcting"
+            regions that are noise-level, which would inject a spurious step).
+
+    Returns:
+        float: applied delta (0.0 if skipped as insignificant).
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    n = len(corrected)
+    anchor_idx = max(0, core_start - 1)
+    post_idx = min(core_end + 1, n - 1)
+
+    delta = estimate_step_delta(times, raw, ysm, core_start, core_end)
+
+    # Significance gate: don't inject a step where none exists.
+    resid_lo = max(0, anchor_idx - 4 * FLANK_SAMPLES)
+    flank_resid = (corrected - ysm)[resid_lo:anchor_idx]
+    noise_sigma = np.std(flank_resid) if flank_resid.size > 5 else 0.0
+    if noise_sigma > 0 and abs(delta) < min_significance * noise_sigma:
+        return 0.0
+
+    # 1) Step removal: shift everything at/after the transient's end.
+    corrected[post_idx:] -= delta
+    sm_shift = ysm.copy()
+    sm_shift[post_idx:] -= delta
+
+    # 2) Patch the core: PCHIP between pre-flank trend and shifted post-flank.
+    li = np.unique(
+        np.linspace(max(0, anchor_idx - PATCH_FLANK), anchor_idx, PATCH_KNOTS).astype(int)
+    )
+    ri = np.unique(
+        np.linspace(post_idx, min(n - 1, post_idx + PATCH_FLANK), PATCH_KNOTS).astype(int)
+    )
+    knot_t = np.concatenate([times[li], times[ri]])
+    knot_v = np.concatenate([ysm[li], sm_shift[ri]])
+    keep = np.concatenate([[True], np.diff(knot_t) > 0])
+    patch = PchipInterpolator(knot_t[keep], knot_v[keep])(times[core_start : core_end + 1])
+
+    # Noise texture from real pre-flank residuals.
+    if flank_resid.size > 5:
+        patch = patch + RESIDUAL_SCALE * rng.choice(flank_resid, size=patch.size, replace=True)
+
+    corrected[core_start : core_end + 1] = patch
+
+    # 3) Feather both seams (left into raw-level data, right into shifted data).
+    f = min(FEATHER_SAMPLES, patch.size // 4)
+    if f > 0:
+        w = np.linspace(0.0, 1.0, f + 2)[1:-1]
+        raw_left = raw[core_start : core_start + f]
+        corrected[core_start : core_start + f] = (1 - w) * raw_left + w * corrected[
+            core_start : core_start + f
+        ]
+        shifted_right = raw[core_end - f + 1 : core_end + 1] - delta
+        corrected[core_end - f + 1 : core_end + 1] = (
+            w[::-1] * corrected[core_end - f + 1 : core_end + 1] + (1 - w[::-1]) * shifted_right
+        )
+
+    return delta
+
+
 class DropEffectCorrection(CurveOptimizer):
     """
     Class to mitigate drop effects in dissipation and resonance frequency curves
@@ -671,7 +828,7 @@ class DropEffectCorrection(CurveOptimizer):
         # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
         if not current_streak:
             Log.d(self.TAG, f"No drop effects detected in {col_name}.")
-            return ([], values)
+            return ([], values, 0)
         min_count = len(current_streak)
         min_drop = min(current_streak)
         sign = 1 if col_name == "Dissipation" else -1
@@ -703,21 +860,42 @@ class DropEffectCorrection(CurveOptimizer):
             # If unacceptable, add it to the list for correction.
             current_streak.append(min_drop)
 
-        # DEBUG: Force add extra padding to the right-side of drop effect region.
-        if col_name == "Dissipation":
-            NUM_PTS = diff_offset
-            max_drop = max(current_streak)
-            beat_value = self._dataframe[col_name].values[region_slice][max_drop]
-            beat_count = 0
+        # Extend the drop region rightward until the raw signal reconverges with the
+        # smooth signal.  Applies to both Dissipation and Resonance_Frequency.
+        #
+        # Recovery criterion: |raw - smooth| < tolerance for NUM_PTS consecutive steps,
+        # where tolerance is 2x the pre-drop standard deviation.  This is direction-
+        # agnostic (works for upward spikes in Dissipation and downward drops in RF)
+        # and scales automatically with signal variability.
+        #
+        # Cap: max(75, 3 x initial-streak-length) -- wide enough for complex multi-phase
+        # events while still terminating quickly for narrow spikes.
+        NUM_PTS = diff_offset
+        max_drop = max(current_streak)
+        if max_drop + 1 < len(values) - 1:
+            # Estimate pre-drop variability from the smooth signal before the anomaly.
+            pre_end = min(current_streak)
+            pre_start = max(0, diff_offset)
+            pre_slice = (
+                values[pre_start:pre_end] if pre_end > pre_start else values[: max(1, pre_end)]
+            )
+            pre_std = np.std(pre_slice) if len(pre_slice) > 1 else np.std(values) * 0.05
+            tolerance = max(2.0 * pre_std, 1e-12)  # guard against near-zero std
+
+            raw_full = self._dataframe[col_name].values[region_slice]
+            recovery_count = 0
             total_dist = 0
+            max_total_dist = max(35, 2 * min_count)
             while True:
                 total_dist += 1
+                if max_drop + 1 >= len(values) - 1:
+                    break
                 max_drop += 1
-                if beat_value < values[max_drop]:  # raw < average
-                    beat_count += 1
+                if abs(raw_full[max_drop] - values[max_drop]) < tolerance:
+                    recovery_count += 1
                 else:
-                    beat_count = 0
-                if beat_count > NUM_PTS or total_dist > 25 or max_drop >= len(values) - 1:
+                    recovery_count = 0
+                if recovery_count > NUM_PTS or total_dist > max_total_dist:
                     break
                 current_streak.append(max_drop)
 
@@ -728,7 +906,10 @@ class DropEffectCorrection(CurveOptimizer):
 
         # Map back to the full dataframe index.
         global_idx = [local_idx + left_idx for local_idx in current_streak]
-        return (global_idx, values)
+        # min_count is the initial streak size BEFORE any left/right expansion.
+        # Callers use it so the skip guard threshold is independent of how far
+        # the region was subsequently expanded.
+        return (global_idx, values, min_count)
 
     def _middle_slice_list(self, whole: list, fraction: float = 0.5) -> list:
         n = len(whole)
@@ -816,10 +997,10 @@ class DropEffectCorrection(CurveOptimizer):
         corrected_rf = original_rf.copy()
 
         # Detect drop effects independently for each curve.
-        (drop_effects_diss, smooth_diss) = self._detect_drop_effects_for_column(
+        drop_effects_diss, smooth_diss, init_count_diss = self._detect_drop_effects_for_column(
             "Dissipation", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
         )
-        (drop_effects_rf, smooth_rf) = self._detect_drop_effects_for_column(
+        drop_effects_rf, smooth_rf, init_count_rf = self._detect_drop_effects_for_column(
             "Resonance_Frequency", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
         )
         drop_effects = list(set(drop_effects_diss + drop_effects_rf))
@@ -890,19 +1071,41 @@ class DropEffectCorrection(CurveOptimizer):
         )
 
         # Process each detected drop effect region for Dissipation and Resonance Frequency.
+        # Skip guard threshold: use the pre-expansion initial streak size so that the
+        # guard does not grow with the region and incorrectly reject legitimate mid-run drops.
+        init_count = max(
+            1,
+            min(
+                init_count_diss if init_count_diss else len(drop_effects_diss),
+                init_count_rf if init_count_rf else len(drop_effects_rf),
+            ),
+        )
         for region in contiguous_regions:
 
-            # Check that the directionality of the region is a spike, not a drop.
-            if smooth_diss_full[region[0]] - smooth_diss_full[region[-1]] > 0:
+            # Directionality check: skip regions with no meaningful upward excursion in
+            # dissipation.  Compare the peak within the region against the lower of the two
+            # endpoints rather than comparing endpoints directly.  This is robust to the
+            # right expansion having extended the region past the spike peak into recovery
+            # (where the endpoint value can drop below the start value even for a genuine
+            # upward spike, causing the old endpoint comparison to wrongly skip the region).
+            region_diss_smooth = smooth_diss_full[region[0] : region[-1] + 1]
+            peak_diss = float(np.max(region_diss_smooth))
+            baseline_diss = min(float(region_diss_smooth[0]), float(region_diss_smooth[-1]))
+            full_range = float(np.max(smooth_diss_full) - np.min(smooth_diss_full))
+            if full_range > 0 and (peak_diss - baseline_diss) / full_range < 0.05:
                 Log.d(
                     self.TAG,
-                    f"Skipping region from {relative_time[region[0]]} to {relative_time[region[-1]]}",
+                    f"Skipping region {relative_time[region[0]]:.3f}–{relative_time[region[-1]]:.3f}: "
+                    f"no significant dissipation excursion (peak-baseline = {peak_diss - baseline_diss:.3e}, "
+                    f"full range = {full_range:.3e})",
                 )
                 continue
 
-            # Skip if the drop effect is at the very beginning.
+            # Skip if the drop starts too close to the start-of-fill boundary.
+            # Uses the pre-expansion initial streak size so the threshold stays small
+            # even when the right expansion has made the total region very wide.
             idx = region[0]
-            if idx - self._left_bound["index"] < len(region) // 2:
+            if idx - self._left_bound["index"] < init_count // 2:
                 Log.d(
                     self.TAG,
                     "Skipped correcting an early region that was too close to start-of-fill.",
@@ -912,107 +1115,93 @@ class DropEffectCorrection(CurveOptimizer):
             # Record the indices where the correction is applied.
             correction_indices.extend(region)
 
-            # Calculate the difference trendline prior to the drop region.
-            # Calculate the difference trendline prior to the drop region.
-            prior_right = region[0]
-            prior_left = prior_right - len(region)
-            if prior_left < self._left_bound["index"]:
-                prior_left = self._left_bound["index"]
-            prior_right -= self._left_bound["index"]
-            prior_left -= self._left_bound["index"]
+            # Tight detected core of the transient -- NOT padded. The old bridge
+            # approaches widened the region to give a smoothing kernel more room to
+            # work; step removal instead wants the shortest interval containing the
+            # discontinuity, so the flank trend fits used to estimate the step
+            # height stay close to (and representative of) the drop itself.
+            core_start, core_end = region[0], region[-1]
+            anchor_idx = max(0, core_start - 1)
 
-            # Protect against ZeroDivisionError if bounds overlap
-            prior_denom = prior_right - prior_left
-            prior_diff_diss = (
-                0
-                if prior_denom == 0
-                else (smooth_diss[prior_right] - smooth_diss[prior_left]) / prior_denom
-            )
-            prior_diff_rf = (
-                0
-                if prior_denom == 0
-                else (smooth_rf[prior_right] - smooth_rf[prior_left]) / prior_denom
-            )
-
-            # Calculate the difference trendline after the drop region.
-            after_left = region[-1]
-            after_right = after_left + len(region)
-            if after_right > self._right_bound["index"]:
-                after_right = self._right_bound["index"]
-            after_left -= self._left_bound["index"]
-            after_right -= self._left_bound["index"]
-
-            after_denom = after_right - after_left
-            after_diff_diss = (
-                0
-                if after_denom == 0
-                else (smooth_diss[after_right] - smooth_diss[after_left]) / after_denom
-            )
-            after_diff_rf = (
-                0
-                if after_denom == 0
-                else (smooth_rf[after_right] - smooth_rf[after_left]) / after_denom
-            )
-
-            # Compute average differences before and after for dissipation and rf.
-            avg_diff_diss = len(region) * np.average(
-                [prior_diff_diss, after_diff_diss], weights=[2, 1]
-            )
-            avg_diff_rf = len(region) * np.average([prior_diff_rf, after_diff_rf], weights=[2, 1])
-
-            # Anchor the correction to the last good data point BEFORE the anomaly
-            anchor_idx = max(0, region[0] - 1)
-
-            # Create a smooth linspace bridging from the anchor point.
-            # Using avg_diff / len(region) as the start ensures we step cleanly away from the anchor.
-            insert_diss = corrected_diss[anchor_idx] + np.linspace(
-                avg_diff_diss / len(region), avg_diff_diss, len(region)
-            )
-            insert_rf = corrected_rf[anchor_idx] + np.linspace(
-                avg_diff_rf / len(region), avg_diff_rf, len(region)
-            )
-
-            # Only if end-of-fill is contained in the region.
-            if (
+            # Only if end-of-fill is contained in the core: the drop and the
+            # genuine fill-completion event overlap, so treating this as a
+            # permanent additive step would blur over real fill dynamics. Fall
+            # back to an anchor-aligned super-smooth patch with no trailing
+            # shift, as before.
+            used_smooth_override = (
                 len(self.bounds) > 1
                 and isinstance(self.bounds[1], int)
-                and region[0] < self.bounds[1] < region[-1]
-            ):  # indices, not timestamps
+                and core_start < self.bounds[1] < core_end
+            )  # indices, not timestamps
+            if used_smooth_override:
                 Log.d(
                     self.TAG,
                     "Correcting drop with smoothed data due to region conflicts with end-of-fill",
                 )
-                insert_diss = super_smooth_diss_full[region[0] : region[-1] + 1]
-                insert_rf = super_smooth_rf_full[region[0] : region[-1] + 1]
+                insert_diss = super_smooth_diss_full[core_start : core_end + 1].copy()
+                insert_rf = super_smooth_rf_full[core_start : core_end + 1].copy()
 
                 # Align the smoothed fallback data to our anchor point to prevent disjoint jumps
                 insert_diss += corrected_diss[anchor_idx] - insert_diss[0]
                 insert_rf += corrected_rf[anchor_idx] - insert_rf[0]
 
-            # Apply randomness to insert data based on stdev of baseline.
-            # Reduced multiplier from 2.0 to 0.5 to prevent excessive jitter
+                # Add jitter based on the baseline stdev since the super-smooth
+                # fallback carries no noise texture of its own. Reduced multiplier
+                # from 2.0 to 0.5 to prevent excessive jitter.
+                rng = np.random.default_rng()
+                insert_diss = insert_diss + rng.normal(
+                    0.0, 0.5 * base_diss_std, size=len(insert_diss)
+                )
+                insert_rf = insert_rf + rng.normal(0.0, 0.5 * base_rf_std, size=len(insert_rf))
+
+                corrected_diss[core_start : core_end + 1] = insert_diss
+                corrected_rf[core_start : core_end + 1] = insert_rf
+
+                Log.d(
+                    self.TAG,
+                    f"Smoothed drop region [{core_start}, {core_end}] "
+                    "(no permanent step shift; overlaps end-of-fill).",
+                )
+                continue
+
+            # Additive-step removal: estimate the permanent level shift caused
+            # by the drop and subtract it from every sample at/after the
+            # transient, then patch the short transient core with a
+            # trend-matched, noise-textured interpolant. The smoothed trend is
+            # recomputed from the CORRECTED arrays each iteration (rather than
+            # reused from smooth_diss_full/smooth_rf_full, which reflect only
+            # the original data) so a region's step estimate reflects any
+            # shifts already applied by later (already-processed) regions in
+            # this right-to-left pass.
+            win = self._safe_savgol_win(len(corrected_diss), 11, 3)
+            ysm_diss = savgol_filter(corrected_diss, win, 3)
+            ysm_rf = savgol_filter(corrected_rf, win, 3)
+
             rng = np.random.default_rng()
-            insert_diss = np.asarray(insert_diss) + rng.normal(
-                0.0, 0.5 * base_diss_std, size=len(insert_diss)
+            delta_diss = remove_drop_step(
+                relative_time,
+                original_diss,
+                corrected_diss,
+                ysm_diss,
+                core_start,
+                core_end,
+                rng=rng,
             )
-            insert_rf = np.asarray(insert_rf) + rng.normal(
-                0.0, 0.5 * base_rf_std, size=len(insert_rf)
+            delta_rf = remove_drop_step(
+                relative_time,
+                original_rf,
+                corrected_rf,
+                ysm_rf,
+                core_start,
+                core_end,
+                rng=rng,
             )
 
-            # Replace the drop effect region with a smoother insert.
-            corrected_diss[region[0] : region[-1] + 1] = insert_diss
-            corrected_rf[region[0] : region[-1] + 1] = insert_rf
-
-            # Compute offsets so that the value at the drop matches the previous (good) value.
-            offset_diss = corrected_diss[region[-1]] - original_diss[region[-1]]
-            offset_rf = corrected_rf[region[-1]] - original_rf[region[-1]]
-
-            # Apply the offset correction to the segment.
-            corrected_diss[region[-1] + 1 :] += offset_diss
-            corrected_rf[region[-1] + 1 :] += offset_rf
-
-            Log.d(self.TAG, f"Offset for dissipation data: {offset_diss}")
-            Log.d(self.TAG, f"Offset for resonance data: {offset_rf} Hz")
+            Log.d(
+                self.TAG,
+                f"Step-removed drop region [{core_start}, {core_end}]: "
+                f"delta_diss={delta_diss:.4e}, delta_rf={delta_rf:.2f} Hz",
+            )
 
         if show_corrections or save_corrections:
             self._plot_corrections(
