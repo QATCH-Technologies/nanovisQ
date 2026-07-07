@@ -748,7 +748,7 @@ class QModelV7:
                 cands,
                 present,
                 prior,
-                lam=QModelV7Config.DECODE_LAMBDA,
+                lam=lam_eff,
                 conf_weight=QModelV7Config.DECODE_CONF_WEIGHT,
                 feas_slack=QModelV7Config.DECODE_FEAS_SLACK,
                 max_candidates=QModelV7Config.DECODE_MAX_CANDIDATES,
