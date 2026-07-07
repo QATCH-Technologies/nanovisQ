@@ -34,7 +34,7 @@ from QATCH.ui.styles.theme_manager import ThemeManager
 _RADIUS = 12.0
 
 
-class GlassPanel(QtWidgets.QFrame):
+class QATCHPanel(QtWidgets.QFrame):
     """A static frosted-glass content card.
 
     Attributes:

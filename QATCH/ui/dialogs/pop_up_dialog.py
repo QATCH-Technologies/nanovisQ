@@ -1,6 +1,7 @@
-from QATCH.common.logger import Logger as Log
-from QATCH.ui.components.glass_dialog import GlassDialog
 from PyQt5 import QtCore, QtWidgets
+
+from QATCH.common.logger import Logger as Log
+from QATCH.ui.components.qatch_dialog import QATCHDialog
 
 TAG = "[PopUp]"
 
@@ -9,7 +10,7 @@ class PopUp:
 
     @staticmethod
     def question_QCM(parent, title, message):  # noqa: N802
-        d = GlassDialog(
+        d = QATCHDialog(
             parent,
             title,
             message,
@@ -30,7 +31,7 @@ class PopUp:
             buttons = [("Awesome!", "primary", 1)]
         else:
             buttons = [("No", "neutral", 0), ("Yes", "primary", 1)]
-        d = GlassDialog(
+        d = QATCHDialog(
             parent,
             title,
             message,
@@ -43,7 +44,7 @@ class PopUp:
 
     @staticmethod
     def warning(parent, title, message):
-        d = GlassDialog(
+        d = QATCHDialog(
             parent,
             title,
             message,
@@ -55,7 +56,7 @@ class PopUp:
     @staticmethod
     def question(parent, title, message, default=False):
         buttons = [("No", "neutral", 0), ("Yes", "primary", 1)]
-        d = GlassDialog(
+        d = QATCHDialog(
             parent,
             title,
             message,
@@ -78,7 +79,7 @@ class PopUp:
         else:
             buttons = [("Ignore", "neutral", 0), (btn1_text, "danger", 1)]
             icon_type = "critical"
-        d = GlassDialog(
+        d = QATCHDialog(
             parent,
             title,
             message,
@@ -91,7 +92,7 @@ class PopUp:
 
     @staticmethod
     def information(parent, title, message, details=""):
-        d = GlassDialog(
+        d = QATCHDialog(
             parent,
             title,
             message,

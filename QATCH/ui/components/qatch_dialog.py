@@ -16,8 +16,8 @@ from typing import List, Optional, Tuple
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
-from QATCH.ui.components.glass_push_button import GlassPushButton
 from QATCH.ui.components.glass_paint import paint_glass_surface
+from QATCH.ui.components.qatch_push_button import QATCHPushButton
 from QATCH.ui.styles.theme_manager import ThemeManager
 
 # (button_label, GlassPushButton_variant, return_value)
@@ -60,7 +60,7 @@ def _tinted_icon(path: str, color: QtGui.QColor, size: int = 22) -> QtGui.QPixma
     return dst
 
 
-class _GlassCard(QtWidgets.QFrame):
+class _Card(QtWidgets.QFrame):
     """Frosted glass card: paints via the shared glass-paint helper so it
     stays identical to PlotContainer and the other glass surfaces."""
 
@@ -81,7 +81,7 @@ class _GlassCard(QtWidgets.QFrame):
         )
 
 
-class GlassDialog(QtWidgets.QDialog):
+class QATCHDialog(QtWidgets.QDialog):
     """Modal frosted-glass dialog.
 
     Renders a semi-transparent dim overlay sized to the root window with a
@@ -162,7 +162,7 @@ class GlassDialog(QtWidgets.QDialog):
         card_row.setContentsMargins(0, 0, 0, 0)
         card_row.addStretch()
 
-        self._card = _GlassCard(self)
+        self._card = _Card(self)
         self._card.setFixedWidth(_CARD_W)
 
         card_v = QtWidgets.QVBoxLayout(self._card)
@@ -221,7 +221,7 @@ class GlassDialog(QtWidgets.QDialog):
         btn_layout.addStretch()
 
         for i, (label, variant, val) in enumerate(buttons):
-            btn = GlassPushButton(label, variant=variant)
+            btn = QATCHPushButton(label, variant=variant)
             btn.setFixedHeight(34)
             btn.setMinimumWidth(90)
             btn.clicked.connect(lambda checked=False, r=val: self._on_button(r))
@@ -244,7 +244,7 @@ class GlassDialog(QtWidgets.QDialog):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
 
-        toggle_btn = GlassPushButton("Show Details ▾", variant="neutral")
+        toggle_btn = QATCHPushButton("Show Details ▾", variant="neutral")
         toggle_btn.setFixedHeight(28)
         toggle_btn.set_border_visible(False)
         lay.addWidget(toggle_btn)

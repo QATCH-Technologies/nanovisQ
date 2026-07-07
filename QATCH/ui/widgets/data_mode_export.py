@@ -63,14 +63,19 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.components import (
-    GlassLineEdit,
-    GlassOptionCard,
-    GlassOptionCardGroup,
-    GlassPanel,
-    GlassPushButton,
+    QATCHLineEdit,
+    QATCHOptionCard,
+    QATCHOptionCardGroup,
+    QATCHPanel,
+    QATCHPushButton,
 )
 from QATCH.ui.components.icon_utils import tinted_icon
-from QATCH.ui.styles.theme_manager import ThemeManager, caption_label_qss, desc_label_qss, tok_css
+from QATCH.ui.styles.theme_manager import (
+    ThemeManager,
+    caption_label_qss,
+    desc_label_qss,
+    tok_css,
+)
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 # Parser for reading run capture archives when building the CSV report. Imported
@@ -564,12 +569,12 @@ class ExportMode(DataModeWidget):
         # Destination is a pair of labelled cards (radio-style); target picker
         # adapts to whichever one is selected.
         lay.addWidget(self._caption("Export to"))
-        self.dest_group = GlassOptionCardGroup(self)
+        self.dest_group = QATCHOptionCardGroup(self)
         dest_row = QtWidgets.QHBoxLayout()
         dest_row.setContentsMargins(0, 0, 0, 0)
         dest_row.setSpacing(8)
-        self.card_usb = GlassOptionCard("USB Drive", "Removable storage", show_radio=True)
-        self.card_folder = GlassOptionCard(
+        self.card_usb = QATCHOptionCard("USB Drive", "Removable storage", show_radio=True)
+        self.card_folder = QATCHOptionCard(
             "Folder on this PC", "Local or network path", show_radio=True
         )
         self.dest_group.addCard(self.card_usb, 0)
@@ -587,7 +592,7 @@ class ExportMode(DataModeWidget):
         target_row = QtWidgets.QHBoxLayout()
         target_row.setContentsMargins(0, 0, 0, 0)
         target_row.setSpacing(8)
-        self.target_field = GlassLineEdit()
+        self.target_field = QATCHLineEdit()
         self.target_field.setText("[NONE]")
         self.target_field.setReadOnly(True)
         self.target_field.setMinimumHeight(34)
@@ -604,17 +609,17 @@ class ExportMode(DataModeWidget):
         # pickerBox's own frosted border; a border per-button too would be
         # one too many. Fixed size policy keeps them from being stretched by
         # the layout's surplus space while a sibling slides open/closed.
-        self.btn_detect = GlassPushButton(" Detect", variant="ghost")
+        self.btn_detect = QATCHPushButton(" Detect", variant="ghost")
         self.btn_detect.setFixedHeight(28)
         self.btn_detect.setIcon(self._icon("usb.svg"))
         self.btn_detect.clicked.connect(self._do_detect)
         self.btn_detect.set_border_visible(False)
-        self.btn_eject = GlassPushButton(" Eject", variant="ghost")
+        self.btn_eject = QATCHPushButton(" Eject", variant="ghost")
         self.btn_eject.setFixedHeight(28)
         self.btn_eject.clicked.connect(self._do_eject)
         self.btn_eject.set_border_visible(False)
         # Folder action
-        self.btn_target = GlassPushButton(" Choose…", variant="ghost")
+        self.btn_target = QATCHPushButton(" Choose…", variant="ghost")
         self.btn_target.setFixedHeight(28)
         self.btn_target.setIcon(self._icon("folder.svg"))
         self.btn_target.clicked.connect(self._select_target)
@@ -669,7 +674,7 @@ class ExportMode(DataModeWidget):
         # Pulled out of the responsive grid so it reads as the first thing
         # you set before exporting, but otherwise a plain field like the
         # rest of the page - no special highlight box.
-        self.name_field = GlassLineEdit()
+        self.name_field = QATCHLineEdit()
         self.name_field.setMinimumHeight(34)
         lay.addWidget(self._field("Export name", self.name_field))
         lay.addSpacing(4)
@@ -680,14 +685,14 @@ class ExportMode(DataModeWidget):
         # vertically rather than side-by-side, matching the wireframe.
 
         # --- Which runs: All vs Selection (+ choose button) -------------
-        self.scope_group = GlassOptionCardGroup(self)
-        self.btn_scope_all = GlassOptionCard("All runs", "Export every run in the database")
-        self.btn_scope_sel = GlassOptionCard("Selected runs", "Pick specific devices or runs")
+        self.scope_group = QATCHOptionCardGroup(self)
+        self.btn_scope_all = QATCHOptionCard("All runs", "Export every run in the database")
+        self.btn_scope_sel = QATCHOptionCard("Selected runs", "Pick specific devices or runs")
         self.scope_group.addCard(self.btn_scope_all, 0)
         self.scope_group.addCard(self.btn_scope_sel, 1)
         self.btn_scope_all.setChecked(True)
         self.scope_group.toggled.connect(self._on_selection_changed)
-        self.btn_select_run = GlassPushButton(" Choose…", variant="ghost")
+        self.btn_select_run = QATCHPushButton(" Choose…", variant="ghost")
         self.btn_select_run.setFixedHeight(28)
         self.btn_select_run.setIcon(self._icon("folder.svg"))
         self.btn_select_run.clicked.connect(self._select_run)
@@ -757,10 +762,10 @@ class ExportMode(DataModeWidget):
         self.field_which = self._field("Which runs", which_inner)
 
         # --- Export as: CSV / ZIP / Folder -------------------------------
-        self.format_group = GlassOptionCardGroup(self)
-        self.rb_csv = GlassOptionCard("CSV Report", "A single spreadsheet - choose columns next")
-        self.rb_zip = GlassOptionCard("ZIP Archive", "One compressed archive of raw run files")
-        self.rb_folder_fmt = GlassOptionCard("Folder", "A plain folder of run files")
+        self.format_group = QATCHOptionCardGroup(self)
+        self.rb_csv = QATCHOptionCard("CSV Report", "A single spreadsheet - choose columns next")
+        self.rb_zip = QATCHOptionCard("ZIP Archive", "One compressed archive of raw run files")
+        self.rb_folder_fmt = QATCHOptionCard("Folder", "A plain folder of run files")
         self.format_group.addCard(self.rb_csv, 0)
         self.format_group.addCard(self.rb_zip, 1)
         self.format_group.addCard(self.rb_folder_fmt, 2)
@@ -798,11 +803,11 @@ class ExportMode(DataModeWidget):
         header_actions = QtWidgets.QHBoxLayout()
         header_actions.setContentsMargins(0, 0, 0, 0)
         header_actions.setSpacing(4)
-        self.btn_csv_select_all = GlassPushButton(" Select all", variant="ghost")
+        self.btn_csv_select_all = QATCHPushButton(" Select all", variant="ghost")
         self.btn_csv_select_all.setFixedHeight(24)
         self.btn_csv_select_all.set_border_visible(False)
         self.btn_csv_select_all.clicked.connect(self._on_csv_select_all)
-        self.btn_csv_clear = GlassPushButton(" Clear", variant="ghost")
+        self.btn_csv_clear = QATCHPushButton(" Clear", variant="ghost")
         self.btn_csv_clear.setFixedHeight(24)
         self.btn_csv_clear.set_border_visible(False)
         self.btn_csv_clear.clicked.connect(self._on_csv_clear)
@@ -855,10 +860,10 @@ class ExportMode(DataModeWidget):
         policy_desc.setWordWrap(True)
         policy_card.body.addWidget(policy_desc)
 
-        self.policy_group = GlassOptionCardGroup(self)
-        self.rb_merge = GlassOptionCard("Merge", "Keep newer versions")
-        self.rb_replace = GlassOptionCard("Replace", "Overwrite existing")
-        self.rb_skip = GlassOptionCard("Skip", "Leave existing untouched")
+        self.policy_group = QATCHOptionCardGroup(self)
+        self.rb_merge = QATCHOptionCard("Merge", "Keep newer versions")
+        self.rb_replace = QATCHOptionCard("Replace", "Overwrite existing")
+        self.rb_skip = QATCHOptionCard("Skip", "Leave existing untouched")
         self.policy_group.addCard(self.rb_merge, POLICY_MERGE)
         self.policy_group.addCard(self.rb_replace, POLICY_REPLACE)
         self.policy_group.addCard(self.rb_skip, POLICY_SKIP)
@@ -1006,7 +1011,7 @@ class ExportMode(DataModeWidget):
     def _build_review_card(self, title, step_index, rows):
         """One grouped review card: a small caption + "Edit" link (jumps
         back to the step that owns this data) above a 2-column field grid."""
-        card = GlassPanel()
+        card = QATCHPanel()
         clay = QtWidgets.QVBoxLayout(card)
         clay.setContentsMargins(14, 12, 14, 12)
         clay.setSpacing(8)
@@ -1018,7 +1023,7 @@ class ExportMode(DataModeWidget):
         cap.setStyleSheet(caption_label_qss())
         head_row.addWidget(cap)
         head_row.addStretch(1)
-        edit_btn = GlassPushButton(" Edit", variant="ghost")
+        edit_btn = QATCHPushButton(" Edit", variant="ghost")
         edit_btn.setFixedHeight(24)
         edit_btn.set_border_visible(False)
         edit_btn.clicked.connect(lambda _=False, idx=step_index: self._go_to_step(idx))
@@ -1163,13 +1168,13 @@ class ExportMode(DataModeWidget):
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
-        self.btn_cancel = GlassPushButton(" Cancel", variant="default")
+        self.btn_cancel = QATCHPushButton(" Cancel", variant="default")
         self.btn_cancel.setFixedHeight(34)
         self.btn_cancel.clicked.connect(self._on_cancel_clicked)
-        self.btn_back = GlassPushButton(" Back", variant="default")
+        self.btn_back = QATCHPushButton(" Back", variant="default")
         self.btn_back.setFixedHeight(34)
         self.btn_back.clicked.connect(self._go_back)
-        self.btn_next = GlassPushButton(" Next →", variant="primary")
+        self.btn_next = QATCHPushButton(" Next →", variant="primary")
         self.btn_next.setFixedHeight(34)
         self.btn_next.clicked.connect(self._go_next_or_export)
 
@@ -2569,7 +2574,7 @@ class ExportMode(DataModeWidget):
         Clear" actions, an "Edit" link) docked to the right of the title,
         on the same line.
         """
-        card = GlassPanel()
+        card = QATCHPanel()
         outer = QtWidgets.QVBoxLayout(card)
         outer.setContentsMargins(14, 12, 14, 12)
         outer.setSpacing(8)

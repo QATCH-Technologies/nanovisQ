@@ -25,7 +25,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
 from QATCH.core.constants import UserRoles
-from QATCH.ui.components import GlassLineEdit, AnimatedComboBox
+from QATCH.ui.components import AnimatedComboBox, QATCHLineEdit
 
 _INPUT_H: int = 34
 
@@ -187,11 +187,11 @@ class CreateUserWidget(QtWidgets.QWidget):
         name_row.setContentsMargins(0, 0, 0, 0)
         name_row.setSpacing(10)
 
-        self.inp_first_name = GlassLineEdit()
+        self.inp_first_name = QATCHLineEdit()
         self.inp_first_name.setFixedHeight(_INPUT_H)
         self.inp_first_name.setPlaceholderText("First Name")
 
-        self.inp_last_name = GlassLineEdit()
+        self.inp_last_name = QATCHLineEdit()
         self.inp_last_name.setFixedHeight(_INPUT_H)
         self.inp_last_name.setPlaceholderText("Last Name")
 
@@ -222,13 +222,13 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.main_layout.addWidget(self.cmb_role)
 
         # Username
-        self.inp_username = GlassLineEdit()
+        self.inp_username = QATCHLineEdit()
         self.inp_username.setFixedHeight(_INPUT_H)
         self.inp_username.setPlaceholderText("Username (Optional)")
         self.main_layout.addWidget(self.inp_username)
 
         # Email
-        self.inp_email = GlassLineEdit()
+        self.inp_email = QATCHLineEdit()
         self.inp_email.setFixedHeight(_INPUT_H)
         self.inp_email.setPlaceholderText("Email")
         self.inp_email.textChanged.connect(
@@ -240,7 +240,7 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.main_layout.addWidget(self.err_email)
 
         # Password
-        self.inp_pwd1 = GlassLineEdit()
+        self.inp_pwd1 = QATCHLineEdit()
         self.inp_pwd1.setFixedHeight(_INPUT_H)
         self.inp_pwd1.setPlaceholderText("Password")
         self.inp_pwd1.setEchoMode(QtWidgets.QLineEdit.Password)
@@ -253,7 +253,7 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.main_layout.addWidget(self.inp_pwd1)
 
         # Confirm password
-        self.inp_pwd2 = GlassLineEdit()
+        self.inp_pwd2 = QATCHLineEdit()
         self.inp_pwd2.setFixedHeight(_INPUT_H)
         self.inp_pwd2.setPlaceholderText("Confirm Password")
         self.inp_pwd2.setEchoMode(QtWidgets.QLineEdit.Password)
@@ -440,7 +440,7 @@ class CreateUserWidget(QtWidgets.QWidget):
             error_label (QtWidgets.QLabel): The inline error label to hide.
         """
         for f in fields:
-            if isinstance(f, GlassLineEdit):
+            if isinstance(f, QATCHLineEdit):
                 f.set_error(False)
         error_label.setVisible(False)
 
@@ -461,7 +461,7 @@ class CreateUserWidget(QtWidgets.QWidget):
                 the shake animation to. If None, uses the first widget in `fields`.
         """
         for f in fields:
-            if isinstance(f, GlassLineEdit):
+            if isinstance(f, QATCHLineEdit):
                 f.set_error(True)
         error_label.setText(message)
         error_label.setVisible(True)

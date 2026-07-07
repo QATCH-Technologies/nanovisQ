@@ -1,9 +1,11 @@
-from PyQt5 import QtCore, QtGui, QtWidgets
-from typing import Optional
 import os
-from QATCH.ui.components.flat_paint import paint_flat_surface
-from QATCH.ui.components.glass_push_button import GlassPushButton
+from typing import Optional
+
+from PyQt5 import QtCore, QtGui, QtWidgets
+
 from QATCH.common.architecture import Architecture
+from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.components.qatch_push_button import QATCHPushButton
 from QATCH.ui.styles.fonts import FONT_SANS, FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
@@ -195,7 +197,10 @@ class AccountPopup(QtWidgets.QWidget):
         # session_info() returns: [name, initials, role.name, created, modified, accessed]
         accessed: Optional[str] = None
         try:
-            from QATCH.common.userProfiles import UserProfiles, UserRoles  # noqa: PLC0415
+            from QATCH.common.userProfiles import (  # noqa: PLC0415
+                UserProfiles,
+                UserRoles,
+            )
 
             is_valid, user_info = UserProfiles.session_info()
             if is_valid and user_info:
@@ -271,18 +276,18 @@ class AccountPopup(QtWidgets.QWidget):
             self._divider.setFrameShape(QtWidgets.QFrame.HLine)
             layout.addWidget(self._divider)
 
-        self._manage_btn: Optional[GlassPushButton] = None
+        self._manage_btn: Optional[QATCHPushButton] = None
         if show_manage:
-            self._manage_btn = GlassPushButton("Manage Users", variant="ghost")
+            self._manage_btn = QATCHPushButton("Manage Users", variant="ghost")
             self._manage_btn.set_menu_row(True)
             self._manage_btn.setFixedHeight(34)
             self._manage_btn.setIconSize(QtCore.QSize(16, 16))
             self._manage_btn.clicked.connect(self._on_manage_users)
             layout.addWidget(self._manage_btn)
 
-        self._sign_out_btn: Optional[GlassPushButton] = None
+        self._sign_out_btn: Optional[QATCHPushButton] = None
         if show_sign_out:
-            self._sign_out_btn = GlassPushButton("Sign Out", variant="ghost_danger")
+            self._sign_out_btn = QATCHPushButton("Sign Out", variant="ghost_danger")
             self._sign_out_btn.set_menu_row(True)
             self._sign_out_btn.setFixedHeight(34)
             self._sign_out_btn.setIconSize(QtCore.QSize(16, 16))

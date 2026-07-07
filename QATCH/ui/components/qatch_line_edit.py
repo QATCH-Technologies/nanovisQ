@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -10,7 +11,7 @@ from QATCH.ui.styles.theme_manager import ThemeManager
 _RADIUS = 7.0
 
 
-class GlassLineEdit(QtWidgets.QLineEdit):
+class QATCHLineEdit(QtWidgets.QLineEdit):
     """A QLineEdit styled to match the app's flat control system.
 
     Chrome (fill/border/focus-ring) is painted manually in `paintEvent` via

@@ -31,7 +31,7 @@ _SEVERITY_TOKENS = {
 }
 
 
-class GlassWarningLabel(QtWidgets.QWidget):
+class QATCHWarningLabel(QtWidgets.QWidget):
     """Calm informational banner for inline messaging.
 
     Renders as a soft glass strip tinted per `severity`, with an optional

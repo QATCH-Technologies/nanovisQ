@@ -79,7 +79,7 @@ class _RadioDot(QtWidgets.QWidget):
         p.end()
 
 
-class GlassOptionCard(QtWidgets.QFrame):
+class QATCHOptionCard(QtWidgets.QFrame):
     """A clickable, checkable card with a title and a one-line description."""
 
     clicked = QtCore.pyqtSignal()
@@ -223,8 +223,8 @@ class GlassOptionCard(QtWidgets.QFrame):
             )
 
 
-class GlassOptionCardGroup(QtCore.QObject):
-    """Exclusive-selection manager for a set of GlassOptionCards.
+class QATCHOptionCardGroup(QtCore.QObject):
+    """Exclusive-selection manager for a set of QATCHOptionCards.
 
     Mirrors the handful of QButtonGroup methods already relied on elsewhere
     (checkedId, checkedButton, buttonToggled-style signal) so call sites that
@@ -237,11 +237,11 @@ class GlassOptionCardGroup(QtCore.QObject):
         super().__init__(parent)
         self._cards = []  # list of (card, id)
 
-    def addCard(self, card: GlassOptionCard, card_id):
+    def addCard(self, card: QATCHOptionCard, card_id):
         self._cards.append((card, card_id))
         card.clicked.connect(lambda c=card: self._on_card_clicked(c))
 
-    def _on_card_clicked(self, card: GlassOptionCard):
+    def _on_card_clicked(self, card: QATCHOptionCard):
         if card.isChecked():
             return
         for c, _ in self._cards:

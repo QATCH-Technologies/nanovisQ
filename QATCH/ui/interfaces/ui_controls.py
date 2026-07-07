@@ -42,12 +42,13 @@ from QATCH.ui.components import (
     AnimatedComboBox,
     AnimatedDoubleSpinBox,
     FLUXControl,
-    GlassLineEdit,
-    GlassPushButton,
-    GlassToggle,
     NumberIconButton,
+    QATCHLineEdit,
+    QATCHPushButton,
+    QATCHToggle,
     RunControls,
 )
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.labels import (
     DeviceConfigLabel,
     HeaderLabel,
@@ -55,7 +56,6 @@ from QATCH.ui.labels import (
     StatusLabel,
     TemperatureLabel,
 )
-from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets import (
     AdvancedMainWidget,
@@ -337,7 +337,7 @@ class LabeledToggle(QtWidgets.QWidget):
                 otherwise, positions it to the right.
         """
         super().__init__(parent)
-        self.toggle = GlassToggle(self)
+        self.toggle = QATCHToggle(self)
         self.label = QtWidgets.QLabel(text, self)
         self.label.setObjectName("CtrlToggleLabel")
         self.label.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -640,7 +640,7 @@ class UIControls:
         # Shared control-button sizing (thick enough for icon + label).
         _CTRL_BTN_H = 40
         _CTRL_ICON = QtCore.QSize(20, 20)
-        self.pButton_Stop = GlassPushButton(variant="neutral")
+        self.pButton_Stop = QATCHPushButton(variant="neutral")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "stop-filled.svg")
         self.pButton_Stop.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Stop.setIconSize(_CTRL_ICON)
@@ -659,7 +659,7 @@ class UIControls:
 
         # Identify button
         _CIRCLE_D = 34
-        self.pButton_ID = GlassPushButton(variant="default")
+        self.pButton_ID = QATCHPushButton(variant="default")
         self.pButton_ID.setToolTip("Identify selected Serial COM Port")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "search.svg")
         self.pButton_ID.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
@@ -670,7 +670,7 @@ class UIControls:
         self.Layout_controls.addWidget(self.pButton_ID, 2, 2, 1, 1)
 
         # Refresh button
-        self.pButton_Refresh = GlassPushButton(variant="default")
+        self.pButton_Refresh = QATCHPushButton(variant="default")
         self.pButton_Refresh.setToolTip("Refresh Serial COM Port list")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg")
         self.pButton_Refresh.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
@@ -682,7 +682,7 @@ class UIControls:
 
         # Configure button - replaces the in-dropdown "Configure..." item.
         # Wired to the main window's device-info handler in mainWindow.py.
-        self.pButton_Configure = GlassPushButton(variant="default")
+        self.pButton_Configure = QATCHPushButton(variant="default")
         self.pButton_Configure.setToolTip("Configure device / position info")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
         self.pButton_Configure.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
@@ -722,7 +722,7 @@ class UIControls:
         self.Layout_controls.addWidget(self.l9, 1, 4, 1, 1)
 
         # Cartridge Controls
-        self.toggle_Cartridge = GlassToggle()
+        self.toggle_Cartridge = QATCHToggle()
         self.toggle_Cartridge.setToolTip("""
             <b><u>Auto-Lock Mode:</u></b><br/>
             <b>Automatic</b> (on): locks before init/run; useful if the user forgets.<br/>
@@ -748,7 +748,7 @@ class UIControls:
         self.Layout_controls.addWidget(self.grpMode, 2, 4, 3, 1)
 
         # start button
-        self.pButton_Start = GlassPushButton(variant="neutral")
+        self.pButton_Start = QATCHPushButton(variant="neutral")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "play-filled.svg")
         self.pButton_Start.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Start.setIconSize(_CTRL_ICON)
@@ -771,7 +771,7 @@ class UIControls:
         )
 
         # clear plots button
-        self.pButton_Clear = GlassPushButton(variant="neutral")
+        self.pButton_Clear = QATCHPushButton(variant="neutral")
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "clear-plot.svg")
         self.pButton_Clear.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Clear.setIconSize(_CTRL_ICON)
@@ -782,7 +782,7 @@ class UIControls:
         self.Layout_controls.addWidget(self.pButton_Clear, 2, 5, 1, 1)
 
         # Plot mode toggle
-        self.toggle_PlotMode = GlassToggle()
+        self.toggle_PlotMode = QATCHToggle()
         self.toggle_PlotMode.setToolTip(
             "<b>Plot Mode</b><br/>Off: Absolute &nbsp;|&nbsp; On: Reference"
         )
@@ -798,7 +798,7 @@ class UIControls:
         self.pButton_Reference = self.toggle_PlotMode
 
         # restore factory defaults
-        self.pButton_ResetApp = GlassPushButton(variant="neutral")
+        self.pButton_ResetApp = QATCHPushButton(variant="neutral")
         self.pButton_ResetApp.setIconSize(_CTRL_ICON)
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "factory-reset.svg")
         self.pButton_ResetApp.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
@@ -965,7 +965,7 @@ class UIControls:
         self.cBox_MultiMode.setFixedHeight(34)
 
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
-        self.pButton_PlateConfig = GlassPushButton(variant="default")
+        self.pButton_PlateConfig = QATCHPushButton(variant="default")
         self.pButton_PlateConfig.setIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
         self.pButton_PlateConfig.setIconSize(QtCore.QSize(18, 18))
         self.pButton_PlateConfig.setToolTip("Plate Configuration...")
@@ -1250,7 +1250,7 @@ class UIControls:
         )
 
         # Back Button + Title
-        self.back_btn = GlassPushButton(variant="ghost")
+        self.back_btn = QATCHPushButton(variant="ghost")
         self.back_btn.setIconSize(QtCore.QSize(18, 18))
         self.back_btn.setFixedSize(32, 32)
         self.back_btn.setToolTip("Back to Advanced Options")
@@ -1333,7 +1333,7 @@ class UIControls:
             return dot
 
         # Device Name
-        self.device_name_input = GlassLineEdit()
+        self.device_name_input = QATCHLineEdit()
         self.device_name_input.setValidator(self.validDeviceName)
         self.device_name_input.setMinimumWidth(160)
         self.device_name_input.setFixedHeight(34)
@@ -1346,7 +1346,7 @@ class UIControls:
         self.device_name_dot = _make_dot(self.device_name_action, self.device_name_input)
 
         # Device Position ID
-        self.device_pid_input = GlassLineEdit()
+        self.device_pid_input = QATCHLineEdit()
         self.device_pid_input.setValidator(self.validDevicePid)
         self.device_pid_input.setMinimumWidth(160)
         self.device_pid_input.setFixedHeight(34)
@@ -1358,11 +1358,11 @@ class UIControls:
         )
         self.device_pid_dot = _make_dot(self.device_pid_action, self.device_pid_input)
 
-        self.device_config_default = GlassPushButton("Default", variant="ghost")
+        self.device_config_default = QATCHPushButton("Default", variant="ghost")
         self.device_config_default.clicked.connect(self.on_device_config_default)
-        self.device_config_save = GlassPushButton("Save", variant="ghost")
+        self.device_config_save = QATCHPushButton("Save", variant="ghost")
         self.device_config_save.clicked.connect(self.on_device_config_save)
-        self.device_config_reset = GlassPushButton("Reset", variant="ghost")
+        self.device_config_reset = QATCHPushButton("Reset", variant="ghost")
         self.device_config_reset.clicked.connect(self.on_device_config_reset)
 
         # Constant Temperature Calibration
@@ -1423,11 +1423,11 @@ class UIControls:
             self.temp_cal_measure_action, self.temp_cal_measure_input
         )
 
-        self.temp_cal_default = GlassPushButton("Default", variant="ghost")
+        self.temp_cal_default = QATCHPushButton("Default", variant="ghost")
         self.temp_cal_default.clicked.connect(self.on_temp_cal_default)
-        self.temp_cal_save = GlassPushButton("Save", variant="ghost")
+        self.temp_cal_save = QATCHPushButton("Save", variant="ghost")
         self.temp_cal_save.clicked.connect(self.on_temp_cal_save)
-        self.temp_cal_reset = GlassPushButton("Reset", variant="ghost")
+        self.temp_cal_reset = QATCHPushButton("Reset", variant="ghost")
         self.temp_cal_reset.clicked.connect(self.on_temp_cal_reset)
 
         # Lid Pogo Distance
@@ -1496,11 +1496,11 @@ class UIControls:
         )
         self.lid_pogo_delay_dot = _make_dot(self.lid_pogo_delay_action, self.lid_pogo_delay_field)
 
-        self.lid_pogo_default = GlassPushButton("Default", variant="ghost")
+        self.lid_pogo_default = QATCHPushButton("Default", variant="ghost")
         self.lid_pogo_default.clicked.connect(self.on_lid_pogo_default)
-        self.lid_pogo_save = GlassPushButton("Save", variant="ghost")
+        self.lid_pogo_save = QATCHPushButton("Save", variant="ghost")
         self.lid_pogo_save.clicked.connect(self.on_lid_pogo_save)
-        self.lid_pogo_reset = GlassPushButton("Reset", variant="ghost")
+        self.lid_pogo_reset = QATCHPushButton("Reset", variant="ghost")
         self.lid_pogo_reset.clicked.connect(self.on_lid_pogo_reset)
 
         # Sectioned layout
@@ -1597,11 +1597,11 @@ class UIControls:
         dev_top_row.addLayout(temp_section, 1)
 
         # Global action buttons (Default All / Reset All / Save All)
-        self.device_default_all = GlassPushButton("Default All", variant="ghost")
+        self.device_default_all = QATCHPushButton("Default All", variant="ghost")
         self.device_default_all.clicked.connect(self.on_device_default_all)
-        self.device_reset_all = GlassPushButton("Reset All", variant="ghost")
+        self.device_reset_all = QATCHPushButton("Reset All", variant="ghost")
         self.device_reset_all.clicked.connect(self.on_device_reset_all)
-        self.device_save_all = GlassPushButton("Save All", variant="ghost")
+        self.device_save_all = QATCHPushButton("Save All", variant="ghost")
         self.device_save_all.clicked.connect(self.on_device_save_all)
 
         all_btn_row = QtWidgets.QHBoxLayout()

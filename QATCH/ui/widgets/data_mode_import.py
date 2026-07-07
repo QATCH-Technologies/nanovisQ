@@ -35,8 +35,18 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.components import GlassOptionCard, GlassOptionCardGroup, GlassPanel, GlassPushButton
-from QATCH.ui.styles.theme_manager import ThemeManager, caption_label_qss, desc_label_qss, tok_css
+from QATCH.ui.components import (
+    QATCHOptionCard,
+    QATCHOptionCardGroup,
+    QATCHPanel,
+    QATCHPushButton,
+)
+from QATCH.ui.styles.theme_manager import (
+    ThemeManager,
+    caption_label_qss,
+    desc_label_qss,
+    tok_css,
+)
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 TAG = "[DataImport]"
@@ -339,7 +349,7 @@ class ImportMode(DataModeWidget):
         head_row.addWidget(src_caption)
         head_row.addStretch(1)
 
-        self.btn_clear_sources = GlassPushButton(" Clear", variant="default")
+        self.btn_clear_sources = QATCHPushButton(" Clear", variant="default")
         self.btn_clear_sources.setFixedHeight(26)
         self.btn_clear_sources.setIcon(self._icon("clear.svg"))
         self.btn_clear_sources.setToolTip("Remove all selected sources")
@@ -369,10 +379,10 @@ class ImportMode(DataModeWidget):
         policy_caption.setStyleSheet(caption_label_qss())
         src_lay.addWidget(policy_caption)
 
-        self.policy_group = GlassOptionCardGroup(self)
-        self.card_merge = GlassOptionCard("Merge", "Add new, keep both")
-        self.card_replace = GlassOptionCard("Replace", "Overwrite existing")
-        self.card_skip = GlassOptionCard("Skip", "Leave existing")
+        self.policy_group = QATCHOptionCardGroup(self)
+        self.card_merge = QATCHOptionCard("Merge", "Add new, keep both")
+        self.card_replace = QATCHOptionCard("Replace", "Overwrite existing")
+        self.card_skip = QATCHOptionCard("Skip", "Leave existing")
         self.policy_group.addCard(self.card_merge, POLICY_MERGE)
         self.policy_group.addCard(self.card_replace, POLICY_REPLACE)
         self.policy_group.addCard(self.card_skip, POLICY_SKIP)
@@ -389,7 +399,7 @@ class ImportMode(DataModeWidget):
         src_lay.addWidget(self.policy_host)
 
         # ---- Preview card ---------------------------------------------
-        prev_card = GlassPanel()
+        prev_card = QATCHPanel()
         prev_lay = QtWidgets.QVBoxLayout(prev_card)
         prev_lay.setContentsMargins(14, 12, 14, 12)
         prev_lay.setSpacing(8)
@@ -511,11 +521,11 @@ class ImportMode(DataModeWidget):
         action_row.setContentsMargins(0, 0, 0, 0)
         action_row.setSpacing(8)
         action_row.addWidget(self.status_label, 1)
-        self.btn_cancel = GlassPushButton(" Cancel", variant="default")
+        self.btn_cancel = QATCHPushButton(" Cancel", variant="default")
         self.btn_cancel.setFixedHeight(34)
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.clicked.connect(self.services.request_abort)
-        self.btn_import = GlassPushButton(" Import 0 runs", variant="primary")
+        self.btn_import = QATCHPushButton(" Import 0 runs", variant="primary")
         self.btn_import.setFixedHeight(34)
         self.btn_import.setEnabled(False)
         self.btn_import.clicked.connect(self._do_import)
@@ -1612,7 +1622,7 @@ class ImportMode(DataModeWidget):
         return QtGui.QIcon()
 
     def _card(self, title, subtitle=""):
-        card = GlassPanel()
+        card = QATCHPanel()
         lay = QtWidgets.QVBoxLayout(card)
         lay.setContentsMargins(14, 12, 14, 12)
         lay.setSpacing(8)

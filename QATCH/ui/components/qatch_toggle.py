@@ -21,6 +21,7 @@ Usage
 """
 
 from __future__ import annotations
+
 from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -29,7 +30,7 @@ from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.styles.theme_manager import ThemeManager
 
 
-class GlassToggle(QtWidgets.QAbstractButton):
+class QATCHToggle(QtWidgets.QAbstractButton):
     """Pill-shaped animated toggle switch.
 
     Inherits `toggled(bool)` from `QAbstractButton` - a drop-in

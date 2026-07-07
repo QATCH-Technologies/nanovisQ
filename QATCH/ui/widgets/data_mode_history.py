@@ -25,10 +25,15 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.components import AnimatedComboBox, GlassPushButton, SegmentedControl
-from QATCH.ui.components.glass_warning_label import GlassWarningLabel
+from QATCH.ui.components import AnimatedComboBox, QATCHPushButton, SegmentedControl
 from QATCH.ui.components.icon_utils import tinted_pixmap
-from QATCH.ui.styles.theme_manager import ThemeManager, caption_label_qss, desc_label_qss, tok_css
+from QATCH.ui.components.qatch_warning_label import QATCHWarningLabel
+from QATCH.ui.styles.theme_manager import (
+    ThemeManager,
+    caption_label_qss,
+    desc_label_qss,
+    tok_css,
+)
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 try:
@@ -139,7 +144,7 @@ class HistoryMode(DataModeWidget):
         self.count_label.setStyleSheet(caption_label_qss())
         footer.addWidget(self.count_label)
         footer.addStretch(1)
-        self.btn_clear = GlassPushButton(" Clear history", variant="danger")
+        self.btn_clear = QATCHPushButton(" Clear history", variant="danger")
         self.btn_clear.setFixedHeight(32)
         self.btn_clear.clicked.connect(self._clear_all)
         footer.addWidget(self.btn_clear)
@@ -481,20 +486,20 @@ class HistoryMode(DataModeWidget):
         if rec["settings"]:
             dlay.addWidget(self._detail_row("Settings", rec["settings"]))
         if rec["skipped"]:
-            warn = GlassWarningLabel(html.unescape(rec["skipped"]), severity="warning")
+            warn = QATCHWarningLabel(html.unescape(rec["skipped"]), severity="warning")
             dlay.addWidget(warn)
 
         actions_row = QtWidgets.QHBoxLayout()
         actions_row.setContentsMargins(0, 4, 0, 0)
         actions_row.setSpacing(8)
         if not is_import:
-            btn_repeat = GlassPushButton(" Repeat export", variant="primary")
+            btn_repeat = QATCHPushButton(" Repeat export", variant="primary")
             btn_repeat.setFixedHeight(26)
             btn_repeat.setIcon(self._icon("refresh-cw.svg"))
             btn_repeat.clicked.connect(self._go_to_export)
             actions_row.addWidget(btn_repeat)
         open_target = rec["src"] if is_import else rec["dst"]
-        btn_open = GlassPushButton(" Open folder", variant="default")
+        btn_open = QATCHPushButton(" Open folder", variant="default")
         btn_open.setFixedHeight(26)
         btn_open.clicked.connect(lambda _=False, p=open_target: self._open_folder(p))
         actions_row.addWidget(btn_open)

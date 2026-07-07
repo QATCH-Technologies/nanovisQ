@@ -40,10 +40,15 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.components import GlassPanel, GlassPushButton
+from QATCH.ui.components import QATCHPanel, QATCHPushButton
 from QATCH.ui.components.icon_utils import tinted_icon
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
-from QATCH.ui.styles.theme_manager import ThemeManager, caption_label_qss, desc_label_qss, tok_css
+from QATCH.ui.styles.theme_manager import (
+    ThemeManager,
+    caption_label_qss,
+    desc_label_qss,
+    tok_css,
+)
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 try:
@@ -107,7 +112,7 @@ class AdvancedMode(DataModeWidget):
         self.root.addWidget(subtitle)
 
         # ---- USB Drive card --------------------------------------------
-        usb_card = GlassPanel()
+        usb_card = QATCHPanel()
         ulay = QtWidgets.QVBoxLayout(usb_card)
         ulay.setContentsMargins(14, 12, 14, 12)
         ulay.setSpacing(8)
@@ -134,11 +139,11 @@ class AdvancedMode(DataModeWidget):
         usb_row = QtWidgets.QHBoxLayout()
         usb_row.setContentsMargins(0, 0, 0, 0)
         usb_row.setSpacing(8)
-        self.btn_detect = GlassPushButton(" Re-detect", variant="ghost")
+        self.btn_detect = QATCHPushButton(" Re-detect", variant="ghost")
         self.btn_detect.setFixedHeight(30)
         self.btn_detect.setIcon(self._icon("refresh-cw.svg"))
         self.btn_detect.clicked.connect(self._do_detect)
-        self.btn_eject = GlassPushButton(" Eject safely", variant="ghost")
+        self.btn_eject = QATCHPushButton(" Eject safely", variant="ghost")
         self.btn_eject.setFixedHeight(30)
         self.btn_eject.clicked.connect(self._do_eject)
         usb_row.addWidget(self.btn_detect)
@@ -147,7 +152,7 @@ class AdvancedMode(DataModeWidget):
         ulay.addLayout(usb_row)
 
         # ---- Local storage card ----------------------------------------
-        storage_card = GlassPanel()
+        storage_card = QATCHPanel()
         slay = QtWidgets.QVBoxLayout(storage_card)
         slay.setContentsMargins(14, 12, 14, 12)
         slay.setSpacing(8)
@@ -182,7 +187,7 @@ class AdvancedMode(DataModeWidget):
         danger_caption = QtWidgets.QLabel("DANGER ZONE")
         self._danger_caption = danger_caption
 
-        danger_card = GlassPanel(danger=True)
+        danger_card = QATCHPanel(danger=True)
         dlay = QtWidgets.QVBoxLayout(danger_card)
         dlay.setContentsMargins(14, 12, 14, 12)
         dlay.setSpacing(8)
@@ -207,7 +212,7 @@ class AdvancedMode(DataModeWidget):
         dtext.addWidget(dtitle)
         dtext.addWidget(ddesc)
         drow.addLayout(dtext, 1)
-        self.btn_erase = GlassPushButton(" Erase…", variant="danger")
+        self.btn_erase = QATCHPushButton(" Erase…", variant="danger")
         self.btn_erase.setFixedHeight(34)
         self.btn_erase.clicked.connect(self._do_erase)
         drow.addWidget(self.btn_erase, 0, QtCore.Qt.AlignVCenter)

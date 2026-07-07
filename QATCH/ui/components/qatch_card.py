@@ -6,7 +6,7 @@ from QATCH.ui.styles.theme_manager import ThemeManager
 from QATCH.ui.widgets.login_central_widget import LoginCentralWidget
 
 
-class GlassCard(QtWidgets.QFrame):
+class QATCHCard(QtWidgets.QFrame):
     """A custom frame that renders a glassmorphism effect via backdrop sampling.
 
     This widget creates the illusion of translucent glass by sampling the blurred

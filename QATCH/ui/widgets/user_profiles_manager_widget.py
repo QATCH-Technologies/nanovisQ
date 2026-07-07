@@ -28,9 +28,9 @@ from QATCH.common.userProfiles import UserConstants, UserProfiles
 from QATCH.core.constants import Constants, UserRoles
 from QATCH.ui.components import (
     AnimatedComboBox,
-    GlassLineEdit,
-    GlassPushButton,
-    GlassToggle,
+    QATCHLineEdit,
+    QATCHPushButton,
+    QATCHToggle,
 )
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.widgets.reset_password_widget import ResetPasswordWidget
@@ -224,7 +224,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.top_bar.setContentsMargins(20, 0, 20, 0)
         self.top_bar.setSpacing(15)
 
-        self.btn_back = GlassPushButton(" Back", variant="default")
+        self.btn_back = QATCHPushButton(" Back", variant="default")
         self.btn_back.setIcon(QtGui.QIcon(self.ICON_BACK))
         self.btn_back.setIconSize(QtCore.QSize(16, 16))
         self.btn_back.setFixedHeight(34)
@@ -232,7 +232,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.btn_back.clicked.connect(self.back_to_users)
 
         # --- Search Bar ---
-        self.search_bar = GlassLineEdit()
+        self.search_bar = QATCHLineEdit()
         self.search_bar.setPlaceholderText("Search Initials or Name...")
         self.search_bar.addAction(
             QtGui.QIcon(self.ICON_SEARCH), QtWidgets.QLineEdit.LeadingPosition
@@ -257,28 +257,28 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # Ensure icon size scales well inside the 34x34 button
         icon_size = QtCore.QSize(18, 18)
 
-        self.btn_add = GlassPushButton(" Add", variant="default")
+        self.btn_add = QATCHPushButton(" Add", variant="default")
         self.btn_add.setIcon(QtGui.QIcon(self.ICON_ADD))
         self.btn_add.setIconSize(icon_size)
         self.btn_add.setToolTip("Add New User")
         self.btn_add.setFixedHeight(34)
         self.btn_add.clicked.connect(self.add_user)
 
-        self.btn_audit_selected = GlassPushButton(" Audit", variant="default")
+        self.btn_audit_selected = QATCHPushButton(" Audit", variant="default")
         self.btn_audit_selected.setIcon(QtGui.QIcon(self.ICON_AUDIT))
         self.btn_audit_selected.setIconSize(icon_size)
         self.btn_audit_selected.setToolTip("Audit Selected Users")
         self.btn_audit_selected.setFixedHeight(34)
         self.btn_audit_selected.clicked.connect(lambda: self.audit_selected())
 
-        self.btn_delete_selected = GlassPushButton(" Delete", variant="danger")
+        self.btn_delete_selected = QATCHPushButton(" Delete", variant="danger")
         self.btn_delete_selected.setIcon(QtGui.QIcon(self.ICON_DELETE))
         self.btn_delete_selected.setIconSize(icon_size)
         self.btn_delete_selected.setToolTip("Delete Selected Users")
         self.btn_delete_selected.setFixedHeight(34)
         self.btn_delete_selected.clicked.connect(lambda: self.delete_selected())
 
-        self.btn_refresh = GlassPushButton(" Refresh", variant="default")
+        self.btn_refresh = QATCHPushButton(" Refresh", variant="default")
         self.btn_refresh.setIcon(QtGui.QIcon(self.ICON_REFRESH))
         self.btn_refresh.setIconSize(icon_size)
         self.btn_refresh.setToolTip("Refresh Table")
@@ -371,7 +371,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # ── Developer Mode toggle ──────────────────────────────────────
         enabled, error, expires = UserProfiles.checkDevMode()
 
-        self.developerModeChk = GlassToggle()
+        self.developerModeChk = QATCHToggle()
         # setChecked before connecting so the handler doesn't fire on init
         self.developerModeChk.setChecked(enabled)
 
@@ -406,7 +406,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self.developerModeChk.toggled.connect(self.toggle_dev_mode)
 
         # ── Require Admin for Updates toggle ──────────────────────────
-        self.reqAdminUpd_chkbox = GlassToggle()
+        self.reqAdminUpd_chkbox = QATCHToggle()
         self.reqAdminUpd_chkbox.setChecked(UserConstants.REQ_ADMIN_UPDATES)
         self.reqAdminUpd_chkbox.toggled.connect(self.toggle_req_admin_updates)
 
@@ -1265,21 +1265,21 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
             icon_size_table = QtCore.QSize(16, 16)
 
-            btn_pwd = GlassPushButton("", variant="default")
+            btn_pwd = QATCHPushButton("", variant="default")
             btn_pwd.setIcon(QtGui.QIcon(self.ICON_PWD))
             btn_pwd.setIconSize(icon_size_table)
             btn_pwd.setToolTip("Reset Password")
             btn_pwd.setFixedSize(28, 28)
             btn_pwd.clicked.connect(lambda _, i=initials: self.change_password(i))
 
-            btn_audit = GlassPushButton("", variant="default")
+            btn_audit = QATCHPushButton("", variant="default")
             btn_audit.setIcon(QtGui.QIcon(self.ICON_AUDIT))
             btn_audit.setIconSize(icon_size_table)
             btn_audit.setToolTip("Audit User")
             btn_audit.setFixedSize(28, 28)
             btn_audit.clicked.connect(lambda _, i=initials: self.audit_selected([i]))
 
-            btn_delete = GlassPushButton("", variant="danger")
+            btn_delete = QATCHPushButton("", variant="danger")
             btn_delete.setIcon(QtGui.QIcon(self.ICON_DELETE))
             btn_delete.setIconSize(icon_size_table)
             btn_delete.setToolTip("Delete User")
@@ -1955,7 +1955,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         cl.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         # Cancel button
-        btn_cancel = GlassPushButton("", variant="neutral")
+        btn_cancel = QATCHPushButton("", variant="neutral")
         btn_cancel.setIcon(QtGui.QIcon(self.ICON_CLEAR))
         btn_cancel.setIconSize(QtCore.QSize(16, 16))
         btn_cancel.setFixedSize(0, 0)
@@ -1965,7 +1965,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         self._single_delete_cancel_btn = btn_cancel
 
         # Confirm button
-        btn_confirm = GlassPushButton("", variant="danger_confirm")
+        btn_confirm = QATCHPushButton("", variant="danger_confirm")
         btn_confirm.setIcon(QtGui.QIcon(self.ICON_DELETE))
         btn_confirm.setIconSize(QtCore.QSize(16, 16))
         btn_confirm.setFixedSize(28, 28)
@@ -2082,7 +2082,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
             lambda _c=False, il=list(initials_list): self._confirm_delete(il)
         )
 
-        self.btn_cancel_bulk = GlassPushButton("", self.taskbar_frame, variant="neutral")
+        self.btn_cancel_bulk = QATCHPushButton("", self.taskbar_frame, variant="neutral")
         self.btn_cancel_bulk.setIcon(QtGui.QIcon(self.ICON_CLEAR))
         self.btn_cancel_bulk.setIconSize(icon_sz)
         self.btn_cancel_bulk.setToolTip("Cancel")

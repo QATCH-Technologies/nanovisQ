@@ -28,7 +28,7 @@ from QATCH.ui.styles.theme_manager import ThemeManager
 from QATCH.ui.styles.tokens import ColorTokens
 
 if TYPE_CHECKING:
-    from QATCH.ui.components import GlassCard
+    from QATCH.ui.components import QATCHCard
 
 
 class PopAnimation(QtWidgets.QGraphicsEffect):
@@ -188,7 +188,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
         self._backdrop_anim: Optional[QtCore.QVariantAnimation] = None
 
         # Animated login card state.
-        self._card: Optional["GlassCard"] = None
+        self._card: Optional["QATCHCard"] = None
         self._card_effect: Optional[PopAnimation] = None
         self._card_anim: Optional[QtCore.QVariantAnimation] = None
         self._border_anim: Optional[QtCore.QVariantAnimation] = None
@@ -219,7 +219,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
         for child in self.findChildren(QtWidgets.QWidget):
             child.update()
 
-    def register_dismissable_card(self, card: "GlassCard") -> None:
+    def register_dismissable_card(self, card: "QATCHCard") -> None:
         """Registers a login card for coordinated backdrop and pop animations.
 
         This method attaches a dedicated PopAnimation to the provided card so it

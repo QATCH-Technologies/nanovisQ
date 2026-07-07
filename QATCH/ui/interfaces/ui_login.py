@@ -21,7 +21,7 @@ from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
-from QATCH.ui.components import GlassCard, GlassLineEdit
+from QATCH.ui.components import QATCHCard, QATCHLineEdit
 from QATCH.ui.widgets import (
     FloatingMessageBadgeWidget,
     LoginCentralWidget,
@@ -199,7 +199,7 @@ class UILogin:
         si.addWidget(siTitle)
         si.addSpacing(4)
 
-        self.user_username = GlassLineEdit()
+        self.user_username = QATCHLineEdit()
         self.user_username.setObjectName("user_username")
         self.user_username.setFixedHeight(self._INPUT_H)
         self.user_username.setPlaceholderText("Username")
@@ -210,7 +210,7 @@ class UILogin:
             lambda _: self.user_username.setText(self.user_username.text().upper())
         )
         si.addWidget(self.user_username)
-        self.user_password = GlassLineEdit()
+        self.user_password = QATCHLineEdit()
         self.user_password.setObjectName("user_password")
         self.user_password.setFixedHeight(self._INPUT_H)
         self.user_password.setPlaceholderText("Password")
@@ -221,7 +221,7 @@ class UILogin:
         self.user_initials = self.user_username
 
         # Password field
-        self.user_password = GlassLineEdit()
+        self.user_password = QATCHLineEdit()
         self.user_password.setObjectName("user_password")
         self.user_password.setFixedHeight(self._INPUT_H)
         self.user_password.setPlaceholderText("Password")
@@ -315,7 +315,7 @@ class UILogin:
         recInfo.setWordWrap(True)
         rec.addWidget(recInfo)
         # TODO: Currently placeholder workflow to contact admin to reset
-        self.recoverEmail = GlassLineEdit()
+        self.recoverEmail = QATCHLineEdit()
         self.recoverEmail.setObjectName("recoverEmail")
         self.recoverEmail.setPlaceholderText("Email Address")
         self.recoverEmail.setFixedHeight(self._INPUT_H)
@@ -346,7 +346,7 @@ class UILogin:
 
         QtCore.QTimer.singleShot(0, _init_slider)
 
-        self.loginCard = GlassCard(self.centralwidget)
+        self.loginCard = QATCHCard(self.centralwidget)
         self.loginCard.setObjectName("loginCard")
         self.loginCard.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, False)
         self.loginCard.setContentsMargins(0, 0, 0, 0)

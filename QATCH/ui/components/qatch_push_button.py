@@ -45,6 +45,7 @@ Usage
 """
 
 from __future__ import annotations
+
 from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -78,7 +79,7 @@ _CANONICAL_VARIANTS = frozenset(
 )
 
 
-class GlassPushButton(QtWidgets.QPushButton):
+class QATCHPushButton(QtWidgets.QPushButton):
     """QPushButton with flat-design rendering, matching the app's flat
     control system.
 
@@ -240,17 +241,24 @@ class GlassPushButton(QtWidgets.QPushButton):
             else:
                 fill = c("flat_accent")
             return {
-                "fill": fill, "text": c("flat_on_accent"), "border": fill, "border_width": 0.0,
-                "ring": c("flat_accent_ring") if focus_ring else None, "shadow": True,
+                "fill": fill,
+                "text": c("flat_on_accent"),
+                "border": fill,
+                "border_width": 0.0,
+                "ring": c("flat_accent_ring") if focus_ring else None,
+                "shadow": True,
             }
 
         if variant == "destructive":
             base = c("flat_error")
             fill = base.darker(125) if pressed else (base.darker(110) if hovered else base)
             return {
-                "fill": fill, "text": QtGui.QColor(255, 255, 255), "border": fill,
+                "fill": fill,
+                "text": QtGui.QColor(255, 255, 255),
+                "border": fill,
                 "border_width": 0.0,
-                "ring": c("flat_error_ring") if focus_ring else None, "shadow": True,
+                "ring": c("flat_error_ring") if focus_ring else None,
+                "shadow": True,
             }
 
         if variant == "destructive_outline":
@@ -261,9 +269,12 @@ class GlassPushButton(QtWidgets.QPushButton):
             else:
                 fill = transparent
             return {
-                "fill": fill, "text": c("flat_error"), "border": c("flat_error"),
+                "fill": fill,
+                "text": c("flat_error"),
+                "border": c("flat_error"),
                 "border_width": 1.0,
-                "ring": c("flat_error_ring") if focus_ring else None, "shadow": False,
+                "ring": c("flat_error_ring") if focus_ring else None,
+                "shadow": False,
             }
 
         if variant == "ghost":
@@ -274,9 +285,12 @@ class GlassPushButton(QtWidgets.QPushButton):
             else:
                 fill = transparent
             return {
-                "fill": fill, "text": c("flat_accent"), "border": transparent,
+                "fill": fill,
+                "text": c("flat_accent"),
+                "border": transparent,
                 "border_width": 0.0,
-                "ring": c("flat_accent_ring") if focus_ring else None, "shadow": False,
+                "ring": c("flat_accent_ring") if focus_ring else None,
+                "shadow": False,
             }
 
         if variant == "ghost_danger":
@@ -287,9 +301,12 @@ class GlassPushButton(QtWidgets.QPushButton):
             else:
                 fill = transparent
             return {
-                "fill": fill, "text": c("flat_error"), "border": transparent,
+                "fill": fill,
+                "text": c("flat_error"),
+                "border": transparent,
                 "border_width": 0.0,
-                "ring": c("flat_error_ring") if focus_ring else None, "shadow": False,
+                "ring": c("flat_error_ring") if focus_ring else None,
+                "shadow": False,
             }
 
         if variant == "icon_toolbar":
@@ -300,8 +317,12 @@ class GlassPushButton(QtWidgets.QPushButton):
                 fill = transparent
                 text = c("flat_text_muted")
             return {
-                "fill": fill, "text": text, "border": transparent, "border_width": 0.0,
-                "ring": c("flat_accent_ring") if focus_ring else None, "shadow": False,
+                "fill": fill,
+                "text": text,
+                "border": transparent,
+                "border_width": 0.0,
+                "ring": c("flat_accent_ring") if focus_ring else None,
+                "shadow": False,
             }
 
         # "secondary" - also the fallback for any unrecognized variant name.
@@ -312,9 +333,12 @@ class GlassPushButton(QtWidgets.QPushButton):
         else:
             fill = transparent
         return {
-            "fill": fill, "text": c("flat_text"), "border": c("flat_border_strong"),
+            "fill": fill,
+            "text": c("flat_text"),
+            "border": c("flat_border_strong"),
             "border_width": 1.0,
-            "ring": c("flat_accent_ring") if focus_ring else None, "shadow": False,
+            "ring": c("flat_accent_ring") if focus_ring else None,
+            "shadow": False,
         }
 
     # ------------------------------------------------------------------
@@ -503,7 +527,8 @@ class GlassPushButton(QtWidgets.QPushButton):
         p.setPen(QtGui.QPen(text_color))
         text_rect = QtCore.QRect(text_x, 0, w - text_x - 12, h)
         p.drawText(
-            text_rect, QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft,
+            text_rect,
+            QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft,
             self.text(),
         )
         p.end()

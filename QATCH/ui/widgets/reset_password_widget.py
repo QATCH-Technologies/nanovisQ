@@ -35,7 +35,7 @@ from typing import List, Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
-from QATCH.ui.components.glass_line_edit import GlassLineEdit
+from QATCH.ui.components.qatch_line_edit import QATCHLineEdit
 
 # ---------------------------------------------------------------------------
 # Constants - kept in sync with create_user_widget.py
@@ -205,7 +205,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self._pwd1_visible = False
         self._pwd2_visible = False
 
-        self.inp_pwd1 = GlassLineEdit()
+        self.inp_pwd1 = QATCHLineEdit()
         self.inp_pwd1.setFixedHeight(_INPUT_H)
         self.inp_pwd1.setPlaceholderText("New Password")
         self.inp_pwd1.setEchoMode(QtWidgets.QLineEdit.Password)
@@ -216,7 +216,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self._act_eye1.triggered.connect(self._toggle_pwd1)
         self.main_layout.addWidget(self.inp_pwd1)
 
-        self.inp_pwd2 = GlassLineEdit()
+        self.inp_pwd2 = QATCHLineEdit()
         self.inp_pwd2.setFixedHeight(_INPUT_H)
         self.inp_pwd2.setPlaceholderText("Confirm New Password")
         self.inp_pwd2.setEchoMode(QtWidgets.QLineEdit.Password)
@@ -471,7 +471,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         error_label: QtWidgets.QLabel,
     ) -> None:
         for f in fields:
-            if isinstance(f, GlassLineEdit):
+            if isinstance(f, QATCHLineEdit):
                 f.set_error(False)
         error_label.setVisible(False)
 
@@ -483,7 +483,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         shake_target: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         for f in fields:
-            if isinstance(f, GlassLineEdit):
+            if isinstance(f, QATCHLineEdit):
                 f.set_error(True)
         error_label.setText(message)
         error_label.setVisible(True)
