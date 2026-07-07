@@ -637,7 +637,9 @@ class QModelV7LiveProcess(multiprocessing.Process):
                 mp_logger.handlers[0].setStream(mp_devnull)
             mp_logger.setLevel(logging.WARNING)
 
-            self._classifier = QModelV7Live(model_path=self.model_path, buffer_window_size=None)
+            self._classifier = QModelV7Live(
+                model_path=self.model_path, buffer_window_size=self.buffer_window_size
+            )
             Log.i(self.TAG, "YOLO Live Process Started and Model Loaded.")
 
             if enable_vis:

@@ -63,7 +63,7 @@ predictor without depending on its internals.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -89,8 +89,31 @@ class DecodeResult:
     fallback_used: bool  # True if we relaxed to greedy/partial
 
 
+Lam = Union[float, Dict[str, float]]
+
+
 def _clip01(x: float) -> float:
     return max(0.0, min(1.0, x))
+
+
+def _lam_for_edge(lam: Lam, gi: int, gj: int) -> float:
+    """Resolve the spacing-prior weight for the placed edge POI_ORDER[gi] ->
+    POI_ORDER[gj]. `lam` is either a scalar (uniform weight) or a per-pair
+    dict keyed by adjacent "POIk->POIk+1" names (see
+    QModelV7Config.DECODE_LAMBDA_PAIRS). Non-adjacent (composed) edges, which
+    arise when an intervening POI is absent, use the mean of the lambdas of
+    the intervening adjacent edges, mirroring how SpacingPrior.composed_stat
+    combines the underlying gap stats."""
+    if not isinstance(lam, dict):
+        return float(lam)
+    if not lam:
+        return 0.0
+    default = sum(lam.values()) / len(lam)
+    vals = [
+        float(lam.get(f"{POI_ORDER[k]}->{POI_ORDER[k + 1]}", default))
+        for k in range(gi, gj)
+    ]
+    return sum(vals) / len(vals) if vals else default
 
 
 def _prep_candidates(
@@ -126,7 +149,7 @@ def _score_config(
     chosen: Dict[str, Candidate],
     placeable: List[str],
     prior: SpacingPrior,
-    lam: float,
+    lam: Lam,
     conf_weight: float,
     use_frac: bool,
 ) -> Tuple[float, float, float]:
@@ -139,18 +162,20 @@ def _score_config(
     span_lo = g_index[placed[0]] if placed else 0
     span_hi = g_index[placed[-1]] if placed else 0
     spacing_ll = 0.0
+    weighted_spacing_ll = 0.0
     for a, b in zip(placed[:-1], placed[1:]):
-        spacing_ll += prior.gap_loglik_scoped(
-            g_index[a], g_index[b], chosen[b].time - chosen[a].time, span, span_lo, span_hi
-        )
-    return conf_sum + lam * spacing_ll, spacing_ll, conf_sum
+        gi, gj = g_index[a], g_index[b]
+        ll = prior.gap_loglik_scoped(gi, gj, chosen[b].time - chosen[a].time, span, span_lo, span_hi)
+        spacing_ll += ll
+        weighted_spacing_ll += _lam_for_edge(lam, gi, gj) * ll
+    return conf_sum + weighted_spacing_ll, spacing_ll, conf_sum
 
 
 def _dp_pass(
     cand: Dict[str, List[Candidate]],
     placeable: List[str],
     prior: SpacingPrior,
-    lam: float,
+    lam: Lam,
     conf_weight: float,
     feas_slack: float,
     require_feasible: bool,
@@ -183,7 +208,7 @@ def _dp_pass(
                 if require_feasible and not prior.gap_feasible_between(gi, gj, gap, feas_slack):
                     continue  # hard: gap bounds
                 ll = prior.gap_loglik_scoped(gi, gj, gap, span_for_frac, span_lo, span_hi)
-                score = dp[j - 1][kp] + lam * ll + conf_weight * _clip01(cb.conf)
+                score = dp[j - 1][kp] + _lam_for_edge(lam, gi, gj) * ll + conf_weight * _clip01(cb.conf)
                 if score > best:
                     best = score
                     best_prev = kp
@@ -211,7 +236,7 @@ def _span_conditioned_decode(
     cand: Dict[str, List[Candidate]],
     placeable: List[str],
     prior: SpacingPrior,
-    lam: float,
+    lam: Lam,
     conf_weight: float,
     feas_slack: float,
     require_feasible: bool,
@@ -233,12 +258,6 @@ def _span_conditioned_decode(
             sub = dict(cand)
             sub[first] = [f]
             sub[last] = [last_cand]
-            span = l.time - f.time
-            if span <= 0:
-                continue
-            sub = dict(cand)
-            sub[first] = [f]
-            sub[last] = [l]
             ch = _dp_pass(
                 sub,
                 placeable,
@@ -262,7 +281,7 @@ def dp_decode(
     candidates: Dict[str, List[Candidate]],
     present_pois: Sequence[str],
     prior: SpacingPrior,
-    lam: float = 1.0,
+    lam: Lam = 1.0,
     conf_weight: float = 1.0,
     feas_slack: float = 1.5,
     min_conf: float = 0.0,
@@ -349,7 +368,7 @@ def _greedy_result(
     cand: Dict[str, List[Candidate]],
     placeable: List[str],
     prior: SpacingPrior,
-    lam: float,
+    lam: Lam,
     conf_weight: float,
 ) -> DecodeResult:
     """Per-POI greedy selection (highest confidence), used as the production-safe
@@ -363,7 +382,7 @@ def _greedy_result(
 def score_configuration(
     chosen: Dict[str, Candidate],
     prior: SpacingPrior,
-    lam: float = 1.0,
+    lam: Lam = 1.0,
     conf_weight: float = 1.0,
 ) -> float:
     """Score an arbitrary configuration under the SAME objective and frac
