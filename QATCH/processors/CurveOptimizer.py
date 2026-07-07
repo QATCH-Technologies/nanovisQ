@@ -559,7 +559,12 @@ RESIDUAL_SCALE = 0.7
 
 
 def _flank_fits(times, ysm, anchor_idx, post_idx):
-    """Quadratic trend fits on guard-banded flanks either side of the core."""
+    """Trend fits on guard-banded flanks either side of the core.
+
+    Quadratic when the flank has enough samples; degrades to linear/constant
+    near the start or end of the signal, where the guard band can leave fewer
+    than 3 points and a degree-2 fit would be poorly conditioned.
+    """
     n = len(ysm)
     pre_sl = slice(
         max(0, anchor_idx - GUARD_SAMPLES - FLANK_SAMPLES), max(1, anchor_idx - GUARD_SAMPLES + 1)
@@ -567,8 +572,10 @@ def _flank_fits(times, ysm, anchor_idx, post_idx):
     post_sl = slice(
         min(n - 2, post_idx + GUARD_SAMPLES), min(n, post_idx + GUARD_SAMPLES + FLANK_SAMPLES + 1)
     )
-    p_pre = np.polyfit(times[pre_sl], ysm[pre_sl], 2)
-    p_post = np.polyfit(times[post_sl], ysm[post_sl], 2)
+    pre_deg = min(2, max(0, pre_sl.stop - pre_sl.start - 1))
+    post_deg = min(2, max(0, post_sl.stop - post_sl.start - 1))
+    p_pre = np.polyfit(times[pre_sl], ysm[pre_sl], pre_deg)
+    p_post = np.polyfit(times[post_sl], ysm[post_sl], post_deg)
     return p_pre, p_post
 
 
@@ -868,7 +875,7 @@ class DropEffectCorrection(CurveOptimizer):
         # agnostic (works for upward spikes in Dissipation and downward drops in RF)
         # and scales automatically with signal variability.
         #
-        # Cap: max(75, 3 x initial-streak-length) -- wide enough for complex multi-phase
+        # Cap: max(35, 2 x initial-streak-length) -- wide enough for complex multi-phase
         # events while still terminating quickly for narrow spikes.
         NUM_PTS = diff_offset
         max_drop = max(current_streak)
@@ -1095,7 +1102,7 @@ class DropEffectCorrection(CurveOptimizer):
             if full_range > 0 and (peak_diss - baseline_diss) / full_range < 0.05:
                 Log.d(
                     self.TAG,
-                    f"Skipping region {relative_time[region[0]]:.3f}–{relative_time[region[-1]]:.3f}: "
+                    f"Skipping region {relative_time[region[0]]:.3f}-{relative_time[region[-1]]:.3f}: "
                     f"no significant dissipation excursion (peak-baseline = {peak_diss - baseline_diss:.3e}, "
                     f"full range = {full_range:.3e})",
                 )
