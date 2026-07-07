@@ -68,9 +68,9 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 try:
-    from QATCH.QModel.models.qmodel_v7.spacing_prior import SpacingPrior, POI_ORDER
+    from QATCH.QModel.models.qmodel_v7.v7_spacing_prior import POI_ORDER, SpacingPrior
 except (ImportError, ModuleNotFoundError):
-    from spacing_prior import SpacingPrior, POI_ORDER
+    from QATCH.QModel.models.qmodel_v7.v7_spacing_prior import POI_ORDER, SpacingPrior
 
 
 @dataclass
@@ -329,9 +329,7 @@ def dp_decode(
                 cand, placeable, prior, lam, conf_weight, feas_slack, require_feasible=False
             )
             if use_frac
-            else _dp_pass(
-                cand, placeable, prior, lam, conf_weight, 1e9, False, span_for_frac=0.0
-            )
+            else _dp_pass(cand, placeable, prior, lam, conf_weight, 1e9, False, span_for_frac=0.0)
         )
         if relaxed is None or len(relaxed) < len(placeable):
             # Even strict ordering has no complete path -> production-safe
