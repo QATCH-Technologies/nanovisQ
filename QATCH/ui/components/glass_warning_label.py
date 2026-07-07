@@ -1,28 +1,42 @@
 """
 glass_warning_label.py
 
-This module defines the `GlassWarningLabel` widget, designed to replace traditional,
-harshly colored (e.g., loud orange) warning labels with a calm, aesthetically pleasing
-blue-gray glass strip. It is intended for use in dialogs, such as Advanced Settings,
-where information needs to be conveyed clearly without unnecessarily alarming the user.
+This module defines the `GlassWarningLabel` widget: a calm, glass-styled
+informational banner used in place of harshly colored inline warning text.
 
-The widget is built to maintain drop-in API compatibility with standard `QLabel`
-methods (like `setText` and `text`) to ensure seamless integration into existing
-codebases without requiring extensive refactoring.
+Three severities are supported - "info" (default, calm blue-gray), "warning"
+(amber) and "danger" (red) - all resolved from the app's `flat_*` tokens so
+the banner tracks light/dark theme changes automatically instead of being
+hardcoded to one fixed palette.
 
+The widget keeps a QLabel-like `setText`/`text` API for drop-in use at
+existing call sites.
 """
+
+from __future__ import annotations
+
+from typing import Optional
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 
+from QATCH.ui.styles.theme_manager import ThemeManager
+
+# severity -> (text/border token, weak-background token)
+_SEVERITY_TOKENS = {
+    "info": ("flat_accent", "flat_accent_weak"),
+    "warning": ("flat_warning", "flat_warning_weak"),
+    "danger": ("flat_error", "flat_error_weak"),
+}
+
 
 class GlassWarningLabel(QtWidgets.QWidget):
-    """Calm informational banner for the Advanced Settings dialog.
+    """Calm informational banner for inline messaging.
 
-    Renders as a soft blue-gray glass strip with an optional leading icon and
-    informational (not alarming) text. Replaces the old loud orange warning.
-    Keeps a QLabel-like `setText` so existing call sites still work.
+    Renders as a soft glass strip tinted per `severity`, with an optional
+    leading icon. Keeps a QLabel-like `setText` so existing call sites still
+    work.
 
     Attributes:
         icon_lbl (QtWidgets.QLabel): The label widget responsible for displaying
@@ -33,17 +47,26 @@ class GlassWarningLabel(QtWidgets.QWidget):
 
     _RADIUS: float = 6.0
 
-    def __init__(self, text: str = "", icon_path: str = "", parent=None) -> None:
+    def __init__(
+        self,
+        text: str = "",
+        icon_path: str = "",
+        parent: Optional[QtWidgets.QWidget] = None,
+        *,
+        severity: str = "info",
+    ) -> None:
         """Initializes the GlassWarningLabel.
 
         Args:
-            text (str, optional): The informational text to display in the banner.
-                Defaults to "".
-            icon_path (str, optional): The file path to the leading icon. If provided,
-                the icon is loaded and displayed. Defaults to "".
-            parent (QtWidgets.QWidget, optional): The parent widget. Defaults to None.
+            text: The informational text to display in the banner.
+            icon_path: The file path to the leading icon. If provided, the
+                icon is loaded and displayed.
+            parent: The parent widget.
+            severity: One of "info" (default), "warning", or "danger" -
+                selects which `flat_*` token pair colors the banner.
         """
         super().__init__(parent)
+        self._severity = severity if severity in _SEVERITY_TOKENS else "info"
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
@@ -65,62 +88,62 @@ class GlassWarningLabel(QtWidgets.QWidget):
 
         self.text_lbl = QtWidgets.QLabel(text, self)
         self.text_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.text_lbl.setStyleSheet(
-            "QLabel { color: rgba(45, 75, 105, 220); font-size: 11px; "
-            "font-weight: normal; background: transparent; border: none; }"
-        )
         self.text_lbl.setWordWrap(True)
         row.addWidget(self.text_lbl, 1, QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        self._apply_text_style()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    def set_severity(self, severity: str) -> None:
+        """Switches the banner's color scheme at runtime."""
+        severity = severity if severity in _SEVERITY_TOKENS else "info"
+        if severity != self._severity:
+            self._severity = severity
+            self._apply_text_style()
+            self.update()
 
     def set_icon(self, icon_path: str) -> None:
         """Sets the leading icon for the warning label.
 
-        Attempts to load an image from the provided file path. If the image is
-        loaded successfully (i.e., the resulting pixmap is not null), it updates
-        the icon label's pixmap and ensures the label is visible.
-
         Args:
-            icon_path (str): The file path to the icon image to be displayed.
+            icon_path: The file path to the icon image to be displayed.
         """
         pix = QtGui.QPixmap(icon_path)
         if not pix.isNull():
             self.icon_lbl.setPixmap(pix)
             self.icon_lbl.show()
 
-    def setText(self, text: str) -> None:
-        """Sets the informational text of the banner.
-
-        This method mimics the standard `QLabel.setText` API to maintain
-        drop-in compatibility with existing call sites that previously
-        interacted with a standard label.
-
-        Args:
-            text (str): The new informational text to display in the banner.
-        """
+    def setText(self, text: str) -> None:  # noqa: N802
+        """Sets the informational text of the banner (QLabel-API parity)."""
         self.text_lbl.setText(text)
 
     def text(self) -> str:
-        """Returns the current informational text of the banner.
-
-        This method mimics the standard `QLabel.text` API to maintain
-        compatibility with existing code that expects standard label behavior.
-
-        Returns:
-            str: The text currently displayed in the banner.
-        """
+        """Returns the current informational text (QLabel-API parity)."""
         return self.text_lbl.text()
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Handles the custom painting of the widget's background.
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_text_style()
+        self.update()
 
-        Renders the widget's visual styling, including a rounded shape,
-        a soft blue-gray gradient background, a subtle white shimmer effect
-        at the top to simulate glass, and a delicate hairline border.
+    def _apply_text_style(self) -> None:
+        tok = ThemeManager.instance().tokens()
+        text_key, _ = _SEVERITY_TOKENS[self._severity]
+        r, g, b, a = tok[text_key]
+        self.text_lbl.setStyleSheet(
+            "QLabel { color: rgba(%d, %d, %d, %d); font-size: 11px; "
+            "font-weight: normal; background: transparent; border: none; }" % (r, g, b, a)
+        )
 
-        Args:
-            event (QtGui.QPaintEvent): The paint event parameters provided
-                by the Qt framework.
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        """Renders the glass background: a rounded shape tinted per
+        `severity`, a subtle top shimmer, and a hairline border - all
+        resolved fresh from the active theme's tokens.
         """
+        tok = ThemeManager.instance().tokens()
+        text_key, weak_key = _SEVERITY_TOKENS[self._severity]
+        weak = tok[weak_key]
+        border_rgb = tok[text_key]
+
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing)
 
@@ -129,8 +152,8 @@ class GlassWarningLabel(QtWidgets.QWidget):
         clip.addRoundedRect(rect_f, self._RADIUS, self._RADIUS)
         p.setClipPath(clip)
         grad = QtGui.QLinearGradient(0, 0, 0, self.height())
-        grad.setColorAt(0.0, QtGui.QColor(120, 165, 210, 40))
-        grad.setColorAt(1.0, QtGui.QColor(95, 140, 190, 30))
+        grad.setColorAt(0.0, QtGui.QColor(weak[0], weak[1], weak[2], 90))
+        grad.setColorAt(1.0, QtGui.QColor(weak[0], weak[1], weak[2], 60))
         p.fillRect(self.rect(), QtGui.QBrush(grad))
 
         # Top shimmer
@@ -142,7 +165,7 @@ class GlassWarningLabel(QtWidgets.QWidget):
         # Border
         p.setClipping(False)
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(QtGui.QColor(120, 160, 200, 110), 1.0))
+        p.setPen(QtGui.QPen(QtGui.QColor(border_rgb[0], border_rgb[1], border_rgb[2], 110), 1.0))
         p.drawRoundedRect(rect_f.adjusted(0.5, 0.5, -0.5, -0.5), self._RADIUS, self._RADIUS)
 
         p.end()

@@ -1,4 +1,4 @@
-"""DataManagementWidget - glassmorphic overlay container.
+﻿"""DataManagementWidget - glassmorphic overlay container.
 
 Owns the overlay lifecycle (open/close, fade, fullscreen, click-outside
 dismiss) and the shared `DataServices`. Links in the five mode submodules and
@@ -15,6 +15,9 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.data_service import DataServices
 from QATCH.common.logger import Logger as Log
+from QATCH.ui.components import SegmentedControl
+from QATCH.ui.components.icon_utils import tinted_icon
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets.data_mode_advanced import AdvancedMode
 from QATCH.ui.widgets.data_mode_export import ExportMode
 from QATCH.ui.widgets.data_mode_history import HistoryMode
@@ -31,150 +34,6 @@ _LEGACY_TAB_TO_KEY = {0: "import", 1: "export", 2: "recover", 3: "advanced", 4: 
 
 # Position of each mode in the sidebar, used to pick slide direction.
 _MODE_ORDER = {cls.MODE_KEY: i for i, cls in enumerate(MODE_CLASSES)}
-
-
-# ======================================================================
-#  Segmented mode selector
-# ======================================================================
-class GlassSegmentedControl(QtWidgets.QFrame):
-    modeChanged = QtCore.pyqtSignal(str)
-
-    def __init__(self, modes, parent=None, orientation=QtCore.Qt.Vertical):
-        # modes: list of (key, label) or (key, label, icon_path)
-        super().__init__(parent)
-        self._orientation = orientation
-        self.setObjectName("segmentedControl")
-
-        if orientation == QtCore.Qt.Vertical:
-            self.setFixedWidth(132)
-            radius = 16
-        else:
-            self.setFixedHeight(38)
-            radius = 19
-
-        self.setStyleSheet(f"""
-            QFrame#segmentedControl {{
-                background: transparent;
-                border: none;
-                border-radius: {radius}px;
-            }}
-        """)
-        self._buttons = {}
-        self._icons = {}  # key -> (inactive QIcon, active QIcon)
-        self._active_key = None
-
-        if orientation == QtCore.Qt.Vertical:
-            lay = QtWidgets.QVBoxLayout(self)
-        else:
-            lay = QtWidgets.QHBoxLayout(self)
-        lay.setContentsMargins(6, 6, 6, 6)
-        lay.setSpacing(4)
-        self._group = QtWidgets.QButtonGroup(self)
-        self._group.setExclusive(True)
-
-        # Every row is identical: an 18px stroke icon + label, left-aligned.
-        # Rows with no icon asset fall back to text-only rather than mixing
-        # icon/no-icon rows, which would break the "every row identical" look.
-        icon_size = QtCore.QSize(18, 18)
-        inactive_color = QtGui.QColor(80, 92, 108, 235)
-        active_color = QtGui.QColor(0, 100, 150, 255)
-
-        for mode in modes:
-            if len(mode) == 3:
-                key, label, icon_path = mode
-            else:
-                key, label = mode
-                icon_path = None
-            btn = QtWidgets.QToolButton()
-            btn.setText(f" {label}")
-            btn.setCheckable(True)
-            btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-            if icon_path and os.path.exists(icon_path):
-                icon_inactive = self._tinted_icon(icon_path, inactive_color, icon_size.width())
-                icon_active = self._tinted_icon(icon_path, active_color, icon_size.width())
-                btn.setIcon(icon_inactive)
-                btn.setIconSize(icon_size)
-                btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
-                self._icons[key] = (icon_inactive, icon_active)
-            else:
-                btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
-            if orientation == QtCore.Qt.Vertical:
-                btn.setFixedHeight(38)
-                btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-            else:
-                btn.setFixedHeight(30)
-                btn.setMinimumWidth(78)
-            btn.setStyleSheet(self._segment_qss())
-            btn.clicked.connect(lambda _=False, k=key: self.set_active(k))
-            self._group.addButton(btn)
-            lay.addWidget(btn)
-            self._buttons[key] = btn
-
-        if orientation == QtCore.Qt.Vertical:
-            lay.addStretch()  # keep buttons pinned to the top of the sidebar
-
-    @staticmethod
-    def _tinted_icon(path, color, size=18):
-        """A copy of the icon at *path* fully painted in *color* (SourceAtop,
-        so transparent SVG areas stay transparent)."""
-        src = QtGui.QIcon(path).pixmap(size, size)
-        dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.GlobalColor.transparent)
-        p = QtGui.QPainter(dst)
-        p.drawPixmap(0, 0, src)
-        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
-        p.fillRect(dst.rect(), color)
-        p.end()
-        return QtGui.QIcon(dst)
-
-    @staticmethod
-    def _segment_qss():
-        return """
-            QToolButton {
-                background: transparent;
-                border: 2px solid transparent;
-                border-radius: 11px;
-                color: rgba(70, 80, 95, 215);
-                font-size: 12px; font-weight: 600;
-                padding: 0px 9px;
-                text-align: left;
-            }
-            QToolButton:hover {
-                background: rgba(255, 255, 255, 120);
-            }
-            QToolButton:checked {
-                background: rgba(255, 255, 255, 240);
-                border: 2px solid rgba(10, 163, 230, 110);
-                color: rgba(0, 90, 135, 250);
-                font-weight: 700;
-            }
-            QToolButton:checked:hover {
-                background: rgba(255, 255, 255, 250);
-            }
-        """
-
-    def set_active(self, key):
-        # NOTE: the glow used to be a QGraphicsDropShadowEffect applied to the
-        # checked QToolButton. Combining a graphics effect with a stylesheet
-        # background/border on a QToolButton is a known Qt gotcha - the
-        # button can render fully blank (icon, text, and background all
-        # gone) depending on platform/paint timing. The QSS-only halo below
-        # (a wider, low-alpha border standing in for "glow") gets the same
-        # look with zero risk of that failure mode.
-        if key not in self._buttons:
-            return
-        for k, btn in self._buttons.items():
-            is_active = k == key
-            btn.setChecked(is_active)
-            icons = self._icons.get(k)
-            if icons is not None:
-                btn.setIcon(icons[1] if is_active else icons[0])
-        if key != self._active_key:
-            self._active_key = key
-            self.modeChanged.emit(key)
-
-    def active_key(self):
-        return self._active_key
 
 
 class _GlassPanel(QtWidgets.QFrame):
@@ -197,6 +56,7 @@ class _GlassPanel(QtWidgets.QFrame):
         self._bg_alpha = 235
         self._border_width = 1.5
         self._radius = 12.0
+        ThemeManager.instance().themeChanged.connect(lambda _: self.update())
 
     def set_appearance(self, alpha, border_width, radius):
         self._bg_alpha = alpha
@@ -205,20 +65,24 @@ class _GlassPanel(QtWidgets.QFrame):
         self.update()
 
     def paintEvent(self, event):
+        tok = ThemeManager.instance().tokens()
+        base = tok["plot_glass_base"]
+        rim = tok["plot_glass_rim"]
+
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
         bw = self._border_width
         rect = QtCore.QRectF(self.rect()).adjusted(bw / 2, bw / 2, -bw / 2, -bw / 2)
 
         painter.setPen(QtCore.Qt.NoPen)
-        painter.setBrush(QtGui.QColor(255, 255, 255, int(self._bg_alpha)))
+        painter.setBrush(QtGui.QColor(base[0], base[1], base[2], int(self._bg_alpha)))
         if self._radius > 0:
             painter.drawRoundedRect(rect, self._radius, self._radius)
         else:
             painter.drawRect(rect)
 
         if bw > 0:
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), bw))
+            painter.setPen(QtGui.QPen(QtGui.QColor(rim[0], rim[1], rim[2], 230), bw))
             painter.setBrush(QtCore.Qt.NoBrush)
             if self._radius > 0:
                 painter.drawRoundedRect(rect, self._radius, self._radius)
@@ -312,23 +176,6 @@ class DataManagementWidget(QtWidgets.QWidget):
     # ------------------------------------------------------------------
     #  Build
     # ------------------------------------------------------------------
-    @staticmethod
-    def _tinted_icon(path, color, size=14):
-        """Returns a copy of the icon at *path* fully painted in *color*.
-
-        Uses SourceAtop composition so the tint respects the original alpha
-        channel - transparent SVG areas stay transparent.
-        """
-        src = QtGui.QIcon(path).pixmap(size, size)
-        dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.GlobalColor.transparent)
-        p = QtGui.QPainter(dst)
-        p.drawPixmap(0, 0, src)
-        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
-        p.fillRect(dst.rect(), color)
-        p.end()
-        return QtGui.QIcon(dst)
-
     def _build_taskbar(self):
         # Header row (title only) sits across the top.
         self.top_section_layout = QtWidgets.QVBoxLayout()
@@ -339,9 +186,6 @@ class DataManagementWidget(QtWidgets.QWidget):
         self.window_icon_label = QtWidgets.QLabel()
         self.window_icon_label.setPixmap(QtGui.QIcon(self.ICON_MAIN).pixmap(16, 16))
         self.window_title_label = QtWidgets.QLabel("Data Management")
-        self.window_title_label.setStyleSheet(
-            "QLabel { color:#333; font-weight:bold; font-size:13px; background:transparent; }"
-        )
         self.header_layout.addWidget(self.window_icon_label)
         self.header_layout.addWidget(self.window_title_label)
         self.header_layout.addStretch()
@@ -350,13 +194,6 @@ class DataManagementWidget(QtWidgets.QWidget):
         # Vertical sidebar (glass pill) holding the mode selector, on the left.
         self.sidebar_frame = QtWidgets.QFrame()
         self.sidebar_frame.setObjectName("sidebarFrame")
-        self.sidebar_frame.setStyleSheet("""
-            QFrame#sidebarFrame {
-                background: rgba(248, 250, 253, 130);
-                border: 1px solid rgba(255, 255, 255, 200);
-                border-radius: 16px;
-            }
-        """)
         # NOTE: no QGraphicsDropShadowEffect here - the glass frame now carries a
         # QGraphicsOpacityEffect for fading, and Qt doesn't compose nested
         # widget graphics effects reliably. The border provides the separation.
@@ -367,7 +204,7 @@ class DataManagementWidget(QtWidgets.QWidget):
 
         # Per-mode icon placeholders. These point at expected SVG filenames in
         # the icons folder; drop the assets in to light them up. Until then the
-        # buttons fall back to text-only (see GlassSegmentedControl.__init__).
+        # buttons fall back to text-only (see SegmentedControl.__init__).
         _icon_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
         _mode_icons = {
             "import": os.path.join(_icon_dir, "import.svg"),
@@ -379,7 +216,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         modes = [
             (cls.MODE_KEY, cls.MODE_LABEL, _mode_icons.get(cls.MODE_KEY)) for cls in MODE_CLASSES
         ]
-        self.segmented = GlassSegmentedControl(modes, orientation=QtCore.Qt.Vertical)
+        self.segmented = SegmentedControl(modes, orientation=QtCore.Qt.Vertical)
         self.segmented.modeChanged.connect(self._on_mode_changed)
         sidebar_layout.addWidget(self.segmented)
 
@@ -387,12 +224,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         button_size = 28
         icon_size = QtCore.QSize(14, 14)
 
-        # Fullscreen isn't destructive like Close, so its hover tints to a
-        # lighter grey instead of the close button's red.
-        self._FS_NORMAL = QtGui.QColor(110, 120, 130, 190)
-        self._FS_HOVER = QtGui.QColor(175, 185, 196, 235)
-        self._fs_normal_icon = self._tinted_icon(self.ICON_EXPAND, self._FS_NORMAL, size=14)
-        self._fs_hover_icon = self._tinted_icon(self.ICON_EXPAND, self._FS_HOVER, size=14)
+        self._rebuild_fs_icons()
 
         self.btn_fullscreen = QtWidgets.QPushButton("", self)
         self.btn_fullscreen.setFixedSize(button_size, button_size)
@@ -407,17 +239,54 @@ class DataManagementWidget(QtWidgets.QWidget):
         self.btn_close = QtWidgets.QPushButton("x", self)
         self.btn_close.setFixedSize(button_size, button_size)
         self.btn_close.setToolTip("Close")
-        self.btn_close.setStyleSheet("""
-            QPushButton {
-                background: transparent; border: none;
-                color: rgba(110, 120, 130, 190);
-                font-size: 18px; font-weight: bold; padding-bottom: 2px;
-            }
-            QPushButton:hover   { color: rgba(210, 55, 55, 230); }
-            QPushButton:pressed { color: rgba(160, 30, 30, 255); }
-        """)
         self.btn_close.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_close.clicked.connect(self.close)
+
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    # ------------------------------------------------------------------
+    #  Theming
+    # ------------------------------------------------------------------
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        tok = ThemeManager.instance().tokens()
+        self.window_title_label.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-weight: bold; "
+            "font-size: 13px; background: transparent; }"
+        )
+        self.sidebar_frame.setStyleSheet(
+            f"QFrame#sidebarFrame {{ background: {tok_css(tok['flat_surface2'])}; "
+            f"border: 1px solid {tok_css(tok['flat_border'])}; border-radius: 16px; }}"
+        )
+        self.btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; border: none;
+                color: {tok_css(tok['flat_text_muted'])};
+                font-size: 18px; font-weight: bold; padding-bottom: 2px;
+            }}
+            QPushButton:hover   {{ color: {tok_css(tok['flat_error'])}; }}
+            QPushButton:pressed {{ color: {tok_css(tok['flat_error_weak'])}; }}
+        """)
+        self._rebuild_fs_icons()
+
+    def _rebuild_fs_icons(self) -> None:
+        """Rebuilds the fullscreen button's normal/hover icon pixmaps from
+        the active theme's tokens, for the icon matching the current
+        fullscreen state (expand vs. collapse)."""
+        tok = ThemeManager.instance().tokens()
+        self._FS_NORMAL = QtGui.QColor(*tok["flat_text_muted"])
+        self._FS_HOVER = QtGui.QColor(*tok["flat_text"])
+        icon_path = self.ICON_COLLAPSE if self._is_fullscreen else self.ICON_EXPAND
+        self._fs_normal_icon = tinted_icon(icon_path, self._FS_NORMAL, size=14)
+        self._fs_hover_icon = tinted_icon(icon_path, self._FS_HOVER, size=14)
+        if getattr(self, "btn_fullscreen", None) is not None:
+            if self.btn_fullscreen.underMouse():
+                self.btn_fullscreen.setIcon(self._fs_hover_icon)
+            else:
+                self.btn_fullscreen.setIcon(self._fs_normal_icon)
 
     def _build_stack(self):
         self.content_stack = QtWidgets.QStackedWidget()
@@ -654,13 +523,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         self._is_fullscreen = not self._is_fullscreen
 
         # Swap the icon to reflect the action the button now performs.
-        _icon_path = self.ICON_COLLAPSE if self._is_fullscreen else self.ICON_EXPAND
-        self._fs_normal_icon = self._tinted_icon(_icon_path, self._FS_NORMAL, size=14)
-        self._fs_hover_icon = self._tinted_icon(_icon_path, self._FS_HOVER, size=14)
-        if self.btn_fullscreen.underMouse():
-            self.btn_fullscreen.setIcon(self._fs_hover_icon)
-        else:
-            self.btn_fullscreen.setIcon(self._fs_normal_icon)
+        self._rebuild_fs_icons()
 
         target = 0.0 if self._is_fullscreen else self._default_margin_pct
         start = self._default_margin_pct if self._is_fullscreen else 0.0
@@ -917,9 +780,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         self._close_in_progress = False
         self._is_fullscreen = False
         # Restore the expand icon for the next open.
-        self._fs_normal_icon = self._tinted_icon(self.ICON_EXPAND, self._FS_NORMAL, size=14)
-        self._fs_hover_icon = self._tinted_icon(self.ICON_EXPAND, self._FS_HOVER, size=14)
-        self.btn_fullscreen.setIcon(self._fs_normal_icon)
+        self._rebuild_fs_icons()
         self._panel_alpha = 235
         self._current_key = None
         self._set_glass_opacity(1.0)

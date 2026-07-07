@@ -40,8 +40,10 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.components import GlassPushButton
+from QATCH.ui.components import GlassPanel, GlassPushButton
+from QATCH.ui.components.icon_utils import tinted_icon
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
+from QATCH.ui.styles.theme_manager import ThemeManager, caption_label_qss, desc_label_qss, tok_css
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 try:
@@ -53,32 +55,34 @@ TAG = "[DataAdvanced]"
 
 
 class _UsageBar(QtWidgets.QWidget):
-    """A thin rounded usage bar: a single coloured fill over a light track."""
+    """A thin rounded usage bar: a single coloured fill over a neutral track."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._fraction = 0.0
         self.setFixedHeight(8)
         self.setMinimumWidth(80)
+        ThemeManager.instance().themeChanged.connect(lambda _: self.update())
 
     def set_fraction(self, fraction):
         self._fraction = max(0.0, min(1.0, fraction))
         self.update()
 
     def paintEvent(self, event):
+        tok = ThemeManager.instance().tokens()
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
         painter.setPen(QtCore.Qt.NoPen)
 
         rect = self.rect()
         radius = rect.height() / 2.0
-        painter.setBrush(QtGui.QColor(225, 230, 238, 235))
+        painter.setBrush(QtGui.QColor(*tok["flat_track"]))
         painter.drawRoundedRect(rect, radius, radius)
 
         fill_w = rect.width() * self._fraction
         if fill_w > 0:
             fill_rect = QtCore.QRectF(rect.x(), rect.y(), fill_w, rect.height())
-            painter.setBrush(QtGui.QColor(10, 163, 230, 235))
+            painter.setBrush(QtGui.QColor(*tok["flat_accent"]))
             painter.drawRoundedRect(fill_rect, radius, radius)
         painter.end()
 
@@ -95,30 +99,28 @@ class AdvancedMode(DataModeWidget):
         self._exported = False
 
         heading = QtWidgets.QLabel("Advanced")
-        heading.setStyleSheet(
-            "QLabel { color: #333; font-size: 14px; font-weight: bold; background: transparent; }"
-        )
-        self.root.addWidget(heading)
+        self._heading = heading
         subtitle = QtWidgets.QLabel("Manage removable drives and local storage.")
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet(self._desc_qss())
+        self._subtitle = subtitle
+        self.root.addWidget(heading)
         self.root.addWidget(subtitle)
 
         # ---- USB Drive card --------------------------------------------
-        usb_card = self._panel()
-        ulay = usb_card.layout()
+        usb_card = GlassPanel()
+        ulay = QtWidgets.QVBoxLayout(usb_card)
+        ulay.setContentsMargins(14, 12, 14, 12)
+        ulay.setSpacing(8)
 
         usb_head = QtWidgets.QHBoxLayout()
         usb_head.setContentsMargins(0, 0, 0, 0)
         usb_head.setSpacing(10)
-        usb_swatch = self._icon_swatch(
-            "usb.svg", QtGui.QColor(0, 118, 174, 235), QtGui.QColor(10, 163, 230, 45)
-        )
-        usb_head.addWidget(usb_swatch)
+        self._usb_swatch_lbl = QtWidgets.QLabel()
+        self._usb_swatch_lbl.setFixedSize(32, 32)
+        self._usb_swatch_lbl.setAlignment(QtCore.Qt.AlignCenter)
+        usb_head.addWidget(self._usb_swatch_lbl)
         usb_title = QtWidgets.QLabel("USB Drive")
-        usb_title.setStyleSheet(
-            "QLabel { color: #222; font-size: 13px; font-weight: 700; background: transparent; }"
-        )
+        self._usb_title = usb_title
         usb_head.addWidget(usb_title)
         usb_head.addStretch(1)
         self.usb_status_pill = QtWidgets.QLabel()
@@ -127,7 +129,6 @@ class AdvancedMode(DataModeWidget):
 
         self.usb_desc = QtWidgets.QLabel()
         self.usb_desc.setWordWrap(True)
-        self.usb_desc.setStyleSheet(self._desc_qss())
         ulay.addWidget(self.usb_desc)
 
         usb_row = QtWidgets.QHBoxLayout()
@@ -146,19 +147,19 @@ class AdvancedMode(DataModeWidget):
         ulay.addLayout(usb_row)
 
         # ---- Local storage card ----------------------------------------
-        storage_card = self._panel()
-        slay = storage_card.layout()
+        storage_card = GlassPanel()
+        slay = QtWidgets.QVBoxLayout(storage_card)
+        slay.setContentsMargins(14, 12, 14, 12)
+        slay.setSpacing(8)
 
         storage_head = QtWidgets.QHBoxLayout()
         storage_head.setContentsMargins(0, 0, 0, 0)
         storage_title = QtWidgets.QLabel("Local storage")
-        storage_title.setStyleSheet(
-            "QLabel { color: #222; font-size: 13px; font-weight: 700; background: transparent; }"
-        )
+        self._storage_title = storage_title
         storage_head.addWidget(storage_title)
         storage_head.addStretch(1)
         self.storage_summary_label = QtWidgets.QLabel()
-        self.storage_summary_label.setStyleSheet(self._caption_qss())
+        self.storage_summary_label.setStyleSheet(caption_label_qss())
         storage_head.addWidget(self.storage_summary_label)
         slay.addLayout(storage_head)
 
@@ -168,50 +169,41 @@ class AdvancedMode(DataModeWidget):
         legend_row = QtWidgets.QHBoxLayout()
         legend_row.setContentsMargins(0, 2, 0, 0)
         legend_row.setSpacing(6)
-        legend_row.addWidget(self._legend_swatch(QtGui.QColor(10, 163, 230, 235)))
+        self._legend_swatch_lbl = QtWidgets.QLabel()
+        self._legend_swatch_lbl.setFixedSize(9, 9)
+        legend_row.addWidget(self._legend_swatch_lbl)
         self.storage_legend_label = QtWidgets.QLabel()
-        self.storage_legend_label.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 190); font-size: 11px; background: transparent; }"
-        )
         legend_row.addWidget(self.storage_legend_label)
         legend_row.addStretch(1)
         slay.addLayout(legend_row)
+        self._legend_label = self.storage_legend_label
 
         # ---- Danger zone --------------------------------------------------
         danger_caption = QtWidgets.QLabel("DANGER ZONE")
-        danger_caption.setStyleSheet(
-            "QLabel { color: rgba(190, 60, 50, 230); font-size: 10px; font-weight: 700; "
-            "text-transform: uppercase; letter-spacing: 0.5px; background: transparent; }"
-        )
+        self._danger_caption = danger_caption
 
-        danger_card = self._panel(danger=True)
-        dlay = danger_card.layout()
+        danger_card = GlassPanel(danger=True)
+        dlay = QtWidgets.QVBoxLayout(danger_card)
+        dlay.setContentsMargins(14, 12, 14, 12)
+        dlay.setSpacing(8)
         drow = QtWidgets.QHBoxLayout()
         drow.setContentsMargins(0, 0, 0, 0)
         drow.setSpacing(10)
-        drow.addWidget(
-            self._icon_swatch(
-                "warning.svg", QtGui.QColor(190, 50, 40, 235), QtGui.QColor(220, 70, 60, 40)
-            ),
-            0,
-            QtCore.Qt.AlignTop,
-        )
+        self._danger_swatch_lbl = QtWidgets.QLabel()
+        self._danger_swatch_lbl.setFixedSize(32, 32)
+        self._danger_swatch_lbl.setAlignment(QtCore.Qt.AlignCenter)
+        drow.addWidget(self._danger_swatch_lbl, 0, QtCore.Qt.AlignTop)
         dtext = QtWidgets.QVBoxLayout()
         dtext.setContentsMargins(0, 0, 0, 0)
         dtext.setSpacing(2)
         dtitle = QtWidgets.QLabel("Erase local data")
-        dtitle.setStyleSheet(
-            "QLabel { color: rgba(150, 40, 35, 240); font-size: 13px; font-weight: 700; "
-            "background: transparent; }"
-        )
+        self._dtitle = dtitle
         ddesc = QtWidgets.QLabel(
             "Removes all locally logged runs from this machine. Erased runs go to the "
             "Recycle Bin first - empty it afterward to erase permanently."
         )
         ddesc.setWordWrap(True)
-        ddesc.setStyleSheet(
-            "QLabel { color: rgba(120, 55, 50, 220); font-size: 11px; background: transparent; }"
-        )
+        self._ddesc = ddesc
         dtext.addWidget(dtitle)
         dtext.addWidget(ddesc)
         drow.addLayout(dtext, 1)
@@ -226,11 +218,6 @@ class AdvancedMode(DataModeWidget):
         self.status_label.setWordWrap(True)
         self.status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.status_label.setVisible(False)
-        self.status_label.setStyleSheet(
-            "QLabel { color: rgba(30, 42, 56, 210); font-size: 12px; "
-            "background: rgba(255,255,255,140); border: 1px solid rgba(218, 224, 232, 170); "
-            "border-radius: 8px; padding: 8px; }"
-        )
 
         self.root.addWidget(usb_card)
         self.root.addWidget(storage_card)
@@ -239,11 +226,93 @@ class AdvancedMode(DataModeWidget):
         self.root.addWidget(self.status_label)
         self.root.addStretch(1)
 
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
         # Live USB status - connected once; this mode instance lives for the
         # app's lifetime (it's never recreated), so there's no risk of
         # accumulating duplicate connections across visits.
         self.services.usb_add.connect(self._refresh_usb_status)
         self.services.usb_remove.connect(self._refresh_usb_status)
+
+    # ------------------------------------------------------------------
+    #  Theming
+    # ------------------------------------------------------------------
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
+        self._refresh_usb_status()
+
+    def _apply_theme(self) -> None:
+        tok = ThemeManager.instance().tokens()
+        accent = tok["flat_accent"]
+        danger = tok["flat_error"]
+        heading_qss = (
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 14px; "
+            "font-weight: bold; background: transparent; }"
+        )
+        section_title_qss = (
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 13px; "
+            "font-weight: 700; background: transparent; }"
+        )
+        self._heading.setStyleSheet(heading_qss)
+        self._subtitle.setStyleSheet(desc_label_qss())
+        self._usb_title.setStyleSheet(section_title_qss)
+        self.usb_desc.setStyleSheet(desc_label_qss())
+        self._storage_title.setStyleSheet(section_title_qss)
+        self.storage_summary_label.setStyleSheet(caption_label_qss())
+        self._legend_label.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 11px; "
+            "background: transparent; }"
+        )
+        self._danger_caption.setStyleSheet(
+            f"QLabel {{ color: {tok_css(danger)}; font-size: 10px; font-weight: 700; "
+            "text-transform: uppercase; letter-spacing: 0.5px; background: transparent; }"
+        )
+        self._dtitle.setStyleSheet(
+            f"QLabel {{ color: {tok_css(danger)}; font-size: 13px; font-weight: 700; "
+            "background: transparent; }"
+        )
+        self._ddesc.setStyleSheet(
+            f"QLabel {{ color: {tok_css((danger[0], danger[1], danger[2], 200))}; "
+            "font-size: 11px; background: transparent; }"
+        )
+        self.status_label.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
+            f"background: {tok_css(tok['flat_surface2'])}; "
+            f"border: 1px solid {tok_css(tok['flat_border'])}; "
+            "border-radius: 8px; padding: 8px; }"
+        )
+
+        usb_icon = tinted_icon(self._icon_file_path("usb.svg"), QtGui.QColor(*accent), 18)
+        self._usb_swatch_lbl.setPixmap(usb_icon.pixmap(18, 18))
+        self._usb_swatch_lbl.setStyleSheet(
+            f"QLabel {{ background: {tok_css((accent[0], accent[1], accent[2], 45))}; "
+            "border-radius: 8px; }"
+        )
+        danger_icon = tinted_icon(self._icon_file_path("warning.svg"), QtGui.QColor(*danger), 18)
+        self._danger_swatch_lbl.setPixmap(danger_icon.pixmap(18, 18))
+        self._danger_swatch_lbl.setStyleSheet(
+            f"QLabel {{ background: {tok_css((danger[0], danger[1], danger[2], 40))}; "
+            "border-radius: 8px; }"
+        )
+        self._legend_swatch_lbl.setStyleSheet(
+            f"QLabel {{ background: {tok_css(accent)}; border-radius: 3px; }}"
+        )
+
+    @staticmethod
+    def _pill_qss(connected: bool) -> str:
+        tok = ThemeManager.instance().tokens()
+        if connected:
+            text = tok["flat_success"]
+            weak = tok["flat_success_weak"]
+            ring = tok["flat_success_ring"]
+        else:
+            text, weak, ring = tok["flat_text_muted"], tok["flat_surface2"], tok["flat_border"]
+        return (
+            f"QLabel {{ color: {tok_css(text)}; background: {tok_css(weak)}; "
+            f"border: 1px solid {tok_css(ring)}; border-radius: 9px; "
+            "font-size: 10px; font-weight: 700; padding: 2px 8px; }"
+        )
 
     # ------------------------------------------------------------------
     #  Lifecycle / shared-state hooks
@@ -514,74 +583,9 @@ class AdvancedMode(DataModeWidget):
             elif os.path.exists(path):
                 os.remove(path)
 
-    @staticmethod
-    def _desc_qss():
-        return (
-            "QLabel { color: rgba(60, 72, 88, 190); font-size: 12px; " "background: transparent; }"
-        )
-
-    @staticmethod
-    def _caption_qss():
-        return (
-            "QLabel { color: rgba(60, 72, 88, 160); font-size: 10px; "
-            "font-weight: 600; text-transform: uppercase; "
-            "letter-spacing: 0.5px; background: transparent; }"
-        )
-
-    @staticmethod
-    def _pill_qss(connected):
-        if connected:
-            return (
-                "QLabel { color: rgba(20, 110, 70, 240); background: rgba(70, 180, 120, 50); "
-                "border: 1px solid rgba(70, 180, 120, 120); border-radius: 9px; "
-                "font-size: 10px; font-weight: 700; padding: 2px 8px; }"
-            )
-        return (
-            "QLabel { color: rgba(90, 100, 112, 210); background: rgba(160, 170, 182, 45); "
-            "border: 1px solid rgba(170, 180, 192, 120); border-radius: 9px; "
-            "font-size: 10px; font-weight: 700; padding: 2px 8px; }"
-        )
-
-    def _icon_swatch(self, icon_name, fg_color, bg_color, size=32):
-        swatch = QtWidgets.QLabel()
-        swatch.setFixedSize(size, size)
-        swatch.setAlignment(QtCore.Qt.AlignCenter)
-        swatch.setStyleSheet(
-            f"QLabel {{ background: rgba({bg_color.red()}, {bg_color.green()}, "
-            f"{bg_color.blue()}, {bg_color.alpha()}); border-radius: {size // 4}px; }}"
-        )
-        icon = self._tinted_icon(icon_name, fg_color, icon_size=int(size * 0.55))
-        if icon is not None:
-            swatch.setPixmap(icon)
-        return swatch
-
-    @staticmethod
-    def _legend_swatch(color, size=9):
-        sw = QtWidgets.QLabel()
-        sw.setFixedSize(size, size)
-        sw.setStyleSheet(
-            f"QLabel {{ background: rgba({color.red()}, {color.green()}, {color.blue()}, "
-            f"{color.alpha()}); border-radius: {size // 3}px; }}"
-        )
-        return sw
-
     def _icon(self, name):
         path = self._icon_file_path(name)
         return QtGui.QIcon(path) if path else QtGui.QIcon()
-
-    def _tinted_icon(self, name, color, icon_size=18):
-        path = self._icon_file_path(name)
-        if not path:
-            return None
-        src = QtGui.QIcon(path).pixmap(icon_size, icon_size)
-        dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.GlobalColor.transparent)
-        p = QtGui.QPainter(dst)
-        p.drawPixmap(0, 0, src)
-        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
-        p.fillRect(dst.rect(), color)
-        p.end()
-        return dst
 
     @staticmethod
     def _icon_file_path(name):
@@ -592,30 +596,3 @@ class AdvancedMode(DataModeWidget):
         except Exception:
             pass
         return ""
-
-    def _panel(self, danger=False):
-        """A frosted glass panel with an empty body layout for the caller to
-        build a custom header into (unlike `_card`, no title is pre-added -
-        each card here has its own icon-swatch header row)."""
-        card = QtWidgets.QFrame()
-        card.setObjectName("glassPanel")
-        if danger:
-            card.setStyleSheet("""
-                QFrame#glassPanel {
-                    background: rgba(255, 240, 238, 130);
-                    border: 1px solid rgba(225, 170, 165, 190);
-                    border-radius: 10px;
-                }
-            """)
-        else:
-            card.setStyleSheet("""
-                QFrame#glassPanel {
-                    background: rgba(255, 255, 255, 110);
-                    border: 1px solid rgba(218, 224, 232, 170);
-                    border-radius: 10px;
-                }
-            """)
-        lay = QtWidgets.QVBoxLayout(card)
-        lay.setContentsMargins(14, 12, 14, 12)
-        lay.setSpacing(8)
-        return card

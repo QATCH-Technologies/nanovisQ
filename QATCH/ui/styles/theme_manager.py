@@ -63,6 +63,37 @@ def tok_css(rgba: Tuple[int, int, int, int]) -> str:
     return f"rgba({r}, {g}, {b}, {a})"
 
 
+def desc_label_qss() -> str:
+    """Shared QSS for a small muted description/subtitle QLabel, resolved
+    fresh from the active theme's `flat_text_muted` token.
+
+    Consolidates the several near-identical `_desc_qss()` copies that used
+    to be hand-defined (with hardcoded, light-only colors) inside each of
+    the data-management mode widgets.
+    """
+    tok = ThemeManager.instance().tokens()
+    return (
+        f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 12px; "
+        "background: transparent; }"
+    )
+
+
+def caption_label_qss() -> str:
+    """Shared QSS for a small uppercase caption QLabel, resolved fresh from
+    the active theme's `flat_text_muted` token.
+
+    Consolidates the several near-identical `_caption_qss()` copies that
+    used to be hand-defined (with hardcoded, light-only colors) inside each
+    of the data-management mode widgets.
+    """
+    tok = ThemeManager.instance().tokens()
+    return (
+        f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 10px; "
+        "font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; "
+        "background: transparent; }"
+    )
+
+
 class ThemeManager(QtCore.QObject):
     """Process-wide singleton owning the active light/dark palette.
 

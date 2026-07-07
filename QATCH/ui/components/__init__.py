@@ -5,11 +5,13 @@ from .glass_card import GlassCard
 from .glass_dialog import GlassDialog
 from .glass_line_edit import GlassLineEdit
 from .glass_option_card import GlassOptionCard, GlassOptionCardGroup
+from .glass_panel import GlassPanel
 from .glass_push_button import GlassPushButton
 from .glass_toggle import GlassToggle
 from .glass_warning_label import GlassWarningLabel
 from .number_icon_button import FLUXControl, NumberIconButton
 from .run_controls_button import RunControls
+from .segmented_control import SegmentedControl
 
 
 __all__ = [
@@ -19,6 +21,7 @@ __all__ = [
     "GlassLineEdit",
     "GlassOptionCard",
     "GlassOptionCardGroup",
+    "GlassPanel",
     "GlassPushButton",
     "GlassToggle",
     "GlassWarningLabel",
@@ -26,6 +29,7 @@ __all__ = [
     "GlassCard",
     "GlassDialog",
     "RunControls",
+    "SegmentedControl",
     "FLUXControl",
     "PlotStatusBanner",
 ]

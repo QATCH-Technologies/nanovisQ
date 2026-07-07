@@ -25,7 +25,10 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.components import AnimatedComboBox, GlassPushButton
+from QATCH.ui.components import AnimatedComboBox, GlassPushButton, SegmentedControl
+from QATCH.ui.components.glass_warning_label import GlassWarningLabel
+from QATCH.ui.components.icon_utils import tinted_pixmap
+from QATCH.ui.styles.theme_manager import ThemeManager, caption_label_qss, desc_label_qss, tok_css
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 try:
@@ -69,13 +72,11 @@ class HistoryMode(DataModeWidget):
         self._loading_more = False  # reentrancy guard for the scroll handler
 
         heading = QtWidgets.QLabel("Import / Export History")
-        heading.setStyleSheet(
-            "QLabel { color: #333; font-size: 14px; font-weight: bold; background: transparent; }"
-        )
+        self._heading = heading
         self.root.addWidget(heading)
         subtitle = QtWidgets.QLabel("Every transfer, most recent first.")
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet(self._desc_qss())
+        self._subtitle = subtitle
         self.root.addWidget(subtitle)
 
         # Controls row: All/Export/Import filter chips (left) + sort dropdown (right).
@@ -83,32 +84,14 @@ class HistoryMode(DataModeWidget):
         controls.setContentsMargins(0, 4, 0, 0)
         controls.setSpacing(8)
 
-        self.filter_group = QtWidgets.QButtonGroup(self)
-        self.btn_filter_all = self._segment_button("All")
-        self.btn_filter_export = self._segment_button("Export")
-        self.btn_filter_import = self._segment_button("Import")
-        self.filter_group.addButton(self.btn_filter_all, 0)
-        self.filter_group.addButton(self.btn_filter_export, 1)
-        self.filter_group.addButton(self.btn_filter_import, 2)
-        self.btn_filter_all.setChecked(True)
-        self.filter_group.buttonToggled.connect(self._on_filter_changed)
-
-        filter_box = QtWidgets.QFrame()
-        filter_box.setObjectName("filterSegment")
-        filter_box.setStyleSheet("""
-            QFrame#filterSegment {
-                background: rgba(255, 255, 255, 60);
-                border: 1px solid rgba(255, 255, 255, 150);
-                border-radius: 8px;
-            }
-        """)
-        filter_lay = QtWidgets.QHBoxLayout(filter_box)
-        filter_lay.setContentsMargins(4, 4, 4, 4)
-        filter_lay.setSpacing(4)
-        filter_lay.addWidget(self.btn_filter_all)
-        filter_lay.addWidget(self.btn_filter_export)
-        filter_lay.addWidget(self.btn_filter_import)
-        controls.addWidget(filter_box)
+        self.filter_segment = SegmentedControl(
+            [("all", "All"), ("export", "Export"), ("import", "Import")],
+            orientation=QtCore.Qt.Horizontal,
+            filled=True,
+        )
+        self.filter_segment.set_active("all")
+        self.filter_segment.modeChanged.connect(self._on_filter_changed)
+        controls.addWidget(self.filter_segment)
         controls.addStretch(1)
 
         self.sort_combo = AnimatedComboBox(icon_path=self._icon_file_path("down-chevron.svg"))
@@ -125,17 +108,12 @@ class HistoryMode(DataModeWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        # Only the transparent-background rules stay local; the scrollbar
+        # handle itself is already themed app-wide by the global QScrollBar
+        # rule in app_theme.qss - no need to redeclare it here.
         self.scroll.setStyleSheet("""
             QScrollArea { background: transparent; border: none; }
             QScrollArea > QWidget > QWidget { background: transparent; }
-            QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }
-            QScrollBar::handle:vertical {
-                background: rgba(120, 130, 145, 90);
-                border-radius: 4px; min-height: 24px;
-            }
-            QScrollBar::handle:vertical:hover { background: rgba(120, 130, 145, 140); }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
         """)
 
         self._list_host = QtWidgets.QWidget()
@@ -150,10 +128,6 @@ class HistoryMode(DataModeWidget):
         # Empty-state label (shown when there's no history).
         self.empty_label = QtWidgets.QLabel("No import/export history to show.")
         self.empty_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 150); font-size: 13px; "
-            "font-style: italic; background: transparent; padding: 24px; }"
-        )
 
         self.root.addWidget(self.empty_label)
         self.root.addWidget(self.scroll, 1)
@@ -162,7 +136,7 @@ class HistoryMode(DataModeWidget):
         footer = QtWidgets.QHBoxLayout()
         footer.setContentsMargins(0, 0, 0, 0)
         self.count_label = QtWidgets.QLabel()
-        self.count_label.setStyleSheet(self._caption_qss())
+        self.count_label.setStyleSheet(caption_label_qss())
         footer.addWidget(self.count_label)
         footer.addStretch(1)
         self.btn_clear = GlassPushButton(" Clear history", variant="danger")
@@ -171,6 +145,33 @@ class HistoryMode(DataModeWidget):
         footer.addWidget(self.btn_clear)
 
         self.root.addLayout(footer)
+
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    # ------------------------------------------------------------------
+    #  Theming
+    # ------------------------------------------------------------------
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
+        if self._entries:
+            # Rows/date-group headers bake token colors in at construction
+            # time (they're rebuilt wholesale on every filter/sort change
+            # anyway) - re-render so visible rows pick up the new theme too.
+            self._render(self._visible_entries())
+
+    def _apply_theme(self) -> None:
+        tok = ThemeManager.instance().tokens()
+        self._heading.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 14px; "
+            "font-weight: bold; background: transparent; }"
+        )
+        self._subtitle.setStyleSheet(desc_label_qss())
+        self.empty_label.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 13px; "
+            "font-style: italic; background: transparent; padding: 24px; }"
+        )
+        self.count_label.setStyleSheet(caption_label_qss())
 
     # ------------------------------------------------------------------
     #  Lifecycle
@@ -208,10 +209,8 @@ class HistoryMode(DataModeWidget):
             entries = [e for e in entries if e["action"] == self._filter]
         return entries
 
-    def _on_filter_changed(self, button, checked):
-        if not checked:
-            return
-        self._filter = {0: "all", 1: "Exported", 2: "Imported"}[self.filter_group.id(button)]
+    def _on_filter_changed(self, key: str) -> None:
+        self._filter = {"all": "all", "export": "Exported", "import": "Imported"}[key]
         self._render(self._visible_entries())
 
     def _on_sort_changed(self, index):
@@ -354,10 +353,11 @@ class HistoryMode(DataModeWidget):
         happened (a single page's worth of entries needs no such marker)."""
         if self._end_label is not None or len(self._page_entries) <= self.PAGE_SIZE:
             return
+        tok = ThemeManager.instance().tokens()
         label = QtWidgets.QLabel("- End of history -")
         label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         label.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 150); font-size: 11px; "
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 11px; "
             "font-style: italic; background: transparent; padding: 6px; }"
         )
         self._list_layout.insertWidget(self._list_layout.count() - 1, label)
@@ -394,17 +394,20 @@ class HistoryMode(DataModeWidget):
 
     @staticmethod
     def _group_header(text):
+        tok = ThemeManager.instance().tokens()
         lbl = QtWidgets.QLabel(text)
         lbl.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 150); font-size: 10px; font-weight: 700; "
-            "letter-spacing: 0.5px; background: transparent; padding: 8px 2px 2px 4px; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 10px; "
+            "font-weight: 700; letter-spacing: 0.5px; background: transparent; "
+            "padding: 8px 2px 2px 4px; }"
         )
         return lbl
 
     def _make_row(self, rec):
+        tok = ThemeManager.instance().tokens()
         is_import = rec["action"] == "Imported"
-        accent = QtGui.QColor(0, 118, 174, 235) if is_import else QtGui.QColor(46, 140, 90, 230)
-        tint = "rgba(10, 163, 230, 18)" if is_import else "rgba(46, 155, 110, 18)"
+        accent = QtGui.QColor(*(tok["accent"] if is_import else tok["success"]))
+        tint = accent.red(), accent.green(), accent.blue()
         icon_name = "import.svg" if is_import else "export.svg"
         label = "Import" if is_import else "Export"
 
@@ -412,8 +415,8 @@ class HistoryMode(DataModeWidget):
         card.setObjectName("historyRow")
         card.setStyleSheet(f"""
             QFrame#historyRow {{
-                background: {tint};
-                border: 1px solid rgba(255, 255, 255, 150);
+                background: rgba({tint[0]}, {tint[1]}, {tint[2]}, 18);
+                border: 1px solid {tok_css(tok["plot_glass_rim"])};
                 border-radius: 10px;
             }}
         """)
@@ -432,8 +435,8 @@ class HistoryMode(DataModeWidget):
 
         title_lbl = QtWidgets.QLabel(f"{label} · {rec['count']} runs")
         title_lbl.setStyleSheet(
-            "QLabel { color: rgba(28, 40, 52, 230); font-size: 12.5px; font-weight: 700; "
-            "background: transparent; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12.5px; "
+            "font-weight: 700; background: transparent; }"
         )
         hlay.addWidget(title_lbl)
 
@@ -446,19 +449,22 @@ class HistoryMode(DataModeWidget):
         arrow = "←" if is_import else "→"
         preview_lbl = QtWidgets.QLabel(f"{arrow} {self._short_path(preview_path)}")
         preview_lbl.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 165); font-size: 11px; background: transparent; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 11px; "
+            "background: transparent; }"
         )
         hlay.addWidget(preview_lbl)
 
         time_lbl = QtWidgets.QLabel(self._fmt_time(rec["timestamp"]))
         time_lbl.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 150); font-size: 11px; background: transparent; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 11px; "
+            "background: transparent; }"
         )
         hlay.addWidget(time_lbl)
 
         chevron_lbl = QtWidgets.QLabel("▾")
         chevron_lbl.setStyleSheet(
-            "QLabel { color: rgba(120, 130, 145, 200); font-size: 11px; background: transparent; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 11px; "
+            "background: transparent; }"
         )
         hlay.addWidget(chevron_lbl)
         outer.addWidget(header)
@@ -475,12 +481,7 @@ class HistoryMode(DataModeWidget):
         if rec["settings"]:
             dlay.addWidget(self._detail_row("Settings", rec["settings"]))
         if rec["skipped"]:
-            warn = QtWidgets.QLabel(html.unescape(rec["skipped"]))
-            warn.setWordWrap(True)
-            warn.setStyleSheet(
-                "QLabel { color: rgba(180, 95, 20, 220); font-size: 11px; "
-                "background: transparent; }"
-            )
+            warn = GlassWarningLabel(html.unescape(rec["skipped"]), severity="warning")
             dlay.addWidget(warn)
 
         actions_row = QtWidgets.QHBoxLayout()
@@ -512,6 +513,7 @@ class HistoryMode(DataModeWidget):
 
     @staticmethod
     def _detail_row(label, value):
+        tok = ThemeManager.instance().tokens()
         row = QtWidgets.QWidget()
         row.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         h = QtWidgets.QHBoxLayout(row)
@@ -522,14 +524,15 @@ class HistoryMode(DataModeWidget):
         key = QtWidgets.QLabel(label)
         key.setFixedWidth(58)
         key.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 160); font-size: 11px; "
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 11px; "
             "font-weight: 600; background: transparent; }"
         )
         val = QtWidgets.QLabel(html.unescape(value))
         val.setWordWrap(True)
         val.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         val.setStyleSheet(
-            "QLabel { color: rgba(30, 42, 56, 210); font-size: 11px; background: transparent; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 11px; "
+            "background: transparent; }"
         )
         h.addWidget(key)
         h.addWidget(val, 1)
@@ -599,27 +602,15 @@ class HistoryMode(DataModeWidget):
         return os.path.join(os.getcwd(), Constants.log_export_path, "export_history.log")
 
     # ------------------------------------------------------------------
-    #  Shared glass styling helpers (mirrors data_mode_import / data_mode_advanced)
+    #  Shared glass styling helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def _desc_qss():
-        return (
-            "QLabel { color: rgba(60, 72, 88, 190); font-size: 12px; " "background: transparent; }"
-        )
-
-    @staticmethod
-    def _caption_qss():
-        return (
-            "QLabel { color: rgba(60, 72, 88, 160); font-size: 10px; "
-            "font-weight: 600; text-transform: uppercase; "
-            "letter-spacing: 0.5px; background: transparent; }"
-        )
-
-    @staticmethod
     def _skip_pill(count):
+        tok = ThemeManager.instance().tokens()
         pill = QtWidgets.QLabel(f"{count} skipped")
         pill.setStyleSheet(
-            "QLabel { color: rgba(150, 95, 10, 240); background: rgba(235, 175, 60, 75); "
+            f"QLabel {{ color: {tok_css(tok['flat_warning'])}; "
+            f"background: {tok_css(tok['flat_warning_weak'])}; "
             "border-radius: 8px; font-size: 10px; font-weight: 700; padding: 1px 7px; }"
         )
         return pill
@@ -632,28 +623,14 @@ class HistoryMode(DataModeWidget):
             f"QLabel {{ background: rgba({color.red()}, {color.green()}, {color.blue()}, 35); "
             f"border-radius: {size // 2}px; }}"
         )
-        icon = self._tinted_icon(icon_name, color, icon_size=int(size * 0.55))
-        if icon is not None:
-            chip.setPixmap(icon)
+        path = self._icon_file_path(icon_name)
+        if path:
+            chip.setPixmap(tinted_pixmap(path, color, int(size * 0.55)))
         return chip
 
     def _icon(self, name):
         path = self._icon_file_path(name)
         return QtGui.QIcon(path) if path else QtGui.QIcon()
-
-    def _tinted_icon(self, name, color, icon_size=18):
-        path = self._icon_file_path(name)
-        if not path:
-            return None
-        src = QtGui.QIcon(path).pixmap(icon_size, icon_size)
-        dst = QtGui.QPixmap(src.size())
-        dst.fill(QtCore.Qt.GlobalColor.transparent)
-        p = QtGui.QPainter(dst)
-        p.drawPixmap(0, 0, src)
-        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
-        p.fillRect(dst.rect(), color)
-        p.end()
-        return dst
 
     @staticmethod
     def _icon_file_path(name):
@@ -664,30 +641,3 @@ class HistoryMode(DataModeWidget):
         except Exception:
             pass
         return ""
-
-    def _segment_button(self, text, tooltip=""):
-        btn = QtWidgets.QToolButton()
-        btn.setText(text)
-        btn.setCheckable(True)
-        btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        btn.setFixedHeight(26)
-        btn.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
-        if tooltip:
-            btn.setToolTip(tooltip)
-        btn.setStyleSheet(self._segment_qss())
-        return btn
-
-    @staticmethod
-    def _segment_qss():
-        return """
-            QToolButton {
-                background: transparent; border: none; border-radius: 6px;
-                color: rgba(40, 50, 65, 190); font-size: 12px; font-weight: 600;
-                padding: 0px 12px;
-            }
-            QToolButton:hover   { background: rgba(255, 255, 255, 80); }
-            QToolButton:checked {
-                background: rgba(255, 255, 255, 235);
-                color: rgba(0, 118, 174, 230);
-            }
-        """

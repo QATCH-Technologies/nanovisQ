@@ -35,7 +35,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.components import GlassOptionCard, GlassOptionCardGroup, GlassPushButton
+from QATCH.ui.components import GlassOptionCard, GlassOptionCardGroup, GlassPanel, GlassPushButton
+from QATCH.ui.styles.theme_manager import ThemeManager, caption_label_qss, desc_label_qss, tok_css
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 TAG = "[DataImport]"
@@ -62,6 +63,7 @@ class _DropZone(QtWidgets.QFrame):
         self.setAcceptDrops(True)
         self.setMinimumHeight(86)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._active = False
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(12, 10, 12, 10)
@@ -87,6 +89,7 @@ class _DropZone(QtWidgets.QFrame):
         lay.addWidget(self._browse_lbl, 0, QtCore.Qt.AlignCenter)
 
         self._set_qss(active=False)
+        ThemeManager.instance().themeChanged.connect(lambda _: self._set_qss(self._active))
 
     @staticmethod
     def _zone_icon():
@@ -133,34 +136,37 @@ class _DropZone(QtWidgets.QFrame):
             event.ignore()
 
     def _set_qss(self, active):
+        self._active = active
+        tok = ThemeManager.instance().tokens()
         if active:
-            frame_qss = """
-                QFrame#dropZone {
-                    background: rgba(10, 163, 230, 70);
-                    border: 2px dashed rgba(0, 118, 174, 230);
+            frame_qss = f"""
+                QFrame#dropZone {{
+                    background: {tok_css(tok['flat_accent_weak'])};
+                    border: 2px dashed {tok_css(tok['flat_accent'])};
                     border-radius: 10px;
-                }
+                }}
             """
         else:
-            frame_qss = """
-                QFrame#dropZone {
-                    background: rgba(222, 238, 248, 150);
-                    border: 2px dashed rgba(70, 130, 180, 200);
+            frame_qss = f"""
+                QFrame#dropZone {{
+                    background: {tok_css(tok['flat_surface2'])};
+                    border: 2px dashed {tok_css(tok['flat_border_strong'])};
                     border-radius: 10px;
-                }
-                QFrame#dropZone:hover {
-                    background: rgba(222, 238, 248, 210);
-                    border: 2px dashed rgba(0, 118, 174, 230);
-                }
+                }}
+                QFrame#dropZone:hover {{
+                    background: {tok_css(tok['flat_accent_weak'])};
+                    border: 2px dashed {tok_css(tok['flat_accent'])};
+                }}
             """
         self.setStyleSheet(frame_qss)
         self._main_lbl.setStyleSheet(
-            "QLabel { color: rgba(40, 50, 65, 200); font-size: 12px; "
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
             "font-weight: 600; background: transparent; }"
         )
         self._browse_lbl.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 170); font-size: 11px; background: transparent; }"
-            " QLabel a { color: rgba(0, 118, 174, 235); font-weight: 600; text-decoration: none; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 11px; "
+            f"background: transparent; }} QLabel a {{ color: {tok_css(tok['flat_accent'])}; "
+            "font-weight: 600; text-decoration: none; }"
         )
 
 
@@ -313,6 +319,7 @@ class ImportMode(DataModeWidget):
             "Import Source",
             "Drop a folder or a .zip - the type is detected automatically.",
         )
+        self._src_card = src_card
         src_lay = src_card.layout()
         # Tighten this section so it doesn't dominate the widget height.
         src_lay.setContentsMargins(14, 10, 14, 10)
@@ -328,7 +335,7 @@ class ImportMode(DataModeWidget):
         head_row = QtWidgets.QHBoxLayout()
         head_row.setContentsMargins(0, 0, 0, 0)
         src_caption = QtWidgets.QLabel("Sources")
-        src_caption.setStyleSheet(self._caption_qss())
+        src_caption.setStyleSheet(caption_label_qss())
         head_row.addWidget(src_caption)
         head_row.addStretch(1)
 
@@ -351,10 +358,6 @@ class ImportMode(DataModeWidget):
         self.sources_placeholder = QtWidgets.QLabel(
             "No sources yet - drop a folder or .zip above, or click Browse…"
         )
-        self.sources_placeholder.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 140); font-size: 12px; "
-            "font-style: italic; background: transparent; }"
-        )
         self._sources_flow.addWidget(self.sources_placeholder)
         src_lay.addWidget(self._sources_host)
 
@@ -363,7 +366,7 @@ class ImportMode(DataModeWidget):
         # crushing when the panel is minimized.
         src_lay.addSpacing(4)
         policy_caption = QtWidgets.QLabel("When a run already exists")
-        policy_caption.setStyleSheet(self._caption_qss())
+        policy_caption.setStyleSheet(caption_label_qss())
         src_lay.addWidget(policy_caption)
 
         self.policy_group = GlassOptionCardGroup(self)
@@ -386,15 +389,7 @@ class ImportMode(DataModeWidget):
         src_lay.addWidget(self.policy_host)
 
         # ---- Preview card ---------------------------------------------
-        prev_card = QtWidgets.QFrame()
-        prev_card.setObjectName("glassPanel")
-        prev_card.setStyleSheet("""
-            QFrame#glassPanel {
-                background: rgba(255, 255, 255, 110);
-                border: 1px solid rgba(218, 224, 232, 170);
-                border-radius: 10px;
-            }
-        """)
+        prev_card = GlassPanel()
         prev_lay = QtWidgets.QVBoxLayout(prev_card)
         prev_lay.setContentsMargins(14, 12, 14, 12)
         prev_lay.setSpacing(8)
@@ -402,19 +397,16 @@ class ImportMode(DataModeWidget):
         prev_header_row = QtWidgets.QHBoxLayout()
         prev_header_row.setContentsMargins(0, 0, 0, 0)
         prev_header = QtWidgets.QLabel("Data to Import")
-        prev_header.setStyleSheet(
-            "QLabel { color: #333; font-size: 12px; font-weight: bold; "
-            "background: transparent; }"
-        )
+        self._prev_header = prev_header
         prev_header_row.addWidget(prev_header)
         prev_header_row.addStretch(1)
         self.runs_count_label = QtWidgets.QLabel("0 runs selected")
-        self.runs_count_label.setStyleSheet(self._caption_qss())
+        self.runs_count_label.setStyleSheet(caption_label_qss())
         prev_header_row.addWidget(self.runs_count_label)
         prev_lay.addLayout(prev_header_row)
 
         self.tree_hint = QtWidgets.QLabel("Expand a source to see its runs and files.")
-        self.tree_hint.setStyleSheet(self._desc_qss())
+        self.tree_hint.setStyleSheet(desc_label_qss())
         prev_lay.addWidget(self.tree_hint)
 
         self.archive_tree = QtWidgets.QTreeWidget()
@@ -430,36 +422,6 @@ class ImportMode(DataModeWidget):
         self.archive_tree.header().setStretchLastSection(False)
         self.archive_tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
         self.archive_tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-        self.archive_tree.setStyleSheet("""
-            QTreeWidget#archiveTree {
-                background-color: transparent;
-                border: none;
-                outline: none;
-            }
-            QTreeWidget#archiveTree::item {
-                padding: 4px 2px;
-                border: none;
-                color: rgba(30, 42, 56, 220);
-            }
-            QHeaderView::section {
-                background-color: transparent;
-                padding: 6px 8px;
-                border: none;
-                border-bottom: 1px solid rgba(210, 218, 228, 170);
-                font-weight: bold;
-                color: #333;
-            }
-            QScrollBar:vertical {
-                background: transparent; width: 8px; margin: 2px;
-            }
-            QScrollBar::handle:vertical {
-                background: rgba(120, 130, 145, 90);
-                border-radius: 4px; min-height: 24px;
-            }
-            QScrollBar::handle:vertical:hover { background: rgba(120, 130, 145, 140); }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
-        """)
         self.archive_tree.itemChanged.connect(self._on_tree_item_changed)
 
         # Placeholder shown in place of the tree until at least one source
@@ -483,10 +445,7 @@ class ImportMode(DataModeWidget):
         )
         ph_text.setWordWrap(True)
         ph_text.setAlignment(QtCore.Qt.AlignCenter)
-        ph_text.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 140); font-size: 12px; "
-            "font-style: italic; background: transparent; }"
-        )
+        self._tree_ph_text = ph_text
         ph_lay.addWidget(ph_text)
 
         self.tree_stack = QtWidgets.QStackedWidget()
@@ -529,7 +488,10 @@ class ImportMode(DataModeWidget):
         flay.setContentsMargins(0, 4, 0, 0)
         flay.setSpacing(8)
 
-        # Slim determinate progress bar - matches the Export page's footer bar.
+        # Slim determinate progress bar - matches the Export page's footer
+        # bar. Colors are sourced from the same `ctrl_progress_*` tokens the
+        # app-wide QProgressBar#progressBar rule uses, but geometry (a 3px
+        # sliver, not that rule's full-size bar) stays local.
         self.import_progress = QtWidgets.QProgressBar()
         self.import_progress.setObjectName("importProgress")
         self.import_progress.setRange(0, 100)
@@ -537,25 +499,10 @@ class ImportMode(DataModeWidget):
         self.import_progress.setTextVisible(False)
         self.import_progress.setFixedHeight(3)
         self.import_progress.setVisible(False)
-        self.import_progress.setStyleSheet("""
-            QProgressBar#importProgress {
-                background: rgba(255, 255, 255, 35);
-                border: none;
-                border-radius: 1px;
-            }
-            QProgressBar#importProgress::chunk {
-                background: rgba(0, 118, 174, 120);
-                border-radius: 1px;
-            }
-        """)
         flay.addWidget(self.import_progress)
 
         self.status_label = QtWidgets.QLabel("")
         self.status_label.setWordWrap(False)
-        self.status_label.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 165); font-size: 11px; "
-            "background: transparent; border: none; padding: 0px; }"
-        )
         self.status_label.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred
         )
@@ -578,23 +525,76 @@ class ImportMode(DataModeWidget):
 
         self.root.addWidget(footer, 0)
 
+        self._status_tint = "b"  # current _set_status_tint color, replayed on theme change
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    # ------------------------------------------------------------------
+    #  Theming
+    # ------------------------------------------------------------------
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        tok = ThemeManager.instance().tokens()
+        self.sources_placeholder.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 12px; "
+            "font-style: italic; background: transparent; }"
+        )
+        self._prev_header.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
+            "font-weight: bold; background: transparent; }"
+        )
+        self._tree_ph_text.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 12px; "
+            "font-style: italic; background: transparent; }"
+        )
+        self.archive_tree.setStyleSheet(f"""
+            QTreeWidget#archiveTree {{
+                background-color: transparent;
+                border: none;
+                outline: none;
+            }}
+            QTreeWidget#archiveTree::item {{
+                padding: 4px 2px;
+                border: none;
+                color: {tok_css(tok['flat_text'])};
+            }}
+            QHeaderView::section {{
+                background-color: transparent;
+                padding: 6px 8px;
+                border: none;
+                border-bottom: 1px solid {tok_css(tok['flat_border'])};
+                font-weight: bold;
+                color: {tok_css(tok['flat_text'])};
+            }}
+        """)
+        self.import_progress.setStyleSheet(f"""
+            QProgressBar#importProgress {{
+                background: {tok_css(tok['flat_surface2'])};
+                border: none;
+                border-radius: 1px;
+            }}
+            QProgressBar#importProgress::chunk {{
+                background: qlineargradient(
+                    spread:pad, x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {tok_css(tok['ctrl_progress_chunk_start'])},
+                    stop:1 {tok_css(tok['ctrl_progress_chunk_end'])}
+                );
+                border-radius: 1px;
+            }}
+        """)
+        self._set_status_tint(self._status_tint)
+        self._restyle_card(self._src_card)
+        for chip in self._chip_widgets.values():
+            self._restyle_chip(chip)
+
     @staticmethod
     def _scroll_qss():
-        return """
-            QScrollArea#importScroll { background: transparent; border: none; }
-            QScrollBar:vertical {
-                background: transparent; width: 8px; margin: 2px 0 2px 0;
-            }
-            QScrollBar::handle:vertical {
-                background: rgba(120, 134, 150, 110);
-                border-radius: 4px; min-height: 28px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: rgba(90, 104, 120, 150);
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-        """
+        # The scrollbar handle itself is already themed app-wide by the
+        # global QScrollBar rule in app_theme.qss - only the transparent
+        # background needs declaring here.
+        return "QScrollArea#importScroll { background: transparent; border: none; }"
 
     # ------------------------------------------------------------------
     #  Responsive policy-card relayout
@@ -854,13 +854,8 @@ class ImportMode(DataModeWidget):
 
         chip = QtWidgets.QFrame()
         chip.setObjectName("sourceChip")
-        chip.setStyleSheet("""
-            QFrame#sourceChip {
-                background: rgba(255, 255, 255, 160);
-                border: 1px solid rgba(215, 222, 230, 200);
-                border-radius: 8px;
-            }
-        """)
+        chip._is_zip = is_zip  # read back by _restyle_chip on theme change
+
         row = QtWidgets.QHBoxLayout(chip)
         row.setContentsMargins(10, 6, 6, 6)
         row.setSpacing(8)
@@ -871,43 +866,58 @@ class ImportMode(DataModeWidget):
         label = QtWidgets.QLabel(name)
         label.setToolTip(path)
         label.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Fixed)
-        label.setStyleSheet(
-            "QLabel { color: rgba(28, 40, 52, 230); font-size: 12px; "
-            "font-weight: 600; background: transparent; }"
-        )
         row.addWidget(label)
+        chip._name_lbl = label
 
         # Colored kind badge stands in for an icon (zip vs. folder).
         kind_lbl = QtWidgets.QLabel("ZIP" if is_zip else "FOLDER")
         kind_lbl.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Fixed)
-        badge_color = (
-            "background: rgba(214, 90, 110, 60); color: rgba(160, 40, 60, 235);"
-            if is_zip
-            else "background: rgba(70, 160, 110, 60); color: rgba(30, 110, 70, 235);"
-        )
-        kind_lbl.setStyleSheet(
-            f"QLabel {{ {badge_color} font-size: 9px; font-weight: 700; "
-            "padding: 2px 6px; border-radius: 6px; }"
-        )
         row.addWidget(kind_lbl)
+        chip._kind_lbl = kind_lbl
 
         btn_x = QtWidgets.QToolButton()
         btn_x.setText("\u00d7")
         btn_x.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         btn_x.setFixedSize(20, 20)
         btn_x.setToolTip("Remove this source")
-        btn_x.setStyleSheet("""
-            QToolButton {
-                background: transparent; border: none; border-radius: 10px;
-                color: rgba(110, 120, 130, 200); font-size: 15px; font-weight: bold;
-            }
-            QToolButton:hover {
-                background: rgba(210, 55, 55, 40); color: rgba(200, 45, 45, 240);
-            }
-        """)
         btn_x.clicked.connect(lambda _=False, p=path: self._remove_source(p))
         row.addWidget(btn_x)
+        chip._btn_x = btn_x
+
+        self._restyle_chip(chip)
         return chip
+
+    def _restyle_chip(self, chip) -> None:
+        """(Re)applies token-driven QSS to a source chip and its children -
+        called at creation and again on every theme change."""
+        tok = ThemeManager.instance().tokens()
+        is_zip = chip._is_zip
+        chip.setStyleSheet(
+            f"QFrame#sourceChip {{ background: {tok_css(tok['flat_surface'])}; "
+            f"border: 1px solid {tok_css(tok['flat_border'])}; border-radius: 8px; }}"
+        )
+        chip._name_lbl.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
+            "font-weight: 600; background: transparent; }"
+        )
+        badge_fg, badge_bg = (
+            (tok["flat_error"], tok["flat_error_weak"])
+            if is_zip
+            else (tok["flat_success"], tok["flat_success_weak"])
+        )
+        chip._kind_lbl.setStyleSheet(
+            f"QLabel {{ background: {tok_css(badge_bg)}; color: {tok_css(badge_fg)}; "
+            "font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 6px; }"
+        )
+        chip._btn_x.setStyleSheet(f"""
+            QToolButton {{
+                background: transparent; border: none; border-radius: 10px;
+                color: {tok_css(tok['flat_text_muted'])}; font-size: 15px; font-weight: bold;
+            }}
+            QToolButton:hover {{
+                background: {tok_css(tok['flat_error_weak'])}; color: {tok_css(tok['flat_error'])};
+            }}
+        """)
 
     # ------------------------------------------------------------------
     #  Archive preview (one source's branch at a time - never a full rebuild)
@@ -949,13 +959,15 @@ class ImportMode(DataModeWidget):
             self.status_label.setText(f"“{src_label}” can't be imported - see warning below.")
 
     def _set_status_tint(self, color):
+        self._status_tint = color
+        tok = ThemeManager.instance().tokens()
         fg = {
-            "r": "rgba(176, 96, 12, 255)",
-            "g": "rgba(46, 120, 70, 220)",
-            "b": "rgba(60, 72, 88, 165)",
-        }.get(color, "rgba(60, 72, 88, 165)")
+            "r": tok["flat_warning"],
+            "g": tok["flat_success"],
+            "b": tok["flat_text_muted"],
+        }.get(color, tok["flat_text_muted"])
         self.status_label.setStyleSheet(
-            f"QLabel {{ color: {fg}; font-size: 11px; "
+            f"QLabel {{ color: {tok_css(fg)}; font-size: 11px; "
             "background: transparent; border: none; padding: 0px; }"
         )
 
@@ -1002,7 +1014,8 @@ class ImportMode(DataModeWidget):
     def _flag_source_root(self, src_root, message):
         """Mark a source root as un-importable and attach a warning child."""
         src_root.setIcon(0, self._warning_icon())
-        warn_fg = QtGui.QColor(176, 96, 12)
+        tok = ThemeManager.instance().tokens()
+        warn_fg = QtGui.QColor(*tok["flat_warning"])
         src_root.setForeground(0, warn_fg)
         msg = message or "This source can't be imported."
         src_root.setToolTip(0, msg)
@@ -1175,7 +1188,7 @@ class ImportMode(DataModeWidget):
         pix.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(pix)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
-        amber = QtGui.QColor(214, 158, 46)
+        amber = QtGui.QColor(*ThemeManager.instance().tokens()["flat_warning"])
         p.setBrush(amber)
         p.setPen(QtCore.Qt.NoPen)
         tri = QtGui.QPolygonF([QtCore.QPointF(8, 1), QtCore.QPointF(15, 14), QtCore.QPointF(1, 14)])
@@ -1190,7 +1203,7 @@ class ImportMode(DataModeWidget):
         """A tree row flagging that a source/run can't be imported."""
         item = QtWidgets.QTreeWidgetItem([message, kind])
         item.setIcon(0, self._warning_icon())
-        warn_fg = QtGui.QColor(176, 96, 12)
+        warn_fg = QtGui.QColor(*ThemeManager.instance().tokens()["flat_warning"])
         item.setForeground(0, warn_fg)
         item.setForeground(1, warn_fg)
         f = item.font(0)
@@ -1587,27 +1600,6 @@ class ImportMode(DataModeWidget):
     # ------------------------------------------------------------------
     #  Styling helpers
     # ------------------------------------------------------------------
-    @staticmethod
-    def _desc_qss():
-        return (
-            "QLabel { color: rgba(60, 72, 88, 190); font-size: 12px; " "background: transparent; }"
-        )
-
-    @staticmethod
-    def _caption_qss():
-        return (
-            "QLabel { color: rgba(60, 72, 88, 160); font-size: 10px; "
-            "font-weight: 600; text-transform: uppercase; "
-            "letter-spacing: 0.5px; background: transparent; }"
-        )
-
-    @staticmethod
-    def _radio_qss():
-        return (
-            "QRadioButton, QCheckBox { color: rgba(40, 50, 65, 200); "
-            "font-size: 12px; background: transparent; }"
-        )
-
     def _icon(self, name):
         try:
             from QATCH.common.architecture import Architecture
@@ -1620,27 +1612,29 @@ class ImportMode(DataModeWidget):
         return QtGui.QIcon()
 
     def _card(self, title, subtitle=""):
-        card = QtWidgets.QFrame()
-        card.setObjectName("glassPanel")
-        card.setStyleSheet("""
-            QFrame#glassPanel {
-                background: rgba(255, 255, 255, 110);
-                border: 1px solid rgba(218, 224, 232, 170);
-                border-radius: 10px;
-            }
-        """)
+        card = GlassPanel()
         lay = QtWidgets.QVBoxLayout(card)
         lay.setContentsMargins(14, 12, 14, 12)
         lay.setSpacing(8)
         header = QtWidgets.QLabel(title)
-        header.setStyleSheet(
-            "QLabel { color: #333; font-size: 12px; font-weight: bold; "
-            "background: transparent; }"
-        )
+        card._header_lbl = header
         lay.addWidget(header)
         if subtitle:
             sub = QtWidgets.QLabel(subtitle)
-            sub.setStyleSheet(self._desc_qss())
             sub.setWordWrap(True)
+            card._sub_lbl = sub
             lay.addWidget(sub)
+        else:
+            card._sub_lbl = None
+        self._restyle_card(card)
         return card
+
+    @staticmethod
+    def _restyle_card(card) -> None:
+        tok = ThemeManager.instance().tokens()
+        card._header_lbl.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
+            "font-weight: bold; background: transparent; }"
+        )
+        if card._sub_lbl is not None:
+            card._sub_lbl.setStyleSheet(desc_label_qss())

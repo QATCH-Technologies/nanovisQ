@@ -66,8 +66,11 @@ from QATCH.ui.components import (
     GlassLineEdit,
     GlassOptionCard,
     GlassOptionCardGroup,
+    GlassPanel,
     GlassPushButton,
 )
+from QATCH.ui.components.icon_utils import tinted_icon
+from QATCH.ui.styles.theme_manager import ThemeManager, caption_label_qss, desc_label_qss, tok_css
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 # Parser for reading run capture archives when building the CSV report. Imported
@@ -172,6 +175,7 @@ class _Stepper(QtWidgets.QWidget):
 
         outer.addLayout(grid)
         self._restyle()
+        ThemeManager.instance().themeChanged.connect(lambda _: self._restyle())
 
     def _on_clicked(self, idx):
         if idx <= self._max_reached:
@@ -220,17 +224,23 @@ class _Stepper(QtWidgets.QWidget):
 
     @staticmethod
     def _circle_qss(state):
+        tok = ThemeManager.instance().tokens()
         if state == "current":
-            body = "background: rgba(0, 118, 174, 235); color: white; border: none;"
+            body = (
+                f"background: {tok_css(tok['flat_accent'])}; "
+                f"color: {tok_css(tok['flat_on_accent'])}; border: none;"
+            )
         elif state == "done":
             body = (
-                "background: rgba(10, 163, 230, 90); color: rgba(0, 90, 135, 245); "
-                "border: 1px solid rgba(0, 118, 174, 150);"
+                f"background: {tok_css(tok['flat_accent_weak'])}; "
+                f"color: {tok_css(tok['flat_accent'])}; "
+                f"border: 1px solid {tok_css(tok['flat_accent'])};"
             )
         else:
             body = (
-                "background: rgba(255, 255, 255, 90); color: rgba(60, 72, 88, 170); "
-                "border: 1px solid rgba(180, 195, 210, 170);"
+                f"background: {tok_css(tok['flat_surface2'])}; "
+                f"color: {tok_css(tok['flat_text_muted'])}; "
+                f"border: 1px solid {tok_css(tok['flat_border'])};"
             )
         return f"QToolButton {{ {body} border-radius: 13px; font-weight: 700; font-size: 12px; }}"
 
@@ -240,7 +250,8 @@ class _Stepper(QtWidgets.QWidget):
         # active/inactive changes the text's rendered width slightly, which
         # made the whole bar visibly jitter/resize on every step transition.
         # Only colour differentiates the active step now.
-        color = "rgba(0, 90, 135, 245)" if active else "rgba(60, 72, 88, 160)"
+        tok = ThemeManager.instance().tokens()
+        color = tok_css(tok["flat_accent"] if active else tok["flat_text_muted"])
         return (
             f"QLabel {{ color: {color}; font-size: 10px; font-weight: 700; "
             "background: transparent; }"
@@ -248,7 +259,8 @@ class _Stepper(QtWidgets.QWidget):
 
     @staticmethod
     def _line_qss(done):
-        color = "rgba(0, 118, 174, 150)" if done else "rgba(190, 200, 212, 140)"
+        tok = ThemeManager.instance().tokens()
+        color = tok_css(tok["flat_accent"] if done else tok["flat_border"])
         return f"QFrame {{ background: {color}; border: none; }}"
 
 
@@ -344,45 +356,47 @@ class _ToggleChip(QtWidgets.QPushButton):
         self.setChecked(True)
         self.toggled.connect(self._restyle)
         self._restyle()
+        ThemeManager.instance().themeChanged.connect(lambda _: self._restyle())
 
     def label(self):
         return self._label
 
     def _restyle(self, *_):
         checked = self.isChecked()
+        tok = ThemeManager.instance().tokens()
         self.setText(("✓ " if checked else "+ ") + self._label)
         if checked:
-            self.setStyleSheet("""
-                QPushButton {
-                    background: rgba(10, 163, 230, 35);
-                    border: 1.5px solid rgba(0, 118, 174, 200);
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    background: {tok_css(tok['flat_accent_weak'])};
+                    border: 1.5px solid {tok_css(tok['flat_accent'])};
                     border-radius: 13px; padding: 5px 12px;
-                    color: rgba(0, 90, 135, 245); font-size: 12px; font-weight: 700;
-                }
-                QPushButton:hover { background: rgba(10, 163, 230, 55); }
-                QPushButton:disabled {
-                    background: rgba(10, 163, 230, 22);
-                    border: 1.5px solid rgba(0, 118, 174, 120);
-                    color: rgba(0, 90, 135, 150);
-                }
+                    color: {tok_css(tok['flat_accent'])}; font-size: 12px; font-weight: 700;
+                }}
+                QPushButton:hover {{ background: {tok_css(tok['flat_accent_ring'])}; }}
+                QPushButton:disabled {{
+                    background: {tok_css(tok['flat_accent_weak'])};
+                    border: 1.5px solid {tok_css(tok['flat_accent_ring'])};
+                    color: {tok_css(tok['flat_text_muted'])};
+                }}
             """)
         else:
-            self.setStyleSheet("""
-                QPushButton {
-                    background: rgba(255, 255, 255, 130);
-                    border: 1px solid rgba(180, 190, 202, 200);
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    background: {tok_css(tok['flat_surface'])};
+                    border: 1px solid {tok_css(tok['flat_border_strong'])};
                     border-radius: 13px; padding: 5px 12px;
-                    color: rgba(60, 72, 88, 200); font-size: 12px; font-weight: 600;
-                }
-                QPushButton:hover {
-                    background: rgba(255, 255, 255, 190);
-                    border: 1px solid rgba(140, 155, 172, 220);
-                }
-                QPushButton:disabled {
-                    background: rgba(255, 255, 255, 70);
-                    border: 1px solid rgba(180, 190, 202, 120);
-                    color: rgba(60, 72, 88, 120);
-                }
+                    color: {tok_css(tok['flat_text'])}; font-size: 12px; font-weight: 600;
+                }}
+                QPushButton:hover {{
+                    background: {tok_css(tok['flat_surface2'])};
+                    border: 1px solid {tok_css(tok['flat_border_strong'])};
+                }}
+                QPushButton:disabled {{
+                    background: {tok_css(tok['flat_surface'])};
+                    border: 1px solid {tok_css(tok['flat_border'])};
+                    color: {tok_css(tok['flat_text_muted'])};
+                }}
             """)
 
 
@@ -406,6 +420,8 @@ class ExportMode(DataModeWidget):
         self._exported = False  # set True after a successful export
         self.csv_report_path = None  # path of the CSV report being written
         self._task_running = False  # drives Cancel's dual abort/reset behavior
+        self._csv_card_opacity = None  # lazily-created dim effect for the CSV card
+        self._cards = []  # every GlassPanel from self._card(), restyled on theme change
 
         # Tracks the live column mode of the responsive grids so resizeEvent
         # only re-lays-out when a breakpoint is actually crossed.
@@ -443,6 +459,78 @@ class ExportMode(DataModeWidget):
         self._step = 0
         self.stepper.set_current(0)
         self.btn_back.setEnabled(False)
+
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    # ------------------------------------------------------------------
+    #  Theming
+    # ------------------------------------------------------------------
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        tok = ThemeManager.instance().tokens()
+
+        for card in self._cards:
+            self._restyle_card(card)
+
+        self._review_heading.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 14px; "
+            "font-weight: bold; background: transparent; }"
+        )
+        self.csv_count_label.setStyleSheet(caption_label_qss())
+
+        self._date_box.setStyleSheet(
+            f"QFrame#dateRangeBox {{ background: {tok_css(tok['flat_surface2'])}; "
+            f"border: 1px solid {tok_css(tok['flat_border'])}; border-radius: 8px; }}"
+        )
+        self.chk_dated_subfolder.setStyleSheet(self._radio_qss())
+        self.chk_date_range.setStyleSheet(self._radio_qss())
+        self.date_start.setStyleSheet(self._date_qss())
+        self.date_end.setStyleSheet(self._date_qss())
+        self.lbl_date_from.setStyleSheet(self._inline_lbl_qss())
+        self.lbl_date_to.setStyleSheet(self._inline_lbl_qss())
+        self.sep_detect_eject.setStyleSheet(
+            f"background: {tok_css(tok['flat_border'])}; border: none;"
+        )
+        self.sep_eject_choose.setStyleSheet(
+            f"background: {tok_css(tok['flat_border'])}; border: none;"
+        )
+
+        self.review_banner.setStyleSheet(
+            f"QFrame#reviewBanner {{ background: {tok_css(tok['flat_accent_weak'])}; "
+            f"border: 1px solid {tok_css(tok['flat_accent'])}; border-radius: 10px; }}"
+        )
+        self._banner_icon.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_accent'])}; font-size: 14px; "
+            "font-weight: 800; background: transparent; }"
+        )
+        self.review_banner_text.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_accent'])}; font-size: 12px; "
+            "font-weight: 600; background: transparent; }"
+        )
+
+        self.export_progress.setStyleSheet(f"""
+            QProgressBar#exportProgress {{
+                background: {tok_css(tok['flat_surface2'])};
+                border: none;
+                border-radius: 1px;
+            }}
+            QProgressBar#exportProgress::chunk {{
+                background: qlineargradient(
+                    spread:pad, x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {tok_css(tok['ctrl_progress_chunk_start'])},
+                    stop:1 {tok_css(tok['ctrl_progress_chunk_end'])}
+                );
+                border-radius: 1px;
+            }}
+        """)
+
+        # Review cards are rebuilt wholesale (not restyled in place) every
+        # time the review step is (re)populated - simplest way to guarantee
+        # every review-card label picks up the new theme too.
+        self._refresh_review()
 
     @staticmethod
     def _make_step_scroll(content_widget):
@@ -615,13 +703,7 @@ class ExportMode(DataModeWidget):
         # box means "all dates" (date_filter == 0 / date_filter_max == None).
         date_box = QtWidgets.QFrame()
         date_box.setObjectName("dateRangeBox")
-        date_box.setStyleSheet("""
-            QFrame#dateRangeBox {
-                background: rgba(240, 246, 250, 130);
-                border: 1px solid rgba(190, 205, 220, 170);
-                border-radius: 8px;
-            }
-        """)
+        self._date_box = date_box
         db = QtWidgets.QVBoxLayout(date_box)
         db.setContentsMargins(10, 8, 10, 8)
         db.setSpacing(6)
@@ -739,7 +821,7 @@ class ExportMode(DataModeWidget):
         cols_row.addWidget(self._caption("Columns to include"))
         cols_row.addStretch(1)
         self.csv_count_label = QtWidgets.QLabel()
-        self.csv_count_label.setStyleSheet(self._caption_qss())
+        self.csv_count_label.setStyleSheet(caption_label_qss())
         cols_row.addWidget(self.csv_count_label)
         lay.addLayout(cols_row)
 
@@ -769,7 +851,7 @@ class ExportMode(DataModeWidget):
         policy_desc = QtWidgets.QLabel(
             "Applies if the export name matches a file already in the destination."
         )
-        policy_desc.setStyleSheet(self._desc_qss())
+        policy_desc.setStyleSheet(desc_label_qss())
         policy_desc.setWordWrap(True)
         policy_card.body.addWidget(policy_desc)
 
@@ -812,15 +894,13 @@ class ExportMode(DataModeWidget):
         host, outer = self._step_host()
 
         heading = QtWidgets.QLabel("Review & export")
-        heading.setStyleSheet(
-            "QLabel { color: #333; font-size: 14px; font-weight: bold; background: transparent; }"
-        )
+        self._review_heading = heading
         outer.addWidget(heading)
         subtitle = QtWidgets.QLabel(
             "Confirm your selections, then export. Tap Edit on any card to change it."
         )
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet(self._desc_qss())
+        subtitle.setStyleSheet(desc_label_qss())
         outer.addWidget(subtitle)
         outer.addSpacing(2)
 
@@ -834,27 +914,13 @@ class ExportMode(DataModeWidget):
         # infer it from the cards above.
         self.review_banner = QtWidgets.QFrame()
         self.review_banner.setObjectName("reviewBanner")
-        self.review_banner.setStyleSheet("""
-            QFrame#reviewBanner {
-                background: rgba(222, 238, 248, 140);
-                border: 1px solid rgba(140, 170, 195, 190);
-                border-radius: 10px;
-            }
-        """)
         banner_lay = QtWidgets.QHBoxLayout(self.review_banner)
         banner_lay.setContentsMargins(12, 10, 12, 10)
         banner_lay.setSpacing(8)
-        banner_icon = QtWidgets.QLabel("✓")
-        banner_icon.setStyleSheet(
-            "QLabel { color: rgba(0, 118, 174, 235); font-size: 14px; font-weight: 800; "
-            "background: transparent; }"
-        )
+        self._banner_icon = QtWidgets.QLabel("✓")
+        banner_icon = self._banner_icon
         self.review_banner_text = QtWidgets.QLabel()
         self.review_banner_text.setWordWrap(True)
-        self.review_banner_text.setStyleSheet(
-            "QLabel { color: rgba(0, 70, 110, 245); font-size: 12px; font-weight: 600; "
-            "background: transparent; }"
-        )
         banner_lay.addWidget(banner_icon, 0)
         banner_lay.addWidget(self.review_banner_text, 1)
         outer.addWidget(self.review_banner)
@@ -940,9 +1006,7 @@ class ExportMode(DataModeWidget):
     def _build_review_card(self, title, step_index, rows):
         """One grouped review card: a small caption + "Edit" link (jumps
         back to the step that owns this data) above a 2-column field grid."""
-        card = QtWidgets.QFrame()
-        card.setObjectName("glassPanel")
-        card.setStyleSheet(self._glass_panel_qss())
+        card = GlassPanel()
         clay = QtWidgets.QVBoxLayout(card)
         clay.setContentsMargins(14, 12, 14, 12)
         clay.setSpacing(8)
@@ -951,7 +1015,7 @@ class ExportMode(DataModeWidget):
         head_row.setContentsMargins(0, 0, 0, 0)
         head_row.setSpacing(8)
         cap = QtWidgets.QLabel(title.upper())
-        cap.setStyleSheet(self._caption_qss())
+        cap.setStyleSheet(caption_label_qss())
         head_row.addWidget(cap)
         head_row.addStretch(1)
         edit_btn = GlassPushButton(" Edit", variant="ghost")
@@ -1045,6 +1109,7 @@ class ExportMode(DataModeWidget):
 
     @staticmethod
     def _review_field(label, value):
+        tok = ThemeManager.instance().tokens()
         block = QtWidgets.QWidget()
         block.setStyleSheet("background: transparent;")
         blay = QtWidgets.QVBoxLayout(block)
@@ -1052,14 +1117,15 @@ class ExportMode(DataModeWidget):
         blay.setSpacing(2)
         lbl = QtWidgets.QLabel(label)
         lbl.setStyleSheet(
-            "QLabel { color: rgba(60, 72, 88, 160); font-size: 10px; font-weight: 600; "
-            "text-transform: uppercase; letter-spacing: 0.5px; background: transparent; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 10px; "
+            "font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; "
+            "background: transparent; }"
         )
         val = QtWidgets.QLabel(str(value))
         val.setWordWrap(True)
         val.setStyleSheet(
-            "QLabel { color: rgba(20, 30, 42, 235); font-size: 13px; font-weight: 600; "
-            "background: transparent; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 13px; "
+            "font-weight: 600; background: transparent; }"
         )
         blay.addWidget(lbl)
         blay.addWidget(val)
@@ -1089,17 +1155,6 @@ class ExportMode(DataModeWidget):
         self.export_progress.setTextVisible(False)
         self.export_progress.setFixedHeight(3)
         self.export_progress.setVisible(False)
-        self.export_progress.setStyleSheet("""
-            QProgressBar#exportProgress {
-                background: rgba(255, 255, 255, 35);
-                border: none;
-                border-radius: 1px;
-            }
-            QProgressBar#exportProgress::chunk {
-                background: rgba(0, 118, 174, 120);
-                border-radius: 1px;
-            }
-        """)
         flay.addWidget(self.export_progress)
 
         # Cancel sits on the left (always available - aborts a running task, or
@@ -1621,10 +1676,18 @@ class ExportMode(DataModeWidget):
     def _on_format_changed(self, *_):
         is_csv = self.rb_csv.isChecked()
         self.csv_card.setEnabled(is_csv)
-        # Dim the disabled CSV card so the active format reads clearly.
-        self.csv_card.setProperty("dimmed", not is_csv)
-        self.csv_card.style().unpolish(self.csv_card)
-        self.csv_card.style().polish(self.csv_card)
+        # Dim the disabled CSV card so the active format reads clearly. A
+        # QGraphicsOpacityEffect is safe here (per GlassOptionCard.setCardEnabled's
+        # reasoning): this card only repaints on rare format-change events,
+        # never on a timer/hover cycle, so it doesn't hit the offscreen
+        # pixmap-caching ghosting failure mode of continuously-animated widgets.
+        if not is_csv:
+            if self._csv_card_opacity is None:
+                self._csv_card_opacity = QtWidgets.QGraphicsOpacityEffect(self.csv_card)
+            self._csv_card_opacity.setOpacity(0.5)
+            self.csv_card.setGraphicsEffect(self._csv_card_opacity)
+        else:
+            self.csv_card.setGraphicsEffect(None)
         # CSV relabels the merge/skip policy to Append/Cancel (semantics differ).
         if is_csv:
             self.rb_merge.setText("Append")
@@ -2399,27 +2462,14 @@ class ExportMode(DataModeWidget):
     # ------------------------------------------------------------------
     def _caption(self, text):
         w = QtWidgets.QLabel(text)
-        w.setStyleSheet(self._caption_qss())
+        w.setStyleSheet(caption_label_qss())
         return w
 
     @staticmethod
-    def _desc_qss():
-        return (
-            "QLabel { color: rgba(60, 72, 88, 190); font-size: 12px; " "background: transparent; }"
-        )
-
-    @staticmethod
-    def _caption_qss():
-        return (
-            "QLabel { color: rgba(60, 72, 88, 160); font-size: 10px; "
-            "font-weight: 600; text-transform: uppercase; "
-            "letter-spacing: 0.5px; background: transparent; }"
-        )
-
-    @staticmethod
     def _radio_qss():
+        tok = ThemeManager.instance().tokens()
         return (
-            "QRadioButton, QCheckBox { color: rgba(40, 50, 65, 200); "
+            f"QRadioButton, QCheckBox {{ color: {tok_css(tok['flat_text'])}; "
             "font-size: 12px; background: transparent; }"
         )
 
@@ -2433,54 +2483,47 @@ class ExportMode(DataModeWidget):
     @staticmethod
     def _picker_separator():
         """A thin vertical divider between borderless pickerBox actions."""
+        tok = ThemeManager.instance().tokens()
         sep = QtWidgets.QFrame()
         sep.setFixedWidth(1)
         sep.setFixedHeight(18)
-        sep.setStyleSheet("background: rgba(170, 182, 196, 150); border: none;")
+        sep.setStyleSheet(f"background: {tok_css(tok['flat_border'])}; border: none;")
         return sep
 
     @staticmethod
     def _scroll_qss():
-        return """
-            QScrollArea#exportScroll { background: transparent; border: none; }
-            QScrollBar:vertical {
-                background: transparent; width: 8px; margin: 2px 0 2px 0;
-            }
-            QScrollBar::handle:vertical {
-                background: rgba(120, 134, 150, 110);
-                border-radius: 4px; min-height: 28px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: rgba(90, 104, 120, 150);
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-        """
+        # The scrollbar handle itself is already themed app-wide by the
+        # global QScrollBar rule in app_theme.qss - only the transparent
+        # background needs declaring here.
+        return "QScrollArea#exportScroll { background: transparent; border: none; }"
 
     @staticmethod
     def _inline_lbl_qss():
+        tok = ThemeManager.instance().tokens()
         return (
-            "QLabel { color: rgba(60, 72, 88, 200); font-size: 12px; " "background: transparent; }"
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
+            "background: transparent; }"
         )
 
     def _date_qss(self):
         """Glass styling for QDateEdit that mirrors the line-edit/combo look."""
+        tok = ThemeManager.instance().tokens()
         icon_path = self._icon_file_path("date-range.svg")
         drop_image = f"image: url({icon_path});" if icon_path else ""
         return f"""
             QDateEdit {{
-                background: rgba(255, 255, 255, 150);
-                border: 1px solid rgba(120, 130, 145, 150);
+                background: {tok_css(tok['combo_bg'])};
+                border: 1px solid {tok_css(tok['combo_border'])};
                 border-radius: 14px; padding-left: 12px; padding-right: 6px;
-                color: rgb(40, 50, 62); font-weight: bold; min-height: 26px;
+                color: {tok_css(tok['combo_text'])}; font-weight: bold; min-height: 26px;
             }}
             QDateEdit:hover {{
-                background: rgba(255, 255, 255, 200);
-                border: 1px solid rgba(90, 100, 115, 190);
+                background: {tok_css(tok['combo_bg_hover'])};
+                border: 1px solid {tok_css(tok['combo_border_hover'])};
             }}
             QDateEdit:focus {{
-                background: rgba(255, 255, 255, 225);
-                border: 1px solid rgba(10, 163, 230, 200);
+                background: {tok_css(tok['combo_bg_focus'])};
+                border: 1px solid {tok_css(tok['combo_border_focus'])};
             }}
             QDateEdit::drop-down {{
                 border: none; background: transparent; width: 24px;
@@ -2490,11 +2533,14 @@ class ExportMode(DataModeWidget):
                 {drop_image}
                 width: 14px; height: 14px;
             }}
-            QCalendarWidget QWidget {{ alternate-background-color: rgba(235,240,246,255); }}
+            QCalendarWidget QWidget {{
+                alternate-background-color: {tok_css(tok['combo_popup_bg'])};
+                background-color: {tok_css(tok['combo_popup_bg'])};
+            }}
             QCalendarWidget QAbstractItemView:enabled {{
-                color: rgb(40, 50, 62);
-                selection-background-color: rgba(10, 163, 230, 60);
-                selection-color: rgb(20, 30, 40);
+                color: {tok_css(tok['combo_text'])};
+                selection-background-color: {tok_css(tok['combo_selection_bg'])};
+                selection-color: {tok_css(tok['combo_selection_text'])};
             }}
         """
 
@@ -2514,31 +2560,16 @@ class ExportMode(DataModeWidget):
             pass
         return ""
 
-    @staticmethod
-    def _glass_panel_qss():
-        return """
-            QFrame#glassPanel {
-                background: rgba(255, 255, 255, 110);
-                border: 1px solid rgba(218, 224, 232, 170);
-                border-radius: 10px;
-            }
-            QFrame#glassPanel[dimmed="true"] {
-                background: rgba(255, 255, 255, 55);
-                border: 1px solid rgba(218, 224, 232, 100);
-            }
-        """
-
     def _card(self, title, subtitle="", header_right=None):
-        """A frosted glass panel. Returns the QFrame with a `.body` QVBoxLayout
-        for callers to populate (header + optional subtitle are pre-added).
+        """A frosted glass panel. Returns the GlassPanel with a `.body`
+        QVBoxLayout for callers to populate (header + optional subtitle are
+        pre-added).
 
         `header_right` is an optional widget or layout (e.g. "Select all /
         Clear" actions, an "Edit" link) docked to the right of the title,
         on the same line.
         """
-        card = QtWidgets.QFrame()
-        card.setObjectName("glassPanel")
-        card.setStyleSheet(self._glass_panel_qss())
+        card = GlassPanel()
         outer = QtWidgets.QVBoxLayout(card)
         outer.setContentsMargins(14, 12, 14, 12)
         outer.setSpacing(8)
@@ -2547,10 +2578,7 @@ class ExportMode(DataModeWidget):
         head_row.setContentsMargins(0, 0, 0, 0)
         head_row.setSpacing(8)
         header = QtWidgets.QLabel(title)
-        header.setStyleSheet(
-            "QLabel { color: #333; font-size: 12px; font-weight: bold; "
-            "background: transparent; }"
-        )
+        card._header_lbl = header
         head_row.addWidget(header)
         head_row.addStretch(1)
         if header_right is not None:
@@ -2561,13 +2589,27 @@ class ExportMode(DataModeWidget):
         outer.addLayout(head_row)
         if subtitle:
             sub = QtWidgets.QLabel(subtitle)
-            sub.setStyleSheet(self._desc_qss())
             sub.setWordWrap(True)
+            card._sub_lbl = sub
             outer.addWidget(sub)
+        else:
+            card._sub_lbl = None
 
         # Body holds the actual controls; callers append here.
         card.body = QtWidgets.QVBoxLayout()
         card.body.setContentsMargins(0, 2, 0, 0)
         card.body.setSpacing(8)
         outer.addLayout(card.body)
+        self._restyle_card(card)
+        self._cards.append(card)
         return card
+
+    @staticmethod
+    def _restyle_card(card) -> None:
+        tok = ThemeManager.instance().tokens()
+        card._header_lbl.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
+            "font-weight: bold; background: transparent; }"
+        )
+        if card._sub_lbl is not None:
+            card._sub_lbl.setStyleSheet(desc_label_qss())

@@ -345,6 +345,12 @@ class ColorTokens(TypedDict):
     flat_error: RGBA
     flat_error_weak: RGBA
     flat_error_ring: RGBA
+    flat_success: RGBA
+    flat_success_weak: RGBA
+    flat_success_ring: RGBA
+    flat_warning: RGBA
+    flat_warning_weak: RGBA
+    flat_warning_ring: RGBA
     flat_track: RGBA
     flat_knob: RGBA
     flat_shadow: RGBA
@@ -709,6 +715,12 @@ _FLAT_LIGHT: dict = {
     "flat_error": (201, 47, 51, 255),
     "flat_error_weak": (255, 235, 232, 255),
     "flat_error_ring": (201, 47, 51, 61),
+    "flat_success": (22, 132, 74, 255),
+    "flat_success_weak": (226, 247, 235, 255),
+    "flat_success_ring": (22, 132, 74, 61),
+    "flat_warning": (178, 111, 0, 255),
+    "flat_warning_weak": (255, 244, 224, 255),
+    "flat_warning_ring": (178, 111, 0, 61),
     "flat_track": (196, 200, 203, 255),
     "flat_knob": (255, 255, 255, 255),
     "flat_shadow": (20, 30, 45, 26),
@@ -730,6 +742,12 @@ _FLAT_DARK: dict = {
     "flat_error": (236, 91, 87, 255),
     "flat_error_weak": (87, 40, 37, 255),
     "flat_error_ring": (236, 91, 87, 89),
+    "flat_success": (110, 199, 145, 255),
+    "flat_success_weak": (30, 58, 44, 255),
+    "flat_success_ring": (110, 199, 145, 89),
+    "flat_warning": (231, 168, 68, 255),
+    "flat_warning_weak": (74, 55, 20, 255),
+    "flat_warning_ring": (231, 168, 68, 89),
     "flat_track": (72, 78, 82, 255),
     "flat_knob": (239, 242, 244, 255),
     "flat_shadow": (0, 0, 0, 89),
