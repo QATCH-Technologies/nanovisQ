@@ -11,10 +11,10 @@ Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-04-29
+    2026-07-07
 
 Version:
-    v12.0.1
+    v12.1.0
 """
 
 import pandas as pd
@@ -559,20 +559,29 @@ RESIDUAL_SCALE = 0.7
 
 
 def _flank_fits(times, ysm, anchor_idx, post_idx):
-    """Quadratic trend fits on guard-banded flanks either side of the core."""
+    """Trend fits on guard-banded flanks either side of the core.
+
+    Quadratic when the flank has enough samples; degrades to linear/constant
+    near the start or end of the signal, where the guard band can leave fewer
+    than 3 points and a degree-2 fit would be poorly conditioned.
+    """
     n = len(ysm)
-    pre_sl = slice(max(0, anchor_idx - GUARD_SAMPLES - FLANK_SAMPLES),
-                   max(1, anchor_idx - GUARD_SAMPLES + 1))
-    post_sl = slice(min(n - 2, post_idx + GUARD_SAMPLES),
-                    min(n, post_idx + GUARD_SAMPLES + FLANK_SAMPLES + 1))
-    p_pre = np.polyfit(times[pre_sl], ysm[pre_sl], 2)
-    p_post = np.polyfit(times[post_sl], ysm[post_sl], 2)
+    pre_sl = slice(
+        max(0, anchor_idx - GUARD_SAMPLES - FLANK_SAMPLES), max(1, anchor_idx - GUARD_SAMPLES + 1)
+    )
+    post_sl = slice(
+        min(n - 2, post_idx + GUARD_SAMPLES), min(n, post_idx + GUARD_SAMPLES + FLANK_SAMPLES + 1)
+    )
+    pre_deg = min(2, max(0, pre_sl.stop - pre_sl.start - 1))
+    post_deg = min(2, max(0, post_sl.stop - post_sl.start - 1))
+    p_pre = np.polyfit(times[pre_sl], ysm[pre_sl], pre_deg)
+    p_post = np.polyfit(times[post_sl], ysm[post_sl], post_deg)
     return p_pre, p_post
 
 
 def _drop_instant(raw, core_start, core_end):
     """Index of the steepest single-sample change inside the core."""
-    d = np.abs(np.diff(raw[core_start:core_end + 1]))
+    d = np.abs(np.diff(raw[core_start : core_end + 1]))
     return core_start + int(np.argmax(d)) if d.size else core_start
 
 
@@ -590,8 +599,9 @@ def estimate_step_delta(times, raw, ysm, core_start, core_end):
     return float(np.polyval(p_post, td) - np.polyval(p_pre, td))
 
 
-def remove_drop_step(times, raw, corrected, ysm, core_start, core_end,
-                      rng=None, min_significance=3.0):
+def remove_drop_step(
+    times, raw, corrected, ysm, core_start, core_end, rng=None, min_significance=3.0
+):
     """Remove one drop-effect step from `corrected` in place; returns delta.
 
     Args:
@@ -635,35 +645,35 @@ def remove_drop_step(times, raw, corrected, ysm, core_start, core_end,
     sm_shift[post_idx:] -= delta
 
     # 2) Patch the core: PCHIP between pre-flank trend and shifted post-flank.
-    li = np.unique(np.linspace(max(0, anchor_idx - PATCH_FLANK),
-                               anchor_idx, PATCH_KNOTS).astype(int))
-    ri = np.unique(np.linspace(post_idx,
-                               min(n - 1, post_idx + PATCH_FLANK),
-                               PATCH_KNOTS).astype(int))
+    li = np.unique(
+        np.linspace(max(0, anchor_idx - PATCH_FLANK), anchor_idx, PATCH_KNOTS).astype(int)
+    )
+    ri = np.unique(
+        np.linspace(post_idx, min(n - 1, post_idx + PATCH_FLANK), PATCH_KNOTS).astype(int)
+    )
     knot_t = np.concatenate([times[li], times[ri]])
     knot_v = np.concatenate([ysm[li], sm_shift[ri]])
     keep = np.concatenate([[True], np.diff(knot_t) > 0])
-    patch = PchipInterpolator(knot_t[keep], knot_v[keep])(
-        times[core_start:core_end + 1])
+    patch = PchipInterpolator(knot_t[keep], knot_v[keep])(times[core_start : core_end + 1])
 
     # Noise texture from real pre-flank residuals.
     if flank_resid.size > 5:
-        patch = patch + RESIDUAL_SCALE * rng.choice(
-            flank_resid, size=patch.size, replace=True)
+        patch = patch + RESIDUAL_SCALE * rng.choice(flank_resid, size=patch.size, replace=True)
 
-    corrected[core_start:core_end + 1] = patch
+    corrected[core_start : core_end + 1] = patch
 
     # 3) Feather both seams (left into raw-level data, right into shifted data).
     f = min(FEATHER_SAMPLES, patch.size // 4)
     if f > 0:
         w = np.linspace(0.0, 1.0, f + 2)[1:-1]
-        raw_left = raw[core_start:core_start + f]
-        corrected[core_start:core_start + f] = (
-            (1 - w) * raw_left + w * corrected[core_start:core_start + f])
-        shifted_right = raw[core_end - f + 1:core_end + 1] - delta
-        corrected[core_end - f + 1:core_end + 1] = (
-            w[::-1] * corrected[core_end - f + 1:core_end + 1]
-            + (1 - w[::-1]) * shifted_right)
+        raw_left = raw[core_start : core_start + f]
+        corrected[core_start : core_start + f] = (1 - w) * raw_left + w * corrected[
+            core_start : core_start + f
+        ]
+        shifted_right = raw[core_end - f + 1 : core_end + 1] - delta
+        corrected[core_end - f + 1 : core_end + 1] = (
+            w[::-1] * corrected[core_end - f + 1 : core_end + 1] + (1 - w[::-1]) * shifted_right
+        )
 
     return delta
 
@@ -865,7 +875,7 @@ class DropEffectCorrection(CurveOptimizer):
         # agnostic (works for upward spikes in Dissipation and downward drops in RF)
         # and scales automatically with signal variability.
         #
-        # Cap: max(75, 3 x initial-streak-length) -- wide enough for complex multi-phase
+        # Cap: max(35, 2 x initial-streak-length) -- wide enough for complex multi-phase
         # events while still terminating quickly for narrow spikes.
         NUM_PTS = diff_offset
         max_drop = max(current_streak)
@@ -1092,7 +1102,7 @@ class DropEffectCorrection(CurveOptimizer):
             if full_range > 0 and (peak_diss - baseline_diss) / full_range < 0.05:
                 Log.d(
                     self.TAG,
-                    f"Skipping region {relative_time[region[0]]:.3f}–{relative_time[region[-1]]:.3f}: "
+                    f"Skipping region {relative_time[region[0]]:.3f}-{relative_time[region[-1]]:.3f}: "
                     f"no significant dissipation excursion (peak-baseline = {peak_diss - baseline_diss:.3e}, "
                     f"full range = {full_range:.3e})",
                 )
@@ -1149,9 +1159,7 @@ class DropEffectCorrection(CurveOptimizer):
                 insert_diss = insert_diss + rng.normal(
                     0.0, 0.5 * base_diss_std, size=len(insert_diss)
                 )
-                insert_rf = insert_rf + rng.normal(
-                    0.0, 0.5 * base_rf_std, size=len(insert_rf)
-                )
+                insert_rf = insert_rf + rng.normal(0.0, 0.5 * base_rf_std, size=len(insert_rf))
 
                 corrected_diss[core_start : core_end + 1] = insert_diss
                 corrected_rf[core_start : core_end + 1] = insert_rf
@@ -1178,12 +1186,22 @@ class DropEffectCorrection(CurveOptimizer):
 
             rng = np.random.default_rng()
             delta_diss = remove_drop_step(
-                relative_time, original_diss, corrected_diss, ysm_diss,
-                core_start, core_end, rng=rng,
+                relative_time,
+                original_diss,
+                corrected_diss,
+                ysm_diss,
+                core_start,
+                core_end,
+                rng=rng,
             )
             delta_rf = remove_drop_step(
-                relative_time, original_rf, corrected_rf, ysm_rf,
-                core_start, core_end, rng=rng,
+                relative_time,
+                original_rf,
+                corrected_rf,
+                ysm_rf,
+                core_start,
+                core_end,
+                rng=rng,
             )
 
             Log.d(
