@@ -20,6 +20,7 @@ try:
 except (ImportError, ModuleNotFoundError):
     from QATCH.QModel.models.static_v4_fusion.v4_fusion_dataprocessor import FusionDataprocessor
     from ModelData import ModelData
+    from v4_fusion_partial_fill import PartialFillDetector
 
     class Log:
         @staticmethod

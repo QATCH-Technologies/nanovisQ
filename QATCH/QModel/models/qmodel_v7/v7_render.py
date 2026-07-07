@@ -94,8 +94,12 @@ def derivative_energy(df: pd.DataFrame) -> np.ndarray:
     n = len(df)
     if n < 16:
         return np.zeros(n)
+    if COL_TIME not in df.columns:
+        return np.zeros(n)
     t = pd.to_numeric(df[COL_TIME], errors="coerce").to_numpy(dtype=float)
-    dt = float(np.nanmedian(np.diff(t))) or 0.005
+    diffs = np.diff(t)
+    diffs = diffs[np.isfinite(diffs) & (diffs > 0)]
+    dt = float(np.median(diffs)) if len(diffs) else DP.TIME_STEP
     sal = np.zeros(n)
     for col in (COL_DISS, COL_FREQ):
         if col not in df.columns:
@@ -129,9 +133,12 @@ def _strip_points(
 ) -> np.ndarray:
     """Same normalization/geometry contract as the v1 renderer's
     _get_signal_points (percentile clip -> strip pixel band)."""
-    finite = values[np.isfinite(values)]
+    finite_mask = np.isfinite(values)
+    finite = values[finite_mask]
     if len(finite) < 2:
         return None
+    if not np.all(finite_mask):
+        values = np.where(finite_mask, values, np.median(finite))
     lo, hi = np.percentile(finite, [p_lower, p_upper])
     diff = hi - lo
     if diff <= 0:
@@ -201,4 +208,6 @@ def generate_det_image(df: pd.DataFrame, img_w: int, img_h: int, version: int = 
     inference (qmodel_v7, via QModelV7Config.RENDER_VERSION)."""
     if version == 1:
         return DP.generate_channel_det(df, img_w=img_w, img_h=img_h)
-    return generate_channel_det_v2(df, img_w=img_w, img_h=img_h)
+    if version == 2:
+        return generate_channel_det_v2(df, img_w=img_w, img_h=img_h)
+    raise ValueError(f"Unsupported render version: {version!r}")

@@ -293,6 +293,12 @@ class QModelV7DataProcessor:
         """
         if len(values) < 2:
             return None
+        values = np.asarray(values, dtype=float)
+        finite_mask = np.isfinite(values)
+        if not np.any(finite_mask):
+            return None
+        if not np.all(finite_mask):
+            values = np.where(finite_mask, values, np.median(values[finite_mask]))
         # Fixes head and tail clipping.
         p_lower, p_upper = 1.0, 99.0
         v_min, v_max = np.nanpercentile(values, [p_lower, p_upper])
