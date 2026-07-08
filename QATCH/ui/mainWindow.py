@@ -17,7 +17,6 @@ Version:
     x.x.x?
 """
 
-from datetime import datetime, timezone, timedelta, date
 import hashlib
 import logging
 import multiprocessing
@@ -28,26 +27,24 @@ import subprocess
 import sys
 import threading
 from collections import deque
-import matplotlib.pyplot as plt
-from time import localtime, strftime, time, monotonic
-from typing import List, Optional, Any, Callable
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from time import localtime, monotonic, strftime, time
+from typing import Any, Callable, List, Optional
 from xml.dom import minidom
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-import os
-import shutil
 import pyzipper
 import requests
 from dateutil import parser
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph import AxisItem
 from serial import serialutil
-from pathlib import Path
-
 from sympy import true
 
-from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileManager import FileManager
@@ -60,16 +57,21 @@ from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserProfilesManager, UserRoles
 from QATCH.core.constants import Constants, OperationType, UpdateEngines
 from QATCH.core.worker import Worker
-
-# NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
-# from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
-from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.Device import serial  # real device hardware
 from QATCH.processors.InterpTemps import (
     ActionType,
     InterpTempsProcess,
     QueueCommandFormat,
+)
+from QATCH.QModel.models.qmodel_v7.v7_yolo_live import (
+    DropEpochSignal as DropEpochSignal_v7,
+)
+
+# NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
+# from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
+from QATCH.QModel.models.v6_yolo.v6_yolo_live import (
+    DropEpochSignal as DropEpochSignal_v6,
 )
 from QATCH.ui.configure_data import UIConfigureData
 from QATCH.ui.export import Ui_Export
@@ -86,6 +88,7 @@ from QATCH.ui.preferences_ui import PreferencesUI
 from QATCH.ui.runInfo import QueryRunInfo, RunInfoWindow
 from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
 from QATCH.VisQAI.src.db.db import Database
+from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
 TAG = "[MainWindow]"  # ""
@@ -439,43 +442,58 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addSeparator()
         from QATCH.models.ModelData import __release__ as ModelData_release
         from QATCH.models.ModelData import __version__ as ModelData_version
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+        from QATCH.QModel.models.qmodel_v7.__init__ import (
+            __release__ as QModel7_release,
+        )
+        from QATCH.QModel.models.qmodel_v7.__init__ import (
+            __version__ as QModel7_version,
+        )
+        from QATCH.QModel.models.static_v4_fusion.__init__ import (
             __release__ as QModel4_release,
         )
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+        from QATCH.QModel.models.static_v4_fusion.__init__ import (
             __version__ as QModel4_version,
         )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+        from QATCH.QModel.models.v6_yolo.__init__ import (
             __release__ as QModel6_release,
         )
-        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+        from QATCH.QModel.models.v6_yolo.__init__ import (
             __version__ as QModel6_version,
         )
 
-        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (3 available)")
+        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (4 available)")
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
-            "ModelData v{} ({})".format(ModelData_version, ModelData_release),
+            "Tweed v{} ({})".format(ModelData_version, ModelData_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[0]
             ),
         )
         self.q_version_v1.setCheckable(True)
         self.q_version_v4 = self.menubar[5].addAction(
-            "QModel Fusion v{} ({})".format(QModel4_version, QModel4_release),
+            "QModel Indus v{} ({})".format(QModel4_version, QModel4_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[1]
             ),
         )
         self.q_version_v4.setCheckable(True)
         self.q_version_v6 = self.menubar[5].addAction(
-            "QModel YOLO26 v{} ({})".format(QModel6_version, QModel6_release),
+            "QModel Volta v{} ({})".format(QModel6_version, QModel6_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[2]
             ),
         )
         self.q_version_v6.setCheckable(True)
-        if Constants.QModel6_predict:
+        self.q_version_v7 = self.menubar[5].addAction(
+            "QModel Onyx v{} ({})".format(QModel7_version, QModel7_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[3]
+            ),
+        )
+        self.q_version_v7.setCheckable(True)
+        if Constants.QModel7_predict:
+            self.q_version_v7.setChecked(True)
+        elif Constants.QModel6_predict:
             self.q_version_v6.setChecked(True)
         elif Constants.QModel4_predict:
             self.q_version_v4.setChecked(True)
@@ -1727,11 +1745,11 @@ class MainWindow(QtWidgets.QMainWindow):
         #     pass
         # else:
         #     start_booster_path = os.path.join(Architecture.get_path(),
-        #                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+        #                                       r"QATCH\QModel\assets\forecaster_v2", 'bff_trained_start.json')
         #     end_booster_path = os.path.join(Architecture.get_path(),
-        #                                     r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+        #                                     r"QATCH\QModel\assets\forecaster_v2", 'bff_trained_end.json')
         #     scaler_path = os.path.join(Architecture.get_path(),
-        #                                r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+        #                                r"QATCH\QModel\assets\forecaster_v2", 'scaler.pkl')
         #     self._forecaster = QForecastPredictor(
         #         start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
         self.forecast_start_time = -1.0
@@ -1912,7 +1930,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self.AnalyzeProc, "_batched_runs") and self.AnalyzeProc._batched_runs:
             self.AnalyzeProc._current_run = self.AnalyzeProc.text_Created.text()
 
-        self.AnalyzeProc.Analyze_Data(data_path)
+        self.AnalyzeProc.analyze_data(data_path)
 
     def refresh_data_files(self):
         Log.i(TAG, "Refreshing data files...")
@@ -5093,8 +5111,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 ui_step, status_msg = Constants._FILL_STATE_MAP.get(pred_int, (0, "Unknown"))
 
                 if pred_int == -1 and not self._drop_epoch_sent:
+                    DropEpochSignalCls = (
+                        DropEpochSignal_v7 if Constants.QModel7_predict else DropEpochSignal_v6
+                    )
                     self.worker._forecaster_in.put(
-                        DropEpochSignal(float(self.worker.get_t1_buffer(0)[0]))
+                        DropEpochSignalCls(float(self.worker.get_t1_buffer(0)[0]))
                     )
                     self._drop_epoch_sent = True
                 elif pred_int == 3:

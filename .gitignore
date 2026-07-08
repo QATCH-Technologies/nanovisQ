@@ -9,9 +9,10 @@
 **/__pycache__
 **/*.log
 
-# Ignore all files in "assets" folder
-**/assets/**
-
-# But explicitly include "VisQAI-base.visq" and "app.db" assets
-!**/assets/VisQAI-base.visq
-!**/assets/app.db
+# Ignore all files in "assets" folders, EXCEPT QATCH/QModel/assets 
+QATCH/VisQAI/assets/**
+QATCH/VisQAI/test/assets/**
+QATCH/VisQAI/test/test_models/assets/**
+!QATCH/VisQAI/assets/VisQAI-base.visq
+!QATCH/VisQAI/assets/app.db
+!QATCH/VisQAI/test/assets/app.db

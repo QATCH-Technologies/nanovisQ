@@ -88,9 +88,7 @@ class QATCH:
             )
             pyi_splash.update_text(build_info)
         else:
-            icon_path = os.path.join(
-                Architecture.get_path(), "QATCH", "icons", "qatch-splash.png"
-            )
+            icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-splash.png")
             pixmap = QPixmap(icon_path)
             pixmap_resized = pixmap.scaledToWidth(512)
             self.splash = QSplashScreen(pixmap_resized, QtCore.Qt.WindowStaysOnTopHint)

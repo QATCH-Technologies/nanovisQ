@@ -328,7 +328,7 @@ typing-extensions==4.15.0
     #   tensorflow-cpu
 tzdata==2025.2
     # via pandas
-ultralytics==8.4.51
+ultralytics==8.4.90
     # via -r requirements.in
 urllib3==2.5.0
     # via
