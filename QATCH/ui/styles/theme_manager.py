@@ -94,6 +94,32 @@ def caption_label_qss() -> str:
     )
 
 
+def dialog_title_qss() -> str:
+    """Shared QSS for a glass-dialog header title QLabel, resolved fresh
+    from the active theme's `plot_text_bright` token.
+
+    Used by every modal built on `QATCH.ui.components.qatch_dialog
+    .GlassDialogBase` (QATCHDialog, SignatureDialog, ...) so their header
+    titles render identically.
+    """
+    tok = ThemeManager.instance().tokens()
+    return f"QLabel {{ color: {tok_css(tok['plot_text_bright'])}; font-size: 14px; font-weight: 700; }}"
+
+
+def dialog_message_qss() -> str:
+    """Shared QSS for a glass-dialog body QLabel, resolved fresh from the
+    active theme's `plot_text_normal` token. See `dialog_title_qss`."""
+    tok = ThemeManager.instance().tokens()
+    return f"QLabel {{ color: {tok_css(tok['plot_text_normal'])}; font-size: 13px; }}"
+
+
+def hairline_qss() -> str:
+    """Shared QSS for a themed `QFrame.HLine` divider, resolved fresh from
+    the active theme's `ctrl_hairline` token."""
+    tok = ThemeManager.instance().tokens()
+    return f"QFrame {{ border: none; background: {tok_css(tok['ctrl_hairline'])}; max-height: 1px; }}"
+
+
 class ThemeManager(QtCore.QObject):
     """Process-wide singleton owning the active light/dark palette.
 

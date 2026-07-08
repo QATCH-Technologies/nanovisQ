@@ -395,9 +395,9 @@ class Constants:
     ######################
     list_predict_models = [
         "Tweed",
-        "QModel Indus",
-        "QModel Volta",
-        "QModel Onyx",
+        "Indus",
+        "Volta",
+        "Onyx",
     ]
     QModel7_predict = True
     QModel6_predict = True

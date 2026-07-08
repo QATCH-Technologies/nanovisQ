@@ -18,7 +18,11 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.ui.components.glass_paint import paint_glass_surface
 from QATCH.ui.components.qatch_push_button import QATCHPushButton
-from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.theme_manager import (
+    ThemeManager,
+    dialog_message_qss,
+    dialog_title_qss,
+)
 
 # (button_label, GlassPushButton_variant, return_value)
 ButtonSpec = Tuple[str, str, int]
@@ -48,7 +52,7 @@ _CARD_RADIUS = 18.0
 _HEADER_H = 52
 
 
-def _tinted_icon(path: str, color: QtGui.QColor, size: int = 22) -> QtGui.QPixmap:
+def tinted_icon(path: str, color: QtGui.QColor, size: int = 22) -> QtGui.QPixmap:
     src = QtGui.QIcon(path).pixmap(size, size)
     dst = QtGui.QPixmap(src.size())
     dst.fill(QtCore.Qt.GlobalColor.transparent)
@@ -60,28 +64,108 @@ def _tinted_icon(path: str, color: QtGui.QColor, size: int = 22) -> QtGui.QPixma
     return dst
 
 
-class _Card(QtWidgets.QFrame):
+class DialogCard(QtWidgets.QFrame):
     """Frosted glass card: paints via the shared glass-paint helper so it
-    stays identical to PlotContainer and the other glass surfaces."""
+    stays identical to PlotContainer and the other glass surfaces.
 
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
+    Shared by every modal built on `GlassDialogBase` (QATCHDialog,
+    SignatureDialog, ...) so they all render the exact same card chrome.
+    """
+
+    def __init__(
+        self,
+        parent: QtWidgets.QWidget,
+        *,
+        radius: float = _CARD_RADIUS,
+        header_line_y: Optional[float] = _HEADER_H,
+    ) -> None:
         super().__init__(parent)
+        self._radius = radius
+        self._header_line_y = header_line_y
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         paint_glass_surface(
             self,
-            radius=_CARD_RADIUS,
+            radius=self._radius,
             tokens=ThemeManager.instance().tokens(),
             shimmer_height=50.0,
             draw_vignette=True,
-            header_line_y=_HEADER_H,
+            header_line_y=self._header_line_y,
             opaque_base=True,
         )
 
 
-class QATCHDialog(QtWidgets.QDialog):
+class DialogBase(QtWidgets.QDialog):
+    """Shared modal chrome for every frosted-glass dialog in the app.
+
+    Renders a semi-transparent dim overlay sized to the root window, behind
+    whatever `GlassDialogCard`-based content a subclass builds in
+    `_build_ui`/`__init__`. Handles the frameless/translucent window setup,
+    resolving the correct root window to size against, and Escape-to-cancel.
+
+    Subclasses: `QATCHDialog` (title/message/buttons message boxes) and
+    `SignatureDialog` (custom signature-capture form).
+    """
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget]) -> None:
+        root = self._find_root(parent)
+        super().__init__(root)
+
+        self.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.FramelessWindowHint)  # type: ignore[arg-type]
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, False)
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _find_root(widget: Optional[QtWidgets.QWidget]) -> Optional[QtWidgets.QWidget]:
+        # Prefer the currently active visible top-level window (e.g. ModeWindow)
+        # over the parent chain, which may lead to a non-displayed QMainWindow.
+        active = QtWidgets.QApplication.activeWindow()
+        if active and active.isVisible():
+            return active
+        if not isinstance(widget, QtWidgets.QWidget):
+            return None
+        w = widget
+        while w.parent() and isinstance(w.parent(), QtWidgets.QWidget):
+            w = w.parent()
+        return w
+
+    def _on_escape(self) -> None:
+        """Called on Escape key press. Default: reject the dialog.
+
+        Subclasses that need Escape to route through a specific button
+        (e.g. QATCHDialog's cancel/no action) should override this.
+        """
+        self.reject()
+
+    # ── Events ────────────────────────────────────────────────────────────────
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        root = self._find_root(None)  # re-resolve at show time in case active window changed
+        if isinstance(root, QtWidgets.QWidget):
+            self.setGeometry(root.geometry())
+        else:
+            self.setGeometry(QtWidgets.QDesktopWidget().availableGeometry())
+        super().showEvent(event)
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        tok = ThemeManager.instance().tokens()
+        p = QtGui.QPainter(self)
+        p.fillRect(self.rect(), QtGui.QColor(*tok["backdrop_dim"]))
+        p.end()
+
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
+        if event.key() == QtCore.Qt.Key.Key_Escape:
+            self._on_escape()
+            return
+        super().keyPressEvent(event)
+
+
+class QATCHDialog(DialogBase):
     """Modal frosted-glass dialog.
 
     Renders a semi-transparent dim overlay sized to the root window with a
@@ -107,8 +191,7 @@ class QATCHDialog(QtWidgets.QDialog):
         buttons: Optional[List[ButtonSpec]] = None,
         icon_type: str = "information",
     ) -> None:
-        root = self._find_root(parent)
-        super().__init__(root)
+        super().__init__(parent)
 
         self._result_value: int = 0
         self._icon_type = icon_type
@@ -116,33 +199,17 @@ class QATCHDialog(QtWidgets.QDialog):
         if buttons is None:
             buttons = [("OK", "primary", 1)]
 
-        self.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.FramelessWindowHint)  # type: ignore[arg-type]
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, False)
-
         self._build_ui(title, message, details, buttons)
 
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _find_root(widget: Optional[QtWidgets.QWidget]) -> Optional[QtWidgets.QWidget]:
-        # Prefer the currently active visible top-level window (e.g. ModeWindow)
-        # over the parent chain, which may lead to a non-displayed QMainWindow.
-        active = QtWidgets.QApplication.activeWindow()
-        if active and active.isVisible():
-            return active
-        if not isinstance(widget, QtWidgets.QWidget):
-            return None
-        w = widget
-        while w.parent() and isinstance(w.parent(), QtWidgets.QWidget):
-            w = w.parent()
-        return w
-
     def result_value(self) -> int:
         return self._result_value
+
+    def _on_escape(self) -> None:
+        self._on_button(0)
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -162,7 +229,7 @@ class QATCHDialog(QtWidgets.QDialog):
         card_row.setContentsMargins(0, 0, 0, 0)
         card_row.addStretch()
 
-        self._card = _Card(self)
+        self._card = DialogCard(self)
         self._card.setFixedWidth(_CARD_W)
 
         card_v = QtWidgets.QVBoxLayout(self._card)
@@ -280,16 +347,10 @@ class QATCHDialog(QtWidgets.QDialog):
     # ── Styling ───────────────────────────────────────────────────────────────
 
     def _apply_title_style(self) -> None:
-        tok = ThemeManager.instance().tokens()
-        r, g, b, _ = tok["plot_text_bright"]
-        self._title_label.setStyleSheet(
-            f"QLabel {{ color: rgb({r},{g},{b}); font-size: 14px; font-weight: 700; }}"
-        )
+        self._title_label.setStyleSheet(dialog_title_qss())
 
     def _apply_body_style(self) -> None:
-        tok = ThemeManager.instance().tokens()
-        r, g, b, _ = tok["plot_text_normal"]
-        self._msg_label.setStyleSheet(f"QLabel {{ color: rgb({r},{g},{b}); font-size: 13px; }}")
+        self._msg_label.setStyleSheet(dialog_message_qss())
 
     def _refresh_icon(self) -> None:
         tok = ThemeManager.instance().tokens()
@@ -297,7 +358,7 @@ class QATCHDialog(QtWidgets.QDialog):
         color = QtGui.QColor(*tok[badge_key])
         svg = os.path.join(_ICONS_DIR, _ICON_FILES.get(self._icon_type, "info-circle.svg"))
         if os.path.isfile(svg):
-            pm = _tinted_icon(svg, color, size=22)
+            pm = tinted_icon(svg, color, size=22)
         else:
             pm = QtGui.QPixmap(22, 22)
             pm.fill(QtCore.Qt.GlobalColor.transparent)
@@ -316,26 +377,6 @@ class QATCHDialog(QtWidgets.QDialog):
         self._card.update()
 
     # ── Events ────────────────────────────────────────────────────────────────
-
-    def showEvent(self, event: QtGui.QShowEvent) -> None:
-        root = self._find_root(None)  # re-resolve at show time in case active window changed
-        if isinstance(root, QtWidgets.QWidget):
-            self.setGeometry(root.geometry())
-        else:
-            self.setGeometry(QtWidgets.QDesktopWidget().availableGeometry())
-        super().showEvent(event)
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        tok = ThemeManager.instance().tokens()
-        p = QtGui.QPainter(self)
-        p.fillRect(self.rect(), QtGui.QColor(*tok["backdrop_dim"]))
-        p.end()
-
-    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
-        if event.key() == QtCore.Qt.Key.Key_Escape:
-            self._on_button(0)
-            return
-        super().keyPressEvent(event)
 
     def _on_button(self, result: int) -> None:
         self._result_value = result

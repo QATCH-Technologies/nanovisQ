@@ -1,11 +1,16 @@
 try:
-    from typing import Optional
+    from typing import Optional, Tuple
 
     from QATCH.common.architecture import Architecture
     from QATCH.common.logger import Logger as Log
     from QATCH.common.userProfiles import UserProfiles
     from QATCH.core.constants import Constants, UserRoles
     from QATCH.ui.dialogs.pop_up_dialog import PopUp
+    from QATCH.ui.dialogs.signature_dialog import (
+        SignatureDialog,
+        auto_sign_matches_session,
+        persist_auto_sign_key,
+    )
 except (ModuleNotFoundError, ImportError):
     print("Running VisQAI as standalone app")
 
@@ -441,89 +446,8 @@ class VisQAIWindow(BaseVisQAIWindow):
     def init_sign(self):
         self.username = None
         self.initials = None
-        # START VISQAI SIGNATURE CODE:
-        # This code also exists in runInfo.py in class QueryRunInfo for "CAPTURE SIGNATURE CODE"
-        # This code also exists in Analyze.py in class VisQAIWindow for "ANALYZE SIGNATURE CODE"
-        # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
-        # There is duplicated logic code within the submit button handler: 'self.save_run_infos'
-        # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'
-        self.signForm = QtWidgets.QDialog()
-        self.signForm.setWindowFlags(QtCore.Qt.Dialog)  # | QtCore.Qt.WindowStaysOnTopHint)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "signature.svg")
-        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .svg
-        self.signForm.setWindowTitle("Signature")
-        self.signForm.setModal(True)
-        layout_sign = QtWidgets.QVBoxLayout()
-        layout_curr = QtWidgets.QHBoxLayout()
-        signedInAs = QtWidgets.QLabel("Signed in as: ")
-        signedInAs.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
-        layout_curr.addWidget(signedInAs)
-        self.signedInAs = QtWidgets.QLabel("[NONE]")
-        self.signedInAs.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-        layout_curr.addWidget(self.signedInAs)
-        layout_sign.addLayout(layout_curr)
-        line_sep = QtWidgets.QFrame()
-        line_sep.setFrameShape(QtWidgets.QFrame.HLine)
-        line_sep.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout_sign.addWidget(line_sep)
-        layout_switch = QtWidgets.QHBoxLayout()
-        self.signerInit = QtWidgets.QLabel(f"Initials: <b>N/A</b>")
-        layout_switch.addWidget(self.signerInit)
-        switch_user = QtWidgets.QPushButton("Switch User")
-        switch_user.clicked.connect(self.switch_user_at_sign_time)
-        layout_switch.addWidget(switch_user)
-        layout_sign.addLayout(layout_switch)
-        self.sign = QtWidgets.QLineEdit()
-        self.sign.installEventFilter(self)
-        layout_sign.addWidget(self.sign)
-        self.sign_do_not_ask = QtWidgets.QCheckBox("Do not ask again this session")
-        self.sign_do_not_ask.setEnabled(False)
-        if UserProfiles.checkDevMode()[0]:  # DevMode enabled
-            auto_sign_key = None
-            session_key = None
-            if os.path.exists(Constants.auto_sign_key_path):
-                with open(Constants.auto_sign_key_path, "r") as f:
-                    auto_sign_key = f.readline()
-            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
-            if os.path.exists(session_key_path):
-                with open(session_key_path, "r") as f:
-                    session_key = f.readline()
-            if auto_sign_key == session_key and session_key != None:
-                self.sign_do_not_ask.setChecked(True)
-            else:
-                self.sign_do_not_ask.setChecked(False)
-                if os.path.exists(Constants.auto_sign_key_path):
-                    os.remove(Constants.auto_sign_key_path)
-            layout_sign.addWidget(self.sign_do_not_ask)
-        self.sign_ok = QtWidgets.QPushButton("OK")
-        self.sign_ok.clicked.connect(self.signForm.hide)
-        # self.sign_ok.clicked.connect(self.save_run_info)
-        self.sign_ok.setDefault(True)
-        self.sign_ok.setAutoDefault(True)
-        self.sign_cancel = QtWidgets.QPushButton("Cancel")
-        self.sign_cancel.clicked.connect(self.signForm.hide)
-        layout_ok_cancel = QtWidgets.QHBoxLayout()
-        layout_ok_cancel.addWidget(self.sign_ok)
-        layout_ok_cancel.addWidget(self.sign_cancel)
-        layout_sign.addLayout(layout_ok_cancel)
-        self.signForm.setLayout(layout_sign)
-        # END ANALYZE SIGNATURE CODE
-
-        self.sign.textEdited.connect(self.sign_edit)
-        self.sign.textEdited.connect(self.text_transform)
 
     def eventFilter(self, obj, event):
-        # Key press on user audit sign form
-        if event.type() == QtCore.QEvent.KeyPress and obj is self.sign and self.sign.hasFocus():
-            if event.key() in [
-                QtCore.Qt.Key_Enter,
-                QtCore.Qt.Key_Return,
-                QtCore.Qt.Key_Space,
-            ]:
-                if self.parent.signature_received:
-                    self.sign_ok.clicked.emit()
-            if event.key() == QtCore.Qt.Key_Escape:
-                self.sign_cancel.clicked.emit()
         # Mouse click on tab widget tab bar
         if event.type() == QtCore.QEvent.MouseButtonPress and obj == self.tab_widget.tabBar():
             # Disallow tab change if learning in-progress
@@ -571,22 +495,6 @@ class VisQAIWindow(BaseVisQAIWindow):
                     self.tab_widget.currentWidget().btn_next.click()
         return super().eventFilter(obj, event)
 
-    def sign_edit(self):
-        if self.sign.text().upper() == self.initials:
-            sign_text = f"{self.username} ({self.sign.text().upper()})"
-            self.sign.setMaxLength(len(sign_text))
-            self.sign.setText(sign_text)
-            self.sign.setReadOnly(True)
-            self.parent.signed_at = dt.datetime.now().isoformat()
-            self.parent.signature_received = True
-            self.sign_do_not_ask.setEnabled(True)
-
-    def text_transform(self):
-        text = self.sign.text()
-        if len(text) in [1, 2, 3, 4]:  # are these initials?
-            # will not fire 'textEdited' signal again
-            self.sign.setText(text.upper())
-
     def check_user_info(self):
         # get active session info, if available
         active, info = UserProfiles.session_info()
@@ -597,19 +505,19 @@ class VisQAIWindow(BaseVisQAIWindow):
         else:
             self.parent.signature_required = False
 
-    def switch_user_at_sign_time(self):
+    def _switch_user_for_signature(self) -> Optional[Tuple[str, str]]:
+        """Callback passed to `SignatureDialog(on_switch_user=...)`. Performs
+        the actual profile switch and pushes the result into the toolbar/
+        controls window; returns the new `(username, initials)` on a real
+        change so the dialog can refresh its own displayed labels, or `None`
+        if the switch failed or the user didn't change."""
         new_username, new_initials, new_userrole = UserProfiles.change(UserRoles.ANALYZE)
         if UserProfiles.check(UserRoles(new_userrole), UserRoles.ANALYZE):
             if self.username != new_username:
                 self.username = new_username
                 self.initials = new_initials
-                self.signedInAs.setText(self.username)
-                self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
                 self.parent.signature_received = False
                 self.parent.signature_required = True
-                self.sign.setReadOnly(False)
-                self.sign.setMaxLength(4)
-                self.sign.clear()
 
                 Log.d("User name changed. Changing sign-in user info.")
                 self.parent.controls_window.username.setText(f"User: {new_username}")
@@ -619,8 +527,10 @@ class VisQAIWindow(BaseVisQAIWindow):
                 self.parent.analyze_process.tool_User.setText(new_username)
                 if self.parent.controls_window.userrole != UserRoles.ADMIN:
                     self.parent.controls_window.manage.setText("&Change Password...")
+                return new_username, new_initials
             else:
                 Log.d("User switched users to the same user profile. Nothing to change.")
+                return None
             # PopUp.warning(self, Constants.app_title, "User has been switched.\n\nPlease sign now.")
         # elif new_username == None and new_initials == None and new_userrole == 0:
         else:
@@ -653,6 +563,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                 )
 
             Log.d("User did not authenticate for role to switch users.")
+            return None
 
     def on_tab_changed(self, index):
         # Purge dataase to disk on tab change
@@ -707,13 +618,8 @@ class VisQAIWindow(BaseVisQAIWindow):
 
     def reset(self) -> None:
         self.check_user_info()
-        self.signedInAs.setText(self.username)
-        self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
         self.parent.signature_received = False
         self.parent.signature_required = True
-        self.sign.setReadOnly(False)
-        self.sign.setMaxLength(4)
-        self.sign.clear()
 
     def set_global_model_path(self, model_path: Optional[str] = None):
         # Get each widget and call its model select handler (if exists)
@@ -878,34 +784,19 @@ class VisQAIWindow(BaseVisQAIWindow):
 
         # Get audit signature from authorized user.
         if self.parent.signature_required and self._unsaved_changes:
-            if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
+            if self.parent.signature_received == False and auto_sign_matches_session():
                 Log.w(f"Signing ANALYZE with initials {self.initials} (not asking again)")
                 self.parent.signed_at = dt.datetime.now().isoformat()
                 self.parent.signature_received = True  # Do not ask again this session
             if not self.parent.signature_received:
-                if self.signForm.isVisible():
-                    self.signForm.hide()
-                self.signedInAs.setText(self.username)
-                self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
-                screen = QtWidgets.QDesktopWidget().availableGeometry()
-                left = int((screen.width() - self.signForm.sizeHint().width()) / 2) + 50
-                top = int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
-                self.signForm.move(left, top)
-                self.signForm.setVisible(True)
-                self.sign.setFocus()
-                self.signForm.exec_()
-                if not self.parent.signature_received:
+                dlg = SignatureDialog(self, on_switch_user=self._switch_user_for_signature)
+                if dlg.exec_() != QtWidgets.QDialog.Accepted:
                     Log.w("User did not sign when requested.")
                     return
-
-        if self.sign_do_not_ask.isChecked():
-            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
-            if os.path.exists(session_key_path):
-                with open(session_key_path, "r") as f:
-                    session_key = f.readline()
-                if not os.path.exists(Constants.auto_sign_key_path):
-                    with open(Constants.auto_sign_key_path, "w") as f:
-                        f.write(session_key)
+                self.parent.signed_at = dt.datetime.now().isoformat()
+                self.parent.signature_received = True
+                if dlg.sign_do_not_ask.isChecked():
+                    persist_auto_sign_key()
 
         if self.parent.signature_required:
             valid, infos = UserProfiles.session_info()

@@ -45,8 +45,8 @@ from QATCH.common.findDevices import Discovery
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
-from QATCH.ui.interfaces import UIControls
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
+from QATCH.ui.interfaces import UIControls
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets import (
     DataManagementWidget,
@@ -209,6 +209,12 @@ class ControlsWindow(BaseWindow):
         self.menubar[3].addSeparator()
         from QATCH.models.ModelData import __release__ as model_data_release
         from QATCH.models.ModelData import __version__ as model_data_version
+        from QATCH.QModel.models.qmodel_v7.__init__ import (
+            __release__ as qmodel7_release,
+        )
+        from QATCH.QModel.models.qmodel_v7.__init__ import (
+            __version__ as qmodel7_version,
+        )
         from QATCH.QModel.models.static_v4_fusion.__init__ import (
             __release__ as qmodel4_release,
         )
@@ -221,42 +227,42 @@ class ControlsWindow(BaseWindow):
         from QATCH.QModel.models.v6_yolo.__init__ import (
             __version__ as qmodel6_version,
         )
-        from QATCH.QModel.models.qmodel_v7.__init__ import (
-            __release__ as qmodel7_release,
-        )
-        from QATCH.QModel.models.qmodel_v7.__init__ import (
-            __version__ as qmodel7_version,
-        )
 
         qmodel_versions_menu = self.menubar[3].addMenu("Model versions (4 available)")
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
-            "ModelData v{} ({})".format(model_data_version, model_data_release),
+            "Tweed v{} ({})".format(
+                ".".join(str(model_data_version).split(".")[:2]), model_data_release
+            ),
             lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[0]
             ),
         )
         self.q_version_v1.setCheckable(True)
+
         self.q_version_v4 = self.menubar[5].addAction(
-            "QModel Fusion v{} ({})".format(qmodel4_version, qmodel4_release),
+            "Indus v{} ({})".format(".".join(str(qmodel4_version).split(".")[:2]), qmodel4_release),
             lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[1]
             ),
         )
         self.q_version_v4.setCheckable(True)
+
         self.q_version_v6 = self.menubar[5].addAction(
-            "QModel YOLO26 v{} ({})".format(qmodel6_version, qmodel6_release),
+            "Volta v{} ({})".format(".".join(str(qmodel6_version).split(".")[:2]), qmodel6_release),
             lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[2]
             ),
         )
         self.q_version_v6.setCheckable(True)
+
         self.q_version_v7 = self.menubar[5].addAction(
-            "QModel Onyx v{} ({})".format(qmodel7_version, qmodel7_release),
+            "Onyx v{} ({})".format(".".join(str(qmodel7_version).split(".")[:2]), qmodel7_release),
             lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[3]
             ),
         )
+        self.q_version_v7.setCheckable(True)
         self.q_version_v7.setCheckable(True)
         if Constants.QModel7_predict:
             self.q_version_v7.setChecked(True)

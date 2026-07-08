@@ -731,6 +731,30 @@ QCheckBox#rememberMe::indicator:checked {
     border: 1px solid {{LOGIN_CHECKBOX_CHECKED_BORDER}};
 }
 
+/* ---- Generic themed checkbox (flat control system) ---- */
+QCheckBox#themedCheckBox {
+    color: {{FLAT_TEXT}};
+    font-size: 9pt;
+    spacing: 8px;
+}
+QCheckBox#themedCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid {{FLAT_BORDER}};
+    background: {{FLAT_SURFACE}};
+}
+QCheckBox#themedCheckBox::indicator:hover {
+    border: 1px solid {{FLAT_BORDER_STRONG}};
+}
+QCheckBox#themedCheckBox::indicator:checked {
+    background: {{FLAT_ACCENT}};
+    border: 1px solid {{FLAT_ACCENT_ACTIVE}};
+}
+QCheckBox#themedCheckBox:disabled {
+    color: {{FLAT_TEXT_MUTED}};
+}
+
 /* ---- Primary action buttons (Sign In, Send Reset Link) ---- */
 QPushButton#signInBtn,
 QPushButton#sendResetBtn {
