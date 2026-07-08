@@ -10,7 +10,17 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from time import localtime, monotonic, strftime  # sleep
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 from xml.dom import minidom
 
 import numpy as np
@@ -20,7 +30,6 @@ from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QCompleter
-from scipy import interpolate
 from scipy.interpolate import interp1d
 from scipy.signal import argrelextrema, savgol_filter
 
@@ -30,14 +39,14 @@ from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
-from QATCH.models.ModelData import ModelData
 from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,
     DropEffectCorrection,
 )
-from QATCH.QModel.models.static_v4_fusion.v4_fusion import QModelV4Fusion
-from QATCH.QModel.models.v6_yolo.v6_yolo import QModelV6YOLO
-from QATCH.QModel.models.qmodel_v7.v7_yolo import QModelV7
+from QATCH.QModel.models.qmodel_indus.indus import QModelIndus
+from QATCH.QModel.models.qmodel_onyx.onyx import QModelOnyx
+from QATCH.QModel.models.qmodel_tweed.tweed import QModelTweed
+from QATCH.QModel.models.qmodel_volta.volta import QModelVolta
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,
@@ -46,6 +55,8 @@ from QATCH.ui.dialogs.signature_dialog import (
 )
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 
+if TYPE_CHECKING:
+    from QATCH.ui.main_window import MainWindow
 TAG = "[Analyze]"
 USE_NEW_FILL_METHOD = True
 
@@ -77,9 +88,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
     progressValue = QtCore.pyqtSignal(int)
     progressFormat = QtCore.pyqtSignal(str)
     progressUpdate = QtCore.pyqtSignal()
-    v4_predict_progress = QtCore.pyqtSignal(int, str)
-    v6_predict_progress = QtCore.pyqtSignal(int, str)
-    v7_predict_progress = QtCore.pyqtSignal(int, str)
+    indus_predict_progress = QtCore.pyqtSignal(int, str)
+    volta_predict_progress = QtCore.pyqtSignal(int, str)
+    onyx_predict_progress = QtCore.pyqtSignal(int, str)
 
     @staticmethod
     def Lookup_ST(surfactant, concentration):
@@ -237,7 +248,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         return ret
 
     @staticmethod
-    def Model_Data(data_path):
+    def run_qmodel_tweed(data_path):
         val = False
         try:
             with secure_open(data_path, "r", "capture") as f:
@@ -254,9 +265,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 resonance_frequency = data[:, 2]
                 dissipation = data[:, 3]
 
-                if Constants.ModelData_predict:
+                if Constants.qmodel_tweed_predict:
                     try:
-                        dataModel = ModelData()
+                        dataModel = QModelTweed()
                         model_result = dataModel.IdentifyPoints(
                             data_path=data_path,
                             times=relative_time,
@@ -334,7 +345,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     import tensorflow as tf
 
                     # import tensorflow, load model, and predict good or bad
-                    model_path = os.path.join(Architecture.get_path(), "QATCH/models/")
+                    model_path = os.path.join(
+                        Architecture.get_path(), "QATCH", "QModel", "assets", "qmodel_tweed"
+                    )
                     time_model = tf.keras.models.load_model(os.path.join(model_path, "time_model"))
                     diss_model = tf.keras.models.load_model(os.path.join(model_path, "diss_model"))
                     freq_model = tf.keras.models.load_model(os.path.join(model_path, "freq_model"))
@@ -363,7 +376,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e("ERROR: Model encountered an exception while analyzing run data.")
         return val  # true if good
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: "MainWindow | None" = None):
         """
         Initialize the AnalyzeProcess widget and configure its UI, internal state, and background worker.
 
@@ -378,7 +391,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         - A QThread is created for running analyzer tasks; the worker itself is started later when analysis is requested.
         """
         super(AnalyzeProcess, self).__init__(None)
-        self.parent = parent
+        self.parent: "MainWindow | None" = parent
+        assert (
+            self.parent is not None
+        ), "AnalyzeProcess requires a valid MainWindow parent for proper operation."
         self.stateStep = -1
         self.zoomLevel = 1
         self.xml_path = None
@@ -396,18 +412,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.model_candidates = None
         self.model_engine = "None"
         self.analyzer_task = QtCore.QThread()
-        self.dataModel = ModelData()
+        self.qmodel_tweed_predictor = QModelTweed()
 
-        self.QModel_v4_modules_loaded = False
-        self.QModel_v4_predictor = None
+        self.qmodel_indus_modules_loaded = False
+        self.qmodel_indus_predictor = None
 
-        # QModel v6 (YOLO26) Constants
-        self.QModel_v6_modules_loaded = False
-        self.QModel_v6_predictor = None
+        # QModel Volta  Constants
+        self.QModel_volta_modules_loaded = False
+        self.QModel_volta_predictor = None
 
-        # QModel Onyx (v7) Constants
-        self.QModel_v7_modules_loaded = False
-        self.QModel_v7_predictor = None
+        # QModel Onyx Constants
+        self.QModel_onyx_modules_loaded = False
+        self.QModel_onyx_predictor = None
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
@@ -848,13 +864,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel7_predict:
+        if Constants.qmodel_onyx_predict:
             self.cBox_Models.setCurrentIndex(3)
-        elif Constants.QModel6_predict:
+        elif Constants.qmodel_volta_predict:
             self.cBox_Models.setCurrentIndex(2)
-        elif Constants.QModel4_predict:
+        elif Constants.qmodel_indus_predict:
             self.cBox_Models.setCurrentIndex(1)
-        elif Constants.ModelData_predict:
+        elif Constants.qmodel_tweed_predict:
             self.cBox_Models.setCurrentIndex(0)
         self.cBox_Models.currentTextChanged.connect(self.set_new_prediction_model)
         self.gridLayout.addWidget(self.cBox_Models, 7, 5, 1, 3)
@@ -1150,9 +1166,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.progressFormat.connect(lambda value: self.progressBar.setFormat(value))
         self.progressUpdate.connect(self.progressBar.repaint)
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
-        self.v4_predict_progress.connect(self._QModel_v4_progress_update)
-        self.v6_predict_progress.connect(self._QModel_v6_progress_update)
-        self.v7_predict_progress.connect(self._QModel_v7_progress_update)
+        self.indus_predict_progress.connect(self._qmodel_indus_progress_update)
+        self.volta_predict_progress.connect(self._QModel_volta_progress_update)
+        self.onyx_predict_progress.connect(self._QModel_onyx_progress_update)
 
     def _show_analyze_plot_overlay(self) -> None:
         """Creates and displays a progress overlay on the analysis plot.
@@ -2053,10 +2069,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e(TAG, f"Unknown predict model '{text}', using default '{default}'")
         try:
             # these flags are set above `index` as a fallback option
-            Constants.ModelData_predict = True if index >= 0 else False
-            Constants.QModel4_predict = True if index >= 1 else False
-            Constants.QModel6_predict = True if index >= 2 else False
-            Constants.QModel7_predict = True if index >= 3 else False
+            Constants.qmodel_tweed_predict = True if index >= 0 else False
+            Constants.qmodel_indus_predict = True if index >= 1 else False
+            Constants.qmodel_volta_predict = True if index >= 2 else False
+            Constants.qmodel_onyx_predict = True if index >= 3 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -2064,8 +2080,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
         except:
             Log.e(TAG, "Failed to set model dropdown menu in Advanced Settings")
         try:
-            self.parent.controls_window.q_version_v1.setChecked(True if index == 0 else False)
-            self.parent.controls_window.q_version_v4.setChecked(True if index == 1 else False)
+            self.parent.controls_window.qmodel_tweed_version.setChecked(
+                True if index == 0 else False
+            )
+            self.parent.controls_window.qmodel_indus_version.setChecked(
+                True if index == 1 else False
+            )
+            self.parent.controls_window.qmodel_volta_version.setChecked(
+                True if index == 2 else False
+            )
+            self.parent.controls_window.qmodel_onyx_version.setChecked(
+                True if index == 3 else False
+            )
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
@@ -2505,7 +2531,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d(f"Mouse click @ xs = {index}")
             self.poi_markers[px].setValue(index)
             self.poi_markers[px].sigPositionChangeFinished.emit(self.poi_markers[px])
-
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -2992,72 +3017,72 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         Configuration constraints:
             - Models are only loaded if their respective prediction flags
-            (`QModel4_predict` / `QModel6_predict`) are active in `Constants`.
+            (`qmodel_onyx_predict` / `qmodel_volta_predict`) are active in `Constants`.
             - Models are skipped if they are already successfully loaded.
             - Models are skipped if a loading task is already in-flight (tracked via futures).
         """
         # Ensure future tracking attributes exist (fallback if not set in __init__)
-        if not hasattr(self, "_qmodel_v4_future"):
-            self._qmodel_v4_future = None
-        if not hasattr(self, "_qmodel_v6_future"):
-            self._qmodel_v6_future = None
-        if not hasattr(self, "_qmodel_v7_future"):
-            self._qmodel_v7_future = None
+        if not hasattr(self, "_qmodel_indus_future"):
+            self._qmodel_indus_future = None
+        if not hasattr(self, "_qmodel_volta_future"):
+            self._qmodel_volta_future = None
+        if not hasattr(self, "_qmodel_onyx_future"):
+            self._qmodel_onyx_future = None
 
-        # QModel V4 (Fusion) Preload
+        # QModel Indus Preload
         try:
-            requires_v4 = getattr(Constants, "QModel4_predict", False)
-            is_v4_pending = self._qmodel_v4_future is not None
+            requries_indus = getattr(Constants, "qmodel_indus_predict", False)
+            is_indus_pending = self._qmodel_indus_future is not None
 
-            if requires_v4 and not self.QModel_v4_modules_loaded and not is_v4_pending:
-                self._qmodel_v4_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v4)
+            if requries_indus and not self.qmodel_indus_modules_loaded and not is_indus_pending:
+                self._qmodel_indus_future = _LOAD_EXECUTOR.submit(self._load_qmodel_indus)
 
         except Exception as e:
-            Log.e("ERROR", f"Failed to schedule 'QModel v4 (Fusion)' preload. Details: {e}")
+            Log.e("ERROR", f"Failed to schedule 'QModel Indus' preload. Details: {e}")
 
-        # QModel V6 (YOLO26) Preload
+        # QModel Volta  Preload
         try:
-            requires_v6 = getattr(Constants, "QModel6_predict", False)
-            is_v6_pending = self._qmodel_v6_future is not None
+            requires_volta = getattr(Constants, "qmodel_volta_predict", False)
+            is_volta_pending = self._qmodel_volta_future is not None
 
-            if requires_v6 and not self.QModel_v6_modules_loaded and not is_v6_pending:
-                self._qmodel_v6_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v6)
+            if requires_volta and not self.QModel_volta_modules_loaded and not is_volta_pending:
+                self._qmodel_volta_future = _LOAD_EXECUTOR.submit(self._load_qmodel_volta)
 
         except Exception as e:
-            Log.e("ERROR", f"Failed to schedule 'QModel v6 (YOLO26)' preload. Details: {e}")
+            Log.e("ERROR", f"Failed to schedule 'QModel Volta ' preload. Details: {e}")
 
-        # QModel Onyx (v7) Preload
+        # QModel Onyx (onyx) Preload
         try:
-            requires_v7 = getattr(Constants, "QModel7_predict", False)
-            is_v7_pending = self._qmodel_v7_future is not None
+            requires_onyx = getattr(Constants, "qmodel_onyx_predict", False)
+            is_onyx_pending = self._qmodel_onyx_future is not None
 
-            if requires_v7 and not self.QModel_v7_modules_loaded and not is_v7_pending:
-                self._qmodel_v7_future = _LOAD_EXECUTOR.submit(self._load_qmodel_v7)
+            if requires_onyx and not self.QModel_onyx_modules_loaded and not is_onyx_pending:
+                self._qmodel_onyx_future = _LOAD_EXECUTOR.submit(self._load_qmodel_onyx)
 
         except Exception as e:
             Log.e("ERROR", f"Failed to schedule 'QModel Onyx' preload. Details: {e}")
 
     @staticmethod
-    def _load_qmodel_v4() -> "QModelV4Fusion":
+    def _load_qmodel_indus() -> "QModelIndus":
         """
-        Instantiates and loads the V4 Fusion prediction model into memory.
+        Instantiates and loads the QModelIndus prediction model into memory.
 
         This worker method performs heavy disk I/O to load PyTorch model weights
         (.pth files) for both regressors and classifiers. It is designed to be
         executed safely off the main UI thread via a concurrent futures executor.
 
         Returns:
-            QModelV4Fusion: A fully initialized V4 prediction model ready for inference.
+            QModelIndus: A fully initialized QModelIndus prediction model ready for inference.
         """
         base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
             "QModel",
             "assets",
-            "qmodel_v4_fusion",
+            "qmodel_indus",
         )
 
-        return QModelV4Fusion(
+        return QModelIndus(
             reg_path_1=os.path.join(base_path, "poi_model_mini_window_0_1600.pth"),
             reg_path_2=os.path.join(base_path, "poi_model_mini_window_1_1600.pth"),
             clf_path=os.path.join(base_path, "v4_model_pytorch_2100.pth"),
@@ -3066,26 +3091,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
 
     @staticmethod
-    def _load_qmodel_v6() -> "QModelV6YOLO":
+    def _load_qmodel_volta() -> "QModelVolta":
         """
-        Instantiates and loads the V6 YOLO26 prediction model into memory.
+        Instantiates and loads the Volta prediction model into memory.
 
         This worker method constructs the asset map and performs heavy disk I/O
         to load the YOLO-based PyTorch weights (.pt files) for various detectors
         and classifiers. It is designed to be executed off the main UI thread.
 
         Returns:
-            QModelV6YOLO: A fully initialized V6 prediction model ready for inference.
+            QModelVolta: A fully initialized Volta prediction model ready for inference.
         """
         base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
             "QModel",
             "assets",
-            "qmodel_v6_yolo",
+            "qmodel_volta",
         )
 
-        # Map out the required weights files for the YOLO26 model suite
+        # Map out the required weights files for the model suite
         model_assets = {
             "spacing_prior": os.path.join(base_path, "spacing_prior.json"),
             "fill_classifier": os.path.join(
@@ -3100,32 +3125,32 @@ class AnalyzeProcess(QtWidgets.QWidget):
             },
         }
 
-        return QModelV6YOLO(model_assets=model_assets)
+        return QModelVolta(model_assets=model_assets)
 
     @staticmethod
-    def _load_qmodel_v7() -> "QModelV7":
+    def _load_qmodel_onyx() -> "QModelOnyx":
         """
-        Instantiates and loads the QModel Onyx (v7) prediction model into memory.
+        Instantiates and loads the QModel Onyx (onyx) prediction model into memory.
 
         This worker method constructs the asset map and performs heavy disk I/O
         to load the YOLO-based PyTorch weights (.pt files) for various detectors
-        and classifiers, plus the v7-specific spacing-prior decode and zoom
+        and classifiers, plus the onyx-specific spacing-prior decode and zoom
         refinement assets. It is designed to be executed off the main UI thread.
 
         Returns:
-            QModelV7: A fully initialized v7 prediction model ready for inference.
+            QModelOnyx: A fully initialized onyx prediction model ready for inference.
         """
         base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
             "QModel",
             "assets",
-            "qmodel_v7",
+            "qmodel_onyx",
         )
 
-        # Map out the required weights files for the YOLO26+ model suite. The
-        # zoom-refiner detectors are optional (see QModelV7.ZOOM_REFINE_MAP in
-        # v7_yolo.py); absent files simply keep refine_pois a no-op.
+        # Map out the required weights files for the model suite. The
+        # zoom-refiner detectors are optional (see QModelOnyx.ZOOM_REFINE_MAP in
+        # onyx_yolo.py); absent files simply keep refine_pois a no-op.
         model_assets = {
             "spacing_prior": os.path.join(base_path, "spacing_prior.json"),
             "fill_classifier": os.path.join(
@@ -3137,13 +3162,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 "ch2": os.path.join(base_path, "detectors", "ch2_detector", "ch2.pt"),
                 "ch3": os.path.join(base_path, "detectors", "ch3_detector", "ch3.pt"),
                 "poi5_fine": os.path.join(base_path, "detectors", "eof_detector", "eof.pt"),
-                "ch1_zoom": os.path.join(base_path, "detectors", "ch1_zoom_detector", "ch1_zoom.pt"),
-                "ch2_zoom": os.path.join(base_path, "detectors", "ch2_zoom_detector", "ch2_zoom.pt"),
-                "ch3_zoom": os.path.join(base_path, "detectors", "ch3_zoom_detector", "ch3_zoom.pt"),
+                "ch1_zoom": os.path.join(
+                    base_path, "detectors", "ch1_zoom_detector", "ch1_zoom.pt"
+                ),
+                "ch2_zoom": os.path.join(
+                    base_path, "detectors", "ch2_zoom_detector", "ch2_zoom.pt"
+                ),
+                "ch3_zoom": os.path.join(
+                    base_path, "detectors", "ch3_zoom_detector", "ch3_zoom.pt"
+                ),
             },
         }
 
-        return QModelV7(model_assets=model_assets)
+        return QModelOnyx(model_assets=model_assets)
 
     def _await_qmodels(self, timeout: float = 120.0) -> None:
         """
@@ -3163,47 +3194,47 @@ class AnalyzeProcess(QtWidgets.QWidget):
             - Future attributes are explicitly nulled out after resolution to
             prevent memory leaks and allow for clean reloading later.
         """
-        # Resolve QModel V4 (Fusion)
-        v4_fut = getattr(self, "_qmodel_v4_future", None)
+        # Resolve QModel Indus
+        v4_fut = getattr(self, "_qmodel_indus_future", None)
 
-        if v4_fut is not None and not getattr(self, "QModel_v4_modules_loaded", False):
+        if v4_fut is not None and not getattr(self, "qmodel_indus_modules_loaded", False):
             try:
                 # Block and wait for the thread pool to return the loaded V4 model
-                self.QModel_v4_predictor = v4_fut.result(timeout=timeout)
-                self.QModel_v4_modules_loaded = True
-                Log.i(TAG, "'QModel v4 (Fusion)' modules loaded successfully.")
+                self.qmodel_indus_predictor = v4_fut.result(timeout=timeout)
+                self.qmodel_indus_modules_loaded = True
+                Log.i(TAG, "'QModel Indus' modules loaded successfully.")
             except Exception as e:
-                Log.e(TAG, f"Failed to load 'QModel v4 (Fusion)' modules. Details: {e}")
+                Log.e(TAG, f"Failed to load 'QModel Indus' modules. Details: {e}")
             finally:
-                self._qmodel_v4_future = None
+                self._qmodel_indus_future = None
 
-        # Resolve QModel V6 (YOLO26)
-        v6_fut = getattr(self, "_qmodel_v6_future", None)
+        # Resolve QModel Volta
+        volta_fut = getattr(self, "_qmodel_volta_future", None)
 
-        if v6_fut is not None and not getattr(self, "QModel_v6_modules_loaded", False):
+        if volta_fut is not None and not getattr(self, "QModel_volta_modules_loaded", False):
             try:
-                # Block and wait for the thread pool to return the loaded V6 model
-                self.QModel_v6_predictor = v6_fut.result(timeout=timeout)
-                self.QModel_v6_modules_loaded = True
-                Log.i(TAG, "'QModel v6 (YOLO26)' modules loaded successfully.")
+                # Block and wait for the thread pool to return the loaded Volta model
+                self.QModel_volta_predictor = volta_fut.result(timeout=timeout)
+                self.QModel_volta_modules_loaded = True
+                Log.i(TAG, "'QModel Volta ' modules loaded successfully.")
             except Exception as e:
-                Log.e(TAG, f"Failed to load 'QModel v6 (YOLO26)' modules. Details: {e}")
+                Log.e(TAG, f"Failed to load 'QModel Volta ' modules. Details: {e}")
             finally:
-                self._qmodel_v6_future = None
+                self._qmodel_volta_future = None
 
-        # Resolve QModel Onyx (v7)
-        v7_fut = getattr(self, "_qmodel_v7_future", None)
+        # Resolve QModel Onyx (onyx)
+        onyx_fut = getattr(self, "_qmodel_onyx_future", None)
 
-        if v7_fut is not None and not getattr(self, "QModel_v7_modules_loaded", False):
+        if onyx_fut is not None and not getattr(self, "QModel_onyx_modules_loaded", False):
             try:
-                # Block and wait for the thread pool to return the loaded v7 model
-                self.QModel_v7_predictor = v7_fut.result(timeout=timeout)
-                self.QModel_v7_modules_loaded = True
+                # Block and wait for the thread pool to return the loaded onyx model
+                self.QModel_onyx_predictor = onyx_fut.result(timeout=timeout)
+                self.QModel_onyx_modules_loaded = True
                 Log.i(TAG, "'QModel Onyx' modules loaded successfully.")
             except Exception as e:
                 Log.e(TAG, f"Failed to load 'QModel Onyx' modules. Details: {e}")
             finally:
-                self._qmodel_v7_future = None
+                self._qmodel_onyx_future = None
 
     def _check_dev_mode_cached(self, force_refresh: bool = False) -> bool:
         """
@@ -3620,17 +3651,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ws = 10
         return [ws, clipped]
 
-    def _QModel_v4_progress_update(self, pct: int, status: Optional[str]):
+    def _qmodel_indus_progress_update(self, pct: int, status: Optional[str]):
         if getattr(self, "_qmodel_overlay", None) is None:
             self._show_qmodel_plot_overlay()
         self._update_qmodel_plot_overlay(pct, status or "")
 
-    def _QModel_v6_progress_update(self, pct: int, status: Optional[str]):
+    def _QModel_volta_progress_update(self, pct: int, status: Optional[str]):
         if getattr(self, "_qmodel_overlay", None) is None:
             self._show_qmodel_plot_overlay()
         self._update_qmodel_plot_overlay(pct, status or "")
 
-    def _QModel_v7_progress_update(self, pct: int, status: Optional[str]):
+    def _QModel_onyx_progress_update(self, pct: int, status: Optional[str]):
         if getattr(self, "_qmodel_overlay", None) is None:
             self._show_qmodel_plot_overlay()
         self._update_qmodel_plot_overlay(pct, status or "")
@@ -3668,15 +3699,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
-            if Constants.QModel7_predict:
+            if Constants.qmodel_onyx_predict:
                 Log.w("Auto-fitting points with QModel Onyx... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
-                        predictor = self.QModel_v7_predictor
+                        predictor = self.QModel_onyx_predictor
                         predict_result, detected_channels = predictor.predict(
-                            file_buffer=fh, progress_signal=self.v7_predict_progress
+                            file_buffer=fh, progress_signal=self.onyx_predict_progress
                         )
                         # Restoring predictions restores the channel count.
                         self.parent.num_channels = detected_channels
@@ -3700,7 +3731,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_run_this_load = True
                         self.model_result = predictions
                         self.model_candidates = candidates
-                        self.model_engine = f"QModel Onyx - {detected_channels}ch"
+                        self.model_engine = f"Onyx - {detected_channels}ch"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             poi_vals = self.model_result.copy()
                             if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -3717,23 +3748,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.d(line.strip())
                     self.model_result = -1  # Trigger fallback handling
                     # raise e
-            if self.model_result == -1 and Constants.QModel6_predict:
-                Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
+            if self.model_result == -1 and Constants.qmodel_volta_predict:
+                Log.w("Auto-fitting points with QModel Volta ... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
-                        predictor = self.QModel_v6_predictor
+                        predictor = self.QModel_volta_predictor
                         # self._QModel_create_new_progress_dialog()
                         # self.progressBarDiag.setRange(0, 100)
                         predict_result, detected_channels = predictor.predict(
-                            file_buffer=fh, progress_signal=self.v6_predict_progress
+                            file_buffer=fh, progress_signal=self.volta_predict_progress
                         )
                         # Restoring predictions restores the channel count.
                         self.parent.num_channels = detected_channels
                         Log.i(
                             TAG,
-                            f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)",
+                            f"QModel Volta Inference Complete. Detected Config: {detected_channels} Channel(s)",
                         )
                         predictions = []
                         candidates = []
@@ -3751,7 +3782,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_run_this_load = True
                         self.model_result = predictions
                         self.model_candidates = candidates
-                        self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+                        self.model_engine = f"Volta  - {detected_channels}ch"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             poi_vals = self.model_result.copy()
                             if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -3763,24 +3794,24 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 except Exception as e:
                     import traceback
 
-                    Log.e(TAG, f"Error using 'QModel v6 (YOLO26)': {e}")
+                    Log.e(TAG, f"Error using 'QModel Volta ': {e}")
                     for line in traceback.format_tb(sys.exc_info()[2]):
                         Log.d(line.strip())
                     self.model_result = -1  # Trigger fallback handling
                     # raise e
-            if self.model_result == -1 and Constants.QModel4_predict:
-                Log.w("Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
+            if self.model_result == -1 and Constants.qmodel_indus_predict:
+                Log.w("Auto-fitting points with QModel Indus... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
-                        predictor = self.QModel_v4_predictor
+                        predictor = self.qmodel_indus_predictor
                         # self._QModel_create_new_progress_dialog()
                         # self.progressBarDiag.setRange(0, 100)  # percentage
                         predict_result = predictor.predict(
                             file_buffer=fh,
                             visualize=False,
-                            progress_signal=self.v4_predict_progress,
+                            progress_signal=self.indus_predict_progress,
                             use_partial_fills=self.partial_fills_checkbox.isChecked(),
                         )
                         predictions = []
@@ -3795,7 +3826,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_run_this_load = True
                         self.model_result = predictions
                         self.model_candidates = candidates
-                        self.model_engine = "QModel v4 (Fusion)"
+                        self.model_engine = "Indus"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             poi_vals = self.model_result.copy()
                             if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -3816,12 +3847,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     Log.e(e)
                     Log.e(
                         TAG,
-                        f"Error using 'QModel v4 (Fusion)'... Using a fallback model for auto-fitting.",
+                        f"Error using 'QModel Indus'... Using a fallback model for auto-fitting.",
                     )
                     raise e  # debug only
                     self.model_result = -1  # try fallback model
 
-            if self.model_result == -1 and Constants.ModelData_predict:
+            if self.model_result == -1 and Constants.qmodel_tweed_predict:
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         csv_headers = next(f)
@@ -3841,13 +3872,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     dissipation = data[:, 3]
 
                     self.model_run_this_load = True
-                    self.model_result = self.dataModel.IdentifyPoints(
+                    self.model_result = self.qmodel_tweed_predictor.IdentifyPoints(
                         self.loaded_datapath,
                         relative_time,
                         resonance_frequency,
                         dissipation,
                     )
-                    self.model_engine = "ModelData"
+                    self.model_engine = "Tweed"
                     if isinstance(self.model_result, list):
                         poi_vals.clear()
                         # show point with highest confidence for each:
@@ -3946,7 +3977,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         This method drives the point-selection workflow (with POI3 intentionally hidden). It:
         - Advances or clamps the internal step counter and maps it to the visible tutorial/step index (skipping the removed POI3).
         - Updates progress text, enables/disables navigation buttons, and switches the main graph view.
-        - On initial step, attempts to auto-populate POI candidates using available prediction engines (QModel v3, QModel v2, ModelData) and creates/mutates vertical POI markers when needed.
+        - On initial step, attempts to auto-populate POI candidates using available prediction engines (QModel v3, QModel v2, QModel Tweed) and creates/mutates vertical POI markers when needed.
         - For intermediate steps it restricts which POI marker is movable, recenters/zooms the context plots around the current POI (skipping POI3), and updates star/current-point indicators and small-context plots.
         - On the summary/analysis step it finalizes marker positions, validates signatures if required, persists POIs and audit information to the run XML when there are unsaved changes, and launches the AnalyzerWorker in a background thread to run the heavy analysis pipeline.
         - Ensures any hidden POI (index 2 / POI3) is not shown or edited and adjusts all marker index calculations accordingly.
@@ -4028,21 +4059,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.scat2.setAlpha(0.01, False)
             self.scat3.setAlpha(0.01, False)
 
-            # ModelData
+            # QModel Tweed
             poi_vals = []
             if len(self.poi_markers) != 6:
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel7_predict:
+                if Constants.qmodel_tweed_predict:
                     Log.w("Auto-fitting points with QModel Onyx... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predictor = self.QModel_v7_predictor
+                            predictor = self.QModel_onyx_predictor
                             predict_result, detected_channels = predictor.predict(
-                                file_buffer=fh, progress_signal=self.v7_predict_progress
+                                file_buffer=fh, progress_signal=self.onyx_predict_progress
                             )
                             if not self.parent.num_channels:
                                 self.parent.num_channels = detected_channels
@@ -4067,7 +4098,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = f"QModel Onyx - {detected_channels}ch"
+                            self.model_engine = f"Onyx - {detected_channels}ch"
                             if isinstance(self.model_result, list) and len(self.model_result) == 6:
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -4086,23 +4117,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line.strip())
                         self.model_result = -1  # Trigger fallback handling
                         # raise e # Uncomment for strict debugging
-                if self.model_result == -1 and Constants.QModel6_predict:
-                    Log.w("Auto-fitting points with QModel v6 (YOLO26)... (may take a few seconds)")
+                if self.model_result == -1 and Constants.qmodel_volta_predict:
+                    Log.w("Auto-fitting points with QModel Volta ... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predictor = self.QModel_v6_predictor
+                            predictor = self.QModel_volta_predictor
                             # self._QModel_create_new_progress_dialog()
                             # self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
-                                file_buffer=fh, progress_signal=self.v6_predict_progress
+                                file_buffer=fh, progress_signal=self.volta_predict_progress
                             )
                             if not self.parent.num_channels:
                                 self.parent.num_channels = detected_channels
                             Log.i(
                                 TAG,
-                                f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)",
+                                f"QModel Volta Inference Complete. Detected Config: {detected_channels} Channel(s)",
                             )
 
                             predictions = []
@@ -4121,7 +4152,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+                            self.model_engine = f"Volta  - {detected_channels}ch"
                             if isinstance(self.model_result, list) and len(self.model_result) == 6:
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -4134,23 +4165,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         # --- ERROR HANDLING ---
                         import traceback
 
-                        Log.e(TAG, f"Error using 'QModel v6 (YOLO26)': {e}")
+                        Log.e(TAG, f"Error using 'QModel Volta ': {e}")
                         # Print full stack trace to debug log
                         for line in traceback.format_tb(sys.exc_info()[2]):
                             Log.d(line.strip())
                         self.model_result = -1  # Trigger fallback handling
                         # raise e # Uncomment for strict debugging
-                if self.model_result == -1 and Constants.QModel4_predict:
-                    Log.w("Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
+                if self.model_result == -1 and Constants.qmodel_indus_predict:
+                    Log.w("Auto-fitting points with QModel Indus... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predictor = self.QModel_v4_predictor
+                            predictor = self.qmodel_indus_predictor
                             predict_result = predictor.predict(
                                 file_buffer=fh,
                                 visualize=False,
-                                progress_signal=self.v4_predict_progress,
+                                progress_signal=self.indus_predict_progress,
                                 use_partial_fills=self.partial_fills_checkbox.isChecked(),
                             )
 
@@ -4167,7 +4198,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 candidates.append(best_pair)
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = "QModel v4 (Fusion)"
+                            self.model_engine = "Indus"
                             if isinstance(self.model_result, list) and len(self.model_result) == 6:
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -4187,12 +4218,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v4 (Fusion)'... Using a fallback model for auto-fitting."
+                            "Error using 'QModel Indus'... Using a fallback model for auto-fitting."
                         )
                         raise e  # debug only
                         self.model_result = -1  # try fallback model
 
-                if self.model_result == -1 and Constants.ModelData_predict:
+                if self.model_result == -1 and Constants.qmodel_tweed_predict:
                     try:
                         start_time = poi_vals[0] if len(poi_vals) > 0 else 0
                         stop_time = poi_vals[5] if len(poi_vals) > 5 else len(self.xs) - 1
@@ -4204,14 +4235,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             None,
                             stop_time,
                         ]
-                        self.model_result = self.dataModel.IdentifyPoints(
+                        self.model_result = self.qmodel_tweed_predictor.IdentifyPoints(
                             data_path=self.loaded_datapath,
                             times=self.data_time,
                             freq=self.data_freq,
                             diss=self.data_diss,
                             start_at=model_starting_points,
                         )
-                        self.model_engine = "ModelData"
+                        self.model_engine = "Tweed"
                         if isinstance(self.model_result, list):
                             poi_vals.clear()
                             # show point with highest confidence for each:
@@ -4328,18 +4359,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
                     poi_vals.append(cur_idx)
 
-                if self.model_engine == "ModelData" and Constants.ModelData_predict:
+                if self.model_engine == "Tweed" and Constants.qmodel_tweed_predict:
                     try:
                         # Run Model again, to get an initial automatic fine tuning of points prior to user input
                         model_starting_points = poi_vals.copy()  # NOTE: len(poi_vals) must equal 6
-                        self.model_result = self.dataModel.IdentifyPoints(
+                        self.model_result = self.qmodel_tweed_predictor.IdentifyPoints(
                             data_path=self.loaded_datapath,
                             times=self.data_time,
                             freq=self.data_freq,
                             diss=self.data_diss,
                             start_at=model_starting_points,
                         )
-                        self.model_engine = "ModelData"
+                        self.model_engine = "Tweed"
                         if isinstance(self.model_result, list):
                             poi_vals.clear()
                             # show point with highest confidence for each:
@@ -4407,7 +4438,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.e("Error: An exception occurred while sorting POI markers.")
                             Log.e(f"Error Details: {str(e)}")
 
-                else:  # self.model_engine != "ModelData":
+                else:  # self.model_engine != "Tweed":
                     # do nothing here if "QModel v2" or "None"
                     pass
 
@@ -5124,7 +5155,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             is_good = run.getAttribute("ruling")
 
             # Get the username from the parent control, if available.
-            user_name = None if self.parent == None else self.parent.controls_window.username.text()[6:]
+            user_name = (
+                None if self.parent == None else self.parent.controls_window.username.text()[6:]
+            )
             # check signatures of XML, render a new QueryRunInfo() and allow saving changes
             # (when editing runinfo, append to existing audit, not overwrite as new CAPTURE).
             if hasattr(self, "bThread"):
@@ -5466,10 +5499,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """Orchestrates the POI auto-fitting fallback chain.
 
         Attempts to predict POIs the current fallback strategy:
-            1. QModel Onyx (v7)
-            2. QModel v6 (YOLO26)
-            3. QModel v4 (Fusion)
-            4. ModelData.
+            1. QModel Onyx (onyx)
+            2. QModel Volta
+            3. QModel Indus
+            4. QModel Tweed.
 
         Args:
             poi_vals: Current list of POI values.
@@ -5490,13 +5523,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.model_candidates = None
         self.model_engine = "None"
 
-        poi_vals = self._try_qmodel_v7(poi_vals)
+        poi_vals = self._try_qmodel_onyx(poi_vals)
 
         if self.model_result == -1:
-            poi_vals = self._try_qmodel_v6(poi_vals)
+            poi_vals = self._try_qmodel_volta(poi_vals)
 
         if self.model_result == -1:
-            poi_vals = self._try_qmodel_v4(poi_vals)
+            poi_vals = self._try_qmodel_indus(poi_vals)
 
         if self.model_result == -1:
             poi_vals = self._try_model_data(
@@ -5509,8 +5542,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         return poi_vals
 
-    def _try_qmodel_v7(self, poi_vals: List[int]) -> List[int]:
-        """Attempts POI prediction using the QModel Onyx (v7) engine.
+    def _try_qmodel_onyx(self, poi_vals: List[int]) -> List[int]:
+        """Attempts POI prediction using the QModel Onyx (onyx) engine.
 
         NOTE: The POST point is not predicted with this model and is simply filled!
 
@@ -5521,13 +5554,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             The updated list of POI indices if successful; otherwise, returns
             the original `poi_vals` and sets `self.model_result` to -1 for fallback.
         """
-        if not Constants.QModel7_predict:
+        if not Constants.qmodel_onyx_predict:
             return poi_vals
 
         # Skip inference if XML already provided a full set of valid points
         if self.prior_points_in_xml:
             self.model_result = poi_vals
-            self.model_engine = "QModel Onyx skipped (using prior points)"
+            self.model_engine = "Onyx skipped (using prior points)"
             return poi_vals
 
         msg = "Auto-fitting points with QModel Onyx..."
@@ -5541,8 +5574,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             with secure_open(self.loaded_datapath, "r", "capture") as f:
                 fh = BytesIO(f.read())
 
-            predict_result, detected_channels = self.QModel_v7_predictor.predict(
-                file_buffer=fh, progress_signal=self.v7_predict_progress
+            predict_result, detected_channels = self.QModel_onyx_predictor.predict(
+                file_buffer=fh, progress_signal=self.onyx_predict_progress
             )
 
             if not self.parent.num_channels:
@@ -5564,7 +5597,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_run_this_load = True
             self.model_result = predictions
             self.model_candidates = candidates
-            self.model_engine = f"QModel Onyx - {detected_channels}ch"
+            self.model_engine = f"Onyx - {detected_channels}ch"
 
             # Validate
             # NOTE: Legacy POI3 (POST point) is ignored here!
@@ -5583,8 +5616,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         return poi_vals
 
-    def _try_qmodel_v6(self, poi_vals: List[int]) -> List[int]:
-        """Attempts POI prediction using the QModel v6 (YOLO26) engine.
+    def _try_qmodel_volta(self, poi_vals: List[int]) -> List[int]:
+        """Attempts POI prediction using the QModel Volta  engine.
 
         NOTE: The POST point is not predicted with this model and is simply filled!
 
@@ -5595,16 +5628,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
             The updated list of POI indices if successful; otherwise, returns
             the original `poi_vals` and sets `self.model_result` to -1 for fallback.
         """
-        if not Constants.QModel6_predict:
+        if not Constants.qmodel_volta_predict:
             return poi_vals
 
         # Skip inference if XML already provided a full set of valid points
         if self.prior_points_in_xml:
             self.model_result = poi_vals
-            self.model_engine = "QModel v6 (YOLO26) skipped (using prior points)"
+            self.model_engine = "Volta  skipped (using prior points)"
             return poi_vals
 
-        msg = "Auto-fitting points with QModel v6 (YOLO26)..."
+        msg = "Auto-fitting points with QModel Volta ..."
         Log.w(f"{msg} (may take a few seconds)")
         self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
         self.graphWidget.addItem(self._text2, ignoreBounds=True)
@@ -5618,8 +5651,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # self._QModel_create_new_progress_dialog()
             # self.progressBarDiag.setRange(0, 100)
 
-            predict_result, detected_channels = self.QModel_v6_predictor.predict(
-                file_buffer=fh, progress_signal=self.v6_predict_progress
+            predict_result, detected_channels = self.QModel_volta_predictor.predict(
+                file_buffer=fh, progress_signal=self.volta_predict_progress
             )
             # QtCore.QTimer.singleShot(1000, self.progressBarDiag.hide)
 
@@ -5642,7 +5675,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_run_this_load = True
             self.model_result = predictions
             self.model_candidates = candidates
-            self.model_engine = f"QModel v6 (YOLO26) - {detected_channels}ch"
+            self.model_engine = f"Volta  - {detected_channels}ch"
 
             # Validate
             # NOTE: Legacy POI3 (POST point) is ignored here!
@@ -5655,14 +5688,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         except Exception as e:
             self._log_traceback(debug=True)
-            Log.e(f"Error using 'QModel v6 (YOLO26)': {e}")
+            Log.e(f"Error using 'QModel Volta ': {e}")
             Log.e(TAG, "Falling back to next available model.")
             self.model_result = -1
 
         return poi_vals
 
-    def _try_qmodel_v4(self, poi_vals: List[int]) -> List[int]:
-        """Attempts POI prediction using the QModel v4 (Fusion) engine.
+    def _try_qmodel_indus(self, poi_vals: List[int]) -> List[int]:
+        """Attempts POI prediction using the QModel Indus engine.
 
         NOTE: The POST point is not predicted with this model and is simply filled!
 
@@ -5673,10 +5706,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             The updated list of POI indices if successful; otherwise, returns
             the original `poi_vals` and sets `self.model_result` to -1.
         """
-        if not Constants.QModel4_predict:
+        if not Constants.qmodel_indus_predict:
             return poi_vals
 
-        msg = "Auto-fitting points with QModel v4 (Fusion)..."
+        msg = "Auto-fitting points with QModel Indus..."
         Log.w(f"{msg} (may take a few seconds)")
         self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
         self.graphWidget.addItem(self._text2, ignoreBounds=True)
@@ -5686,10 +5719,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             with secure_open(self.loaded_datapath, "r", "capture") as f:
                 fh = BytesIO(f.read())
 
-            predict_result = self.QModel_v4_predictor.predict(
+            predict_result = self.qmodel_indus_predictor.predict(
                 file_buffer=fh,
                 visualize=False,
-                progress_signal=self.v4_predict_progress,
+                progress_signal=self.indus_predict_progress,
                 use_partial_fills=self.partial_fills_checkbox.isChecked(),
             )
 
@@ -5707,7 +5740,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_run_this_load = True
             self.model_result = predictions
             self.model_candidates = candidates
-            self.model_engine = "QModel v4 (Fusion)"
+            self.model_engine = "Indus"
 
             # Validate
             # NOTE: Legacy POI3 (POST point) is ignored here!
@@ -5720,7 +5753,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         except Exception as e:
             self._log_traceback(debug=True)
-            Log.e(f"Error using 'QModel v4 (Fusion)': {e}")
+            Log.e(f"Error using 'QModel Indus': {e}")
             self.model_result = -1
 
         return poi_vals
@@ -5732,7 +5765,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         resonance_frequency: np.ndarray,
         dissipation: np.ndarray,
     ) -> List[int]:
-        """Attempts POI prediction using the legacy ModelData predictor.
+        """Attempts POI prediction using the legacy QModel Tweed predictor.
 
         This serves as the final algorithmic fallback tier if everything went wrong :)
 
@@ -5749,17 +5782,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             The updated list of POI indices. Returns the original list if the
             feature is disabled or a critical error occurs.
         """
-        if not Constants.ModelData_predict:
+        if not Constants.qmodel_tweed_predict:
             return poi_vals
 
         try:
             self.model_run_this_load = True
             # IdentifyPoints returns a list of indices or -1 on failure
-            result = self.dataModel.IdentifyPoints(
+            result = self.qmodel_tweed_predictor.IdentifyPoints(
                 self.loaded_datapath, relative_time, resonance_frequency, dissipation
             )
             self.model_result = result
-            self.model_engine = "ModelData"
+            self.model_engine = "Tweed"
 
             if isinstance(result, list):
                 poi_vals.clear()
@@ -5778,13 +5811,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         poi_vals.append(point)
 
             elif result == -1:
-                Log.w("ModelData failed to auto-calculate points for this run.")
+                Log.w("QModel Tweed failed to auto-calculate points for this run.")
             else:
-                Log.e("ModelData returned an unexpected response format.")
+                Log.e("QModel Tweed returned an unexpected response format.")
 
         except Exception as e:
             self._log_traceback(debug=False)
-            Log.e(f"Legacy ModelData execution failed: {e}")
+            Log.e(f"Legacy QModel Tweed execution failed: {e}")
 
         return poi_vals
 
@@ -6547,6 +6580,33 @@ class AnalyzeProcess(QtWidgets.QWidget):
     #     self.QModel_widget.move(pos_X, pos_Y)
 
     def _log_model_confidences(self):
+        """Logs the confidence scores for the model's candidate points.
+
+        Iterates through `self.model_candidates` to log the confidence percentage 
+        of the primary prediction for specific named points ("start", "end_fill", 
+        "ch1", "ch2", "ch3"). The log severity (Info, Warning, Error) scales 
+        dynamically based on the confidence level. The "post" point is explicitly ignored.
+
+        Note:
+            The "Tweed" model engine does not support confidence logging. If the 
+            engine is set to "Tweed", this method will log an informational message 
+            and exit early.
+
+        Raises:
+            Exception: Captures and logs any errors encountered while parsing or 
+                logging the confidences from the model response.
+        """
+        if self.model_engine == "Tweed":
+            Log.i(
+                tag=f"[{self.model_engine}]", 
+                msg="Confidence logging is not available for Tweed."
+            )
+            return
+        
+        if self.model_candidates is None:
+            Log.w(tag=f"[{self.model_engine}]", msg="No model candidates available to log confidences!")
+            return
+
         def get_logger_for_confidence(confidence):
             logger = Log.e  # less than 33%
             if confidence > 66:
@@ -6557,22 +6617,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         try:
             point_names = ["start", "end_fill", "post", "ch1", "ch2", "ch3"]
-            for i, (candidates, confidences) in enumerate(self.model_candidates):
+            for i, (_, confidences) in enumerate(self.model_candidates):
                 if i == 2:
                     # do not print confidence of "post" point, it doesn't matter
                     continue
+                
                 point_name = point_names[i]
+                
                 # issue: QModel is returning a single `float` instead of a `list`
                 if type(confidences) is float:
                     confidences = [confidences]
+                
                 confidence = 100 * confidences[0] if len(confidences) > 0 else 0
                 num_spaces = len(point_names[1]) - len(point_name) + 1
+                
                 get_logger_for_confidence(confidence)(
                     tag=f"[{self.model_engine}]",
                     msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%",
                 )
-        except:
-            Log.e("Error logging confidences from QModel response.")
+        except Exception:
+            Log.e(tag=f"[{self.model_engine}]", msg="Error logging confidences from QModel response.")
 
     def resizeEvent(self, event):
         # # Position relative to main window

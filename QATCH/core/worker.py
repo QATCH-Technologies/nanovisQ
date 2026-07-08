@@ -12,8 +12,8 @@ from QATCH.core.ring_buffer import RingBuffer
 from QATCH.processors.Calibration import CalibrationProcess
 from QATCH.processors.Parser import ParserProcess
 from QATCH.processors.Serial import SerialProcess
-from QATCH.QModel.models.v6_yolo.v6_yolo_live import QModelV6YOLO_LiveProcess
-from QATCH.QModel.models.qmodel_v7.v7_yolo_live import QModelV7LiveProcess
+from QATCH.QModel.models.qmodel_onyx.onyx_live import QModelOnyxLiveProcess
+from QATCH.QModel.models.qmodel_volta.volta_live import QModelVoltaLiveProcess
 
 TAG = ""  # "[Worker]"
 
@@ -233,13 +233,13 @@ class Worker:
                         _,
                     ) = self._acquisition_process.get_frequencies(self._samples, 0)
 
-                # Setup QModelV6YOLO_LiveProcess live fill process (v7 takes
-                # priority over v6 when enabled; both remain fully wired).
+                # Setup QModelVoltaLiveProcess live fill process (onyx takes
+                # priority over Volta when enabled; both remain fully wired).
                 if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
                     LiveProcessCls = (
-                        QModelV7LiveProcess
-                        if Constants.QModel7_predict
-                        else QModelV6YOLO_LiveProcess
+                        QModelOnyxLiveProcess
+                        if Constants.qmodel_onyx_predict
+                        else QModelVoltaLiveProcess
                     )
                     self._forecaster_process = LiveProcessCls(
                         self._queueLog, self._forecaster_in, self._forecaster_out

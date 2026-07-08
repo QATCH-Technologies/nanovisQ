@@ -133,10 +133,10 @@ class ControlsWindow(BaseWindow):
             chk4 (QtWidgets.QAction): Toggle action for the Resonance/Dissipation view.
             chk5 (QtWidgets.QAction): Action to view tutorials.
             act_check_updates (QtWidgets.QAction): Action to check for software updates.
-            q_version_v1 (QtWidgets.QAction): Toggle for ModelData v1 prediction model.
-            q_version_v4 (QtWidgets.QAction): Toggle for QModel Fusion v4 prediction model.
-            q_version_v6 (QtWidgets.QAction): Toggle for QModel YOLO v6 prediction model.
-            q_version_v7 (QtWidgets.QAction): Toggle for QModel Onyx (v7) prediction model.
+            qmodel_tweed_version (QtWidgets.QAction): Toggle for QModel Tweed prediction model.
+            qmodel_indus_version (QtWidgets.QAction): Toggle for QModel Indus prediction model.
+            q_version_volta (QtWidgets.QAction): Toggle for QModel Volta prediction model.
+            q_version_onyx (QtWidgets.QAction): Toggle for QModel Onyx prediction model.
         """
         self._menu_target = target  # real menu bar lives on MainWin, not here
         self.menubar = []
@@ -207,30 +207,34 @@ class ControlsWindow(BaseWindow):
             "&Check for Updates", self.check_for_updates
         )
         self.menubar[3].addSeparator()
-        from QATCH.models.ModelData import __release__ as model_data_release
-        from QATCH.models.ModelData import __version__ as model_data_version
-        from QATCH.QModel.models.qmodel_v7.__init__ import (
-            __release__ as qmodel7_release,
-        )
-        from QATCH.QModel.models.qmodel_v7.__init__ import (
-            __version__ as qmodel7_version,
-        )
-        from QATCH.QModel.models.static_v4_fusion.__init__ import (
+        from QATCH.QModel.models.qmodel_indus.__init__ import (
             __release__ as qmodel4_release,
         )
-        from QATCH.QModel.models.static_v4_fusion.__init__ import (
+        from QATCH.QModel.models.qmodel_indus.__init__ import (
             __version__ as qmodel4_version,
         )
-        from QATCH.QModel.models.v6_yolo.__init__ import (
+        from QATCH.QModel.models.qmodel_onyx.__init__ import (
+            __release__ as qmodel7_release,
+        )
+        from QATCH.QModel.models.qmodel_onyx.__init__ import (
+            __version__ as qmodel7_version,
+        )
+        from QATCH.QModel.models.qmodel_tweed.tweed import (
+            __release__ as model_data_release,
+        )
+        from QATCH.QModel.models.qmodel_tweed.tweed import (
+            __version__ as model_data_version,
+        )
+        from QATCH.QModel.models.qmodel_volta.__init__ import (
             __release__ as qmodel6_release,
         )
-        from QATCH.QModel.models.v6_yolo.__init__ import (
+        from QATCH.QModel.models.qmodel_volta.__init__ import (
             __version__ as qmodel6_version,
         )
 
         qmodel_versions_menu = self.menubar[3].addMenu("Model versions (4 available)")
         self.menubar.append(qmodel_versions_menu)
-        self.q_version_v1 = self.menubar[5].addAction(
+        self.qmodel_tweed_version = self.menubar[5].addAction(
             "Tweed v{} ({})".format(
                 ".".join(str(model_data_version).split(".")[:2]), model_data_release
             ),
@@ -238,40 +242,40 @@ class ControlsWindow(BaseWindow):
                 Constants.list_predict_models[0]
             ),
         )
-        self.q_version_v1.setCheckable(True)
+        self.qmodel_tweed_version.setCheckable(True)
 
-        self.q_version_v4 = self.menubar[5].addAction(
+        self.qmodel_indus_version = self.menubar[5].addAction(
             "Indus v{} ({})".format(".".join(str(qmodel4_version).split(".")[:2]), qmodel4_release),
             lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[1]
             ),
         )
-        self.q_version_v4.setCheckable(True)
+        self.qmodel_indus_version.setCheckable(True)
 
-        self.q_version_v6 = self.menubar[5].addAction(
+        self.qmodel_volta_version = self.menubar[5].addAction(
             "Volta v{} ({})".format(".".join(str(qmodel6_version).split(".")[:2]), qmodel6_release),
             lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[2]
             ),
         )
-        self.q_version_v6.setCheckable(True)
+        self.qmodel_volta_version.setCheckable(True)
 
-        self.q_version_v7 = self.menubar[5].addAction(
+        self.qmodel_onyx_version = self.menubar[5].addAction(
             "Onyx v{} ({})".format(".".join(str(qmodel7_version).split(".")[:2]), qmodel7_release),
             lambda: self.parent.analyze_process.set_new_prediction_model(
                 Constants.list_predict_models[3]
             ),
         )
-        self.q_version_v7.setCheckable(True)
-        self.q_version_v7.setCheckable(True)
-        if Constants.QModel7_predict:
-            self.q_version_v7.setChecked(True)
-        elif Constants.QModel6_predict:
-            self.q_version_v6.setChecked(True)
-        elif Constants.QModel4_predict:
-            self.q_version_v4.setChecked(True)
-        elif Constants.ModelData_predict:
-            self.q_version_v1.setChecked(True)
+        self.qmodel_onyx_version.setCheckable(True)
+        self.qmodel_onyx_version.setCheckable(True)
+        if Constants.qmodel_onyx_predict:
+            self.qmodel_onyx_version.setChecked(True)
+        elif Constants.qmodel_volta_predict:
+            self.qmodel_volta_version.setChecked(True)
+        elif Constants.qmodel_indus_predict:
+            self.qmodel_indus_version.setChecked(True)
+        elif Constants.qmodel_tweed_predict:
+            self.qmodel_tweed_version.setChecked(True)
         else:
             Log.w(TAG, "No model selected on startup")
         self.menubar[3].addSeparator()

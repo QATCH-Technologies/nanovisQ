@@ -58,15 +58,19 @@ from QATCH.processors.updater import (
     UpdaterTask_Dbx,
     UpdaterTask_Git,
 )
+from QATCH.QModel.models.qmodel_onyx.onyx_live import (
+    DropEpochSignal as DropEpochSignal_onyx,
+)
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
-from QATCH.QModel.models.v6_yolo.v6_yolo_live import DropEpochSignal as DropEpochSignal_v6
-from QATCH.QModel.models.qmodel_v7.v7_yolo_live import DropEpochSignal as DropEpochSignal_v7
+from QATCH.QModel.models.qmodel_volta.volta_live import (
+    DropEpochSignal as DropEpochSignal_volta,
+)
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner
-from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.ui.windows import (
     ControlsWindow,
     InfoWindow,
@@ -4435,7 +4439,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                 Log.e(TAG, f"Failed to place fill-event marker: {e}")
                 if pred_int == -1 and not self._drop_epoch_sent:
                     DropEpochSignalCls = (
-                        DropEpochSignal_v7 if Constants.QModel7_predict else DropEpochSignal_v6
+                        DropEpochSignal_onyx
+                        if Constants.qmodel_onyx_predict
+                        else DropEpochSignal_volta
                     )
                     self.worker._forecaster_in.put(
                         DropEpochSignalCls(float(self.worker.get_t1_buffer(0)[-1]))

@@ -399,10 +399,10 @@ class Constants:
         "Volta",
         "Onyx",
     ]
-    QModel7_predict = True
-    QModel6_predict = True
-    QModel4_predict = True
-    ModelData_predict = True
+    qmodel_onyx_predict = True
+    qmodel_volta_predict = True
+    qmodel_indus_predict = True
+    qmodel_tweed_predict = True
     TensorFlow_predict = True
     # NOTE: If multiple models are enabled, they will be run
     # in the same priority order as they are listed above.

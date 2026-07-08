@@ -264,7 +264,7 @@ class RenameOutputFilesWorker(QtCore.QObject):
                         Log.e(TAG, f"Unable to lookup device info for: {dev_name}. Error: {e}")
 
                     force_save = True
-                    is_good = AnalyzeProcess.Model_Data(old_path)
+                    is_good = AnalyzeProcess.run_qmodel_tweed(old_path)
 
                     # WARNING: Blocking UI call
                     # WARNING: Blocking UI call
