@@ -561,18 +561,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.forecast_end_time = -1.0
         self._last_dry_msg: str = "Preparing sensor..."
         self._last_dry_status: bool = False
+        # NOTE: `self.dry_detect` is (re)built dynamically in `_refresh_ports()`
+        # (called above via `_source_changed()`) so devices connected after
+        # launch get their own instance, rather than being fixed at startup.
         self.dry_detect = []
-        n_devices = self.controls_window.ui.cBox_Port.count() - 1
-        for _ in range(n_devices):
-            self.dry_detect.append(
-                DryingDetection(
-                    window_size=Constants.DRYING_WINDOW_SIZE,
-                    snr_stable_diss=Constants.DRYING_SNR_STABLE_DISSIPATION,
-                    snr_stable_freq=Constants.DRYING_SNR_STABLE_FREQUENCY,
-                    flat_slope_eps_freq=Constants.DRYING_FLAT_SLOPE_EPS_FREQUENCY,
-                    flat_slope_eps_diss=Constants.DRYING_FLAT_SLOPE_EPS_DISSIPATION,
-                )
-            )
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
@@ -1159,8 +1151,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Reset dry and drop times to zero
         self._sensorDriedTimes = [0.0, 0.0, 0.0, 0.0]
         self._dropAppliedTimes = [0.0, 0.0, 0.0, 0.0]
-        for det in self.dry_detect:
-            det.reset()
+        self._reload_dry_detect()
         self._last_dry_msg = "Preparing sensor..."
         self._last_dry_status = False
         self._fill_display_msg = None
@@ -6257,7 +6248,28 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 enable = False
             self.controls_window.ui.cBox_MultiMode.model().item(i).setEnabled(enable)
+        # (Re)build dry-detection instances to match the now-current device
+        # count, so devices connected after launch (or removed) are picked up.
+        self._reload_dry_detect()
 
+    def _reload_dry_detect(self) -> None:
+        """(Re)builds `self.dry_detect` to match the number of connected devices.
+
+        Called whenever the port list changes (`_refresh_ports`) and on run
+        reset (`start`), so devices connected after app launch get their own
+        instance and stale instances from disconnected devices are dropped.
+        """
+        n_devices = max(0, self.ControlsWin.ui1.cBox_Port.count() - 1)
+        self.dry_detect = [
+            DryingDetection(
+                window_size=Constants.DRYING_WINDOW_SIZE,
+                snr_stable_diss=Constants.DRYING_SNR_STABLE_DISSIPATION,
+                snr_stable_freq=Constants.DRYING_SNR_STABLE_FREQUENCY,
+                flat_slope_eps_freq=Constants.DRYING_FLAT_SLOPE_EPS_FREQUENCY,
+                flat_slope_eps_diss=Constants.DRYING_FLAT_SLOPE_EPS_DISSIPATION,
+            )
+            for _ in range(n_devices)
+        ]
     ###########################################################################
     # Updates the speeds and depending boxes on change
     ###########################################################################
