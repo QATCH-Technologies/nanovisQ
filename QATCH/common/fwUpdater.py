@@ -214,7 +214,7 @@ class FW_Updater(QtCore.QObject):
                                 f"Programming FW {target}...", "Cancel", 0, 100, parent
                             )
                             icon_path = os.path.join(
-                                Architecture.get_path(), "QATCH/icons/download_icon.ico"
+                                Architecture.get_path(), "QATCH", "icons", "download_icon.ico"
                             )
                             self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
                             self.progressBar.setWindowTitle(f"Programming FW {target}{multistep}")

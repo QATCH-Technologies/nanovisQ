@@ -2518,7 +2518,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             machine_database_path = os.path.join(Constants.local_app_data_path, "database/app.db")
             bundled_database_path = os.path.join(
-                Architecture.get_path(), "QATCH/VisQAI/assets/app.db"
+                Architecture.get_path(), "QATCH", "VisQAI", "assets", "app.db"
             )
 
             localapp_exists = os.path.isfile(machine_database_path)
@@ -6886,7 +6886,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # if there's a space, skip the first word; otherwise, use the whole string
         labelweb3 = "{} available!".format(v)
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/download_icon.ico")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "download_icon.ico")
         self.info_window.ui.pButton_Download.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.info_window.ui.pButton_Download.setText(_translate("infoWindow", " Download ZIP"))
 
@@ -6954,9 +6954,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if datetime.now(timezone.utc) >= expires_at:
                 # stored access_token is expired, attempt to get a new one
                 # prefer working resource path, if exists
-                working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+                working_resource_path = os.path.join(os.getcwd(), "QATCH", "resources")
                 bundled_resource_path = os.path.join(
-                    Architecture.get_path(), "QATCH/resources/"
+                    Architecture.get_path(), "QATCH", "resources"
                 )  # otherwise, use bundled resource path
                 # resource_path = working_resource_path if os.path.exists(working_resource_path) else bundled_resource_path
                 # prefer working keystore, if it exists
@@ -7295,8 +7295,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.res_files = []
 
             remote_resource_path = f"/{branch}/resources/"
-            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
-            bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH/resources/")
+            working_resource_path = os.path.join(os.getcwd(), "QATCH", "resources")
+            bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH", "resources")
             remote_file_compare = os.path.join(remote_resource_path, "lookup_resources.csv")
             working_file_compare = os.path.join(working_resource_path, "lookup_resources.csv")
             bundled_file_compare = os.path.join(bundled_resource_path, "lookup_resources.csv")
@@ -7397,7 +7397,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_resources(self, branch):
         try:
             remote_resource_path = f"/{branch}/resources/"
-            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+            working_resource_path = os.path.join(os.getcwd(), "QATCH", "resources")
             working_file_compare = os.path.join(working_resource_path, "lookup_resources.csv")
 
             download_resources = self.res_download
@@ -7437,7 +7437,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.progressBar = QtWidgets.QProgressDialog(
                     f"Downloading resources...", "Cancel", 0, 100, self
                 )
-                icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/download_icon.ico")
+                icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "download_icon.ico")
                 self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
                 self.progressBar.setWindowTitle("QATCH nanovisQ")
                 self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
@@ -7612,7 +7612,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         self,
                     )
                     icon_path = os.path.join(
-                        Architecture.get_path(), "QATCH/icons/download_icon.ico"
+                        Architecture.get_path(), "QATCH", "icons", "download_icon.ico"
                     )
                     self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
                     self.progressBar.setWindowTitle(
@@ -7769,7 +7769,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 0,
                 self,
             )
-            icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/download_icon.ico")
+            icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "download_icon.ico")
             self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
             self.progressBar.setWindowTitle(f" Installing SW {os.path.basename(new_install_path)}")
             self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)

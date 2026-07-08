@@ -10262,7 +10262,7 @@ class AnalyzerWorker(QtCore.QObject):
         output = initial
         try:
             # NOTE: Even when frozen the working path will have resource files
-            with open("QATCH/resources/lookup_shear_correction.csv", "r") as f:
+            with open(os.path.join("QATCH", "resources", "lookup_shear_correction.csv"), "r") as f:
                 data = np.loadtxt(f.readlines(), delimiter=",", skiprows=1)
                 col = 1 if initial == 5e6 else 2
                 lookup_visc = data[:, 0]

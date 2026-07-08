@@ -466,8 +466,8 @@ class Constants:
     ######################
     # NIGHTLY adjustment #
     ######################
-    if os.path.exists("QATCH/nightly/latest_build.json"):
-        with open("QATCH/nightly/latest_build.json", "r") as f:
+    if os.path.exists(os.path.join("QATCH", "nightly", "latest_build.json")):
+        with open(os.path.join("QATCH", "nightly", "latest_build.json"), "r") as f:
             import json
 
             data = json.load(f)

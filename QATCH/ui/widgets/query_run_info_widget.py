@@ -146,7 +146,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         try:
             # auto complete options
             # prefer working resource path, if exists
-            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+            working_resource_path = os.path.join(os.getcwd(), "QATCH", "resources")
             # bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH/resources/") # otherwise, use bundled resource path
             # if os.path.exists(working_resource_path) else bundled_resource_path
             resource_path = working_resource_path
