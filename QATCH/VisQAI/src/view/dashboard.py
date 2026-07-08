@@ -2288,9 +2288,13 @@ class DashboardUI(QtWidgets.QWidget):
             self._pending_color = config["color"]
         elif self.running_card:
             self._pending_color = self.running_card.plot_color
-        if self.current_task is not None and self.current_task.isRunning():
-            self.current_task.stop()
-            self._zombie_tasks.append(self.current_task)
+        if self.current_task is not None:
+            try:
+                if self.current_task.isRunning():
+                    self.current_task.stop()
+                    self._zombie_tasks.append(self.current_task)
+            except RuntimeError:
+                self.current_task = None
 
         name = config.get("name", "Unknown Sample") if config else "Unknown Sample"
         if not self._is_batch_running:
@@ -2300,7 +2304,54 @@ class DashboardUI(QtWidgets.QWidget):
         self.current_task = PredictionThread(config)
         self.current_task.data_ready.connect(self._on_prediction_finished)
         self.current_task.finished.connect(self._on_task_complete)
+        self.current_task.error_occurred.connect(self._on_error)
+        self.current_task.finished.connect(self.current_task.deleteLater)
         self.current_task.start()
+
+    def _drain_all_prediction_tasks(self, timeout_ms=3000):
+        """Stop the current prediction and all zombies, blocking briefly until each exits.
+
+        Each thread is accessed defensively: a thread whose ``finished`` signal has
+        already triggered ``deleteLater`` may have its underlying C++ object reaped
+        while this method spins the event loop in ``wait()``. Such threads are
+        skipped rather than treated as an error.
+        """
+        try:
+            from sip import isdeleted  # PyQt5
+        except ImportError:
+            try:
+                from PyQt5.sip import isdeleted
+            except ImportError:
+
+                def isdeleted(_obj):
+                    return False
+
+        tasks = []
+        if self.current_task is not None:
+            tasks.append(self.current_task)
+        tasks.extend(self._zombie_tasks)
+
+        def _alive(t):
+            return t is not None and not isdeleted(t)
+
+        for t in tasks:
+            try:
+                if _alive(t) and t.isRunning():
+                    t.stop()
+            except RuntimeError:
+                pass
+        for t in tasks:
+            try:
+                if _alive(t) and t.isRunning():
+                    if not t.wait(timeout_ms):
+                        Log.w(TAG, f"Prediction thread {t} did not exit; terminating.")
+                        t.terminate()
+                        t.wait()
+            except RuntimeError:
+                pass
+
+        self._zombie_tasks.clear()
+        self.current_task = None
 
     def _on_prediction_finished(self, data_package):
         """Receive prediction results and update the card and visualization panel.
@@ -2341,11 +2392,47 @@ class DashboardUI(QtWidgets.QWidget):
             self.viz_panel.set_data(data_package)
             self.viz_panel.hide_loading()
 
+    def _on_error(self, error_msg):
+        """Handle a failed prediction thread.
+
+        Logs the error, restores the visualization panel from its loading state,
+        and advances the batch queue if a batch is running so one bad sample does
+        not stall the whole run. Thread cleanup is handled separately by the
+        ``finished`` -> ``deleteLater`` / ``_on_task_complete`` connections.
+
+        Args:
+            error_msg (str): Error message emitted by the PredictionThread.
+        """
+        Log.e(TAG, f"Prediction failed: {error_msg}")
+
+        # Clear loading state on the panel (no-op if not currently loading).
+        if not self._is_batch_running and not self._is_evaluation_mode:
+            self.viz_panel.set_plot_title("Prediction failed")
+            self.viz_panel.hide_loading()
+
+        # Surface the failure on the requesting card, if it supports it.
+        if getattr(self, "running_card", None) is not None:
+            if hasattr(self.running_card, "set_error"):
+                self.running_card.set_error(error_msg)
+
+        # Keep a batch moving even if one sample fails.
+        if self._is_batch_running:
+            self._batch_results.append(None)
+            self._process_next_in_batch()
+        elif not self._is_evaluation_mode:
+            QtWidgets.QMessageBox.warning(
+                self, "Prediction Error", f"The prediction could not be completed:\n\n{error_msg}"
+            )
+
     def _on_task_complete(self):
-        """Clean up a finished task from the zombie list."""
+        """Clean up a finished task from the zombie list and clear current_task."""
         sender = self.sender()
         if sender in self._zombie_tasks:
             self._zombie_tasks.remove(sender)
+        # The wrapper is about to be reaped by deleteLater; drop our reference
+        # so run_prediction doesn't touch a deleted C++ object.
+        if sender is self.current_task:
+            self.current_task = None
 
     def closeEvent(self, event):
         """Stop the running prediction thread and close the database connection before the widget closes.
@@ -2353,11 +2440,8 @@ class DashboardUI(QtWidgets.QWidget):
         Args:
             event (QtGui.QCloseEvent): The close event to handle.
         """
-        if self.current_task is not None and self.current_task.isRunning():
-            Log.i(TAG, "Closing application: Stopping background thread...")
-            self.current_task.stop()
-
-        # Stop all active workers (optimization, generation, etc.)
+        Log.i(TAG, "Closing application: stopping background threads...")
+        self._drain_all_prediction_tasks()
         if hasattr(self, "_active_workers"):
             for worker in list(self._active_workers):
                 if hasattr(worker, "stop"):
@@ -2365,7 +2449,6 @@ class DashboardUI(QtWidgets.QWidget):
                 if not worker.wait(2000):
                     Log.w(TAG, f"Worker {worker} did not finish in time on close.")
             self._active_workers.clear()
-
         self.db.close()
         super().closeEvent(event)
 
