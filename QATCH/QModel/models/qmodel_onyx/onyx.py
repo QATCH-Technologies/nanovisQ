@@ -6,14 +6,14 @@ identify points of interest (POIs) in viscosity data. The pipeline handles data 
 fill-type classification, and sequential slicing of the dataset to isolate specific channel events (Init, Ch1, Ch2, Ch3).
 
 Onyx adds, on top of the Volta cascade + configuration-prior decode:
-- a v2 detection renderer (derivative-energy salience strip) via ``onyx_render``, and
-- a post-decode zoom-refinement stage (``_refine_with_zoom``) that re-detects
+- a v2 detection renderer (derivative-energy salience strip) via `onyx_render`, and
+- a post-decode zoom-refinement stage (`_refine_with_zoom`) that re-detects
   each placed channel POI in a narrow window with a zoom-trained detector.
 
-The interface mirrors Volta: instantiate ``QModelOnyx(model_assets)`` and call
-``.predict(...)`` -> ``(output_dict, num_channels)``. Class names use their
-own Onyx convention (``QModelOnyx``, ``QModelOnyxConfig``, ``QModelOnyxDetector``,
-``QModelOnyxFillClassifier``) so this package is distinct from, and can be
+The interface mirrors Volta: instantiate `QModelOnyx(model_assets)` and call
+`.predict(...)` -> `(output_dict, num_channels)`. Class names use their
+own Onyx convention (`QModelOnyx`, `QModelOnyxConfig`, `QModelOnyxDetector`,
+`QModelOnyxFillClassifier`) so this package is distinct from, and can be
 imported alongside, the Volta package.
 
 Key Components:

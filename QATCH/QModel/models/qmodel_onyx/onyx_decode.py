@@ -7,7 +7,7 @@ Joint configuration decode over YOLO candidate detections.
 Problem
 -------
 The production cascade keeps only the single highest-confidence detection per
-POI (``best_dets``) and cuts the signal at it. That greedy, per-POI choice is
+POI (`best_dets`) and cuts the signal at it. That greedy, per-POI choice is
 exactly what produces locally-plausible-but-globally-illogical placements, and
 because the cascade *cuts* on each pick, one bad early detection corrupts every
 later one.

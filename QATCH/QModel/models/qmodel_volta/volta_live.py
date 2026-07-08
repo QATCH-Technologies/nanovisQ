@@ -42,9 +42,9 @@ TAG = "[QModelVoltaLiveProcess]"
 
 class VoltaDropEpochSignal(NamedTuple):
     """Sentinel put into the forecaster input queue by the UI when the drop is
-    detected ('Sample detected' state).  The ``relative_time`` value is the
-    Relative_time (seconds) at that moment and is used to seed ``_fill_epoch``
-    in ``QModelVoltaLive`` so fill-duration timers start at drop application
+    detected ('Sample detected' state).  The `relative_time` value is the
+    Relative_time (seconds) at that moment and is used to seed `_fill_epoch`
+    in `QModelVoltaLive` so fill-duration timers start at drop application
     rather than at the first 'Filling started' model prediction.
     """
 
@@ -68,7 +68,7 @@ class QModelVoltaLive(QModelVoltaFillClassifier):
         DEBOUNCE_THRESHOLD (int): Number of consecutive identical predictions required
             before a state change is accepted.
         DURATION_THRESHOLDS (dict): Per-channel fill duration thresholds in seconds above
-            which a warning is logged and a display message is emitted. A ``None`` threshold
+            which a warning is logged and a display message is emitted. A `None` threshold
             means the message is always emitted on that channel's confirmation.
         buffer_window_size (Optional[int]): The maximum number of rows to retain in the
             rolling buffer. If None, the buffer grows indefinitely.
@@ -185,7 +185,7 @@ class QModelVoltaLive(QModelVoltaFillClassifier):
 
         Called by :class:`QModelVoltaLiveProcess` when a
         :class:`VoltaDropEpochSignal` arrives in the input queue.  Sets
-        ``_fill_epoch`` immediately so that all duration thresholds are measured
+        `_fill_epoch` immediately so that all duration thresholds are measured
         from the moment the drop was physically applied, not from the later point
         at which the model first predicts 'Filling started' (channel 0).
 
@@ -221,7 +221,7 @@ class QModelVoltaLive(QModelVoltaFillClassifier):
         - Channel 0 confirmation time is recorded.
         - Elapsed time since channel 0 confirmation >= INITIAL_FILL_TIMEOUT_S.
 
-        Fires at most once per run, guarded by ``_initial_fill_timeout_fired``.
+        Fires at most once per run, guarded by `_initial_fill_timeout_fired`.
         """
         if self._initial_fill_timeout_fired:
             return
@@ -388,8 +388,8 @@ class QModelVoltaLive(QModelVoltaFillClassifier):
 
         Records the confirmation timestamp, sets the fill epoch when channel 0
         (Initial Fill) is first confirmed, and immediately emits any
-        unconditional display message (``DURATION_THRESHOLDS`` entries whose
-        threshold is ``None``).
+        unconditional display message (`DURATION_THRESHOLDS` entries whose
+        threshold is `None`).
 
         Timed threshold evaluation (120 s / 240 s) is **not** performed here;
         it runs every classification cycle via
@@ -505,7 +505,7 @@ class QModelVoltaLive(QModelVoltaFillClassifier):
         the process layer so the main UI displays it exactly once.
 
         Returns:
-            Optional[str]: The pending display message, or ``None`` if no message
+            Optional[str]: The pending display message, or `None` if no message
             is waiting to be displayed.
         """
         msg = self._pending_display_message
@@ -531,11 +531,11 @@ class QModelVoltaLiveProcess(multiprocessing.Process):
     runs inference, and pushes the results to an output queue. This design ensures
     that computationally expensive inference does not block the main application loop.
 
-    Output queue items are ``(int, str, Optional[str])`` tuples:
+    Output queue items are `(int, str, Optional[str])` tuples:
 
-    * ``int``  - the raw prediction class ID (e.g., -1, 0, 1, 2, 3).
-    * ``str``  - the human-readable status label (e.g., "2 Channels").
-    * ``Optional[str]`` - a one-shot on-display message for the main UI, or ``None``
+    * `int`  - the raw prediction class ID (e.g., -1, 0, 1, 2, 3).
+    * `str`  - the human-readable status label (e.g., "2 Channels").
+    * `Optional[str]` - a one-shot on-display message for the main UI, or `None`
       if no message is pending. The message is emitted at most once per channel
       state transition and is consumed by the first call that reads it.
 
@@ -545,11 +545,11 @@ class QModelVoltaLiveProcess(multiprocessing.Process):
         _done (multiprocessing.Event): Event flag to signal process completion.
         _queue_in (multiprocessing.Queue): Input queue receiving raw worker data.
         _queue_out (multiprocessing.Queue): Output queue sending
-            ``(int, str, Optional[str])`` prediction tuples.
+            `(int, str, Optional[str])` prediction tuples.
         model_path (str): Path to the YOLO model file.
         buffer_window_size (Optional[int]): Rolling window size for the model buffer.
         _classifier (Optional[QModelVoltaLive]): The internal classifier instance
-            (created inside ``run()``).
+            (created inside `run()`).
     """
 
     TAG = "[QModelVoltaLiveProcess]"
@@ -563,7 +563,7 @@ class QModelVoltaLiveProcess(multiprocessing.Process):
     ) -> None:
         """Initializes the LiveProcess with queue handles and buffer configuration.
 
-        The YOLO model is intentionally not loaded here; it is loaded inside ``run()``
+        The YOLO model is intentionally not loaded here; it is loaded inside `run()`
         to avoid pickling errors when the process is spawned.
 
         Args:
@@ -572,9 +572,9 @@ class QModelVoltaLiveProcess(multiprocessing.Process):
             queue_in (multiprocessing.Queue): Input queue that delivers raw worker data
                 chunks for inference.
             queue_out (multiprocessing.Queue): Output queue that receives
-                ``(int, str, Optional[str])`` tuples produced after each inference batch.
+                `(int, str, Optional[str])` tuples produced after each inference batch.
                 The third element is a one-shot display message for the main UI, or
-                ``None`` when no message is pending.
+                `None` when no message is pending.
             buffer_window_size (Optional[int]): Maximum number of rows to keep in the
                 rolling data buffer. Defaults to None (unbounded).
         """
@@ -794,15 +794,15 @@ class QModelVoltaLiveProcess(multiprocessing.Process):
         """Checks whether the process is still executing.
 
         Returns:
-            bool: ``True`` if the process has not yet set its completion event,
-            ``False`` once ``run()`` has exited (successfully or otherwise).
+            bool: `True` if the process has not yet set its completion event,
+            `False` once `run()` has exited (successfully or otherwise).
         """
         return self._done.is_set()
 
     def stop(self) -> None:
         """Signals the process to terminate gracefully.
 
-        Sets the internal exit event. The main loop in ``run()`` checks this event
+        Sets the internal exit event. The main loop in `run()` checks this event
         on each iteration and will exit at the next opportunity without interrupting
         an in-progress inference call.
         """

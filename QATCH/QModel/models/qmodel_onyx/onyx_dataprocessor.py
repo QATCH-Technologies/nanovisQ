@@ -21,8 +21,6 @@ Version:
     7.0.0
 """
 
-import datetime
-import os
 from typing import Any, Optional
 
 import cv2
