@@ -43,10 +43,7 @@ from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,
     DropEffectCorrection,
 )
-from QATCH.QModel.models.qmodel_indus.indus import QModelIndus
-from QATCH.QModel.models.qmodel_onyx.onyx import QModelOnyx
-from QATCH.QModel.models.qmodel_tweed.tweed import QModelTweed
-from QATCH.QModel.models.qmodel_volta.volta import QModelVolta
+from QATCH.QModel import QModelIndus, QModelOnyx, QModelTweed, QModelVolta
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,
@@ -6582,29 +6579,31 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _log_model_confidences(self):
         """Logs the confidence scores for the model's candidate points.
 
-        Iterates through `self.model_candidates` to log the confidence percentage 
-        of the primary prediction for specific named points ("start", "end_fill", 
-        "ch1", "ch2", "ch3"). The log severity (Info, Warning, Error) scales 
+        Iterates through `self.model_candidates` to log the confidence percentage
+        of the primary prediction for specific named points ("start", "end_fill",
+        "ch1", "ch2", "ch3"). The log severity (Info, Warning, Error) scales
         dynamically based on the confidence level. The "post" point is explicitly ignored.
 
         Note:
-            The "Tweed" model engine does not support confidence logging. If the 
-            engine is set to "Tweed", this method will log an informational message 
+            The "Tweed" model engine does not support confidence logging. If the
+            engine is set to "Tweed", this method will log an informational message
             and exit early.
 
         Raises:
-            Exception: Captures and logs any errors encountered while parsing or 
+            Exception: Captures and logs any errors encountered while parsing or
                 logging the confidences from the model response.
         """
         if self.model_engine == "Tweed":
             Log.i(
-                tag=f"[{self.model_engine}]", 
-                msg="Confidence logging is not available for Tweed."
+                tag=f"[{self.model_engine}]", msg="Confidence logging is not available for Tweed."
             )
             return
-        
+
         if self.model_candidates is None:
-            Log.w(tag=f"[{self.model_engine}]", msg="No model candidates available to log confidences!")
+            Log.w(
+                tag=f"[{self.model_engine}]",
+                msg="No model candidates available to log confidences!",
+            )
             return
 
         def get_logger_for_confidence(confidence):
@@ -6621,22 +6620,24 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 if i == 2:
                     # do not print confidence of "post" point, it doesn't matter
                     continue
-                
+
                 point_name = point_names[i]
-                
+
                 # issue: QModel is returning a single `float` instead of a `list`
                 if type(confidences) is float:
                     confidences = [confidences]
-                
+
                 confidence = 100 * confidences[0] if len(confidences) > 0 else 0
                 num_spaces = len(point_names[1]) - len(point_name) + 1
-                
+
                 get_logger_for_confidence(confidence)(
                     tag=f"[{self.model_engine}]",
                     msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%",
                 )
         except Exception:
-            Log.e(tag=f"[{self.model_engine}]", msg="Error logging confidences from QModel response.")
+            Log.e(
+                tag=f"[{self.model_engine}]", msg="Error logging confidences from QModel response."
+            )
 
     def resizeEvent(self, event):
         # # Position relative to main window

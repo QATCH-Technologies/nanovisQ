@@ -40,7 +40,7 @@ from QATCH.QModel.models.qmodel_volta.volta_dataprocessor import (
 TAG = "[QModelVoltaLiveProcess]"
 
 
-class DropEpochSignal(NamedTuple):
+class VoltaDropEpochSignal(NamedTuple):
     """Sentinel put into the forecaster input queue by the UI when the drop is
     detected ('Sample detected' state).  The ``relative_time`` value is the
     Relative_time (seconds) at that moment and is used to seed ``_fill_epoch``
@@ -184,7 +184,7 @@ class QModelVoltaLive(QModelVoltaFillClassifier):
         """Seeds the fill epoch from the UI-detected drop-application timestamp.
 
         Called by :class:`QModelVoltaLiveProcess` when a
-        :class:`DropEpochSignal` arrives in the input queue.  Sets
+        :class:`VoltaDropEpochSignal` arrives in the input queue.  Sets
         ``_fill_epoch`` immediately so that all duration thresholds are measured
         from the moment the drop was physically applied, not from the later point
         at which the model first predicts 'Filling started' (channel 0).
@@ -697,7 +697,7 @@ class QModelVoltaLiveProcess(multiprocessing.Process):
                 df_list = []
 
                 for chunk in chunks:
-                    if isinstance(chunk, DropEpochSignal):
+                    if isinstance(chunk, VoltaDropEpochSignal):
                         self._classifier.set_drop_applied_timestamp(chunk.relative_time)
                         continue
 

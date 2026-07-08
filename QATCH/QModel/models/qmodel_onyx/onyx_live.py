@@ -54,7 +54,7 @@ except (ImportError, ModuleNotFoundError):
 TAG = "[QModelOnyxLiveProcess]"
 
 
-class DropEpochSignal(NamedTuple):
+class OnyxDropEpochSignal(NamedTuple):
     """Sentinel put into the forecaster input queue by the UI when the drop is
     detected ('Sample detected' state).  The ``relative_time`` value is the
     Relative_time (seconds) at that moment and is used to seed ``_fill_epoch``
@@ -713,7 +713,7 @@ class QModelOnyxLiveProcess(multiprocessing.Process):
                 df_list = []
 
                 for chunk in chunks:
-                    if isinstance(chunk, DropEpochSignal):
+                    if isinstance(chunk, OnyxDropEpochSignal):
                         self._classifier.set_drop_applied_timestamp(chunk.relative_time)
                         continue
 

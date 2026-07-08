@@ -5,15 +5,13 @@ from time import time
 
 import numpy as np
 
-from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants, OperationType
 from QATCH.core.ring_buffer import RingBuffer
 from QATCH.processors.Calibration import CalibrationProcess
 from QATCH.processors.Parser import ParserProcess
 from QATCH.processors.Serial import SerialProcess
-from QATCH.QModel.models.qmodel_onyx.onyx_live import QModelOnyxLiveProcess
-from QATCH.QModel.models.qmodel_volta.volta_live import QModelVoltaLiveProcess
+from QATCH.QModel import QModelOnyxLiveProcess, QModelVoltaLiveProcess
 
 TAG = ""  # "[Worker]"
 
