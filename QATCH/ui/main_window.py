@@ -6259,7 +6259,7 @@ class MainWindow(QtWidgets.QMainWindow):
         reset (`start`), so devices connected after app launch get their own
         instance and stale instances from disconnected devices are dropped.
         """
-        n_devices = max(0, self.ControlsWin.ui1.cBox_Port.count() - 1)
+        n_devices = max(0, self.controls_window.ui.cBox_Port.count() - 1)
         self.dry_detect = [
             DryingDetection(
                 window_size=Constants.DRYING_WINDOW_SIZE,
