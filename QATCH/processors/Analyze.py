@@ -2158,6 +2158,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             self.parent.ControlsWin.q_version_v1.setChecked(True if index == 0 else False)
             self.parent.ControlsWin.q_version_v4.setChecked(True if index == 1 else False)
+            self.parent.ControlsWin.q_version_v6.setChecked(True if index == 2 else False)
+            self.parent.ControlsWin.q_version_v7.setChecked(True if index == 3 else False)
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
