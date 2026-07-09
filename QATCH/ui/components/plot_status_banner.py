@@ -1,14 +1,14 @@
 """QATCH.ui.components.plot_status_banner
 
 Provides PlotStatusBanner: a compact pill-shaped status chip that floats
-in the header strip of a pyqtgraph PlotItem — horizontally centred between
+in the header strip of a pyqtgraph PlotItem - horizontally centred between
 the left and right axis title labels, vertically centred in the header row.
 
 Color → state mapping (backwards-compatible with legacy pg.LabelItem.setText
 color tuples used in main_window.py):
-    (0, 200, 0)   → "success"  — Apply drop now
-    (0, 0, 200)   → "warning"  — Sensor not dry / restart
-    (200, 100, 0) → "info"     — Fill-state classifier message
+    (0, 200, 0)   → "success"  - Apply drop now
+    (0, 0, 200)   → "warning"  - Sensor not dry / restart
+    (200, 100, 0) → "info"     - Fill-state classifier message
     anything else → "neutral"
 """
 
@@ -21,7 +21,7 @@ class PlotStatusBanner:
     """Pill-shaped, icon-driven status chip for a pyqtgraph PlotItem header.
 
     The chip is a `QGraphicsProxyWidget` wrapping a styled `QFrame` that
-    floats over the PlotItem's title row — the narrow strip above the
+    floats over the PlotItem's title row - the narrow strip above the
     ViewBox that shows the axis labels.  It tracks plot resizes via
     `ViewBox.sigResized` and re-centres itself automatically.
 

@@ -133,7 +133,7 @@ class FW_Updater(QtCore.QObject):
                     self.fw_status_changed.emit(str(port), int(result))
 
                 # Skip the optional-update dialog when the caller requested it.
-                # RESULT_REQUIRED is never suppressed — it must block.
+                # RESULT_REQUIRED is never suppressed - it must block.
                 if suppress_optional_popup and result in (
                     FW_UPDATE.RESULT_OUTDATED,
                     FW_UPDATE.RESULT_UNKNOWN,

@@ -1,35 +1,3 @@
-"""Advanced mode - destructive / maintenance operations.
-
-PORT FROM export_widget.Ui_Export:
-    build()       <- tabAdv construction (erase warning notice + erase button,
-                     plus Detect / Eject USB controls)
-    erase         -> _do_erase: confirm, then services.run_task(self._erase_task)
-    eraseTask     -> _erase_task(abort): walks Constants.log_prefer_path,
-                     send2trash each run/device, emits progress on "advanced"
-    eject         -> _do_eject: services.run_task(self._eject_task)
-    ejectTask     -> _eject_task(abort)
-    detect        -> _do_detect: nudge the shared USB loop to re-scan
-
-Behavioural parity with the original:
-  * Erase confirms first (different prompt if data was already exported).
-  * Erased runs go to the Recycle Bin (send2trash), recoverable.
-  * Tasks freeze the rest of the GUI while running; Erase itself stays enabled
-    (the old "Erase only" freeze mode).
-  * Detect/eject/erase share the one worker via DataServices.run_task.
-
-LAYOUT: USB Drive / Local storage / Danger zone cards (matches the wireframe).
-The USB card shows live connection status + free/total space (from
-`self.services.usb_drive` - the hardware-detected drive letter, refreshed
-on usb_add/usb_remove). This is deliberately NOT `self.services.drive`,
-which is Export mode's *chosen target* and may be any local folder; reading
-that here was a bug - it made this card claim a plain export folder (e.g.
-C:\...\export) was a connected USB stick. The storage card shows a usage bar
-for locally logged run data against the host volume's capacity. Recycle Bin
-size isn't broken out separately - there's no portable way to query it
-without extra OS-specific dependencies, so the bar reflects active local
-run data only.
-"""
-
 import os
 import shutil
 import subprocess
@@ -454,12 +422,17 @@ class AdvancedMode(DataModeWidget):
     def _eject_task(self, abort):
         self.services.set_freeze(False)
         drive = getattr(self.services, "usb_drive", None)
+        if not drive:
+            self.services.set_freeze(True)
+            return
+
         try:
             Log.i(TAG, f"[{drive}] USB drive ejecting...")
             self.services.emit_progress(
                 self.MODE_KEY, f"[{drive}] USB drive ejecting... please wait...", 33, "b"
             )
             time.sleep(1)
+
             if abort.is_set():
                 self.services.emit_progress(
                     self.MODE_KEY,
@@ -469,7 +442,6 @@ class AdvancedMode(DataModeWidget):
                 )
                 Log.w(f"{TAG} Eject task aborted prematurely!")
                 return
-            # NOTE: subprocess (not os.system) avoids a console blip under pythonw.
             subprocess.call(
                 "powershell $driveEject = New-Object -comObject Shell.Application; "
                 '$driveEject.Namespace(17).ParseName("""{}""").InvokeVerb("""Eject""")'.format(
@@ -477,7 +449,28 @@ class AdvancedMode(DataModeWidget):
                 ),
                 shell=True,
             )
-            if getattr(self.services, "usb_drive", None) is None:
+
+            # --- THE FIX: Actively test drive accessibility ---
+            timeout_seconds = 5.0
+            elapsed = 0.0
+            eject_successful = False
+
+            while elapsed < timeout_seconds:
+                if getattr(self.services, "usb_drive", None) != drive:
+                    eject_successful = True
+                    break
+                try:
+                    os.stat(drive)
+                except OSError:
+                    eject_successful = True
+                    self.services.usb_drive = None
+                    break
+
+                time.sleep(0.5)
+                elapsed += 0.5
+            # --------------------------------------------------
+
+            if eject_successful:
                 Log.i(TAG, "USB drive ejected.")
                 self.services.emit_progress(
                     self.MODE_KEY, "USB drive ejected. Safe to remove.", 100, "b"
@@ -487,9 +480,11 @@ class AdvancedMode(DataModeWidget):
                 self.services.emit_progress(
                     self.MODE_KEY, f"[{drive}] USB drive eject failed! Try again.", 66, "r"
                 )
+
         except Exception as e:
             Log.e(TAG, f"Eject error: {e}")
             self.services.emit_progress(self.MODE_KEY, "Error ejecting USB drive!", 100, "r")
+
         self.services.set_freeze(True)
 
     # ------------------------------------------------------------------

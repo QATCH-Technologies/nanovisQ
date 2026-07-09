@@ -21,15 +21,16 @@ Date:
     2026-05-20
 """
 
+from typing import Any, Union
+
 import numpy as np
 import numpy.typing as npt
-from typing import Any, Union
 
 
 class RingBuffer:
     """An `O(1)` circular-buffer implementation backed by a numpy array.
 
-    This replaces previous `np.roll`-based designs to avoid `O(N)` copy operations
+    This replaces previous `np.roll-based designs to avoid `O(N)` copy operations
     per append. It maintains a fixed-size backing array and a write head, never
     reallocating after construction.
 

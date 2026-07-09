@@ -1,63 +1,58 @@
 """
-dp_decode.py
-============
+QATCH.QModel.models.qmodel_onyx.onyx_decode
 
-Joint configuration decode over YOLO candidate detections.
+Joint configuration decoder for Onyx POI candidate detections.
 
-Problem
--------
-The production cascade keeps only the single highest-confidence detection per
-POI (`best_dets`) and cuts the signal at it. That greedy, per-POI choice is
-exactly what produces locally-plausible-but-globally-illogical placements, and
-because the cascade *cuts* on each pick, one bad early detection corrupts every
-later one.
+This module performs global decoding over multiple candidate detections per
+point-of-interest (POI) to replace the previous greedy, per-POI selection
+strategy. Given candidate timestamps and confidence scores, the decoder selects
+the most likely ordered POI configuration using a combination of detection
+confidence and learned temporal spacing constraints.
 
-This module replaces the greedy pick with a global decode: given several
-CANDIDATE detections per present POI (time + confidence), choose one candidate
-per POI such that the configuration is
+The greedy approach can select individually plausible detections that form an
+invalid overall configuration. Because downstream processing depends on the
+selected timestamps, an incorrect early selection can propagate errors through
+the remainder of the fill sequence. This module instead solves the selection
+problem jointly using dynamic programming over the candidate lattice.
 
-    (a) strictly time-ordered (hard),
-    (b) feasible under the learned per-gap bounds (hard, with slack),
-    (c) maximal in   sum(detection confidence)  +  lambda * spacing log-lik,
+The optimization objective is:
 
-where the spacing log-likelihood comes from the learned SpacingPrior. This is
-the EDA-selected design: flat, pairwise prior + monotonic constraint, solved
-exactly by dynamic programming over the candidate lattice.
+    confidence score + lambda * spacing log-likelihood
 
-Span handling (important)
--------------------------
-The prior's span-fraction component was fitted on COMPLETE fills with
-span = t(POI5) - t(POI1). Two consequences honoured here:
+subject to:
 
-  * On partial (prefix) fills the fraction component is RE-REFERENCED to
-    the span of the present prefix via SpacingPrior.gap_loglik_scoped (the
-    fitted frac medians assume the complete-fill span and would otherwise be
-    systematically biased). This keeps the scale-coupling — the observed
-    early gaps anchor the run's scale and later gaps must be proportionate —
-    active on partial fills, where it is the main defence against
-    fast-fill-shaped decoy configurations on slow (high-viscosity) runs.
-    With fewer than three placed POIs there is no ratio information and the
-    density is seconds-only.
-  * The span is not known until the configuration is chosen, and a
-    per-edge "span so far" proxy breaks DP optimality. But the span is
-    FULLY DETERMINED by the first and last placed candidates, so the decode
-    conditions on that pair: for each (first, last) candidate combination it
-    runs an exact DP with the span fixed, and keeps the best consistently
-    re-scored configuration. With the per-POI candidate cap this is at most
-    K^2 small DPs and yields the exact argmax of the blended objective —
-    no fixed-point approximation that could converge to the wrong basin
-    (e.g. a compressed fast-fill-shaped decoy on a slow run).
+* Candidate timestamps are strictly ordered.
+* Inter-POI gaps satisfy learned feasibility bounds (when enabled).
+* Gap likelihoods follow the learned :class:`OnyxSpacingPrior`.
 
-Non-adjacent present POIs (e.g. POI2 and POI4 present with POI3 unplaceable)
-are scored against the COMPOSITION of the intervening fitted gaps via
-SpacingPrior.composed_stat, not against the first gap's stats.
+The spacing prior combines absolute gap duration statistics and normalized
+span-fraction statistics. For complete fills, the span is defined as the time
+between the first and last POIs. For partial fills, the span-fraction component
+is re-referenced using the currently placed POIs through scoped likelihood
+evaluation. This preserves scale relationships while avoiding bias caused by
+using complete-fill statistics on incomplete sequences.
 
-It only decodes the POIs that are actually present (the fill-count gate /
-type_cls has already decided how many channels exist), so partial fills are
-handled by passing fewer POIs — no spurious late POIs are introduced.
+Because the span-fraction component depends on the final selected first and
+last candidates, span-aware decoding conditions on possible endpoint pairs and
+runs exact dynamic programming for each fixed span. This preserves the global
+optimum of the blended objective rather than relying on an approximate
+fixed-point solution.
 
-Inputs / outputs are plain dicts so this drops in alongside the existing
-predictor without depending on its internals.
+Non-adjacent present POIs are evaluated using composed spacing statistics from
+the intervening fitted gaps. For example, if an intermediate POI is absent, the
+spacing between the surrounding detected POIs is scored against the combined
+distribution of the missing intervals rather than a single adjacent gap model.
+
+The decoder only operates on POIs already identified as present by upstream
+classification logic. It does not introduce additional POIs, allowing partial
+fills to be handled naturally by decoding smaller subsets of the global POI
+sequence.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-07-09
 """
 
 from __future__ import annotations
@@ -70,23 +65,56 @@ import numpy as np
 try:
     from QATCH.QModel.models.qmodel_onyx.onyx_spacing_prior import (
         POI_ORDER,
-        SpacingPrior,
+        OnyxSpacingPrior,
     )
 except (ImportError, ModuleNotFoundError):
     from QATCH.QModel.models.qmodel_onyx.onyx_spacing_prior import (
         POI_ORDER,
-        SpacingPrior,
+        OnyxSpacingPrior,
     )
 
 
 @dataclass
 class Candidate:
+    """Represents a single candidate POI detection.
+
+    Stores the detected timestamp and confidence score produced by the object
+    detection stage. Multiple candidates may exist for the same POI, and the
+    joint decoder evaluates these candidates together to determine the most
+    globally consistent configuration.
+
+    Attributes:
+        time: Detected POI timestamp in seconds.
+        conf: Detection confidence score, typically in the range `[0, 1]`.
+    """
+
     time: float  # detected timestamp (seconds)
     conf: float  # YOLO confidence in [0,1]
 
 
 @dataclass
 class DecodeResult:
+    """Stores the result of a joint POI configuration decode.
+
+    Contains the selected candidate for each decoded POI along with the
+    components of the optimization objective and status flags describing
+    whether the result was obtained through a fully feasible decode or a
+    fallback path.
+
+    Attributes:
+        chosen: Mapping of POI name to the selected `Candidate` detection.
+        total_score: Final objective score combining detection confidence and
+            spacing prior likelihood.
+        spacing_loglik: Unweighted spacing log-likelihood contribution from the
+            selected configuration.
+        conf_sum: Total weighted detection confidence contribution from the
+            selected candidates.
+        feasible: Indicates whether a fully feasible path satisfying all hard
+            spacing constraints was found.
+        fallback_used: Indicates whether the result required relaxing
+            constraints or using a fallback strategy such as greedy selection.
+    """
+
     chosen: Dict[str, Candidate]  # poi_name -> chosen candidate
     total_score: float
     spacing_loglik: float
@@ -99,17 +127,46 @@ Lam = Union[float, Dict[str, float]]
 
 
 def _clip01(x: float) -> float:
+    """Clips a value to the normalized confidence range `[0, 1]`.
+
+    Ensures that confidence values used during scoring remain within the
+    expected range, preventing invalid or out-of-range values from affecting
+    the decode objective.
+
+    Args:
+        x: Input value to clamp.
+
+    Returns:
+        The input value constrained to the interval `[0.0, 1.0]`.
+    """
     return max(0.0, min(1.0, x))
 
 
 def _lam_for_edge(lam: Lam, gi: int, gj: int) -> float:
-    """Resolve the spacing-prior weight for the placed edge POI_ORDER[gi] ->
-    POI_ORDER[gj]. `lam` is either a scalar (uniform weight) or a per-pair
-    dict keyed by adjacent "POIk->POIk+1" names (see
-    QModelOnyxConfig.DECODE_LAMBDA_PAIRS). Non-adjacent (composed) edges, which
-    arise when an intervening POI is absent, use the mean of the lambdas of
-    the intervening adjacent edges, mirroring how SpacingPrior.composed_stat
-    combines the underlying gap stats."""
+    """Resolves the spacing-prior weight for a POI transition.
+
+    Determines the lambda weighting applied to the spacing prior contribution
+    for the edge from `POI_ORDER[gi]` to `POI_ORDER[gj]`. The weight may be
+    provided as a single scalar applied uniformly to all transitions or as a
+    mapping of adjacent POI pair names to individual weights.
+
+    For non-adjacent transitions, which occur when one or more intermediate
+    POIs are absent, the effective weight is computed as the mean of the
+    lambda values for the intervening adjacent POI pairs. This mirrors the
+    composition of gap statistics performed by the spacing prior.
+
+    Args:
+        lam (Lam): Spacing-prior weight configuration. May be a scalar value applied
+            to all edges or a dictionary keyed by adjacent POI pair names
+            (for example, `"POI1->POI2"`).
+        gi (int): Global index of the starting POI in `POI_ORDER`.
+        gj (int): Global index of the ending POI in `POI_ORDER`. Must be greater
+            than `gi` for a non-adjacent transition.
+
+    Returns:
+        The resolved spacing-prior weight for the specified POI transition.
+        Returns `0.0` if an empty lambda mapping is provided.
+    """
     if not isinstance(lam, dict):
         return float(lam)
     if not lam:
@@ -125,22 +182,47 @@ def _prep_candidates(
     min_conf: float,
     max_candidates: int,
 ) -> Dict[str, List[Candidate]]:
-    """Filter, dedupe, cap and time-sort candidate lists per present POI."""
+    """Filters and prepares candidate detections for dynamic programming.
+
+    Cleans the raw candidate lists for each present POI by applying confidence
+    filtering, removing duplicate timestamps, limiting the number of candidates,
+    and sorting the remaining candidates chronologically. This preprocessing
+    reduces the size of the candidate lattice while preserving the strongest
+    plausible detections for joint decoding.
+
+    Candidate lists are never allowed to become empty solely because of the
+    confidence threshold. If all candidates for a POI are filtered out, the
+    original candidate list is retained to avoid removing a POI from the
+    decode problem.
+
+    Duplicate detections at the same timestamp are merged by keeping the
+    highest-confidence candidate. This handles cases where multiple detection
+    stages produce the same bounding box.
+
+    Args:
+        candidates (Dict[str, List[Candidate]]): Mapping of POI names to lists of candidate detections.
+        present (List[str]): Ordered list of POI names to include in decoding.
+        min_conf (float): Minimum confidence threshold used to filter candidates.
+        max_candidates (int): Maximum number of candidates retained per POI after
+            confidence ranking.
+
+    Returns:
+        A dictionary mapping each present POI to its cleaned, capped, and
+        time-sorted candidate list.
+    """
     cand: Dict[str, List[Candidate]] = {}
     for p in present:
         cs = [c for c in candidates.get(p, []) if c.conf >= min_conf]
         if not cs:
             cs = list(candidates.get(p, []))  # don't drop a POI entirely
-        # dedupe identical timestamps (coarse+fine stages can re-emit the same
-        # box); keep the max-confidence instance.
+        # dedupe identical timestamps
         by_t: Dict[float, Candidate] = {}
         for c in cs:
             key = round(c.time, 6)
             if key not in by_t or c.conf > by_t[key].conf:
                 by_t[key] = c
         cs = list(by_t.values())
-        # cap to top-K by confidence (keeps the lattice small and prunes
-        # noise-floor boxes), then sort by time for the DP.
+        # cap to top-K by confidence then sort by time for the DP.
         cs.sort(key=lambda c: c.conf, reverse=True)
         cs = cs[: max(1, max_candidates)]
         cs.sort(key=lambda c: c.time)
@@ -151,12 +233,40 @@ def _prep_candidates(
 def _score_config(
     chosen: Dict[str, Candidate],
     placeable: List[str],
-    prior: SpacingPrior,
+    prior: OnyxSpacingPrior,
     lam: Lam,
     conf_weight: float,
     use_frac: bool,
 ) -> Tuple[float, float, float]:
-    """Consistently (re-)score a configuration. Returns (total, spacing_ll, conf_sum)."""
+    """Computes the objective score for a decoded POI configuration.
+
+    Recalculates the configuration score using the same scoring logic applied
+    during decoding. The score combines weighted detection confidence with the
+    weighted spacing-prior log-likelihood between consecutive present POIs.
+
+    For partial configurations or configurations with missing intermediate POIs,
+    spacing likelihoods are evaluated using the appropriate composed gap
+    statistics from the spacing prior. When enabled, span-fraction likelihoods
+    are calculated using the selected configuration span and scoped span
+    semantics.
+
+    Args:
+        chosen (Dict[str, Candidate]): Mapping of POI names to their selected candidate detections.
+        placeable (List[str]): Ordered list of POIs considered during decoding.
+        prior (OnyxSpacingPrior): Learned POI spacing prior used to evaluate temporal consistency.
+        lam (Lam): Spacing-prior weighting configuration. May be a scalar or a
+            per-transition mapping.
+        conf_weight (float): Weight applied to the summed detection confidence term.
+        use_frac (bool): Whether span-fraction likelihoods should be included in
+            spacing evaluation.
+
+    Returns:
+        A tuple containing:
+            * Total objective score (confidence contribution plus weighted
+              spacing likelihood).
+            * Unweighted spacing log-likelihood.
+            * Weighted confidence sum.
+    """
     g_index = {POI_ORDER[i]: i for i in range(len(POI_ORDER))}
     placed = [p for p in placeable if p in chosen]
     conf_sum = conf_weight * sum(_clip01(chosen[p].conf) for p in placed)
@@ -179,16 +289,53 @@ def _score_config(
 def _dp_pass(
     cand: Dict[str, List[Candidate]],
     placeable: List[str],
-    prior: SpacingPrior,
+    prior: OnyxSpacingPrior,
     lam: Lam,
     conf_weight: float,
     feas_slack: float,
     require_feasible: bool,
     span_for_frac: float,
 ) -> Optional[Dict[str, Candidate]]:
-    """One exact DP over the lattice. span_for_frac <= 0 disables the
-    fraction component (seconds-only). Returns the argmax configuration or
-    None if no admissible ordered path exists."""
+    """Runs one exact dynamic-programming pass over the candidate lattice.
+
+    Evaluates all valid ordered candidate paths through the available POI
+    candidates and returns the configuration with the maximum objective score.
+    The optimization combines candidate confidence with weighted spacing-prior
+    likelihood while enforcing strict temporal ordering and, optionally,
+    learned gap feasibility constraints.
+
+    The dynamic program operates on adjacent present POIs in the decode order.
+    Missing global POIs are handled through the spacing prior's composed gap
+    statistics. The span-fraction component of the prior can be disabled by
+    passing `span_for_frac <= 0`, causing the pass to use seconds-based
+    likelihoods only.
+
+    Args:
+        cand (Dict[str, List[Candidate]]): Mapping of POI names to prepared candidate lists.
+        placeable (List[str]): Ordered list of POIs included in the decode path.
+        prior (OnyxSpacingPrior): Learned spacing prior used for gap feasibility and likelihood
+            evaluation.
+        lam (Lam): Spacing-prior weight configuration. May be a scalar value or a
+            mapping of POI pair names to individual weights.
+        conf_weight (float): Weight applied to candidate confidence contributions.
+        feas_slack (float): Multiplicative slack applied to learned gap feasibility
+            bounds.
+        require_feasible (bool): If `True`, discard paths containing gaps outside
+            learned feasibility bounds.
+        span_for_frac (float): Span duration used by the span-fraction likelihood
+            calculation. Values less than or equal to zero disable the
+            fraction component.
+
+    Returns:
+        A dictionary mapping POI names to their selected candidates for the
+        highest-scoring valid path, or `None` if no admissible ordered path
+        exists.
+
+    Notes:
+        The returned path is reconstructed using back pointers after the final
+        DP stage. A missing back pointer during reconstruction is treated as a
+        failed decode and returns `None` defensively.
+    """
     g_index = {POI_ORDER[i]: i for i in range(len(POI_ORDER))}
     span_lo, span_hi = g_index[placeable[0]], g_index[placeable[-1]]
     P = len(placeable)
@@ -242,18 +389,45 @@ def _dp_pass(
 def _span_conditioned_decode(
     cand: Dict[str, List[Candidate]],
     placeable: List[str],
-    prior: SpacingPrior,
+    prior: OnyxSpacingPrior,
     lam: Lam,
     conf_weight: float,
     feas_slack: float,
     require_feasible: bool,
 ) -> Optional[Dict[str, Candidate]]:
-    """Exact decode of the blended (seconds + span-fraction) objective.
+    """Performs exact decoding with a fixed span-fraction reference.
 
-    The span-fraction denominators depend only on the first and last placed
-    candidates, so we enumerate those pairs, fix the span, and run an exact
-    DP for each. Returns the best configuration under consistent re-scoring,
-    or None if no admissible path exists for any pair."""
+    The span-fraction component of the spacing prior depends only on the first
+    and last selected POI candidates. Since those endpoints determine the
+    configuration span, this method enumerates all possible first/last
+    candidate combinations, fixes the span for each combination, and performs
+    an exact dynamic-programming decode under that condition.
+
+    Each resulting configuration is consistently rescored using the full
+    blended objective (confidence plus weighted spacing likelihood), and the
+    highest-scoring valid configuration is returned.
+
+    This approach preserves the exact optimum of the blended objective while
+    avoiding the loss of optimality that would occur if span were estimated
+    incrementally during the dynamic-programming pass.
+
+    Args:
+        cand (Dict[str, List[Candidate]]): Mapping of POI names to prepared candidate lists.
+        placeable (List[str]): Ordered list of POIs included in the decode path.
+        prior (OnyxSpacingPrior): Learned spacing prior used for gap likelihood and feasibility
+            evaluation.
+        lam (Lam): Spacing-prior weight configuration. May be a scalar value or a
+            mapping of POI pair names to individual weights.
+        conf_weight (float): Weight applied to candidate confidence contributions.
+        feas_slack (float): Multiplicative slack applied to learned gap feasibility
+            bounds.
+        require_feasible (bool): If `True`, only configurations satisfying hard gap
+            feasibility constraints are considered.
+
+    Returns:
+        The highest-scoring decoded configuration across all valid endpoint
+        span conditions, or `None` if no admissible configuration exists.
+    """
     first, last = placeable[0], placeable[-1]
     best_chosen: Optional[Dict[str, Candidate]] = None
     best_score = -1e18
@@ -287,7 +461,7 @@ def _span_conditioned_decode(
 def dp_decode(
     candidates: Dict[str, List[Candidate]],
     present_pois: Sequence[str],
-    prior: SpacingPrior,
+    prior: OnyxSpacingPrior,
     lam: Lam = 1.0,
     conf_weight: float = 1.0,
     feas_slack: float = 1.5,
@@ -295,24 +469,63 @@ def dp_decode(
     require_feasible: bool = True,
     max_candidates: int = 10,
 ) -> DecodeResult:
-    """Decode the optimal ordered configuration.
+    """Decodes the optimal globally consistent POI configuration.
 
-    candidates:   poi_name -> list of Candidate (any order); only present_pois
-                  are used. Each present POI must have >=1 candidate.
-    present_pois: ordered subset of POI_ORDER that type_cls says are present.
-    lam:          weight on the spacing prior relative to confidence.
-    conf_weight:  weight on summed detection confidence.
-    feas_slack:   multiplicative slack on learned gap bounds.
-    min_conf:     drop candidates below this confidence before decoding.
-    require_feasible: if True, only fully gap-feasible paths are allowed; if no
-                  such path exists we fall back (see fallback_used).
-    max_candidates: per-POI cap (top-K by confidence) on the lattice width.
+    Selects one candidate detection per present POI by optimizing the combined
+    detection confidence and learned spacing-prior likelihood objective. The
+    decoder replaces independent per-POI selection with a joint optimization
+    that enforces temporal ordering and, when enabled, learned gap feasibility
+    constraints.
 
-    Returns the best DecodeResult. Spacing terms are applied between
-    consecutive *present* POIs using the global POI_ORDER indices, composing
-    intervening fitted gaps when the pair is not globally adjacent. The
-    span-fraction component of the prior is used whenever at least three
-    POIs are placeable, with prefix-scoped span semantics (see module doc).
+    Candidate detections are first filtered, deduplicated, capped, and
+    time-sorted to form the dynamic-programming lattice. The decoder then uses
+    either a standard seconds-based dynamic program or a span-conditioned
+    dynamic program when the span-fraction component of the spacing prior is
+    active.
+
+    If a fully feasible solution cannot be found and feasibility enforcement is
+    enabled, the decoder retries with relaxed gap constraints. If no complete
+    ordered solution exists, it falls back to the independent highest-
+    confidence selection strategy to preserve production behavior.
+
+    Spacing likelihoods are evaluated between consecutive present POIs using
+    their positions in the global POI ordering. When present POIs are not
+    globally adjacent, composed gap statistics from the spacing prior are used.
+    Span-fraction likelihoods are enabled only when sufficient POIs are present
+    to provide meaningful ratio information.
+
+    Args:
+        candidates (Dict[str, List[Candidate]]): Mapping of POI names to candidate detections. Candidate
+            lists may be in any order. Only POIs listed in `present_pois` are
+            decoded.
+        present_pois (Sequence[str]): Ordered subset of POIs identified as present by upstream
+            classification logic.
+        prior (OnyxSpacingPrior): Learned spacing prior used for temporal likelihood scoring and
+            feasibility checks.
+        lam (float): Weight applied to spacing-prior likelihood contributions. May be a
+            scalar value applied globally or a mapping of POI pair names to
+            individual weights.
+        conf_weight (float): Weight applied to candidate confidence contributions.
+        feas_slack (float): Multiplicative slack applied to learned gap feasibility
+            bounds.
+        min_conf (float): Minimum candidate confidence threshold applied before
+            decoding. If filtering removes all candidates for a POI, the
+            original candidates are retained.
+        require_feasible (bool): If `True`, only configurations satisfying learned
+            gap feasibility constraints are accepted during the initial decode.
+            A relaxed fallback decode is attempted if none exist.
+        max_candidates (int): Maximum number of candidates retained per POI after
+            confidence ranking.
+
+    Returns:
+        A `DecodeResult` containing the selected candidate configuration,
+        objective score components, and flags describing whether the solution
+        was fully feasible or required fallback handling.
+
+    NOTE:
+        The decoder only operates on POIs already determined to be present and
+        never introduces additional detections. This allows partial fills to be
+        handled naturally by decoding shorter POI sequences.
     """
     present = [p for p in POI_ORDER if p in present_pois]
     if not present:
@@ -329,7 +542,7 @@ def dp_decode(
     # eligible too.
     use_frac = len(placeable) >= 3 and prior.frac_blend > 0
 
-    # ---- decode: exact under the full objective. With frac active the
+    # Decode exact under the full objective. With frac active the
     # decode is span-conditioned (see _span_conditioned_decode); otherwise a
     # single seconds-only DP is already exact.
     if use_frac:
@@ -358,8 +571,7 @@ def dp_decode(
             else _dp_pass(cand, placeable, prior, lam, conf_weight, 1e9, False, span_for_frac=0.0)
         )
         if relaxed is None or len(relaxed) < len(placeable):
-            # Even strict ordering has no complete path -> production-safe
-            # floor: per-POI greedy, never worse than current behaviour.
+            # Even strict ordering has no complete path
             return _greedy_result(cand, placeable, prior, lam, conf_weight)
         total, sll, csum = _score_config(relaxed, placeable, prior, lam, conf_weight, use_frac)
         return DecodeResult(relaxed, total, sll, csum, False, True)
@@ -374,13 +586,37 @@ def dp_decode(
 def _greedy_result(
     cand: Dict[str, List[Candidate]],
     placeable: List[str],
-    prior: SpacingPrior,
+    prior: OnyxSpacingPrior,
     lam: Lam,
     conf_weight: float,
 ) -> DecodeResult:
-    """Per-POI greedy selection (highest confidence), used as the production-safe
-    floor when no ordered/feasible joint path exists. Never drops a POI that has
-    candidates, so the decoder is never worse than current behaviour."""
+    """Creates a fallback decode using independent confidence selection.
+
+    Selects the highest-confidence candidate independently for each placeable
+    POI. This strategy is used as the production-safe fallback when no fully
+    ordered or gap-feasible joint configuration can be found by the dynamic
+    programming decoder.
+
+    The fallback preserves existing production behavior by ensuring that any
+    POI with available candidates is still assigned a detection rather than
+    being removed from the result. The resulting configuration is rescored
+    using the same objective components as normal decoding, although without
+    the span-fraction spacing component.
+
+    Args:
+        cand: Mapping of POI names to prepared candidate lists.
+        placeable: Ordered list of POIs that can be assigned candidates.
+        prior: Learned spacing prior used to evaluate the resulting
+            configuration.
+        lam: Spacing-prior weight configuration. May be a scalar or a mapping
+            of POI pair names to individual weights.
+        conf_weight: Weight applied to candidate confidence contributions.
+
+    Returns:
+        A `DecodeResult` containing the greedily selected candidates, the
+        resulting score components, and flags indicating that the result was
+        not fully feasible and required fallback handling.
+    """
     chosen = {p: max(cand[p], key=lambda c: c.conf) for p in placeable if cand[p]}
     total, sll, csum = _score_config(chosen, placeable, prior, lam, conf_weight, False)
     return DecodeResult(chosen, total, sll, csum, False, True)
@@ -388,7 +624,7 @@ def _greedy_result(
 
 def score_configuration(
     chosen: Dict[str, Candidate],
-    prior: SpacingPrior,
+    prior: OnyxSpacingPrior,
     lam: Lam = 1.0,
     conf_weight: float = 1.0,
 ) -> float:
@@ -406,8 +642,25 @@ def score_configuration(
 def greedy_baseline(
     candidates: Dict[str, List[Candidate]], present_pois: Sequence[str]
 ) -> Dict[str, Candidate]:
-    """The current production behaviour: pick the highest-confidence candidate
-    per POI independently (no joint reasoning). Used for A/B comparison."""
+    """Selects the highest-confidence candidate independently for each POI.
+
+    Implements the legacy production selection behavior used before joint
+    configuration decoding. Each present POI is evaluated independently, and
+    the candidate with the highest detection confidence is selected without
+    considering temporal ordering, spacing constraints, or interactions with
+    other POIs.
+
+    This function is provided as a baseline for A/B comparisons against the
+    joint decoder.
+
+    Args:
+        candidates: Mapping of POI names to candidate detections.
+        present_pois: Sequence of POI names to evaluate.
+
+    Returns:
+        A mapping of POI names to their highest-confidence candidate. POIs with
+        no available candidates are omitted from the result.
+    """
     out = {}
     for p in present_pois:
         cs = candidates.get(p, [])

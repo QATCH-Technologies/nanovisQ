@@ -2,43 +2,28 @@
 QATCH.QModel.models.qmodel_onyx.onyx.py
 
 It orchestrates a "Reverse Cascading Detection" strategy, utilizing multiple YOLO object detectors to
-identify points of interest (POIs) in viscosity data. The pipeline handles data preprocessing,
-fill-type classification, and sequential slicing of the dataset to isolate specific channel events (Init, Ch1, Ch2, Ch3).
+identify points of interest (POIs). The pipeline handles data preprocessing, fill-type classification,
+and sequential slicing of the dataset to isolate specific channel events (Init, Ch1, Ch2, Ch3).
 
 Onyx adds, on top of the Volta cascade + configuration-prior decode:
 - a v2 detection renderer (derivative-energy salience strip) via `onyx_render`, and
 - a post-decode zoom-refinement stage (`_refine_with_zoom`) that re-detects
   each placed channel POI in a narrow window with a zoom-trained detector.
 
-The interface mirrors Volta: instantiate `QModelOnyx(model_assets)` and call
-`.predict(...)` -> `(output_dict, num_channels)`. Class names use their
-own Onyx convention (`QModelOnyx`, `QModelOnyxConfig`, `QModelOnyxDetector`,
-`QModelOnyxFillClassifier`) so this package is distinct from, and can be
-imported alongside, the Volta package.
-
 Key Components:
 - QModelOnyx: The main controller class.
-- QModelOnyxDetector: A wrapper for individual YOLO model instances.
+- QModelOnyxDetector: A wrapper for individual detector model instances.
 - QModelOnyxConfig: Configuration constants for the pipeline.
-
-Dependencies:
-- ultralytics (YOLO)
-- pandas, numpy, matplotlib
-- QATCH internal modules (Logger, DataProcessor, FillClassifier)
 
 Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-07-06
-
-Version:
-    7.0.0
+    2026-07-09
 """
 
 import datetime
 import os
-import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -76,14 +61,9 @@ except (ImportError, ModuleNotFoundError):
 
 # Data processor (onyx);
 # the onyx file only adds a headless Log fallback and defaulted baseline args.
-try:
-    from QATCH.QModel.models.qmodel_onyx.onyx_dataprocessor import (
-        QModelOnyxDataProcessor,
-    )
-except (ImportError, ModuleNotFoundError):
-    from QATCH.QModel.models.qmodel_onyx.onyx_dataprocessor import (
-        QModelOnyxDataProcessor,
-    )
+from QATCH.QModel.models.qmodel_onyx.onyx_dataprocessor import (
+    QModelOnyxDataProcessor,
+)
 
 try:
     # New project requirement as of 2026-01-12
@@ -103,25 +83,15 @@ try:
         dp_decode,
         score_configuration,
     )
-    from QATCH.QModel.models.qmodel_onyx.onyx_spacing_prior import SpacingPrior
+    from QATCH.QModel.models.qmodel_onyx.onyx_spacing_prior import OnyxSpacingPrior
 
     _DECODE_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
-    try:
-        from QATCH.QModel.models.qmodel_onyx.onyx_decode import (
-            Candidate,
-            dp_decode,
-            score_configuration,
-        )
-        from QATCH.QModel.models.qmodel_onyx.onyx_spacing_prior import SpacingPrior
-
-        _DECODE_AVAILABLE = True
-    except (ImportError, ModuleNotFoundError):
-        _DECODE_AVAILABLE = False
-        Log.e(
-            tag="[QModelOnyx]",
-            msg="Decode modules not found. Configuration decode disabled; falling back to cascade-only behavior.",
-        )
+    _DECODE_AVAILABLE = False
+    Log.e(
+        tag="[QModelOnyx]",
+        msg="Decode modules not found. Configuration decode disabled; falling back to cascade-only behavior.",
+    )
 
 
 # Version-2 detection renderer (optional). Falls back to the v1 renderer
@@ -133,18 +103,29 @@ try:
 
     _RENDER_V2_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
-    try:
-        from QATCH.QModel.models.qmodel_onyx.onyx_render import (
-            generate_det_image as _gen_det_image,
-        )
+    _RENDER_V2_AVAILABLE = False
+    Log.w(
+        tag="[QModelOnyx]",
+        msg="onyx_render not found. RENDER_VERSION=2 will fall back to the v1 detection renderer.",
+    )
 
-        _RENDER_V2_AVAILABLE = True
-    except (ImportError, ModuleNotFoundError):
-        _RENDER_V2_AVAILABLE = False
-        Log.w(
-            tag="[QModelOnyx]",
-            msg="onyx_render not found. RENDER_VERSION=2 will fall back to the v1 detection renderer.",
-        )
+
+# Versioned fill-classification renderer (optional). Provides the shared
+# train/deploy input contract (prepare_cls_input) and the v2/v3 energy
+# strips. Falls back to the v1 dataprocessor render when unavailable so
+# older type_cls weights keep working.
+try:
+    from QATCH.QModel.models.qmodel_onyx.onyx_fill_render import (
+        prepare_cls_input as _prepare_cls_input,
+    )
+
+    _FILL_RENDER_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    _FILL_RENDER_AVAILABLE = False
+    Log.w(
+        tag="[QModelOnyx]",
+        msg="onyx_fill_render not found. FILL_RENDER_VERSION>=2 will fall back to the v1 fill renderer.",
+    )
 
 
 # --- Configuration Constants ---
@@ -163,6 +144,26 @@ class QModelOnyxConfig:
     FILL_GEN_W: int = 640
     FILL_GEN_H: int = 640
 
+    # Fill-classification renderer version. MUST match the render the deployed
+    # type_cls weights were trained on (weights and render version ship
+    # together, exactly like RENDER_VERSION on the detector side):
+    #   1 = legacy (diss/freq/Difference strips),
+    #   2 = derivative-energy salience strip (onyx_fill_render),
+    #   3 = step-coincidence energy strip (onyx_fill_render).
+    FILL_RENDER_VERSION: int = 3
+
+    # Probability temperature applied in QModelOnyxFillClassifier.predict_probs:
+    # p_i = p_i^(1/T). The trained classifier is SATURATED (val predictions are
+    # wall-to-wall 1.0), so raw outputs give the ordinal-evidence accumulator no
+    # distinction between a marginal call and a certain one. T>1 softens the
+    # distribution back toward informative confidences; fit on the val split
+    # (audit tooling) rather than hand-picking. 1.0 = off.
+    PROB_TEMPERATURE: float = 1.45
+
+    # Ordinal state axis: index i corresponds to channel count i - 1, so the
+    # probability vector spans [-1, 0, 1, 2, 3].
+    N_STATES: int = 5
+
     # Maps YOLO classification labels to the number of channels to detect.
     # The Controller uses this Int to decide how many 'cuts' to make.
     FILL_CLASS_MAP: Dict[str, int] = {
@@ -175,13 +176,13 @@ class QModelOnyxConfig:
 
     # --- Configuration-Prior Decode Settings ---
     # Weight of the spacing log-likelihood relative to detection confidence.
-    # Scalar, or set DECODE_LAMBDA_PAIRS to weight edges individually — the
+    # Scalar, or set DECODE_LAMBDA_PAIRS to weight edges individually - the
     # prior's value is not uniform across the chain: on sharp well-detected
     # events (POI2->POI3) a broad gap prior mostly drags correct detections,
     # while on ambiguous late events it is the main defence. Sweep with
     # sweep_decode.py --edge3-scales; do not hand-pick.
     DECODE_LAMBDA: float = 0.25
-    # e.g. {"POI2->POI3": 0.5} — unlisted pairs default to DECODE_LAMBDA.
+    # e.g. {"POI2->POI3": 0.5} - unlisted pairs default to DECODE_LAMBDA.
     DECODE_LAMBDA_PAIRS: Optional[Dict[str, float]] = {
         "POI1->POI2": 0.0,  # analytic init exclusion (unchanged)
         "POI2->POI3": 0.125,  # edge3_scale 0.5 x base lambda
@@ -212,8 +213,8 @@ class QModelOnyxConfig:
     RENDER_VERSION: int = 2
 
     # Hysteresis ("the decode must earn the move"): the decoded configuration
-    # is only accepted if its score beats the cascade configuration's score —
-    # under the SAME objective — by at least this margin. 0.0 disables the
+    # is only accepted if its score beats the cascade configuration's score -
+    # under the SAME objective - by at least this margin. 0.0 disables the
     # guard (always accept the decode optimum). Raising it trades a few
     # missed fixes for fewer regressions on runs where the cascade was
     # already right; tune it with sweep_decode.py, not by hand.
@@ -262,86 +263,110 @@ class QModelOnyxFillClassifier:
             Log.e(self.TAG, f"Failed to load YOLO model: {e}")
             raise RuntimeError(f"Failed to load YOLO model: {e}")
 
-    def predict(self, df: pd.DataFrame) -> int:
-        """
-        Generates a visual representation of the run data and classifies its fill state.
+    def _render_input(self, df: pd.DataFrame) -> Optional[np.ndarray]:
+        """Renders the preprocessed dataframe to the 224x224 BGR inference
+        image, dispatching on `QModelOnyxConfig.FILL_RENDER_VERSION`.
 
-        This method:
-        1. Generates a 3-strip stacked image from the dataframe using `DataProcessor`.
-        2. Resizes the image to the model's expected inference resolution.
-        3. Runs YOLO classification.
-        4. Maps the predicted class label to an integer channel count.
+        The shared `onyx_fill_render.prepare_cls_input` contract is used for
+        v2/v3 (the render the deployed weights were trained on); it falls back
+        to the legacy dataprocessor render at the same geometry when the render
+        module is unavailable, so old type_cls weights keep working. The result
+        is cached on `self._last_image` for the live visualization feed.
+        """
+        try:
+            if _FILL_RENDER_AVAILABLE and QModelOnyxConfig.FILL_RENDER_VERSION >= 2:
+                img_input = _prepare_cls_input(df, version=QModelOnyxConfig.FILL_RENDER_VERSION)
+            else:
+                strip_height = QModelOnyxConfig.FILL_GEN_H // 3
+                img_high_res = QModelOnyxDataProcessor.generate_fill_cls(
+                    df, img_h=strip_height, img_w=QModelOnyxConfig.FILL_GEN_W
+                )
+                img_input = cv2.resize(
+                    img_high_res,
+                    (QModelOnyxConfig.FILL_INFERENCE_W, QModelOnyxConfig.FILL_INFERENCE_H),
+                    interpolation=cv2.INTER_AREA,
+                )
+        except Exception as e:
+            Log.e(self.TAG, f"Error generating fill render: {e}")
+            return None
+        self._last_image = img_input
+        return img_input
+
+    def predict(self, df: pd.DataFrame) -> int:
+        """Classifies the run's fill state to an integer channel count.
+
+        Renders the dataframe via `_render_input` (versioned fill render),
+        runs YOLO classification, and maps the top-1 label to a channel count.
 
         Args:
-            df (pd.DataFrame): The raw sensor data to classify.
+            df (pd.DataFrame): The preprocessed sensor data to classify.
 
         Returns:
-            int: The number of channels to detect (0, 1, 2, or 3). Returns 0 on failure
-            or if the classification result implies no channels (e.g., "no_fill").
+            int: The number of channels to detect (-1, 0, 1, 2, or 3). Returns
+            0 on failure or if the result implies no channels ("no_fill").
         """
         if df is None or df.empty:
             Log.w(self.TAG, "Dataframe provided for prediction is empty.")
             return 0
 
-        # Generate Image
-        # We divide the target GEN_H by 3 because the processor stacks 3 strips
-        strip_height = QModelOnyxConfig.FILL_GEN_H // 3
-
-        try:
-            img_high_res = QModelOnyxDataProcessor.generate_fill_cls(
-                df, img_h=strip_height, img_w=QModelOnyxConfig.FILL_GEN_W
-            )
-        except Exception as e:
-            Log.e(self.TAG, f"Error generating signal image: {e}")
+        img_input = self._render_input(df)
+        if img_input is None:
             return 0
 
-        if img_high_res is None:
-            Log.w(self.TAG, "Generated image is None.")
-            return 0
-
-        # Resize for Inference
-        img_input = cv2.resize(
-            img_high_res,
-            (QModelOnyxConfig.FILL_INFERENCE_W, QModelOnyxConfig.FILL_INFERENCE_H),
-            interpolation=cv2.INTER_AREA,
-        )
-        self._last_image = img_input
-        # # --- Debugging for live fill frames and type cls ---
-        # debug_dir = os.path.join(os.getcwd(), "debug_frames")
-        # os.makedirs(debug_dir, exist_ok=True)
-
-        # # Use nanoseconds to ensure unique filenames in a fast loop
-        # timestamp = time.time_ns()
-        # save_path = os.path.join(debug_dir, f"input_{timestamp}.png")
-
-        # cv2.imwrite(save_path, img_input)
-        # Inference
         try:
             results = self.model(img_input, verbose=False)
             if not results:
                 Log.w(self.TAG, "Model returned no results.")
                 return 0
-
-            probs = results[0].probs
-            top1_index = probs.top1
-
-            # Robustly get the label name
-            pred_label = results[0].names[top1_index]
-            confidence = probs.top1conf.item()
-
-            # Log.d(self.TAG, f"Prediction: '{pred_label}' ({confidence:.1%})")
-
-            # if confidence < 0.5:
-            #     Log.w(
-            #         self.TAG,
-            #         f"Low confidence ({confidence:.2f}) for class: {pred_label}",
-            #     )
-
+            pred_label = results[0].names[results[0].probs.top1]
             return self._map_label_to_channels(pred_label)
-
         except Exception as e:
             Log.e(self.TAG, f"Inference error: {e}")
             return 0
+
+    def predict_probs(self, df: pd.DataFrame) -> Optional[np.ndarray]:
+        """Returns the fill-state probability vector over the ordinal axis.
+
+        The returned array `p` has shape `(N_STATES,)` with
+        `p[i] = P(channels == i - 1)` (index 0 -> no_fill/-1, index 4 -> 3ch).
+        Class labels are folded onto the ordinal axis via
+        `_map_label_to_channels` so the vector is robust to label ordering,
+        then temperature-softened by `QModelOnyxConfig.PROB_TEMPERATURE` to
+        restore informative confidences from the saturated classifier. Returns
+        `None` on render or inference failure.
+
+        This is the evidence source for the ordinal live accumulator; the
+        integer `predict` path is unchanged for analysis-time callers.
+        """
+        if df is None or df.empty:
+            return None
+        img_input = self._render_input(df)
+        if img_input is None:
+            return None
+        try:
+            results = self.model(img_input, verbose=False)
+            if not results:
+                return None
+            probs = results[0].probs.data
+            probs = probs.cpu().numpy() if hasattr(probs, "cpu") else np.asarray(probs)
+            names = results[0].names
+            vec = np.zeros(QModelOnyxConfig.N_STATES, dtype=float)
+            for idx, label in names.items():
+                ch = self._map_label_to_channels(label)
+                if -1 <= ch <= 3:
+                    vec[ch + 1] += float(probs[idx])
+            s = vec.sum()
+            if s <= 0:
+                return None
+            vec /= s
+            t = QModelOnyxConfig.PROB_TEMPERATURE
+            if t != 1.0:
+                vec = np.power(np.clip(vec, 1e-12, 1.0), 1.0 / t)
+                vec /= vec.sum()
+            return vec
+        except Exception as e:
+            Log.e(self.TAG, f"Inference error: {e}")
+            return None
 
     def _map_label_to_channels(self, label: str) -> int:
         """
@@ -638,8 +663,8 @@ class QModelOnyx:
         Lazy loads the learned SpacingPrior used by the configuration decode.
 
         The path is taken from `model_assets["spacing_prior"]` (a JSON file
-        produced by fit_prior.py). Returns None — and the decode path becomes
-        a no-op — if the decode modules or the prior file are unavailable, so
+        produced by fit_prior.py). Returns None - and the decode path becomes
+        a no-op - if the decode modules or the prior file are unavailable, so
         enabling `decode_config` can never break a deployment that lacks the
         asset.
 
@@ -652,7 +677,7 @@ class QModelOnyx:
             prior_path = self.model_assets.get("spacing_prior")
             if prior_path and os.path.exists(prior_path):
                 try:
-                    self._spacing_prior = SpacingPrior.load(prior_path)
+                    self._spacing_prior = OnyxSpacingPrior.load(prior_path)
                 except Exception as e:
                     Log.e(self.TAG, f"Error while loading spacing prior: {e}")
                     return None
@@ -1127,7 +1152,7 @@ class QModelOnyx:
                 same in-distribution slice each detector sees, and attach them to
                 the output dict under the reserved key "_candidates" as
                 {POI_NAME: [{"time","conf","index"}, ...]}. This does NOT change
-                cuts or predictions — the cascade proceeds on the greedy pick
+                cuts or predictions - the cascade proceeds on the greedy pick
                 exactly as in production; harvesting only observes the runners-up
                 for the downstream configuration-prior decode. Defaults to False.
             decode_config (bool, optional): If True (implies harvesting), runs the
@@ -1213,7 +1238,7 @@ class QModelOnyx:
             # cut at the LATEST harvested candidate of each stage instead of
             # the greedy pick. Rationale: if the greedy pick is too early, the
             # production cut excises the true downstream event before its
-            # detector ever sees it — a candidate that is never generated can
+            # detector ever sees it - a candidate that is never generated can
             # never be recovered by the decoder, silently capping oracle
             # recall. Cutting at the latest candidate keeps the harvest slice
             # a superset of the production slice (slightly wider than the

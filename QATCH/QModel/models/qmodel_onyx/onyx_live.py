@@ -1,5 +1,5 @@
 ﻿"""
-onyx_yolo_live.py
+QATCH.QModel.models.qmodel_onyx.onyx_live.py
 
 This module provides the infrastructure for running a YOLO-based fill classifier
 in a live, multiprocessing environment. It includes a classification logic class
@@ -14,10 +14,10 @@ consolidated Onyx predictor module here.
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-07-06
+    2026-07-09
 
 Version:
-    7.0.0
+    7.1.0
 """
 
 import ctypes
@@ -29,29 +29,26 @@ from logging.handlers import QueueHandler
 from queue import Empty
 from typing import Dict, NamedTuple, Optional, Tuple
 
+import numpy as np
 import pandas as pd
+from scipy.signal import medfilt
 
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
-
-try:
-    from QATCH.QModel.models.qmodel_onyx.onyx import (
-        QModelOnyxConfig,
-        QModelOnyxFillClassifier,
-    )
-    from QATCH.QModel.models.qmodel_onyx.onyx_dataprocessor import (
-        QModelOnyxDataProcessor,
-    )
-except (ImportError, ModuleNotFoundError):
-    from QATCH.QModel.models.qmodel_onyx.onyx import (
-        QModelOnyxConfig,
-        QModelOnyxFillClassifier,
-    )
-    from QATCH.QModel.models.qmodel_onyx.onyx_dataprocessor import (
-        QModelOnyxDataProcessor,
-    )
+from QATCH.QModel.models.qmodel_onyx.onyx import (
+    QModelOnyxConfig,
+    QModelOnyxFillClassifier,
+)
+from QATCH.QModel.models.qmodel_onyx.onyx_dataprocessor import (
+    QModelOnyxDataProcessor,
+)
 
 TAG = "[QModelOnyxLiveProcess]"
+
+# Live preprocessing point budget: ~6 samples per rendered column at
+# FILL_GEN_W=640. Below the budget the grid step is the production 5 ms
+# TIME_STEP, so short-buffer behaviour is bit-identical to the analysis path.
+MAX_CLS_POINTS: int = 4096
 
 
 class OnyxDropEpochSignal(NamedTuple):
@@ -63,6 +60,75 @@ class OnyxDropEpochSignal(NamedTuple):
     """
 
     relative_time: float
+
+
+class OrdinalEvidence:
+    """EMA evidence accumulator with monotone-state confirmation.
+
+    Forward:  move to the HIGHEST state `k` above the current one whose
+              cumulative tail `P(state >= k)` clears the forward threshold in
+              the smoothed vector. Cumulative confirmation banks agreement when
+              the model splits mass between adjacent states (e.g. 2ch/3ch both
+              agree the state is at least 2ch) instead of stalling on a split
+              argmax. Multi-step jumps are allowed, which is what makes the same
+              rule correct at analysis time (a finished 3ch run's first frame
+              goes straight to 3ch).
+    Backward: only after `P(state >= current)` stays below `CONF_BACKWARD`
+              for `BACKWARD_CYCLES` consecutive updates - sustained proof that
+              a prior confirmation was wrong - at which point the state is
+              re-solved from the smoothed vector.
+
+    `ALPHA=0.45` puts a fresh unanimous signal past `CONF_FORWARD` in ~2
+    updates from a cold contrary EMA - at or under the latency of the old
+    count-of-3 debounce on clean streams, while being far harder to move with
+    split or flickering evidence.
+    """
+
+    ALPHA = 0.45
+    CONF_FORWARD = 0.60
+    CONF_BACKWARD = 0.20
+    BACKWARD_CYCLES = 8
+
+    def __init__(self) -> None:
+        self.ema: Optional[np.ndarray] = None
+        self._contrary_count = 0
+
+    def reset(self) -> None:
+        self.ema = None
+        self._contrary_count = 0
+
+    @staticmethod
+    def decide(p: np.ndarray, conf: float) -> int:
+        """Highest state whose cumulative tail clears `conf`; falls back to
+        argmax when nothing does (early, low-evidence frames)."""
+        tail = np.cumsum(p[::-1])[::-1]
+        ks = np.nonzero(tail >= conf)[0]
+        return int(ks.max()) if len(ks) else int(np.argmax(p))
+
+    def update(self, p: np.ndarray, current_state: int) -> int:
+        """Feed one probability vector; returns the (possibly unchanged)
+        confirmed ordinal state index."""
+        self.ema = p.copy() if self.ema is None else self.ALPHA * p + (1 - self.ALPHA) * self.ema
+        tail = np.cumsum(self.ema[::-1])[::-1]
+
+        # Forward: highest state above current whose tail clears the bar.
+        proposal = current_state
+        for k in range(current_state + 1, len(tail)):
+            if tail[k] >= self.CONF_FORWARD:
+                proposal = k
+        if proposal > current_state:
+            self._contrary_count = 0
+            return proposal
+
+        # Backward guard: sustained collapse of support for the current state.
+        if current_state > 0 and tail[current_state] < self.CONF_BACKWARD:
+            self._contrary_count += 1
+            if self._contrary_count >= self.BACKWARD_CYCLES:
+                self._contrary_count = 0
+                return self.decide(self.ema, self.CONF_FORWARD)
+        else:
+            self._contrary_count = 0
+        return current_state
 
 
 class QModelOnyxLive(QModelOnyxFillClassifier):
@@ -79,13 +145,13 @@ class QModelOnyxLive(QModelOnyxFillClassifier):
     Attributes:
         STATUS_MAP (dict): Mapping of integer classification codes to human-readable strings.
         TAG (str): Log tag prefix for this class.
-        DEBOUNCE_THRESHOLD (int): Number of consecutive identical predictions required
-            before a state change is accepted.
         DURATION_THRESHOLDS (dict): Per-channel fill duration thresholds in seconds above
             which a warning is logged and a display message is emitted. A `None` threshold
             means the message is always emitted on that channel's confirmation.
         buffer_window_size (Optional[int]): The maximum number of rows to retain in the
-            rolling buffer. If None, the buffer grows indefinitely.
+            rolling buffer. If None, the buffer grows indefinitely - which is the
+            correct setting for this classifier, since it must see the whole run
+            prefix (a trailing window would forget early channels).
         current_prediction (int): The most recent classification result class ID.
     """
 
@@ -97,9 +163,6 @@ class QModelOnyxLive(QModelOnyxFillClassifier):
         3: "3 Channels",
     }
     TAG = "[QModelOnyxLive]"
-
-    # Number of consecutive identical predictions required before accepting a state change.
-    DEBOUNCE_THRESHOLD = 3
 
     # Per-channel fill duration rules for confirmed channels.
     # Timed thresholds are measured from the moment Channel 0 (Initial Fill)
@@ -132,30 +195,31 @@ class QModelOnyxLive(QModelOnyxFillClassifier):
         self._last_max_time = -float("inf")
         self._prediction_buffer_size = 0
         self._drop_applied_received: bool = False
-        # Debounce state: candidate and consecutive count
-        self._debounce_candidate = -1
-        self._debounce_count = 0
+
+        # Ordinal monotone-state evidence accumulator onsumes probability
+        # vectors from predict_probs.
+        self._evidence = OrdinalEvidence()
 
         # Records the Relative_time (seconds) at which each channel was first confirmed.
         self._channel_confirm_times: Dict[int, float] = {}
+
         # Holds the next on-display message to be consumed by the process layer.
         # Cleared to None immediately after being read via get_and_clear_display_message().
         self._pending_display_message: Optional[str] = None
+
         # Records the fill epoch (Relative_time, seconds) used for duration thresholds.
         # Primary source is the UI-provided drop-applied timestamp; channel-0
         # confirmation only seeds this as a fallback if no drop epoch was provided.
         self._fill_epoch: Optional[float] = None
         self._fill_epoch_source: Optional[str] = None  # "drop_timestamp" or "channel_0_confirm"
+
         # Tracks which channels have already had their timed duration warning fired so
         # that _evaluate_duration_threshold never double-emits for the same channel.
         self._channel_warning_fired: Dict[int, bool] = {}
+
         # Tracks which channels have exceeded their duration threshold but are waiting
         self._extended_fill_latched: Dict[int, bool] = {}
         self._initial_fill_timeout_fired: bool = False
-        self._cal_csv_written: bool = False
-        self._cal_csv_path: str = os.path.join(
-            Architecture.get_path(), "QATCH", "QModel", "logs", "fill_calibration_30s.csv"
-        )
         self._cached_baseline_freq: Optional[float] = None
         self._cached_baseline_diss: Optional[float] = None
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
@@ -327,28 +391,68 @@ class QModelOnyxLive(QModelOnyxFillClassifier):
                 self._data = self._data.iloc[-self.buffer_window_size :]
                 self._data.reset_index(drop=True, inplace=True)
 
+    def _preprocess_for_cls(self, df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """`QModelOnyxDataProcessor.preprocess_dataframe` with an adaptive grid
+        step so the interpolated frame never exceeds `MAX_CLS_POINTS` rows.
+
+        `step = max(TIME_STEP, span / MAX_CLS_POINTS)`: identical to the
+        production 5 ms grid for spans under `TIME_STEP * MAX_CLS_POINTS`
+        (~20 s at defaults), then the step widens so per-chunk cost stays flat
+        for the life of the run. The classifier's render is 640 px wide, so
+        carrying the full 5 ms grid (up to ~240k rows on a 20 min run) into it
+        was pure waste. The median filter's fixed 5-sample kernel then smooths a
+        window proportional to run span, which for a global-shape classifier is
+        a feature, not a loss.
+        """
+        DP = QModelOnyxDataProcessor
+        cols_to_drop = [c for c in DP.DROP_COLS if c in df.columns]
+        df = df.drop(columns=cols_to_drop)
+        if DP.COL_TIME not in df.columns:
+            return None
+        df = df.drop_duplicates(subset=[DP.COL_TIME], keep="first")
+        t_min = df[DP.COL_TIME].min()
+        t_max = df[DP.COL_TIME].max()
+        span = float(t_max - t_min)
+        if not np.isfinite(span) or span <= 0:
+            return None
+        step = max(DP.TIME_STEP, span / float(MAX_CLS_POINTS))
+        new_time_grid = np.arange(t_min, t_max, step)
+        if len(new_time_grid) < 2:
+            return None
+        df = df.set_index(DP.COL_TIME)
+        combined_index = df.index.union(new_time_grid).sort_values()
+        df = df.reindex(combined_index).interpolate(method="index").loc[new_time_grid]
+        df = df.reset_index().rename(columns={"index": DP.COL_TIME})
+        diff_series = DP._compute_difference_curve(
+            df, self._cached_baseline_freq, self._cached_baseline_diss
+        )
+        df[DP.COL_DIFF] = diff_series if diff_series is not None else 0.0
+        for col in df.columns:
+            if col != DP.COL_TIME and pd.api.types.is_numeric_dtype(df[col]):
+                df[col] = medfilt(df[col], kernel_size=DP.MEDIAN_KERNEL)
+        return df
+
     def attempt_classification(self) -> int:
         """Executes the classification pipeline on the current buffered data.
 
-        This method validates data length against `QModelOnyxConfig.MIN_SLICE_LENGTH`,
-        filters for valid time ranges (Relative_time > 0.05), caches pre-fill baselines
-        if available, applies preprocessing, and runs the model inference.
+        Validates data length against `QModelOnyxConfig.MIN_SLICE_LENGTH`,
+        filters for valid time ranges (Relative_time > 0.05), caches pre-fill
+        baselines if available, runs flat-cost preprocessing, and feeds the
+        classifier's probability vector into the ordinal-evidence accumulator.
+        Live diagnostic states are managed as before:
 
-        It utilizes a debounce mechanism to stabilize the raw model predictions.
-        Additionally, this method manages live diagnostic states:
-
-        * State Transitions: When debounce confirms a *new* channel state, it triggers
-          one-time bookkeeping (recording confirmation time and emitting immediate,
-          unconditional display messages).
-        * Duration Monitoring: Re-evaluates timed duration thresholds
-          (DURATION_THRESHOLDS) every cycle for the currently confirmed channel,
-          ensuring extended-fill warnings fire even if the channel has been stable.
-        * Timeout Checks: Evaluates `_check_initial_fill_timeout` on every successful
-          inference cycle to ensure the process hasn't stalled at the 'Initial Fill' stage.
+        * State Transitions: When evidence confirms a *new* channel state,
+          one-time bookkeeping fires for every state passed through on a
+          multi-step jump, so duration latches release in order.
+        * Duration Monitoring: Timed duration thresholds (DURATION_THRESHOLDS)
+          are re-evaluated every cycle for the currently confirmed channel.
+        * Timeout Checks: `_check_initial_fill_timeout` runs every successful
+          inference cycle to catch a stall at the 'Initial Fill' stage.
 
         Returns:
-            int: The classification result class ID. Returns the previous `current_prediction`
-            if the buffer is insufficient, empty, or if preprocessing/inference fails.
+            int: The classification result class ID. Returns the previous
+            `current_prediction` if the buffer is insufficient, empty, or if
+            preprocessing/inference fails.
         """
         if self._data is None or len(self._data) < QModelOnyxConfig.MIN_SLICE_LENGTH:
             return self.current_prediction
@@ -360,45 +464,58 @@ class QModelOnyxLive(QModelOnyxFillClassifier):
                 return self.current_prediction
 
             self._try_cache_baseline()
-            processed_df = QModelOnyxDataProcessor.preprocess_dataframe(
-                filtered.copy(),
-                baseline_freq=self._cached_baseline_freq,
-                baseline_diss=self._cached_baseline_diss,
-            )
-            if processed_df is not None and not processed_df.empty:
-                pred = self.predict(processed_df)
-
-                if not self._drop_applied_received:
-                    pred = -1
-                if pred == self._debounce_candidate:
-                    self._debounce_count += 1
-                else:
-                    self._debounce_candidate = pred
-                    self._debounce_count = 1
-
-                if self._debounce_count >= self.DEBOUNCE_THRESHOLD:
-                    previous_prediction = self.current_prediction
-                    self.current_prediction = pred
-
-                    # Fire one-time bookkeeping only on genuine state transitions.
-                    if pred != previous_prediction:
-                        self._on_channel_confirmed(pred)
-
-                    # Re-evaluate timed thresholds every cycle so warnings fire even
-                    # when the channel has been stable since first confirmation.
-                    self._evaluate_duration_threshold(self.current_prediction)
-                self._check_initial_fill_timeout()
-
-            else:
+            processed_df = self._preprocess_for_cls(filtered)
+            if processed_df is None or processed_df.empty:
                 Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
+                return self.current_prediction
+
+            p = self.predict_probs(processed_df)
+            if p is None:
+                return self.current_prediction
+
+            # Drop gating in evidence space: until the UI reports the drop
+            # applied, the state is no_fill by definition. Holding the
+            # accumulator in reset stops pre-drop frames (which can look
+            # fill-like during handling) from banking evidence toward an
+            # instant post-drop confirmation.
+            if not self._drop_applied_received:
+                self._evidence.reset()
+                self.current_prediction = -1
+                return self.current_prediction
+
+            current_state = self.current_prediction + 1  # channel count -> ordinal index
+            new_state = self._evidence.update(p, current_state)
+
+            if new_state != current_state:
+                previous_prediction = self.current_prediction
+                self.current_prediction = new_state - 1
+                if new_state < current_state:
+                    Log.w(
+                        self.TAG,
+                        f"Backward state revision {previous_prediction} -> "
+                        f"{self.current_prediction} after sustained contrary "
+                        f"evidence - an earlier confirmation was wrong.",
+                    )
+                # A multi-step forward jump (fast run, or analysis-time replay)
+                # fires bookkeeping for every state it passes through so the
+                # duration latches release in order.
+                if new_state > current_state:
+                    for s in range(current_state + 1, new_state + 1):
+                        self._on_channel_confirmed(s - 1)
+
+            # Re-evaluate timed thresholds every cycle so warnings fire even
+            # when the channel has been stable since first confirmation.
+            self._evaluate_duration_threshold(self.current_prediction)
+            self._check_initial_fill_timeout()
 
         except Exception as e:
-            Log.e(self.TAG, f"Inference failed at buffer size {len(self._data)}: {str(e)}")
+            n = len(self._data) if self._data is not None else 0
+            Log.e(self.TAG, f"Inference failed at buffer size {n}: {str(e)}")
 
         return self.current_prediction
 
     def _on_channel_confirmed(self, channel: int) -> None:
-        """Handles one-time bookkeeping when a new channel state is debounce-confirmed.
+        """Handles one-time bookkeeping when a new channel state is evidence-confirmed.
 
         Records the confirmation timestamp, sets the fill epoch when channel 0
         (Initial Fill) is first confirmed, and immediately emits any
@@ -561,7 +678,9 @@ class QModelOnyxLiveProcess(multiprocessing.Process):
         _queue_out (multiprocessing.Queue): Output queue sending
             `(int, str, Optional[str])` prediction tuples.
         model_path (str): Path to the YOLO model file.
-        buffer_window_size (Optional[int]): Rolling window size for the model buffer.
+        buffer_window_size (Optional[int]): Rolling window size for the model
+            buffer. None (the default) means unbounded, which is correct for
+            this whole-prefix classifier.
         _classifier (Optional[QModelOnyxLive]): The internal classifier instance
             (created inside `run()`).
     """
@@ -609,11 +728,15 @@ class QModelOnyxLiveProcess(multiprocessing.Process):
             onyx_base_path, "classifiers", "fill_classifier", "type_cls.pt"
         )
         self.model_path = type_cls_asset
-        self.buffer_window_size = buffer_window_size if buffer_window_size else 2000
+        # Unbounded by default: the fill classifier must see the whole run
+        # prefix, so a trailing window would forget early channels. A caller
+        # may still pass an explicit cap, but the previous silent 2000-row
+        # fallback truncated the buffer and is removed.
+        self.buffer_window_size = buffer_window_size
 
         # Instance placeholder
         self._classifier: Optional[QModelOnyxLive] = None
-        self.enable_visualization: bool = False
+        self.enable_visualization: bool = True
 
     def run(self) -> None:
         """Executes the main inference loop for the live fill classification process."""

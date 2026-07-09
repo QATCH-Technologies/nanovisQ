@@ -110,7 +110,7 @@ class UIInfo:
         self.l6a = self._create_info_label(" Temperature ")
         self.gridLayout_2.addWidget(self.l6a, 17, 0, 1, 1)
 
-        # Update status section — widgets are kept as hidden stubs so that
+        # Update status section - widgets are kept as hidden stubs so that
         # existing code in main_window.py can still call setText() on them
         # without errors, but the controls bar icon now owns the visible display.
         self.lweb = self._create_header_label(" Check for Updates ")

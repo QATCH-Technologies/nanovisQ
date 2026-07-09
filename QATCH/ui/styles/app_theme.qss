@@ -174,7 +174,7 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
     width: 0px;
     height: 0px;
 }
-/* Popup list — Qt resolves this relative to the ComboBox, not the widget tree,
+/* Popup list - Qt resolves this relative to the ComboBox, not the widget tree,
    so ancestor scoping is intentionally omitted here. */
 QComboBox#LevelFilter QAbstractItemView {
     background-color: {{LOG_DROPDOWN_BG}};
@@ -472,7 +472,7 @@ QWidget#PlotMenuRow:hover {
 /* ═══════════════════════════════════════════════════════
    CONTROLS UI
    Toolbar, progress bar, temperature controller, sliders,
-   glass inputs, and labels — all scoped by objectName.
+   glass inputs, and labels - all scoped by objectName.
    Dynamic temp-status colours are applied in Python via
    ThemeManager tokens; paintEvent colours likewise.
    ═══════════════════════════════════════════════════════ */

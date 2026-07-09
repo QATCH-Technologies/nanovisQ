@@ -153,11 +153,11 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
     }
 
     _TOOLTIPS = {
-        State.UNKNOWN: "Update status unknown — click to check",
+        State.UNKNOWN: "Update status unknown - click to check",
         State.CHECKING: "Checking for updates...",
         State.UP_TO_DATE: "Up to date",
-        State.OPTIONAL: "Update available — click to update",
-        State.MANDATORY: "Required update — click to install",
+        State.OPTIONAL: "Update available - click to update",
+        State.MANDATORY: "Required update - click to install",
     }
 
     _PULSING = (State.CHECKING, State.OPTIONAL, State.MANDATORY)

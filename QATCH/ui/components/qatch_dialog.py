@@ -1,7 +1,7 @@
 """QATCH.ui.components.glass_dialog
 
 Glassmorphic modal dialog that matches the app's frosted-glass aesthetic.
-Replaces QMessageBox across all PopUp static methods — zero call-site changes.
+Replaces QMessageBox across all PopUp static methods - zero call-site changes.
 
 Renders a semi-transparent dim overlay over the root window with a centred
 frosted glass card containing title, body text, optional expandable details,
@@ -39,7 +39,7 @@ _BADGE_TOKENS = {
     "critical": "danger",
 }
 
-# SVG filenames — drop these into QATCH/icons/ to get tinted icons
+# SVG filenames - drop these into QATCH/icons/ to get tinted icons
 _ICON_FILES = {
     "information": "info-circle.svg",
     "question": "question-circle.svg",
@@ -101,7 +101,7 @@ class DialogBase(QtWidgets.QDialog):
     """Shared modal chrome for every frosted-glass dialog in the app.
 
     Renders a semi-transparent dim overlay sized to the root window, behind
-    whatever `GlassDialogCard`-based content a subclass builds in
+    whatever `GlassDialogCard-based content a subclass builds in
     `_build_ui`/`__init__`. Handles the frameless/translucent window setup,
     resolving the correct root window to size against, and Escape-to-cancel.
 
@@ -173,7 +173,7 @@ class QATCHDialog(DialogBase):
     and one or more GlassPushButton actions.
 
     Args:
-        parent:     Ancestor widget — used to find the root window for sizing.
+        parent:     Ancestor widget - used to find the root window for sizing.
         title:      Bold header text shown above the divider.
         message:    Body text shown below the divider.
         details:    Optional expandable text (shown in a scroll area).

@@ -176,7 +176,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
         # paint-time multiply) instead of re-setting the stylesheet each frame,
         # which would reparse + repolish the entire glass subtree per frame.
         # Start at 0.0 so the very first paint after glass_frame.show() in
-        # _reveal() is transparent — prevents the one-frame white flash that
+        # _reveal() is transparent - prevents the one-frame white flash that
         # occurs between show() and _animate_open() setting opacity to 0.
         self._glass_opacity = QtWidgets.QGraphicsOpacityEffect(self.glass_frame)
         self._glass_opacity.setOpacity(0.0)
@@ -871,7 +871,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
 
         UIControls calls .show()/.setVisible(True) on this overlay. The entire
         show sequence is deferred to a singleShot(0) so that the overlay and its
-        glass panel become visible in one atomic event-loop tick — no intermediate
+        glass panel become visible in one atomic event-loop tick - no intermediate
         frame where the overlay is visible without the panel, which is what caused
         the floating-button flash in earlier versions.
         """
@@ -896,7 +896,7 @@ class UserProfilesManagerWidget(QtWidgets.QWidget):
                 self._set_glass_opacity(0.0)
                 # Show the overlay and panel atomically in this same callback so
                 # there is no event-loop iteration (and therefore no paint pass)
-                # between them — this eliminates the one-frame button-without-panel
+                # between them - this eliminates the one-frame button-without-panel
                 # flash that happened when super().setVisible(True) was called
                 # before this singleShot, leaving the overlay visible but panelless
                 # while the event loop processed queued paints.

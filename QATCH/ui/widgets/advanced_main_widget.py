@@ -321,6 +321,8 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         content_layout (QtWidgets.QVBoxLayout): The internal layout managing the panel items.
     """
 
+    closed = QtCore.pyqtSignal()
+
     _SHADOW_MARGIN_L = 22
     _SHADOW_MARGIN_T = 18
     _SHADOW_MARGIN_R = 22
@@ -656,3 +658,4 @@ class AdvancedMainWidget(QtWidgets.QWidget):
                 self._main_window.removeEventFilter(self)
             self._main_window = None
         super().closeEvent(event)
+        self.closed.emit()

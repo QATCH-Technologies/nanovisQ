@@ -3668,7 +3668,7 @@ class MainWindow(QtWidgets.QMainWindow):
             },
         )
 
-        # Bottom axis label removed — tick labels carry "(s)" / "(min)" unit inline
+        # Bottom axis label removed - tick labels carry "(s)" / "(min)" unit inline
         self._plt4.setLabel("bottom", "")
 
         self._apply_glass_plot_style(self._plt4)
@@ -6270,6 +6270,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             for _ in range(n_devices)
         ]
+
     ###########################################################################
     # Updates the speeds and depending boxes on change
     ###########################################################################
@@ -7449,7 +7450,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.progressBar = QtWidgets.QProgressDialog(
                     f"Downloading resources...", "Cancel", 0, 100, self
                 )
-                icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "download_icon.ico")
+                icon_path = os.path.join(
+                    Architecture.get_path(), "QATCH", "icons", "download_icon.ico"
+                )
                 self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
                 self.progressBar.setWindowTitle("QATCH nanovisQ")
                 self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)

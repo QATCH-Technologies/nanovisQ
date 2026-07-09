@@ -5411,7 +5411,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tuple[list[int], int]: A two-element tuple of
             `(poi_vals, fill_type)` where `poi_vals` is a sorted list of
             integer POI indices (empty when none are found) and `fill_type` is
-            an integer channel count (`-1` when not present in the XML).
+            an integer channel count (-1` when not present in the XML).
         """
         poi_vals = []
         fill_type = -1

@@ -114,7 +114,7 @@ class ColorTokens(TypedDict):
     backdrop_fallback_end: RGBA
     backdrop_frost: RGBA
     backdrop_dim: RGBA
-    # Log console — container / controls
+    # Log console - container / controls
     log_surface: RGBA
     log_surface_border: RGBA
     log_control_bg: RGBA
@@ -129,7 +129,7 @@ class ColorTokens(TypedDict):
     log_btn_pressed: RGBA
     log_text: RGBA
     log_match_highlight: RGBA
-    # Log console — per-level text colors (used in inline HTML spans)
+    # Log console - per-level text colors (used in inline HTML spans)
     log_time: RGBA
     log_location: RGBA
     log_debug: RGBA
@@ -137,7 +137,7 @@ class ColorTokens(TypedDict):
     log_warning: RGBA
     log_error: RGBA
     log_default: RGBA
-    # Plot glass cards — paintEvent fill colors
+    # Plot glass cards - paintEvent fill colors
     plot_glass_base: RGBA
     plot_glass_overlay: RGBA
     plot_glass_shimmer_top: RGBA
@@ -146,22 +146,22 @@ class ColorTokens(TypedDict):
     plot_glass_rim: RGBA
     plot_glass_inset: RGBA
     plot_glass_header_line: RGBA
-    # Plot glass cards — text
+    # Plot glass cards - text
     plot_text_normal: RGBA
     plot_text_bright: RGBA
     plot_text_muted: RGBA
     plot_text_dim: RGBA
-    # Plot glass cards — icon buttons
+    # Plot glass cards - icon buttons
     plot_icon_btn_hover_bg: RGBA
     plot_icon_btn_hover_border: RGBA
     plot_icon_btn_pressed_bg: RGBA
-    # Plot glass cards — dropdown menu
+    # Plot glass cards - dropdown menu
     plot_menu_bg: RGBA
     plot_menu_border: RGBA
     plot_menu_separator: RGBA
     plot_menu_row_hover: RGBA
     plot_swatch_border: RGBA
-    # Plot glass cards — device tabs (pill buttons)
+    # Plot glass cards - device tabs (pill buttons)
     plot_tab_bg: RGBA
     plot_tab_border: RGBA
     plot_tab_bg_hover: RGBA
@@ -173,42 +173,42 @@ class ColorTokens(TypedDict):
     plot_data_secondary: RGBA
     plot_data_temperature: RGBA
     plot_data_device_accent: RGBA
-    # Controls UI — toolbar
+    # Controls UI - toolbar
     ctrl_toolbar_btn_disabled_text: RGBA
     ctrl_toolbar_btn_pressed_bg: RGBA
     ctrl_toolbar_separator: RGBA
-    # Controls UI — progress bar
+    # Controls UI - progress bar
     ctrl_progress_border: RGBA
     ctrl_progress_chunk_start: RGBA
     ctrl_progress_chunk_end: RGBA
-    # Controls UI — temperature controller
+    # Controls UI - temperature controller
     ctrl_temp_ctrl_bg: RGBA
     ctrl_temp_pid_header_text: RGBA
     ctrl_temp_status_offline_bg: RGBA
     ctrl_temp_status_offline_text: RGBA
     ctrl_temp_status_border: RGBA
-    # Controls UI — sliders (shared: temp controller + range sliders)
+    # Controls UI - sliders (shared: temp controller + range sliders)
     ctrl_slider_groove: RGBA
     ctrl_slider_handle_border: RGBA
     ctrl_slider_track: RGBA
     ctrl_slider_disabled_handle: RGBA
     ctrl_slider_handle_hover: RGBA
-    # Controls UI — hairline divider
+    # Controls UI - hairline divider
     ctrl_hairline: RGBA
-    # Controls UI — toggle row labels
+    # Controls UI - toggle row labels
     ctrl_toggle_label_text: RGBA
-    # Controls UI — device config back button
+    # Controls UI - device config back button
     ctrl_back_btn_bg: RGBA
     ctrl_back_btn_border: RGBA
     ctrl_back_btn_hover_bg: RGBA
     ctrl_back_btn_hover_border: RGBA
-    # Controls UI — glass input fields
+    # Controls UI - glass input fields
     ctrl_input_bg: RGBA
     ctrl_input_border: RGBA
     ctrl_input_text: RGBA
     ctrl_input_focus_bg: RGBA
     ctrl_input_focus_border: RGBA
-    # Controls UI — animated combo box (AnimatedComboBox)
+    # Controls UI - animated combo box (AnimatedComboBox)
     combo_bg: RGBA
     combo_border: RGBA
     combo_bg_hover: RGBA
@@ -220,48 +220,48 @@ class ColorTokens(TypedDict):
     combo_popup_border: RGBA
     combo_selection_bg: RGBA
     combo_selection_text: RGBA
-    # Controls UI — temperature status dynamic states
+    # Controls UI - temperature status dynamic states
     ctrl_temp_ready_bg: RGBA
     ctrl_temp_ready_text: RGBA
     ctrl_temp_heating_bg: RGBA
     ctrl_temp_heating_text: RGBA
     ctrl_temp_cooling_bg: RGBA
     ctrl_temp_cooling_text: RGBA
-    # Controls UI — amber pulse border (unsaved field highlight)
+    # Controls UI - amber pulse border (unsaved field highlight)
     ctrl_pulse_border: RGBA
-    # Controls UI — infobar readout label
+    # Controls UI - infobar readout label
     ctrl_infobar_text: RGBA
-    # Controls window — menu bar signed-in (normal) state
+    # Controls window - menu bar signed-in (normal) state
     menubar_bg: RGBA
     menubar_text: RGBA
     menubar_item_hover_bg: RGBA
     menubar_item_disabled_text: RGBA
     menubar_border: RGBA
     menubar_separator: RGBA
-    # Controls window — menu bar signed-out (dimmed) state
+    # Controls window - menu bar signed-out (dimmed) state
     menubar_dim_bg: RGBA
     menubar_dim_text: RGBA
     menubar_dim_item_hover_bg: RGBA
     menubar_dim_item_disabled_text: RGBA
     menubar_dim_border: RGBA
     menubar_dim_separator: RGBA
-    # Login UI — titles, body text, links
+    # Login UI - titles, body text, links
     login_title_text: RGBA
     login_body_text: RGBA
     login_link_text: RGBA
     login_link_text_hover: RGBA
     login_caps_warning: RGBA
-    # Login UI — checkbox
+    # Login UI - checkbox
     login_checkbox_text: RGBA
     login_checkbox_border: RGBA
     login_checkbox_bg: RGBA
     login_checkbox_hover_border: RGBA
     login_checkbox_checked_bg: RGBA
     login_checkbox_checked_border: RGBA
-    # Login UI — recover status feedback
+    # Login UI - recover status feedback
     login_recover_success: RGBA
     login_recover_error: RGBA
-    # Login UI — primary action buttons
+    # Login UI - primary action buttons
     login_primary_btn_top: RGBA
     login_primary_btn_bottom: RGBA
     login_primary_btn_hover_top: RGBA
@@ -269,16 +269,16 @@ class ColorTokens(TypedDict):
     login_primary_btn_pressed_top: RGBA
     login_primary_btn_pressed_bottom: RGBA
     login_primary_btn_disabled_bg: RGBA
-    # Login UI — back navigation button
+    # Login UI - back navigation button
     login_back_btn_text: RGBA
     login_back_btn_text_hover: RGBA
-    # Mode window — footer copyright label
+    # Mode window - footer copyright label
     mode_footer_text: RGBA
     mode_footer_dim_text: RGBA
-    # Mode window — log-console toggle button
+    # Mode window - log-console toggle button
     mode_toggle_btn_hover: RGBA
     mode_toggle_btn_pressed: RGBA
-    # Mode window — log-splitter handle hover
+    # Mode window - log-splitter handle hover
     mode_splitter_handle_hover: RGBA
     mode_splitter_dim_handle_hover: RGBA
     # Selectable option card (GlassOptionCard)
@@ -294,7 +294,7 @@ class ColorTokens(TypedDict):
     option_card_checked_border: RGBA
     option_card_checked_title: RGBA
     option_card_radio_checked: RGBA
-    # Glass input field (GlassLineEdit) — paint-time fills/borders/shimmer
+    # Glass input field (GlassLineEdit) - paint-time fills/borders/shimmer
     input_glass_text: RGBA
     input_glass_selection_bg: RGBA
     input_glass_fill: RGBA
@@ -305,13 +305,13 @@ class ColorTokens(TypedDict):
     input_glass_shimmer_accent: RGBA
     input_glass_shimmer_peak: RGBA
 
-    # Account popup — avatar badge (brand mark, identical both modes)
+    # Account popup - avatar badge (brand mark, identical both modes)
     account_avatar_grad_start: RGBA
     account_avatar_grad_end: RGBA
     account_avatar_ring: RGBA
     account_avatar_shimmer: RGBA
     account_avatar_text: RGBA
-    # Account popup — role badge chip
+    # Account popup - role badge chip
     account_role_admin_bg: RGBA
     account_role_admin_text: RGBA
     account_role_operate_bg: RGBA
@@ -460,7 +460,7 @@ def _build(mode: str) -> ColorTokens:
         t["backdrop_frost"] = _a((238, 243, 247), 62)
         t["backdrop_dim"] = (0, 0, 0, 76)
 
-    # ---- Log console — container / controls ----
+    # ---- Log console - container / controls ----
     t["log_surface"] = _a(glass, 140 if dark else 120)
     t["log_surface_border"] = _a(surf(0.9), 180 if dark else 200)
     t["log_control_bg"] = _a(surf(0.45) if dark else surf(1.0), 160)
@@ -475,7 +475,7 @@ def _build(mode: str) -> ColorTokens:
     t["log_btn_pressed"] = _a(surf(0.68) if dark else surf(1.0), 220)
     t["log_text"] = _a(fg(0.16) if dark else fg(0.12), 200)
     t["log_match_highlight"] = _a(accent, 90)
-    # Per-level text colors — semantic hues, brightened on dark for legibility.
+    # Per-level text colors - semantic hues, brightened on dark for legibility.
     t["log_time"] = _a(sem(_INFO, 0.30 if dark else -0.02), 255)
     t["log_location"] = _a(sem(_PURPLE, 0.42 if dark else -0.02), 255)
     t["log_debug"] = _a(fg(0.58) if dark else fg(0.52), 255)
@@ -484,7 +484,7 @@ def _build(mode: str) -> ColorTokens:
     t["log_error"] = _a(sem(_DANGER, 0.10 if dark else -0.10), 255)
     t["log_default"] = _a(fg(0.20) if dark else fg(0.0), 255)
 
-    # ---- Plot glass cards — paintEvent fills ----
+    # ---- Plot glass cards - paintEvent fills ----
     t["plot_glass_base"] = _a(surf(0.35) if dark else surf(1.0), 160)
     t["plot_glass_overlay"] = _a(surf(0.55) if dark else (228, 235, 241), 18)
     t["plot_glass_shimmer_top"] = _a(surf(0.9) if dark else surf(1.0), 60 if dark else 100)
@@ -521,7 +521,7 @@ def _build(mode: str) -> ColorTokens:
     t["plot_data_temperature"] = _a(_PLOT_TEMPERATURE, 255)
     t["plot_data_device_accent"] = _a(_PLOT_DEVICE, 255)
 
-    # ---- Controls UI — toolbar ----
+    # ---- Controls UI - toolbar ----
     t["ctrl_toolbar_btn_disabled_text"] = _a(fg(0.14) if dark else fg(0.12), 90)
     t["ctrl_toolbar_btn_pressed_bg"] = _a(surf(0.55) if dark else fg(0.90), 200)
     t["ctrl_toolbar_separator"] = _a(tint(), 22)
@@ -580,7 +580,7 @@ def _build(mode: str) -> ColorTokens:
     # Infobar readout
     t["ctrl_infobar_text"] = _a(fg(0.40) if dark else fg(0.30), 190)
 
-    # ---- Controls window — menu bar (signed-in) ----
+    # ---- Controls window - menu bar (signed-in) ----
     t["menubar_bg"] = _a(surf(0.3) if dark else (233, 239, 244), 255)
     t["menubar_text"] = _a(fg(0.20) if dark else fg(0.18), 230)
     t["menubar_item_hover_bg"] = _a(accent, 60)

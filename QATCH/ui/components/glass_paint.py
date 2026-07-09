@@ -77,7 +77,7 @@ def paint_glass_surface(
         rim: Whether to draw the outer/inner border strokes.
         opaque_base: If True, the base fill ignores the token's alpha and
             paints fully opaque (same tint color, no see-through). Use for
-            surfaces — like modal dialogs — where content bleeding through
+            surfaces - like modal dialogs - where content bleeding through
             the card would hurt readability.
     """
     owns_painter = painter is None

@@ -30,13 +30,18 @@ def _tinted_icon(path: str, color: QtGui.QColor, size: int = 16) -> QtGui.QIcon:
 
 
 class AvatarLabel(QtWidgets.QWidget):
-    """Circular avatar rendered with QATCH brand-blue gradient + user initials."""
+    """Circular avatar rendered with the active user's role color + initials."""
 
     def __init__(self, initials: str, parent=None) -> None:
         super().__init__(parent)
         self._initials = initials[:2].upper() if initials else "?"
+        self._role_name = "NONE"
         self.setAutoFillBackground(False)
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    def set_role_name(self, role_name: str) -> None:
+        self._role_name = role_name
+        self.update()
 
     def _on_theme_changed(self, _mode: str) -> None:
         self.update()
@@ -51,16 +56,17 @@ class AvatarLabel(QtWidgets.QWidget):
         rect = QtCore.QRectF(x, y, r, r)
 
         grad = QtGui.QRadialGradient(rect.center(), r / 2)
-        grad.setColorAt(0.0, QtGui.QColor(*tok["account_avatar_grad_start"]))
-        grad.setColorAt(1.0, QtGui.QColor(*tok["account_avatar_grad_end"]))
+        role_colors = _role_colors(self._role_name)
+        grad.setColorAt(0.0, QtGui.QColor(*role_colors["avatar_start"]))
+        grad.setColorAt(1.0, QtGui.QColor(*role_colors["avatar_end"]))
         p.setBrush(QtGui.QBrush(grad))
-        p.setPen(QtGui.QPen(QtGui.QColor(*tok["account_avatar_ring"]), 1.5))
+        p.setPen(QtGui.QPen(QtGui.QColor(*role_colors["border"]), 1.5))
         p.drawEllipse(rect)
 
         # Shimmer half-circle
-        shimmer_rgb = tok["account_avatar_shimmer"][:3]
+        shimmer_rgb = role_colors["shimmer"][:3]
         shimmer = QtGui.QLinearGradient(0, float(rect.top()), 0, float(rect.center().y()))
-        shimmer.setColorAt(0.0, QtGui.QColor(*tok["account_avatar_shimmer"]))
+        shimmer.setColorAt(0.0, QtGui.QColor(*role_colors["shimmer"]))
         shimmer.setColorAt(1.0, QtGui.QColor(*shimmer_rgb, 0))
         p.setBrush(QtGui.QBrush(shimmer))
         p.setPen(QtCore.Qt.NoPen)
@@ -73,6 +79,35 @@ class AvatarLabel(QtWidgets.QWidget):
         p.setPen(QtGui.QColor(*tok["account_avatar_text"]))
         p.drawText(rect.toRect(), QtCore.Qt.AlignmentFlag.AlignCenter, self._initials)
         p.end()
+
+
+def _role_colors(role_name: str) -> dict:
+    role_upper = str(role_name).upper()
+    if "ADMIN" in role_upper:
+        base = (220, 53, 69)
+        text = (200, 35, 51, 255)
+    elif "OPERATE" in role_upper:
+        base = (40, 167, 69)
+        text = (30, 126, 52, 255)
+    elif "CAPTURE" in role_upper:
+        base = (255, 193, 7)
+        text = (179, 134, 0, 255)
+    elif "ANALYZE" in role_upper:
+        base = (111, 66, 193)
+        text = (111, 66, 193, 255)
+    else:
+        base = (108, 117, 125)
+        text = (73, 80, 87, 255)
+
+    r, g, b = base
+    return {
+        "bg": (r, g, b, 31),
+        "border": (r, g, b, 115),
+        "text": text,
+        "avatar_start": (min(255, r + 32), min(255, g + 32), min(255, b + 32), 255),
+        "avatar_end": (r, g, b, 255),
+        "shimmer": (255, 255, 255, 80),
+    }
 
 
 class AccountInnerPanel(QtWidgets.QWidget):
@@ -133,6 +168,8 @@ class AccountPopup(QtWidgets.QWidget):
     moved, the popup closes itself so it never floats outside the application.
     """
 
+    closed = QtCore.pyqtSignal()
+
     # Margins reserved around the inner panel for the drop shadow.  Bottom is
     # larger to accommodate the shadow's positive Y offset.
     _SHADOW_MARGIN_L = 22
@@ -143,6 +180,7 @@ class AccountPopup(QtWidgets.QWidget):
     def __init__(
         self,
         open_manager_cb=None,
+        open_preferences_cb=None,
         sign_out_cb=None,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
@@ -157,6 +195,7 @@ class AccountPopup(QtWidgets.QWidget):
         self.setAutoFillBackground(False)
 
         self._open_manager_cb = open_manager_cb
+        self._open_preferences_cb = open_preferences_cb
         self._sign_out_cb = sign_out_cb
         self._main_window: Optional[QtWidgets.QWidget] = None  # set by show_anchored_to
 
@@ -230,6 +269,7 @@ class AccountPopup(QtWidgets.QWidget):
         header_row.setSpacing(12)
 
         avatar = AvatarLabel(initials)
+        avatar.set_role_name(role_name)
         avatar.setFixedSize(44, 44)
         header_row.addWidget(avatar, 0, QtCore.Qt.AlignTop)
 
@@ -268,13 +308,23 @@ class AccountPopup(QtWidgets.QWidget):
             self._status_lbl.setStyleSheet("font-style: italic;")
             layout.addWidget(self._status_lbl)
 
+        show_preferences = is_signed_in
         show_manage = is_admin
         show_sign_out = is_signed_in
         self._divider: Optional[QtWidgets.QFrame] = None
-        if show_manage or show_sign_out:
+        if show_preferences or show_manage or show_sign_out:
             self._divider = QtWidgets.QFrame()
             self._divider.setFrameShape(QtWidgets.QFrame.HLine)
             layout.addWidget(self._divider)
+
+        self._preferences_btn: Optional[QATCHPushButton] = None
+        if show_preferences:
+            self._preferences_btn = QATCHPushButton("User Preferences", variant="ghost")
+            self._preferences_btn.set_menu_row(True)
+            self._preferences_btn.setFixedHeight(34)
+            self._preferences_btn.setIconSize(QtCore.QSize(16, 16))
+            self._preferences_btn.clicked.connect(self._on_preferences)
+            layout.addWidget(self._preferences_btn)
 
         self._manage_btn: Optional[QATCHPushButton] = None
         if show_manage:
@@ -301,14 +351,6 @@ class AccountPopup(QtWidgets.QWidget):
 
     # -- theming ----------------------------------------------------------------
 
-    _ROLE_TOKEN_KEYS = {
-        "ADMIN": ("account_role_admin_bg", "account_role_admin_text"),
-        "OPERATE": ("account_role_operate_bg", "account_role_operate_text"),
-        "ANALYZE": ("account_role_analyze_bg", "account_role_analyze_text"),
-        "CAPTURE": ("account_role_capture_bg", "account_role_capture_text"),
-    }
-    _ROLE_DEFAULT_TOKEN_KEYS = ("account_role_default_bg", "account_role_default_text")
-
     def _on_theme_changed(self, _mode: str) -> None:
         self._apply_theme()
 
@@ -324,11 +366,11 @@ class AccountPopup(QtWidgets.QWidget):
             "font-size: 10px; background: transparent; border: none;"
         )
 
-        bg_key, fg_key = self._ROLE_TOKEN_KEYS.get(self._role_name, self._ROLE_DEFAULT_TOKEN_KEYS)
+        role_colors = _role_colors(self._role_name)
         self._role_badge.setStyleSheet(
-            f"background: {tok_css(tok[bg_key])}; color: {tok_css(tok[fg_key])}; "
+            f"background: {tok_css(role_colors['bg'])}; color: {tok_css(role_colors['text'])}; "
             f"font-family: '{FONT_SANS_SEMIBOLD}'; border-radius: 4px; padding: 1px 7px; "
-            "font-size: 10px; border: none;"
+            f"font-size: 10px; border: 1px solid {tok_css(role_colors['border'])};"
         )
 
         if self._last_lbl is not None:
@@ -349,6 +391,13 @@ class AccountPopup(QtWidgets.QWidget):
             )
 
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+
+        if self._preferences_btn is not None:
+            icon_path = os.path.join(icons_dir, "preferences.svg")
+            if os.path.exists(icon_path):
+                self._preferences_btn.setIcon(
+                    _tinted_icon(icon_path, QtGui.QColor(*tok["flat_accent"][:3]))
+                )
 
         if self._manage_btn is not None:
             icon_path = os.path.join(icons_dir, "manage_users.svg")
@@ -524,6 +573,7 @@ class AccountPopup(QtWidgets.QWidget):
                 pass
             self._main_window = None
         super().closeEvent(event)
+        self.closed.emit()
 
     # -- slots ----------------------------------------------------------------
 
@@ -531,6 +581,11 @@ class AccountPopup(QtWidgets.QWidget):
         self.close()
         if self._open_manager_cb:
             self._open_manager_cb()
+
+    def _on_preferences(self) -> None:
+        self.close()
+        if self._open_preferences_cb:
+            self._open_preferences_cb()
 
     def _on_sign_out(self) -> None:
         self.close()

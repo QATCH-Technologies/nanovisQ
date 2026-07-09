@@ -61,6 +61,7 @@ from QATCH.ui.widgets import (
     AdvancedMainWidget,
     ControlsWidget,
     SavedStateDot,
+    UserPreferencesWidget,
     UserProfilesManagerWidget,
     WellPlate,
 )
@@ -494,7 +495,7 @@ class _PerspectiveAnimator(QtCore.QObject):
         """
         if obj is self._container and event.type() == QtCore.QEvent.Type.Show:
             # Deduplicate: only schedule _begin_slide once per open cycle.
-            # The fade is NOT started here — _begin_slide starts both animations
+            # The fade is NOT started here - _begin_slide starts both animations
             # together after the popup window is confirmed visible, preventing
             # the fade from running ahead of the slide (and ahead of show()).
             if not self._start_pending:
@@ -648,6 +649,7 @@ class UIControls:
         self.pButton_Stop.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Stop.setObjectName("pButton_Stop")
         self.pButton_Stop.set_icon_left(True)
+        self.pButton_Stop.set_menu_row(True)
         self.Layout_controls.addWidget(self.pButton_Stop, 3, 6, 1, 1)
 
         # COM port combobox
@@ -679,6 +681,8 @@ class UIControls:
         self.pButton_Refresh.setFixedSize(_CIRCLE_D, _CIRCLE_D)  # square -> circle
         self.pButton_Refresh.setObjectName("pButton_Refresh")
         self.Layout_controls.addWidget(self.pButton_Refresh, 2, 3, 1, 1)
+        self._refresh_spin_anim = None
+        self._refresh_spin_angle = 0.0
 
         # Configure button - replaces the in-dropdown "Configure..." item.
         # Wired to the main window's device-info handler in mainWindow.py.
@@ -703,6 +707,9 @@ class UIControls:
 
         # Frequency hopping toggle
         self.chBox_freqHop = LabeledToggle("Mode Hop")
+        self.chBox_freqHop.setToolTip(
+            "Sweep nearby resonant modes during initialization to improve peak tracking."
+        )
         self.chBox_freqHop.setEnabled(True)
         self.chBox_freqHop.setChecked(False)
         self.chBox_freqHop.setObjectName("chBox_freqHop")
@@ -710,10 +717,21 @@ class UIControls:
 
         # Noise correction toggle
         self.chBox_correctNoise = LabeledToggle("Show amplitude curve")
+        self.chBox_correctNoise.setToolTip(
+            "Show the amplitude curve alongside the primary plot for troubleshooting."
+        )
         self.chBox_correctNoise.setEnabled(True)
         self.chBox_correctNoise.setChecked(True)
         self.chBox_correctNoise.setObjectName("chBox_correctNoise")
         self.Layout_controls.addWidget(self.chBox_correctNoise, 5, 1, 1, 3)
+
+        self.chBox_AutoStop = LabeledToggle("Auto-stop")
+        self.chBox_AutoStop.setToolTip(
+            "Automatically stop acquisition when the configured run target is reached."
+        )
+        self.chBox_AutoStop.setEnabled(True)
+        self.chBox_AutoStop.setChecked(False)
+        self.chBox_AutoStop.setObjectName("chBox_AutoStop")
 
         # Cartridge Auto-Lock
         self.l9 = HeaderLabel("Cartridge Auto-Lock")
@@ -756,6 +774,7 @@ class UIControls:
         self.pButton_Start.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Start.setObjectName("pButton_Start")
         self.pButton_Start.set_icon_left(True)
+        self.pButton_Start.set_menu_row(True)
         self.Layout_controls.addWidget(self.pButton_Start, 2, 6, 1, 1)
 
         # Add signal for Run Controls UI to handle START from Advanced menu
@@ -779,6 +798,7 @@ class UIControls:
         self.pButton_Clear.setFixedHeight(_CTRL_BTN_H)
         self.pButton_Clear.setObjectName("pButton_Clear")
         self.pButton_Clear.set_icon_left(True)
+        self.pButton_Clear.set_menu_row(True)
         self.Layout_controls.addWidget(self.pButton_Clear, 2, 5, 1, 1)
 
         # Plot mode toggle
@@ -806,6 +826,7 @@ class UIControls:
         self.pButton_ResetApp.setFixedHeight(_CTRL_BTN_H)
         self.pButton_ResetApp.setObjectName("pButton_ResetApp")
         self.pButton_ResetApp.set_icon_left(True)
+        self.pButton_ResetApp.set_menu_row(True)
         self.Layout_controls.addWidget(self.pButton_ResetApp, 4, 5, 1, 1)
 
         # samples SpinBox
@@ -960,6 +981,9 @@ class UIControls:
 
         self.cBox_MultiMode = AnimatedComboBox(icon_path=self._combo_chevron)
         self.cBox_MultiMode.setObjectName("cBox_MultiMode")
+        self.cBox_MultiMode.setToolTip(
+            "Select the number of channels exposed by the connected multiplex device."
+        )
         self.cBox_MultiMode.addItems(["1 Channel", "2 Channels", "3 Channels", "4 Channels"])
         self.cBox_MultiMode.setCurrentIndex(0)
         self.cBox_MultiMode.setFixedHeight(34)
@@ -983,6 +1007,9 @@ class UIControls:
         self._update_plate_config_enabled()
 
         self.chBox_MultiAuto = LabeledToggle("Auto-detect channel count")
+        self.chBox_MultiAuto.setToolTip(
+            "Detect available multiplex channels from the connected device during refresh."
+        )
         self.chBox_MultiAuto.setEnabled(True)
         self.chBox_MultiAuto.setChecked(True)
         self.chBox_MultiAuto.setObjectName("chBox_MultiAuto")
@@ -1170,6 +1197,7 @@ class UIControls:
         self.tool_Advanced.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)  # type: ignore
         self.tool_Advanced.setIcon(icon_advanced)
         self.tool_Advanced.setText("Advanced")
+        self.tool_Advanced.setCheckable(True)
         self.tool_Advanced.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.tool_Advanced.clicked.connect(self.action_advanced)
         self.tool_bar_2.addWidget(self.tool_Advanced)
@@ -1185,6 +1213,7 @@ class UIControls:
         self.tool_User.setIcon(icon_user)
         self.tool_User.setText("Account")
         self.tool_User.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.tool_User.setCheckable(True)
         self.tool_User.setEnabled(self._is_user_signed_in())
         self.tool_User.clicked.connect(self._toggle_account_popup)
         self.tool_bar_2.addWidget(self.tool_User)
@@ -2856,12 +2885,13 @@ class UIControls:
             (getattr(self, "tool_Reset", None), "reset.svg"),
             (getattr(self, "tool_TempControl", None), "temperature-control.svg"),
             (getattr(self, "tool_Advanced", None), "gear.svg"),
-            (getattr(self, "tool_User", None), "user-circle.svg"),
         ]
 
         for btn, icon_name in buttons_icons:
             if btn is not None:
                 btn.setIcon(self._tinted_icon(os.path.join(icon_dir, icon_name), color))
+
+        self._refresh_user_button_icon()
 
     def _refresh_advanced_panel_icons(self) -> None:
         """Recolors the raw SVG glyphs inside the Advanced/Device panels.
@@ -2892,6 +2922,9 @@ class UIControls:
             if btn is not None:
                 btn.setIcon(self._tinted_icon(os.path.join(icon_dir, icon_name), color))
 
+        if getattr(self, "_refresh_spin_anim", None) is not None:
+            self._set_refresh_spin_angle(getattr(self, "_refresh_spin_angle", 0.0))
+
         device_config_icon = getattr(self, "device_config_icon", None)
         if device_config_icon is not None:
             gear_pix = QtGui.QPixmap(os.path.join(icon_dir, "gear.svg"))
@@ -2904,6 +2937,65 @@ class UIControls:
                 p.fillRect(dst.rect(), muted_color)
                 p.end()
                 device_config_icon.setPixmap(dst)
+
+    def _set_refresh_spin_angle(self, angle: float) -> None:
+        self._refresh_spin_angle = float(angle)
+        btn = getattr(self, "pButton_Refresh", None)
+        if btn is None:
+            return
+
+        tok = ThemeManager.instance().tokens()
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg")
+        base = self._tinted_icon(icon_path, QtGui.QColor(*tok["flat_text"]), size=18).pixmap(18, 18)
+        if base.isNull():
+            return
+
+        canvas = QtGui.QPixmap(24, 24)
+        canvas.fill(QtCore.Qt.GlobalColor.transparent)
+        p = QtGui.QPainter(canvas)
+        p.setRenderHint(QtGui.QPainter.SmoothPixmapTransform)
+        p.translate(canvas.width() / 2, canvas.height() / 2)
+        p.rotate(self._refresh_spin_angle)
+        p.translate(-base.width() / 2, -base.height() / 2)
+        p.drawPixmap(0, 0, base)
+        p.end()
+        btn.setIcon(QtGui.QIcon(canvas))
+
+    def start_refresh_animation(self) -> None:
+        btn = getattr(self, "pButton_Refresh", None)
+        if btn is None:
+            return
+        anim = getattr(self, "_refresh_spin_anim", None)
+        if anim is not None and anim.state() == QtCore.QAbstractAnimation.State.Running:
+            return
+        self._refresh_spin_anim = QtCore.QVariantAnimation(self.centralwidget)
+        self._refresh_spin_anim.setDuration(650)
+        self._refresh_spin_anim.setLoopCount(-1)
+        self._refresh_spin_anim.setStartValue(0.0)
+        self._refresh_spin_anim.setEndValue(360.0)
+        self._refresh_spin_anim.valueChanged.connect(self._set_refresh_spin_angle)
+        self._refresh_spin_anim.start()
+
+    def stop_refresh_animation(self) -> None:
+        anim = getattr(self, "_refresh_spin_anim", None)
+        if anim is not None:
+            anim.stop()
+            anim.deleteLater()
+            self._refresh_spin_anim = None
+        self._refresh_spin_angle = 0.0
+        self._refresh_advanced_panel_icons()
+
+    def set_identify_animation_active(self, active: bool) -> None:
+        btn = getattr(self, "pButton_ID", None)
+        if btn is None:
+            return
+        if active:
+            btn.setChecked(True)
+            btn.set_variant("primary")
+        else:
+            btn.setChecked(False)
+            btn.set_variant("default")
+        btn.update()
 
     def action_next_port(self) -> None:
         """Advance the FLUX controller to the next port.
@@ -3436,7 +3528,6 @@ class UIControls:
             self.cBox_Port,
             self.pButton_ID,
             self.pButton_Refresh,
-            self.pButton_Configure,
         )
         port_section = section("Serial COM Port", port_row)
 
@@ -3453,6 +3544,7 @@ class UIControls:
         left_col.addLayout(port_section)
         left_col.addLayout(res_section)
         left_col.addLayout(multi_section)
+        left_col.addWidget(self.chBox_AutoStop)
         left_col.addWidget(self.chBox_correctNoise)
         left_col.addStretch()
 
@@ -3518,6 +3610,19 @@ class UIControls:
         button. If the popup is created, its content container is stored for
         later layout and size queries.
         """
+        prev = getattr(self, "_advanced_popup", None)
+        if prev is not None:
+            if prev.isVisible():
+                self.tool_Advanced.setChecked(False)
+                prev.close()
+                return
+            closed_at = getattr(self, "_advanced_popup_closed_at", 0.0)
+            if monotonic() - closed_at < 0.25:
+                self.tool_Advanced.setChecked(False)
+                prev.deleteLater()
+                self._advanced_popup = None
+                return
+
         main_window = getattr(self, "parent", None)
 
         popup = AdvancedMainWidget.toggle(
@@ -3528,8 +3633,17 @@ class UIControls:
         )
 
         if popup is None:
+            self.tool_Advanced.setChecked(False)
+            self._advanced_popup_closed_at = monotonic()
             return
 
+        def _advanced_popup_closed():
+            self._advanced_popup_closed_at = monotonic()
+            self.tool_Advanced.setChecked(False)
+
+        popup.closed.connect(_advanced_popup_closed)
+        popup.destroyed.connect(lambda _=None: self.tool_Advanced.setChecked(False))
+        self.tool_Advanced.setChecked(True)
         self.advanced_container = popup.content_container
 
     def _ensure_advanced_popup(self) -> AdvancedMainWidget | None:
@@ -3608,6 +3722,8 @@ class UIControls:
         tool_user = getattr(self, "tool_User", None)
         if tool_user is not None:
             tool_user.setEnabled(signed_in)
+            tool_user.setChecked(False)
+            self._refresh_user_button_icon()
 
         # If user signed out, close any open account popup
         if signed_in:
@@ -3622,38 +3738,118 @@ class UIControls:
         except Exception:
             pass
 
+    def _refresh_user_button_icon(self) -> None:
+        """Use signed-in initials as the Account toolbar glyph."""
+        tool_user = getattr(self, "tool_User", None)
+        if tool_user is None:
+            return
+
+        tok = ThemeManager.instance().tokens()
+        icon_size = (
+            self.tool_bar_2.iconSize() if hasattr(self, "tool_bar_2") else QtCore.QSize(50, 30)
+        )
+        signed_in = False
+        initials = ""
+        role_name = "NONE"
+
+        try:
+            signed_in, user_info = UserProfiles.session_info()
+            if signed_in and user_info:
+                initials = (user_info[1] or "").strip().upper()
+                role_name = user_info[2] or "NONE"
+        except Exception:
+            signed_in = False
+
+        if not signed_in or not initials:
+            icon_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+            color = QtGui.QColor(*tok["plot_text_normal"])
+            tool_user.setIcon(self._tinted_icon(os.path.join(icon_dir, "user-circle.svg"), color))
+            return
+
+        pix = QtGui.QPixmap(icon_size)
+        pix.fill(QtCore.Qt.GlobalColor.transparent)
+
+        role_colors = {
+            "ADMIN": ((220, 53, 69), (200, 35, 51)),
+            "OPERATE": ((40, 167, 69), (30, 126, 52)),
+            "CAPTURE": ((255, 193, 7), (179, 134, 0)),
+            "ANALYZE": ((111, 66, 193), (111, 66, 193)),
+        }
+        base_rgb, text_rgb = role_colors.get(role_name, ((108, 117, 125), (73, 80, 87)))
+
+        p = QtGui.QPainter(pix)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        diameter = min(icon_size.width(), icon_size.height()) - 4
+        rect = QtCore.QRectF(
+            (icon_size.width() - diameter) / 2,
+            (icon_size.height() - diameter) / 2,
+            diameter,
+            diameter,
+        )
+        bg = QtGui.QColor(*base_rgb, 31)
+        border = QtGui.QColor(*base_rgb, 115)
+        p.setBrush(bg)
+        p.setPen(QtGui.QPen(border, 1.4))
+        p.drawEllipse(rect)
+
+        font = QtGui.QFont()
+        font.setBold(True)
+        font.setPointSize(10)
+        p.setFont(font)
+        p.setPen(QtGui.QColor(*text_rgb, 255))
+        p.drawText(rect.toRect(), QtCore.Qt.AlignmentFlag.AlignCenter, initials[:2])
+        p.end()
+
+        tool_user.setIcon(QtGui.QIcon(pix))
+
     def _toggle_account_popup(self) -> None:
-        """Show or recreate the account popup anchored under the Account button.
+        """Toggle the account popup anchored under the Account button.
 
         Ensures only one popup instance exists at a time. Any previous popup is
-        safely closed and scheduled for deletion before a new one is created.
+        closed when the Account button is clicked again.
         The popup is anchored to the Account button and auto-closes on outside
         interaction or main window resize.
         """
-        # Close and cleanup any existing popup.  Stop animations first so no
-        # pending timer callbacks can fire on the widget after it is scheduled
-        # for deletion.
+        anchor = getattr(self, "tool_User", None)
+        if anchor is None:
+            return
+
         prev = getattr(self, "_account_popup", None)
         if prev is not None:
+            if prev.isVisible():
+                anchor.setChecked(False)
+                prev.close()
+                return
+            closed_at = getattr(self, "_account_popup_closed_at", 0.0)
+            if monotonic() - closed_at < 0.25:
+                anchor.setChecked(False)
+                prev.deleteLater()
+                self._account_popup = None
+                return
             try:
                 prev._enter_slide.stop()
                 prev._enter_fade.stop()
             except Exception:
                 pass
-            prev.close()
             prev.deleteLater()
+            self._account_popup = None
 
         self._account_popup = AccountPopup(
             open_manager_cb=self._open_user_manager,
+            open_preferences_cb=self._open_user_preferences,
             sign_out_cb=self._sign_out_current_user,
         )
 
+        def _account_popup_closed():
+            self._account_popup_closed_at = monotonic()
+            anchor.setChecked(False)
+
+        self._account_popup.closed.connect(_account_popup_closed)
+        self._account_popup.destroyed.connect(lambda _=None: anchor.setChecked(False))
+
         main_window = getattr(self, "parent", None)
 
-        anchor = getattr(self, "tool_User", None)
-        if anchor is None:
-            return
-
+        anchor.setChecked(True)
         self._account_popup.show_anchored_to(anchor, main_window=main_window)
 
     def _sign_out_current_user(self) -> None:
@@ -3682,6 +3878,7 @@ class UIControls:
             self.parent.signinout.setText("&Sign In")
             self.parent.manage.setText("&Manage Users...")
             self.parent.ui.tool_User.setText("Anonymous")
+            self.parent.ui.tool_User.setChecked(False)
 
             analyze_proc = getattr(self.parent.parent, "analyze_process", None)
             if analyze_proc:
@@ -3691,6 +3888,19 @@ class UIControls:
 
         except Exception as exc:
             Log.e(f"Error signing out user: {exc}")
+
+    def _open_user_preferences(self) -> None:
+        """Open the existing User Preferences window from the account popup."""
+        try:
+            existing = getattr(self.parent, "ui_preferences", None)
+            if existing is None:
+                existing = UserPreferencesWidget(self.parent)
+                self.parent.ui_preferences = existing
+            existing.showNormal()
+            existing.raise_()
+            existing.activateWindow()
+        except Exception as exc:
+            Log.e(f"UIControls._open_user_preferences error: {exc}")
 
     def _open_user_manager(self) -> None:
         """Open the User Profiles Manager overlay (admin-only)."""

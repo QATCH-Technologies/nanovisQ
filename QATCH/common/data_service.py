@@ -20,7 +20,9 @@ plumbing are stubbed. Port the bodies from:
     export_widget.Ui_Export.mainTask / ui_add / ui_remove / diff / cancel
 """
 
-from threading import Thread, Event
+import ctypes
+import sys
+from threading import Event, Thread
 from typing import Callable, Optional
 
 from PyQt5 import QtCore
@@ -91,17 +93,58 @@ class DataServices(QtCore.QObject):
         Log.d(f"{TAG} background worker stopped")
 
     def _main_loop(self):
-        """STUB: port export_widget.Ui_Export.mainTask here.
+        """Poll for USB drives, diff against last seen set, and emit signals."""
+        Log.d(f"{TAG} USB polling loop started")
+        last_drives = self._get_removable_drives()
+        if last_drives:
+            self.usb_drive = list(last_drives)[0]
 
-        Original responsibilities:
-          - poll for USB drives, diff against last seen set
-          - write the detected drive letter (or None) to `self.usb_drive`
-            - NOT `self.drive`, which is the user's chosen export target
-          - emit usb_add / usb_remove on change
-          - exit cleanly when self._stop is set
-        """
         while not self._stop.is_set():
+            current_drives = self._get_removable_drives()
+            added_drives = current_drives - last_drives
+            removed_drives = last_drives - current_drives
+
+            if added_drives:
+                new_drive = list(added_drives)[0]
+                self.usb_drive = new_drive
+                Log.d(f"{TAG} USB drive connected: {self.usb_drive}")
+                self.usb_add.emit()
+
+            if removed_drives:
+                if self.usb_drive in removed_drives:
+                    Log.d(f"{TAG} USB drive disconnected: {self.usb_drive}")
+                    self.usb_drive = None
+
+                    # If there's another USB still plugged in, fallback to it
+                    if current_drives:
+                        self.usb_drive = list(current_drives)[0]
+
+                    self.usb_remove.emit()
+
+            last_drives = current_drives
             self._stop.wait(1.0)
+
+        Log.d(f"{TAG} USB polling loop exited")
+
+    def _get_removable_drives(self) -> set:
+        """Query the OS for currently connected removable drives."""
+        drives = set()
+
+        # Windows implementation
+        if sys.platform == "win32":
+            # GetLogicalDrives returns a bitmask of available drives (1=A, 2=B, 4=C...)
+            bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+            for i, letter in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
+                if bitmask & (1 << i):
+                    drive_path = f"{letter}:\\"
+                    # GetDriveTypeW returns 2 for DRIVE_REMOVABLE (USB sticks)
+                    if ctypes.windll.kernel32.GetDriveTypeW(drive_path) == 2:
+                        drives.add(drive_path)
+
+        # Linux / macOS implementations could be added here using os.listdir
+        # on /media, /run/media, or /Volumes, or by utilizing the `psutil` library.
+
+        return drives
 
     # ------------------------------------------------------------------
     #  Task management - one foreground-ish worker at a time, cooperative abort

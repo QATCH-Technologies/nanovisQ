@@ -1,34 +1,33 @@
 ﻿"""
-onyx_render.py
-============
+QATCH.QModel.models.qmodel_onyx.onyx_render.py
 
-Version-2 detection-image renderer, addressing the two representation
-failures the onyx training run exposed:
+Generates image-based representations viscosity data for model
+and inference.
 
-  1. LATE-EVENT FLATTENING. Per-strip global percentile normalization makes
-     the early fill step own the entire dynamic range; late POIs in long
-     viscous runs become featureless flat plateaus — the regions where ch2
-     trained to recall 0.63 and ch3 collapsed. The fix is not a cleverer
-     amplitude normalization (any global value scaling keeps the step
-     dominant): it is to render what the detector is actually supposed to
-     find. POIs are TRANSITIONS, so the third strip is replaced with a
-     DERIVATIVE-ENERGY trace: the combined, robustly-scaled, log-compressed
-     |d/dt| of dissipation and resonance frequency. Events appear as bright
-     vertical ridges with near-uniform salience regardless of where in the
-     run they occur or how large the absolute amplitude change is. The
-     Difference curve it replaces is a linear combination of the two value
-     strips and carried little independent information.
+This module converts time-series sensor signals into multi-channel images used by
+the Onyx detection model. It supports multiple rendering implementations through
+a versioned dispatch interface, allowing training and inference code to use the
+same rendering pipeline while maintaining backward compatibility.
 
-  2. The dissipation (R) and resonance (G) value strips are kept exactly as
-     v1 renders them (same percentile normalization, fill + white outline),
-     so global fill-context cues the detectors already exploit are
-     preserved.
+Version 2 extends the original renderer by replacing the third channel with a
+multi-scale derivative-energy representation that emphasizes rapid transitions
+and gradual inflection points. This salience trace is computed from windowed
+second differences across multiple temporal scales, normalized by a robust noise
+estimate, and rendered as a dedicated image channel to improve point-of-interest
+(POI) detection.
 
-Train/inference contract: this module is used by BOTH build_dataset.py and
-the production predictor (QModelOnyxConfig.RENDER_VERSION). The render the
-weights were trained on MUST be the render they see at inference; the
-version flag exists precisely so old (v1-trained) weights keep working
-while v2-trained weights roll out.
+The generated images consist of vertically stacked signal strips:
+
+* Red channel: Dissipation signal.
+* Green channel: Resonance frequency signal.
+* Blue channel (v2): Multi-scale derivative-energy salience.
+* White polylines: Signal outlines drawn for improved edge definition.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-07-09
 """
 
 from __future__ import annotations
@@ -62,6 +61,21 @@ DERIV_EPS = 1e-12
 
 
 def _robust_mad(x: np.ndarray) -> float:
+    """Computes the robust median absolute deviation (MAD) of an array.
+
+    The MAD is scaled by 1.4826 so that, for normally distributed data, it is
+    a consistent estimator of the standard deviation. Non-finite values are
+    ignored before computation. If fewer than eight finite samples remain,
+    `0.0` is returned to indicate that a reliable noise estimate cannot be
+    computed.
+
+    Args:
+        x: Input array containing the values to analyze.
+
+    Returns:
+        The scaled median absolute deviation of the finite values, or `0.0`
+        if there are fewer than eight finite samples.
+    """
     x = x[np.isfinite(x)]
     if len(x) < 8:
         return 0.0
@@ -69,10 +83,24 @@ def _robust_mad(x: np.ndarray) -> float:
 
 
 def _scaled_curv(x: np.ndarray, w: int) -> np.ndarray:
-    """|x[i+w] - 2x[i] + x[i-w]|: windowed second difference, same length
-    (edges clamped). Fires on steps AND on slope changes, and is inherently
-    insensitive to a linear trend — which is what distinguishes a late-fill
-    POI (a bend on a monotone background) from the background itself."""
+    """Computes the absolute windowed second difference of a signal.
+
+    This function estimates local curvature by evaluating the magnitude of the
+    second finite difference over a symmetric window. Unlike a first derivative,
+    the second difference is insensitive to linear trends while responding
+    strongly to steps, inflection points, and changes in slope. The output has
+    the same length as the input, with edge values replicated to avoid boundary
+    artifacts.
+
+    Args:
+        x: One-dimensional input signal.
+        w: Half-window size, in samples, used to compute the second difference.
+
+    Returns:
+        An array of the same length as `x` containing the absolute windowed
+        second difference. Returns an array of zeros if the signal is too short
+        for the specified window size.
+    """
     n = len(x)
     out = np.zeros(n)
     if n <= 2 * w:
@@ -84,15 +112,30 @@ def _scaled_curv(x: np.ndarray, w: int) -> np.ndarray:
 
 
 def derivative_energy(df: pd.DataFrame) -> np.ndarray:
-    """Multi-scale transition salience: for each signal and each timescale
-    (~0.25 s / 1 s / 4 s), the windowed SECOND difference is normalized by
-    its own MAD; the per-sample maximum across signals and scales is
-    log-compressed and lightly smoothed. Fast init events and slow viscous
-    transitions both appear as ridges of comparable salience, because each
-    scale is normalized against ITS OWN noise floor — the property a
-    single-sample gradient lacks (at the 5 ms resample grid it is pure
-    noise) and a global value normalization lacks (the early fill step owns
-    the dynamic range)."""
+    """Computes a multi-scale transition salience trace from sensor signals.
+
+    The salience trace is constructed by computing the windowed second
+    difference of the dissipation and resonance frequency signals over multiple
+    temporal scales. At each scale, the response is normalized by its own
+    median absolute deviation (MAD) to compensate for scale-dependent noise.
+    The maximum normalized response across all signals and scales is then
+    log-compressed and lightly smoothed to produce a single one-dimensional
+    feature emphasizing transitions.
+
+    This representation highlights both abrupt events and slower changes in
+    slope while remaining relatively insensitive to linear trends and the
+    differing dynamic ranges of the input signals.
+
+    Args:
+        df: DataFrame containing the input time-series data. Expected columns
+            include `Relative_time`, `Dissipation`, and
+            `Resonance_Frequency`.
+
+    Returns:
+        A one-dimensional NumPy array containing the derivative-energy
+        salience trace. Returns an array of zeros if the input is too short
+        or does not contain a valid time column.
+    """
     n = len(df)
     if n < 16:
         return np.zeros(n)
@@ -133,8 +176,26 @@ def _strip_points(
     p_lower: float = 1.0,
     p_upper: float = 99.0,
 ) -> np.ndarray:
-    """Same normalization/geometry contract as the v1 renderer's
-    _get_signal_points (percentile clip -> strip pixel band)."""
+    """Converts a one-dimensional signal into image coordinates for rendering.
+
+    The input signal is robustly normalized using lower and upper percentile
+    clipping, then mapped into the vertical extent of a single horizontal strip
+    within the output image. Non-finite values are replaced with the median of
+    the finite samples before normalization.
+
+    Args:
+        values: One-dimensional signal to convert into image coordinates.
+        img_w: Width of the output image in pixels.
+        strip_h: Height of the strip allocated to the signal in pixels.
+        strip_idx: Zero-based index of the strip within the output image.
+        p_lower: Lower percentile used for normalization.
+        p_upper: Upper percentile used for normalization.
+
+    Returns:
+        An `(N, 2)` array of `(x, y)` pixel coordinates suitable for
+        rendering with OpenCV, where `N` is the number of input samples.
+        Returns `None` if fewer than two finite values are available.
+    """
     finite_mask = np.isfinite(values)
     finite = values[finite_mask]
     if len(finite) < 2:
@@ -154,8 +215,31 @@ def _strip_points(
 
 
 def generate_channel_det_v2(df: pd.DataFrame, img_w: int, img_h: int) -> np.ndarray:
-    """v2 detection render: R=dissipation, G=resonance frequency (both as in
-    v1), B=derivative-energy ridge trace."""
+    """Generates a version 2 detection image from Onyx sensor data.
+
+    The output image is composed of three vertically stacked signal strips,
+    each rendered into a separate color channel:
+
+    * Red: Dissipation signal.
+    * Green: Resonance frequency signal.
+    * Blue: Multi-scale derivative-energy salience trace.
+
+    Each signal is robustly normalized, converted to image coordinates, and
+    rendered as a filled polygon with a white anti-aliased outline. The
+    derivative-energy channel emphasizes transition regions that are useful for
+    point-of-interest (POI) detection.
+
+    Args:
+        df: DataFrame containing the input sensor data.
+        img_w: Width of the output image in pixels.
+        img_h: Height of the output image in pixels.
+
+    Returns:
+        A three-channel `uint8` image of shape `(img_h, img_w, 3)` suitable
+        for use as input to the Onyx detection model. If the input DataFrame is
+        `None`, empty, or contains fewer than two samples, a blank image is
+        returned.
+    """
     img = np.zeros((img_h, img_w, IMG_CHANNELS), dtype=np.uint8)
     if df is None or df.empty or len(df) < 2:
         return img
@@ -205,7 +289,34 @@ def generate_channel_det_v2(df: pd.DataFrame, img_w: int, img_h: int) -> np.ndar
     return img
 
 
-def generate_det_image(df: pd.DataFrame, img_w: int, img_h: int, version: int = 2) -> np.ndarray:
+def generate_det_image(
+    df: pd.DataFrame,
+    img_w: int,
+    img_h: int,
+    version: int = 2,
+) -> np.ndarray:
+    """Generates a detection image using the requested rendering version.
+
+    This function provides a common entry point for both model training and
+    inference, dispatching to the appropriate rendering implementation based on
+    the specified version number. Version 1 uses the legacy renderer provided
+    by the data processor, while version 2 uses the enhanced derivative-energy
+    renderer implemented in this module.
+
+    Args:
+        df: DataFrame containing the input sensor data.
+        img_w: Width of the output image in pixels.
+        img_h: Height of the output image in pixels.
+        version: Rendering implementation to use. Supported values are `1`
+            (legacy renderer) and `2` (derivative-energy renderer).
+
+    Returns:
+        A three-channel `uint8` image suitable for model training or
+        inference.
+
+    Raises:
+        ValueError: If `version` is not a supported rendering version.
+    """
     """Version dispatch used by both training (build_dataset.py) and
     inference (qmodel_onyx, via QModelOnyxConfig.RENDER_VERSION)."""
     if version == 1:

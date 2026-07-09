@@ -9,7 +9,7 @@ logic here means each subclass simply inherits from BaseWindow instead of
 duplicating the confirm-and-quit pattern.
 
 Subclasses that need pre-quit cleanup (removing event filters, stopping timers,
-etc.) should override `_before_quit` — the base `closeEvent` calls it after
+etc.) should override `_before_quit` - the base `closeEvent` calls it after
 the user confirms and before `QApplication.quit()`.
 
 Setting the instance attribute `close_no_confirm = True` on a subclass
@@ -52,7 +52,7 @@ class BaseWindow(QtWidgets.QMainWindow):
         """Called once after the user confirms quitting, before `QApplication.quit()`.
 
         The default implementation is a no-op.  Override in subclasses to
-        perform cleanup — for example, removing global event filters or stopping
+        perform cleanup - for example, removing global event filters or stopping
         background timers.
         """
 
