@@ -66,6 +66,13 @@ class StartStopButton(QToolButton):
         self.color_darkgreen = QColor("#25B101")
         self.color_darkred = QColor("#FA4A3E")
 
+        # Rebuilding the icon is deferred to paintEvent (see `update()`
+        # below). Starts False (not True) to match the pre-existing
+        # behavior of never calling `_make_icon`/`setIcon` until the first
+        # real state change (`reset`/`set_running`/`animate_progress`/
+        # `setEnabled` all route through `update()`, same as before).
+        self._icon_dirty = False
+
         # Success Animation
         self.success_anim = QVariantAnimation()
         self.success_anim.setStartValue(0)
@@ -143,12 +150,35 @@ class StartStopButton(QToolButton):
         self.update()
 
     def update(self):
-        """Overrides the default update method to trigger a repaint."""
+        """Overrides the default update method to trigger a repaint.
+
+        The icon rebuild itself (a QPainter pass building a new QPixmap/
+        QIcon) is deferred to `paintEvent`, guarded by `_icon_dirty`, rather
+        than run here every time. `update()` is called once per animation
+        frame (progress ring, success spin), and Qt already coalesces
+        repeated `update()` calls that land before the next real screen
+        refresh into a single paint - deferring the rebuild lets it benefit
+        from that coalescing too, instead of unconditionally paying for a
+        rebuild on every frame even when a later one supersedes it before
+        anything is actually drawn.
+        """
+        self._icon_dirty = True
         super().update()
 
-        icon_size = QtCore.QSize(30, 30)
-        self.setIcon(self._make_icon(icon_size))
-        self.setIconSize(icon_size)
+    def paintEvent(self, event):
+        """Rebuilds the icon (if dirty) immediately before painting, then
+        defers to the normal QToolButton paint.
+
+        Args:
+            event (QtGui.QPaintEvent): The paint event parameters provided
+                by the Qt framework.
+        """
+        if self._icon_dirty:
+            icon_size = QtCore.QSize(30, 30)
+            self.setIcon(self._make_icon(icon_size))
+            self.setIconSize(icon_size)
+            self._icon_dirty = False
+        super().paintEvent(event)
 
     def _make_icon(self, size: QtCore.QSize) -> QtGui.QIcon:
         """Handles the custom painting of the widget.

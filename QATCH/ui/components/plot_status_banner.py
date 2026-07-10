@@ -74,10 +74,19 @@ class PlotStatusBanner:
         },
     }
 
+    # Tinted status-icon pixmaps, keyed by (icon_dir, state). The themed
+    # icons are a pure function of those two values, and this banner's
+    # `setText`/`set_state` is called on every ~100ms plot tick for most of
+    # a run's duration, so caching avoids re-reading and re-tinting the SVG
+    # from disk on every tick.
+    _ICON_PIXMAP_CACHE: dict[tuple, "QtGui.QPixmap"] = {}
+
     def __init__(self, plot_item, icon_dir: str, z_value: int = 150) -> None:
         self._plot_item = plot_item
         self._icon_dir = icon_dir
         self._resize_cb = None
+        self._current_state: str | None = None
+        self._current_text: str | None = None
 
         # ── Pill frame ────────────────────────────────────────────────
         self._pill = QtWidgets.QFrame()
@@ -127,45 +136,69 @@ class PlotStatusBanner:
         """
         if not text or not text.strip():
             self._proxy.setVisible(False)
+            self._current_state = None
+            self._current_text = None
+            return
+
+        # This is invoked every plot tick (~10x/sec) for most of a run's
+        # duration, almost always re-showing the same state/text as last
+        # tick. Skip the icon reload, stylesheet re-parse, and relayout
+        # entirely when nothing actually changed since the last call.
+        if (
+            state == self._current_state
+            and text == self._current_text
+            and self._proxy.isVisible()
+        ):
             return
 
         theme = self._THEMES.get(state, self._THEMES["neutral"])
+        state_changed = state != self._current_state
 
-        # Icon
-        icon_path = os.path.join(self._icon_dir, theme["icon_svg"])
-        if os.path.exists(icon_path):
-            px = _tinted_pixmap(icon_path, QtGui.QColor(theme["icon_hex"]), 13)
-            self._icon_lbl.setPixmap(px)
-            self._icon_lbl.setVisible(True)
-        else:
-            self._icon_lbl.setVisible(False)
+        # Icon (cached per icon_dir+state so the SVG is only read/tinted once)
+        if state_changed:
+            cache_key = (self._icon_dir, state)
+            px = self._ICON_PIXMAP_CACHE.get(cache_key)
+            if px is None:
+                icon_path = os.path.join(self._icon_dir, theme["icon_svg"])
+                if os.path.exists(icon_path):
+                    px = _tinted_pixmap(icon_path, QtGui.QColor(theme["icon_hex"]), 13)
+                    self._ICON_PIXMAP_CACHE[cache_key] = px
+            if px is not None:
+                self._icon_lbl.setPixmap(px)
+                self._icon_lbl.setVisible(True)
+            else:
+                self._icon_lbl.setVisible(False)
 
         # Text label
         self._text_lbl.setText(text)
-        self._text_lbl.setStyleSheet(
-            f"QLabel {{"
-            f"  color: {theme['text_color']};"
-            f"  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;"
-            f"  font-size: 9pt;"
-            f"  font-weight: 500;"
-            f"  background: transparent;"
-            f"}}"
-        )
+        if state_changed:
+            self._text_lbl.setStyleSheet(
+                f"QLabel {{"
+                f"  color: {theme['text_color']};"
+                f"  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;"
+                f"  font-size: 9pt;"
+                f"  font-weight: 500;"
+                f"  background: transparent;"
+                f"}}"
+            )
 
-        # Pill shell
-        self._pill.setStyleSheet(
-            f"QFrame#PlotStatusBannerPill {{"
-            f"  background-color: {theme['bg']};"
-            f"  border: 1.5px solid {theme['border']};"
-            f"  border-radius: 10px;"
-            f"}}"
-        )
+            # Pill shell
+            self._pill.setStyleSheet(
+                f"QFrame#PlotStatusBannerPill {{"
+                f"  background-color: {theme['bg']};"
+                f"  border: 1.5px solid {theme['border']};"
+                f"  border-radius: 10px;"
+                f"}}"
+            )
 
         self._pill.adjustSize()
         self._proxy.adjustSize()
         self._proxy.setVisible(True)
         if self._resize_cb:
             self._resize_cb()
+
+        self._current_state = state
+        self._current_text = text
 
     def hide(self) -> None:
         """Hide the banner without destroying it."""

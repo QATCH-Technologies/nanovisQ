@@ -176,6 +176,13 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         self._glow: float = 1.0
         self._badge_dismissed = False
         self._badge: Optional[UpdateNotificationBadge] = None
+        # `_refresh_icon` rebuilds a scaled+tinted QPixmap/QIcon from scratch;
+        # while pulsing that would otherwise happen on every ~16ms animation
+        # frame, indefinitely, for as long as an update stays pending. Defer
+        # it to paintEvent (guarded by this flag) so it only actually runs
+        # once per real screen refresh - and not at all while hidden, since
+        # paintEvent doesn't fire for an invisible widget.
+        self._icon_dirty = True
 
         self.setFixedSize(size, size)
         self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
@@ -193,10 +200,9 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         self._pulse.setLoopCount(-1)
         self._pulse.valueChanged.connect(self._on_pulse)
 
-        ThemeManager.instance().themeChanged.connect(lambda _: self._refresh_icon())
+        ThemeManager.instance().themeChanged.connect(lambda _: self._mark_icon_dirty())
         self.clicked.connect(self._on_clicked)
         self._update_tooltip()
-        self._refresh_icon()
 
     def state(self) -> "UpdateStatusIcon.State":
         return self._state
@@ -228,7 +234,7 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
             self._pulse.stop()
             self._glow = 1.0
 
-        self._refresh_icon()
+        self._mark_icon_dirty()
         self._sync_badge()
 
     def _sync_badge(self) -> None:
@@ -258,7 +264,20 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
 
     def _on_pulse(self, v: float) -> None:
         self._glow = v
-        self._refresh_icon()
+        self._mark_icon_dirty()
+
+    def _mark_icon_dirty(self) -> None:
+        """Marks the icon for rebuild on the next paint and requests one.
+
+        Called on every pulse frame (up to 60fps, indefinitely while an
+        update is pending) as well as on state/theme changes. Actually
+        rebuilding the icon here every time would mean paying for a
+        QPixmap+QPainter+QIcon pass on every frame regardless of whether a
+        screen refresh ever happens for it; deferring to `paintEvent`
+        collapses that to one rebuild per real repaint.
+        """
+        self._icon_dirty = True
+        self.update()
 
     # ── Tooltip ───────────────────────────────────────────────────────────────
 
@@ -300,6 +319,19 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         else:
             alpha = 1.0
         self.setIcon(self._tinted_icon(color, alpha))
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        """Rebuilds the icon (if dirty) immediately before painting, then
+        defers to the normal QToolButton paint.
+
+        Args:
+            event (QtGui.QPaintEvent): The paint event parameters provided
+                by the Qt framework.
+        """
+        if self._icon_dirty:
+            self._refresh_icon()
+            self._icon_dirty = False
+        super().paintEvent(event)
 
     # ── Interaction ───────────────────────────────────────────────────────────
 

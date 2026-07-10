@@ -4213,6 +4213,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Define default UI state
         stop_flag = 0 if is_worker_running else 1
         is_warning = False
+        calibration_succeeded = False
         num_devices = getattr(self, "multiplex_plots", 1)
         for i in range(num_devices):
             self.plots_window.ui.left_pane.set_device_state(i, "init")
@@ -4242,6 +4243,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 overlay_bar_color = "#28A745"
                 overlay_label_color = "#008000"
                 stop_flag = 1
+                calibration_succeeded = True
 
                 self._calib_overlay_ready = True
                 self._set_plots_dimmed(amplitude=False)
@@ -4253,6 +4255,18 @@ class MainWindow(QtWidgets.QMainWindow):
             elif temperature_err:
                 label_bar = "Warning: unable to identify fundamental peak or apply peak detection. Please repeat the Initialize."
                 is_warning = True
+
+        # A worker that has stopped running without ever reaching the
+        # Success branch is a failed initialization even when it didn't trip
+        # the temperature/time-temp error buffers specifically (e.g. the
+        # device disconnected or the worker thread died mid-calibration).
+        # Route it through the same is_warning path so the teardown below
+        # explicitly disables run_controls instead of leaving it to
+        # _enable_ui()'s stale-calibration-file-age check, which can still
+        # see a valid *older* calibration and re-enable it.
+        if not is_worker_running and not calibration_succeeded and not is_warning:
+            label_bar = "Warning: device stopped responding during calibration. Please repeat Initialize after disconnecting/reconnecting the device."
+            is_warning = True
 
         # Override visual styles if a warning was triggered in any phase
         if is_warning:
@@ -5324,38 +5338,45 @@ class MainWindow(QtWidgets.QMainWindow):
         m_freq.sigHovered.connect(_make_hover_handler(m_freq, _FREQ_COLOR))
         m_diss.sigHovered.connect(_make_hover_handler(m_diss, _DISS_COLOR))
 
-        # ── Draw-in animation ────────────────────────────────────────────────
-        draw_start = monotonic()
-        draw_timer = QtCore.QTimer(self)
-        draw_timer.setInterval(FRAME_MS)
-
-        def _draw_step(timer=draw_timer, mf=m_freq, md=m_diss):
-            elapsed = (monotonic() - draw_start) * 1000.0
-            t_norm = min(1.0, elapsed / DRAW_MS)
-            eased = 1.0 - (1.0 - t_norm) ** 3
-            val = eased * FINAL_SIZE
-            try:
-                mf.setSize(val)
-                md.setSize(val)
-            except RuntimeError:
-                timer.stop()
-                return
-            if t_norm >= 1.0:
-                timer.stop()
-
-        draw_timer.timeout.connect(_draw_step)
-        draw_timer.start()
-
-        # ── Ripple animation ─────────────────────────────────────────────────
+        # ── Draw-in + ripple animation ──────────────────────────────────────
+        # Both phases start together and only differ in duration, so they're
+        # driven off one shared 60fps QTimer instead of two independent ones -
+        # same per-frame easing/values as before, half the timer objects and
+        # timeout dispatches when several markers animate at once (e.g. a
+        # multi-channel run hitting several fill-state transitions together).
         r_freq = _make_ripple(p2, _FREQ_COLOR, y_freq)
         r_diss = _make_ripple(p3, _DISS_COLOR, y_diss)
 
-        ripple_start = monotonic()
-        ripple_timer = QtCore.QTimer(self)
-        ripple_timer.setInterval(FRAME_MS)
+        anim_start = monotonic()
+        anim_timer = QtCore.QTimer(self)
+        anim_timer.setInterval(FRAME_MS)
+        draw_done = [False]
 
-        def _ripple_step(timer=ripple_timer, rf=r_freq, rd=r_diss, p_2=p2, p_3=p3):
-            elapsed = (monotonic() - ripple_start) * 1000.0
+        def _anim_step(
+            timer=anim_timer,
+            mf=m_freq,
+            md=m_diss,
+            rf=r_freq,
+            rd=r_diss,
+            p_2=p2,
+            p_3=p3,
+            draw_done=draw_done,
+        ):
+            elapsed = (monotonic() - anim_start) * 1000.0
+
+            if not draw_done[0]:
+                t_norm = min(1.0, elapsed / DRAW_MS)
+                eased = 1.0 - (1.0 - t_norm) ** 3
+                val = eased * FINAL_SIZE
+                try:
+                    mf.setSize(val)
+                    md.setSize(val)
+                except RuntimeError:
+                    timer.stop()
+                    return
+                if t_norm >= 1.0:
+                    draw_done[0] = True
+
             progress = min(1.0, elapsed / RIPPLE_MS)
             eased = 1.0 - (1.0 - progress) ** 2
             new_size = FINAL_SIZE + eased * (RIPPLE_SIZE - FINAL_SIZE)
@@ -5376,8 +5397,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     except RuntimeError:
                         pass
 
-        ripple_timer.timeout.connect(_ripple_step)
-        ripple_timer.start()
+        anim_timer.timeout.connect(_anim_step)
+        anim_timer.start()
 
     def _undraw_fill_event_marker(self, marker_dict: dict) -> None:
         """Reverse-animates a fill-event marker to size 0 then removes it.

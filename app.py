@@ -119,12 +119,18 @@ class QATCH:
         self.start = time.time()
 
     def flashSplashHide(self):
+        # Poll with a short sleep rather than a bare spin: `ReadyToShow` is
+        # normally already True by the time we get here (set synchronously
+        # in MainWindow.__init__), but `ask_for_update` is set later by a
+        # background update-check thread, so this second loop can genuinely
+        # wait several real seconds - a tight `pass` loop would peg a full
+        # CPU core the whole time for no benefit, since nothing here needs
+        # sub-frame precision.
         while time.time() - self.start < 3 and self.win.ReadyToShow == False:
-            # Log.w("Waiting for splash delay")
-            pass
+            time.sleep(0.02)
 
         while time.time() - self.start < 9 and not hasattr(self.win, "ask_for_update"):
-            pass
+            time.sleep(0.02)
 
         if USE_PYI_SPLASH:
             # Close the splash screen. It does not matter when the call

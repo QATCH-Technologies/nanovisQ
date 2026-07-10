@@ -365,6 +365,8 @@ class PlotContainer(QtWidgets.QWidget):
         self._sections = sections or []
         self._is_fullscreen = False
         self.has_header = title is not None or show_menu
+        self._bg_cache: QtGui.QPixmap | None = None
+        self._bg_cache_mode: ThemeMode | None = None
 
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
@@ -632,12 +634,49 @@ class PlotContainer(QtWidgets.QWidget):
         read as part of the same panel family rather than the old frosted
         glass look.
 
+        The card sits behind a translucent pyqtgraph canvas, so Qt has to
+        repaint this background every time the plot redraws (multiple times
+        a second during a run). The actual fill/border/gradient drawing only
+        ever changes on resize or theme switch, so it's rendered once into
+        an offscreen pixmap here and simply blitted on every other call -
+        pixel-identical output, without re-running the antialiased draw calls
+        on every plot tick.
+
         Args:
             ev (QtGui.QPaintEvent): The paint event parameters provided by the
                 Qt framework.
         """
-        tok = ThemeManager.instance().tokens()
+        mode = ThemeManager.instance().mode()
+        size = self.size()
+        if (
+            self._bg_cache is None
+            or self._bg_cache.size() != size
+            or self._bg_cache_mode != mode
+        ):
+            self._bg_cache = self._render_background(size)
+            self._bg_cache_mode = mode
+
         painter = QtGui.QPainter(self)
+        painter.drawPixmap(0, 0, self._bg_cache)
+        painter.end()
+
+    def _render_background(self, size: QtCore.QSize) -> QtGui.QPixmap:
+        """Renders the card's flat surface + optional header divider to an
+        offscreen ARGB pixmap for `paintEvent` to cache and blit.
+
+        Args:
+            size (QtCore.QSize): Pixmap size to render at (the widget's
+                current size).
+
+        Returns:
+            QtGui.QPixmap: The rendered background, with a transparent
+            (unpainted) margin outside the rounded card shape.
+        """
+        tok = ThemeManager.instance().tokens()
+        pm = QtGui.QPixmap(size)
+        pm.fill(QtCore.Qt.GlobalColor.transparent)
+
+        painter = QtGui.QPainter(pm)
         painter.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
         paint_flat_surface(
             self,
@@ -654,6 +693,7 @@ class PlotContainer(QtWidgets.QWidget):
             painter.drawLine(0, y_line, self.width(), y_line)
 
         painter.end()
+        return pm
 
 
 class PlotTabContainer(PlotContainer):

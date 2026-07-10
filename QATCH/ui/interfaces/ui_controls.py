@@ -27,7 +27,7 @@ Date:
 import os
 import re
 from time import monotonic
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QDesktopWidget
@@ -2841,24 +2841,51 @@ class UIControls:
         self.chBox_correctNoise.setText(_translate("MainWindow", "Show amplitude curve"))
         self.chBox_MultiAuto.setText(_translate("MainWindow", "Auto-detect channel count"))
 
-    def _tinted_icon(self, svg_path: str, color: QtGui.QColor) -> QtGui.QIcon:
+    def _tinted_icon(
+        self, svg_path: str, color: QtGui.QColor, size: Optional[int] = None
+    ) -> QtGui.QIcon:
         """Renders an SVG file into a QIcon with all opaque pixels tinted to `color`.
 
         Uses SourceAtop composition so the SVG silhouette is preserved but every
         non-transparent pixel adopts the supplied color, enabling icons to track
         the active light/dark theme.
 
+        Results are cached per (path, color, size). Several callers request
+        the exact same tinted icon repeatedly - notably the refresh-spinner
+        animation, which only changes rotation angle from frame to frame and
+        would otherwise re-read and re-composite the SVG from disk on every
+        one of those frames.
+
         Args:
             svg_path: Filesystem path to the SVG file.
             color: The tint color to apply over the rendered SVG.
+            size: If given, the SVG is scaled to a `size`x`size` pixmap
+                (aspect ratio preserved, smoothly scaled) before tinting.
+                If omitted, the pixmap's native/default raster size is used.
 
         Returns:
             A QIcon containing the tinted pixmap, or an empty QIcon if the SVG
             cannot be loaded.
         """
+        cache = getattr(self, "_tinted_icon_cache", None)
+        if cache is None:
+            cache = {}
+            self._tinted_icon_cache = cache
+        key = (svg_path, color.name(QtGui.QColor.NameFormat.HexArgb), size)
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+
         src = QtGui.QPixmap(svg_path)
         if src.isNull():
             return QtGui.QIcon()
+        if size is not None:
+            src = src.scaled(
+                size,
+                size,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
         dst = QtGui.QPixmap(src.size())
         dst.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(dst)
@@ -2866,7 +2893,9 @@ class UIControls:
         p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
         p.fillRect(dst.rect(), color)
         p.end()
-        return QtGui.QIcon(dst)
+        icon = QtGui.QIcon(dst)
+        cache[key] = icon
+        return icon
 
     def _refresh_toolbar_icons(self) -> None:
         """Recolors the SVG toolbar icons to match the active theme's text color.

@@ -106,12 +106,13 @@ class QATCH:
         self.start = time.time()
 
     def flashSplashHide(self):
+        # Poll with a short sleep rather than a bare spin - see app.py (root)
+        # for the rationale; this file mirrors it.
         while time.time() - self.start < 3 and self.win.ReadyToShow == False:
-            # Log.w("Waiting for splash delay")
-            pass
+            time.sleep(0.02)
 
         while time.time() - self.start < 9 and not hasattr(self.win, "ask_for_update"):
-            pass
+            time.sleep(0.02)
 
         if USE_PYI_SPLASH:
             # Close the splash screen. It does not matter when the call
