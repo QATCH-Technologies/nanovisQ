@@ -225,88 +225,102 @@ class RoundedProgressBar(QtWidgets.QWidget):
 
 
 class _ThemedGridItem(pg.GridItem):
-    """A `pg.GridItem` with a fixed, caller-specified line alpha per level.
+    """A `pg.GridItem` that draws at the same tick positions as a pair of
+    real AxisItems, with a fixed, caller-specified line alpha per level.
 
-    Upstream `GridItem.generatePicture()` computes its own alpha for each
-    grid level from on-screen line density (`c = clip(5*(ppl-3), 0, 50)`)
-    and overwrites the pen's color in place - `self.opts['pen']` is
-    mutated directly, not copied - which silently discards whatever alpha
-    was configured on the pen passed to the constructor. Confirmed
-    empirically: a pen built with alpha=155 read back as alpha=50 after a
-    single repaint. Net effect: a theme-derived alpha never actually took
-    effect, and every level (major, minor) ends up sharing whatever alpha
-    the *last-processed* level happened to compute, so they don't reliably
-    read as visually distinct the way "major"/"minor" implies.
+    Two problems with the stock `pg.GridItem` this replaces:
 
-    This subclass copies pyqtgraph's tick-position math (proven, still
-    handles pan/zoom/resize correctly via the base class) but always
-    stamps `self._fixed_alpha` onto the line color instead of the
-    density-based value, and never mutates `self.opts['pen']` itself.
-    Text-tick rendering is dropped since this app always constructs grids
-    with `textPen=None`.
+    1. It computes grid-line spacing independently of the axes it sits
+       next to (its own `10**i`-based "nice round number" heuristic), so
+       lines routinely land at different positions than the axis's own
+       tick labels - lines don't reach/align with every labeled tick, and
+       depending on the view range the computed spacing can undershoot the
+       visible span, leaving the grid not fully covering the plot area.
+    2. `generatePicture()` computes its own alpha for each level from
+       on-screen line density and overwrites the pen's color in place -
+       `self.opts['pen']` is mutated directly, not copied - which silently
+       discards whatever alpha was configured on the constructor's pen.
+       Confirmed empirically: a pen built with alpha=155 read back as
+       alpha=50 after a single repaint, and since every level shares that
+       one mutated pen object, major/minor never reliably read as visually
+       distinct either.
+
+    Fix: instead of computing tick spacing itself, this item asks the
+    actual `x_axis`/`y_axis` AxisItems for their current `tickValues()` -
+    the exact values they use to place their own labels - and draws lines
+    at those. "Major" (`include_minor_ticks=False`) draws only at the
+    axis's top-level (labeled) ticks; "Minor" (`include_minor_ticks=True`)
+    draws at the labeled ticks *plus* the axis's next-finer tick level, so
+    minor lines are guaranteed to include every labeled position rather
+    than an independently-computed set that may not line up with them.
     """
 
-    def __init__(self, pen, alpha: int, **kwargs) -> None:
+    def __init__(
+        self,
+        pen,
+        alpha: int,
+        x_axis: AxisItem | None = None,
+        y_axis: AxisItem | None = None,
+        include_minor_ticks: bool = False,
+        **kwargs,
+    ) -> None:
         super().__init__(pen=pen, **kwargs)
         self._fixed_alpha = alpha
+        self._x_axis = x_axis
+        self._y_axis = y_axis
+        self._include_minor_ticks = include_minor_ticks
+
+    def _axis_tick_positions(self, axis: AxisItem | None, size: float) -> list:
+        """Returns the tick values `axis` is currently placing labels at
+        (plus its next-finer level too, if `_include_minor_ticks`)."""
+        if axis is None or size <= 0:
+            return []
+        try:
+            rng = axis.range
+            levels = axis.tickValues(rng[0], rng[1], size)
+        except Exception:
+            return []
+        if not levels:
+            return []
+        n_levels = 2 if self._include_minor_ticks else 1
+        values: set = set()
+        for _, vals in levels[:n_levels]:
+            values.update(vals)
+        return sorted(values)
 
     def generatePicture(self) -> None:
         self.picture = QtGui.QPicture()
         p = QtGui.QPainter()
         p.begin(self.picture)
 
-        vr = self.getViewWidget().rect()
-        dim = [vr.width(), vr.height()]
         lvr = self.boundingRect()
         ul = np.array([lvr.left(), lvr.top()])
         br = np.array([lvr.right(), lvr.bottom()])
-
         if ul[1] > br[1]:
             ul[1], br[1] = br[1], ul[1]
+        x_lo, x_hi = min(ul[0], br[0]), max(ul[0], br[0])
+        y_lo, y_hi = min(ul[1], br[1]), max(ul[1], br[1])
 
         base_color = QtGui.QColor(self.opts["pen"].color())
         base_color.setAlpha(self._fixed_alpha)
+        line_pen = QtGui.QPen(self.opts["pen"])
+        line_pen.setColor(base_color)
+        line_pen.setCosmetic(True)
+        p.setPen(line_pen)
 
-        lastd = [None, None]
-        for i in range(self.grid_depth - 1, -1, -1):
-            dist = br - ul
-            nl_target = 10.0**i
-            d = 10.0 ** np.floor(np.log10(np.abs(dist / nl_target)) + 0.5)
-            for ax in range(0, 2):
-                ts = self.opts["tickSpacing"][ax]
-                try:
-                    if ts[i] is not None:
-                        d[ax] = ts[i]
-                except IndexError:
-                    pass
-                lastd[ax] = d[ax]
+        x_geom = self._x_axis.geometry() if self._x_axis is not None else None
+        x_size = x_geom.width() if x_geom is not None else 0.0
+        for xv in self._axis_tick_positions(self._x_axis, x_size):
+            if xv < x_lo or xv > x_hi:
+                continue
+            p.drawLine(QtCore.QPointF(xv, ul[1]), QtCore.QPointF(xv, br[1]))
 
-            ul1 = np.floor(ul / d) * d
-            br1 = np.ceil(br / d) * d
-            dist = br1 - ul1
-            nl = (dist / d) + 0.5
-            for ax in range(0, 2):
-                if i >= len(self.opts["tickSpacing"][ax]):
-                    continue
-                if d[ax] < lastd[ax]:
-                    continue
-
-                line_pen = QtGui.QPen(self.opts["pen"])
-                line_pen.setColor(base_color)
-                line_pen.setCosmetic(True)
-
-                bx = (ax + 1) % 2
-                for x in range(0, int(nl[ax])):
-                    p1 = np.array([0.0, 0.0])
-                    p2 = np.array([0.0, 0.0])
-                    p1[ax] = ul1[ax] + x * d[ax]
-                    p2[ax] = p1[ax]
-                    p1[bx] = ul[bx]
-                    p2[bx] = br[bx]
-                    if p1[ax] < min(ul[ax], br[ax]) or p1[ax] > max(ul[ax], br[ax]):
-                        continue
-                    p.setPen(line_pen)
-                    p.drawLine(QtCore.QPointF(p1[0], p1[1]), QtCore.QPointF(p2[0], p2[1]))
+        y_geom = self._y_axis.geometry() if self._y_axis is not None else None
+        y_size = y_geom.height() if y_geom is not None else 0.0
+        for yv in self._axis_tick_positions(self._y_axis, y_size):
+            if yv < y_lo or yv > y_hi:
+                continue
+            p.drawLine(QtCore.QPointF(ul[0], yv), QtCore.QPointF(br[0], yv))
 
         tr = self.deviceTransform()
         p.setWorldTransform(pg_fn.invertQTransform(tr))
@@ -4076,7 +4090,9 @@ class MainWindow(QtWidgets.QMainWindow):
         for pi in plot_items:
             if pi is None:
                 continue
-            self._apply_grid_item(pi.getViewBox(), key, visible)
+            self._apply_grid_item(
+                pi.getViewBox(), key, visible, x_axis=pi.getAxis("bottom"), y_axis=pi.getAxis("left")
+            )
 
     def _on_left_pane_grid_changed(self, key: str, visible: bool) -> None:
         """Toggles grid lines on the RF/Dissipation dual-axis plot.
@@ -4088,7 +4104,13 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         for pi in self._plt2_arr:
             if pi is not None:
-                self._apply_grid_item(pi.getViewBox(), key, visible)
+                self._apply_grid_item(
+                    pi.getViewBox(),
+                    key,
+                    visible,
+                    x_axis=pi.getAxis("bottom"),
+                    y_axis=pi.getAxis("left"),
+                )
 
     # Fixed line alpha (0-255) for grid levels, applied via _ThemedGridItem.
     # Deliberately below the token's own alpha (plot_text_muted is ~155) -
@@ -4100,26 +4122,42 @@ class MainWindow(QtWidgets.QMainWindow):
     _GRID_MAJOR_ALPHA = 45
     _GRID_MINOR_ALPHA = 18
 
-    def _apply_grid_item(self, vb, key: str, visible: bool) -> None:
+    def _apply_grid_item(
+        self,
+        vb,
+        key: str,
+        visible: bool,
+        x_axis: AxisItem | None = None,
+        y_axis: AxisItem | None = None,
+    ) -> None:
         """Add or toggle a themed GridItem on a ViewBox for major or minor
         grid lines.
 
         Uses `_ThemedGridItem` (see its docstring) instead of the stock
-        `pg.GridItem` because the stock version silently overwrites
-        whatever pen alpha is configured with its own density-based value
-        on every repaint, which made a theme-derived alpha ineffective and
-        left major/minor levels visually indistinguishable.
+        `pg.GridItem`: the stock version computes its own tick spacing
+        independently of the plot's actual axes (so lines don't reliably
+        align with, or fully span the range of, the visible tick labels),
+        and silently overwrites whatever pen alpha is configured with its
+        own density-based value on every repaint (so a theme-derived alpha
+        never took effect and major/minor were visually indistinguishable).
 
-        Grid lines appear on BOTH X and Y axes simultaneously; major
-        (depth=1) and minor (depth=3) are independently toggled via
-        separate attributes on the ViewBox. The pen is unaffected by
-        ax.setPen(NoPen) (axis spine removal) since this draws directly
-        on the ViewBox, not through the AxisItem.
+        Grid lines appear on BOTH X and Y axes simultaneously; major and
+        minor are independently toggled via separate attributes on the
+        ViewBox. Minor lines are drawn at the axis's labeled tick positions
+        *plus* its next-finer tick level, so minor always includes every
+        labeled position rather than an independently-computed set that
+        may not land on them. The pen is unaffected by ax.setPen(NoPen)
+        (axis spine removal) since this draws directly on the ViewBox, not
+        through the AxisItem.
 
         Args:
             vb: The ViewBox to add/toggle the grid item on.
             key: Grid key containing "_major" or "_minor".
             visible: Whether the grid should be shown or hidden.
+            x_axis: The plot's bottom AxisItem, whose tickValues() drive
+                the grid's vertical line positions.
+            y_axis: The plot's left AxisItem, whose tickValues() drive the
+                grid's horizontal line positions.
         """
         is_major = "_major" in key
         attr = "_grid_major" if is_major else "_grid_minor"
@@ -4132,15 +4170,24 @@ class MainWindow(QtWidgets.QMainWindow):
             alpha = self._GRID_MAJOR_ALPHA if is_major else self._GRID_MINOR_ALPHA
 
             if grid is None:
-                depth = 1 if is_major else 3
-                grid = _ThemedGridItem(pen=grid_pen, alpha=alpha, textPen=None)
+                grid = _ThemedGridItem(
+                    pen=grid_pen,
+                    alpha=alpha,
+                    x_axis=x_axis,
+                    y_axis=y_axis,
+                    include_minor_ticks=not is_major,
+                    textPen=None,
+                )
                 grid.setZValue(-10 if is_major else -9)
-                grid.setTickSpacing(x=[None] * depth, y=[None] * depth)
                 vb.addItem(grid)
                 setattr(vb, attr, grid)
             else:
                 grid.setPen(grid_pen)  # also clears the cached picture + repaints
                 grid._fixed_alpha = alpha
+                if x_axis is not None:
+                    grid._x_axis = x_axis
+                if y_axis is not None:
+                    grid._y_axis = y_axis
 
             grid.show()
         else:
