@@ -3786,19 +3786,27 @@ class MainWindow(QtWidgets.QMainWindow):
         # they exist when the startup blur fires (singleShot(0)).  Without
         # this, _apply_plot_dim's frost_targets loop skips them (hasattr
         # returns False) and they render unblurred above the frosted plot on
-        # the very first Initialize.  Using justify="right" / justify="left"
-        # also nudges each label toward the ViewBox edge, centering it
-        # visually over its axis tick marks.
+        # the very first Initialize. They are free-floating items (see
+        # _reposition_rf_diss_titles) rather than pi.layout children -
+        # adding a wide text label to the same grid-layout column as the
+        # fixed-width numeric axis forces that whole column, and everything
+        # right of it, to expand to fit the label.
         for i in range(len(self._plt2_arr)):
             pi = self._plt2_arr[i]
             if pi is None:
                 continue
-            if not hasattr(pi, "_left_title_label"):
-                pi._left_title_label = pg.LabelItem(justify="right")
-                pi.layout.addItem(pi._left_title_label, 0, 0)
+            is_new = not hasattr(pi, "_left_title_label")
+            if is_new:
+                pi._left_title_label = pg.LabelItem(justify="left")
+                pi._left_title_label.setParentItem(pi.graphicsItem())
             if not hasattr(pi, "_right_title_label"):
                 pi._right_title_label = pg.LabelItem(justify="left")
-                pi.layout.addItem(pi._right_title_label, 0, 2)
+                pi._right_title_label.setParentItem(pi.graphicsItem())
+            if is_new:
+                pi.getViewBox().sigResized.connect(
+                    lambda *_args, pi=pi: self._reposition_rf_diss_titles(pi)
+                )
+            self._reposition_rf_diss_titles(pi)
 
         if _show_welcome:
             self._annotate_welcome_text()
@@ -4104,6 +4112,47 @@ class MainWindow(QtWidgets.QMainWindow):
             self._apply_grid_item(
                 pi.getViewBox(), key, visible, x_axis=pi.getAxis("bottom"), y_axis=pi.getAxis("left")
             )
+
+    def _reposition_rf_diss_titles(self, pi) -> None:
+        """Keeps the RF/Dissipation title labels pinned in the header strip
+        above their respective axis, flanking the status chip
+        (`PlotStatusBanner`) the same way `PlotStatusBanner` itself uses
+        `vb_rect.y()` as the header height.
+
+        These are intentionally *not* `pi.layout` children (unlike typical
+        pyqtgraph usage). A `pg.LabelItem`'s width is driven by its text
+        content, and pyqtgraph's `QGraphicsGridLayout` sizes each column to
+        fit the widest item sharing it - "Resonance Freq (MHz)" is far
+        wider than the 48px numeric axis column it used to share, so
+        adding it there forced that whole column (and everything to its
+        right) roughly 220px wider than intended, leaving a large gap
+        between the axis and the actual gridded plot area. Positioning
+        them as free-floating items parented directly to the PlotItem's
+        graphics item avoids that entirely, since floating items don't
+        participate in grid-layout column sizing.
+
+        Args:
+            pi: The RF/Dissipation PlotItem whose title labels to reposition.
+        """
+        try:
+            vb = pi.getViewBox()
+            vb_rect = vb.mapRectToItem(pi.graphicsItem(), vb.boundingRect())
+            left_axis = pi.getAxis("left")
+            axis_w = left_axis.width() if left_axis is not None else 0.0
+        except Exception:
+            return
+
+        header_h = vb_rect.y()
+        label_y = max(0.0, (header_h - 20.0) / 2.0)
+
+        left_lbl = getattr(pi, "_left_title_label", None)
+        if left_lbl is not None:
+            left_lbl.setPos(vb_rect.x() - axis_w, label_y)
+
+        right_lbl = getattr(pi, "_right_title_label", None)
+        if right_lbl is not None:
+            lbl_w = right_lbl.boundingRect().width() or 80.0
+            right_lbl.setPos(vb_rect.x() + vb_rect.width() - lbl_w, label_y)
 
     def _on_left_pane_grid_changed(self, key: str, visible: bool) -> None:
         """Toggles grid lines on the RF/Dissipation dual-axis plot.
@@ -5054,18 +5103,22 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 unit_diss = "&Delta;"
 
-                # Top-Left / Top-Right axis labels (single-line, flanking the status chip)
+                # Top-Left / Top-Right axis labels (single-line, flanking the status chip).
+                # Free-floating (not pi.layout children) - see
+                # _reposition_rf_diss_titles for why.
                 if not hasattr(pi, "_left_title_label"):
-                    pi._left_title_label = pg.LabelItem(justify="right")
-                    pi.layout.addItem(pi._left_title_label, 0, 0)
+                    pi._left_title_label = pg.LabelItem(justify="left")
+                    pi._left_title_label.setParentItem(pi.graphicsItem())
                 pi._left_title_label.setText(
                     f"Resonance Freq ({unit_rf})", color=color_rf, size="9pt"
                 )
 
                 if not hasattr(pi, "_right_title_label"):
                     pi._right_title_label = pg.LabelItem(justify="left")
-                    pi.layout.addItem(pi._right_title_label, 0, 2)
+                    pi._right_title_label.setParentItem(pi.graphicsItem())
                 pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
+
+                self._reposition_rf_diss_titles(pi)
 
         layout_ui = self.info_window.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff > Ref. Frequency </font>{self._labelref1}")
@@ -5262,18 +5315,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
                 color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
 
-                # Top-Left / Top-Right axis labels (single-line, flanking the status chip)
+                # Top-Left / Top-Right axis labels (single-line, flanking the status chip).
+                # Free-floating (not pi.layout children) - see
+                # _reposition_rf_diss_titles for why.
                 if not hasattr(pi, "_left_title_label"):
-                    pi._left_title_label = pg.LabelItem(justify="right")
-                    pi.layout.addItem(pi._left_title_label, 0, 0)
+                    pi._left_title_label = pg.LabelItem(justify="left")
+                    pi._left_title_label.setParentItem(pi.graphicsItem())
                 pi._left_title_label.setText(
                     f"Resonance Freq ({unit_rf})", color=color_rf, size="9pt"
                 )
 
                 if not hasattr(pi, "_right_title_label"):
                     pi._right_title_label = pg.LabelItem(justify="left")
-                    pi.layout.addItem(pi._right_title_label, 0, 2)
+                    pi._right_title_label.setParentItem(pi.graphicsItem())
                 pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
+
+                self._reposition_rf_diss_titles(pi)
 
         layout_ui = self.info_window.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff> Ref. Frequency </font>{self._labelref1}")
