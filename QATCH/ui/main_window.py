@@ -3539,6 +3539,48 @@ class MainWindow(QtWidgets.QMainWindow):
                 if grid is not None and grid.isVisible():
                     grid.setPen(grid_pen)
 
+    @staticmethod
+    def _suppress_axis_ticks(axis) -> None:
+        """Monkey-patches `axis` so it never emits tick-mark line specs.
+
+        `tickLength=0` alone doesn't reliably prevent a stray mark at each
+        tick position: confirmed empirically by inspecting pyqtgraph's own
+        `generateDrawSpecs()` output directly - every tick spec really is
+        zero-length with a fully `NoPen` pen (style 0), which by itself
+        should paint nothing, yet a 1px artifact still showed up at every
+        *major* tick position in an actual rendered frame (most visible in
+        dark mode, since the artifact's fixed light-gray color stands out
+        against a dark background - it isn't theme-derived at all). Rather
+        than depend on pyqtgraph's tick-line geometry/pen happening to be
+        invisible, this removes the tick specs before `drawPicture()` ever
+        sees them, so nothing can be drawn regardless of the exact
+        underlying rendering quirk. This app never wants visible tick
+        marks by design (only text labels, and optionally the separate
+        `_ThemedGridItem` grid overlay), so there's no loss.
+
+        Safe to call on any `AxisItem` (custom `GlassAxisItem`/
+        `GlassDateAxis` or a plain auto-created one, e.g. a linked "right"
+        axis) and safe to call more than once on the same instance.
+
+        Args:
+            axis: The `pg.AxisItem` (or subclass) instance to patch.
+        """
+        if axis is None or getattr(axis, "_ticks_suppressed", False):
+            return
+        original = axis.generateDrawSpecs
+
+        def _no_ticks(p, _original=original):
+            specs = _original(p)
+            if specs is None:
+                return specs
+            axis_spec, _tick_specs, text_specs = specs
+            return axis_spec, [], text_specs
+
+        axis.generateDrawSpecs = _no_ticks
+        axis._ticks_suppressed = True
+        axis.picture = None
+        axis.update()
+
     def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.08) -> None:
         """Apply minimal glass axis styling - no spines, no ticks, floating labels."""
         _text_pen = self._plot_axis_text_pen()
@@ -3549,6 +3591,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 ax.setPen(pg.mkPen(None))  # remove spine on every axis
                 ax.setTextPen(_text_pen)
                 ax.setGrid(False)  # grids start off; controlled by settings menu
+                self._suppress_axis_ticks(ax)
 
         plot_item.getViewBox().setBorder(pg.mkPen(None))
         plot_item.getViewBox().setDefaultPadding(0.02)
@@ -3768,6 +3811,7 @@ class MainWindow(QtWidgets.QMainWindow):
             multi_plot.getAxis("right").setPen(pg.mkPen(None))
             multi_plot.getAxis("right").setTextPen(self._plot_axis_text_pen())
             multi_plot.getAxis("right").setStyle(tickLength=0, tickTextOffset=3)
+            self._suppress_axis_ticks(multi_plot.getAxis("right"))
 
             multi_plot.scene().addItem(plot_layout)
             multi_plot.getAxis("right").setGrid(False)
