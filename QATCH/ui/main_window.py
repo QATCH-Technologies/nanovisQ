@@ -272,7 +272,18 @@ class _ThemedGridItem(pg.GridItem):
 
     def _axis_tick_positions(self, axis: AxisItem | None, size: float) -> list:
         """Returns the tick values `axis` is currently placing labels at
-        (plus its next-finer level too, if `_include_minor_ticks`)."""
+        (plus its next-finer level too, if `_include_minor_ticks`), plus
+        the axis's own range boundaries.
+
+        Tick values are quantized to "nice round numbers" within the
+        range, which are very unlikely to land exactly on the range's own
+        start/end (e.g. a live time axis whose left edge is whatever
+        timestamp the oldest visible sample happens to have, not a round
+        number) - leaving a visible gap between the true edge of the plot
+        and the nearest round-number gridline. Explicitly including the
+        boundary values guarantees the grid always reaches the plot's
+        edges exactly, regardless of where the round-number ticks fall.
+        """
         if axis is None or size <= 0:
             return []
         try:
@@ -283,7 +294,7 @@ class _ThemedGridItem(pg.GridItem):
         if not levels:
             return []
         n_levels = 2 if self._include_minor_ticks else 1
-        values: set = set()
+        values: set = {rng[0], rng[1]}
         for _, vals in levels[:n_levels]:
             values.update(vals)
         return sorted(values)
