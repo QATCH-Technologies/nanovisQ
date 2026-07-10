@@ -16,6 +16,8 @@ import os
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.styles.theme_manager import ThemeManager
+
 
 class PlotStatusBanner:
     """Pill-shaped, icon-driven status chip for a pyqtgraph PlotItem header.
@@ -43,35 +45,21 @@ class PlotStatusBanner:
         (200, 100, 0): "info",
     }
 
-    _THEMES: dict[str, dict] = {
-        "warning": {
-            "icon_svg": "warning-circle.svg",
-            "icon_hex": "#dc2626",
-            "bg": "rgba(239, 68, 68, 0.10)",
-            "border": "rgba(220, 38, 38, 0.65)",
-            "text_color": "#991b1b",
-        },
-        "success": {
-            "icon_svg": "checkmark-circle.svg",
-            "icon_hex": "#16a34a",
-            "bg": "rgba(34, 197, 94, 0.10)",
-            "border": "rgba(22, 163, 74, 0.65)",
-            "text_color": "#14532d",
-        },
-        "info": {
-            "icon_svg": "info-circle.svg",
-            "icon_hex": "#d97706",
-            "bg": "rgba(245, 158, 11, 0.10)",
-            "border": "rgba(217, 119, 6, 0.65)",
-            "text_color": "#92400e",
-        },
-        "neutral": {
-            "icon_svg": "info-circle.svg",
-            "icon_hex": "#64748b",
-            "bg": "rgba(148, 163, 184, 0.10)",
-            "border": "rgba(100, 116, 139, 0.65)",
-            "text_color": "#334155",
-        },
+    # Which SVG and which theme token supplies each state's base hue. Colors
+    # are derived from the active theme (see `_state_theme`) rather than a
+    # fixed palette, so the banner reads correctly in both light and dark
+    # mode instead of always rendering its original light-mode design.
+    _STATE_ICON = {
+        "warning": "warning-circle.svg",
+        "success": "checkmark-circle.svg",
+        "info": "info-circle.svg",
+        "neutral": "info-circle.svg",
+    }
+    _STATE_TOKEN = {
+        "warning": "danger",
+        "success": "success",
+        "info": "warning",
+        "neutral": "plot_text_muted",
     }
 
     # Tinted status-icon pixmaps, keyed by (icon_dir, state). The themed
@@ -87,6 +75,7 @@ class PlotStatusBanner:
         self._resize_cb = None
         self._current_state: str | None = None
         self._current_text: str | None = None
+        self._current_mode: str | None = None
 
         # ── Pill frame ────────────────────────────────────────────────
         self._pill = QtWidgets.QFrame()
@@ -138,25 +127,31 @@ class PlotStatusBanner:
             self._proxy.setVisible(False)
             self._current_state = None
             self._current_text = None
+            self._current_mode = None
             return
+
+        mode = ThemeManager.instance().mode().value
 
         # This is invoked every plot tick (~10x/sec) for most of a run's
         # duration, almost always re-showing the same state/text as last
         # tick. Skip the icon reload, stylesheet re-parse, and relayout
-        # entirely when nothing actually changed since the last call.
+        # entirely when nothing actually changed since the last call - a
+        # light/dark switch counts as a change too, since the derived
+        # colors depend on it.
         if (
             state == self._current_state
             and text == self._current_text
+            and mode == self._current_mode
             and self._proxy.isVisible()
         ):
             return
 
-        theme = self._THEMES.get(state, self._THEMES["neutral"])
-        state_changed = state != self._current_state
+        theme = self._state_theme(state, mode)
+        restyle = state != self._current_state or mode != self._current_mode
 
-        # Icon (cached per icon_dir+state so the SVG is only read/tinted once)
-        if state_changed:
-            cache_key = (self._icon_dir, state)
+        # Icon (cached per icon_dir+state+mode so the SVG is only read/tinted once)
+        if restyle:
+            cache_key = (self._icon_dir, state, mode)
             px = self._ICON_PIXMAP_CACHE.get(cache_key)
             if px is None:
                 icon_path = os.path.join(self._icon_dir, theme["icon_svg"])
@@ -171,7 +166,7 @@ class PlotStatusBanner:
 
         # Text label
         self._text_lbl.setText(text)
-        if state_changed:
+        if restyle:
             self._text_lbl.setStyleSheet(
                 f"QLabel {{"
                 f"  color: {theme['text_color']};"
@@ -199,6 +194,40 @@ class PlotStatusBanner:
 
         self._current_state = state
         self._current_text = text
+        self._current_mode = mode
+
+    @classmethod
+    def _state_theme(cls, state: str, mode: str) -> dict:
+        """Derives this state's icon/bg/border/text colors from the active
+        theme's semantic tokens, so the banner reads correctly in both
+        light and dark mode instead of a single fixed light-mode palette.
+
+        Args:
+            state: One of "warning", "success", "info", "neutral".
+            mode: The active `ThemeMode` value ("light" or "dark").
+
+        Returns:
+            dict: icon_svg, icon_hex, bg, border, text_color.
+        """
+        tok = ThemeManager.instance().tokens()
+        icon_svg = cls._STATE_ICON.get(state, cls._STATE_ICON["neutral"])
+        token_key = cls._STATE_TOKEN.get(state, cls._STATE_TOKEN["neutral"])
+        r, g, b = tok[token_key][:3]
+        dark = mode == "dark"
+
+        icon_hex = f"#{r:02x}{g:02x}{b:02x}"
+        bg = f"rgba({r}, {g}, {b}, {0.16 if dark else 0.10})"
+        border = f"rgba({r}, {g}, {b}, {0.55 if dark else 0.65})"
+        tr, tg, tb = _shade((r, g, b), 0.4 if dark else -0.35)
+        text_color = f"#{tr:02x}{tg:02x}{tb:02x}"
+
+        return {
+            "icon_svg": icon_svg,
+            "icon_hex": icon_hex,
+            "bg": bg,
+            "border": border,
+            "text_color": text_color,
+        }
 
     def hide(self) -> None:
         """Hide the banner without destroying it."""
@@ -263,7 +292,21 @@ class PlotStatusBanner:
         return _reposition
 
 
-# ── Module-level pixmap helper (used by PlotStatusBanner) ────────────────────
+# ── Module-level helpers (used by PlotStatusBanner) ──────────────────────────
+
+
+def _shade(rgb: tuple, amt: float) -> tuple:
+    """Lightens (amt > 0, toward white) or darkens (amt < 0, toward black)
+    an (r, g, b) tuple. `amt` is roughly in [-1, 1]; 0 returns `rgb` as-is.
+    """
+    r, g, b = rgb
+    if amt >= 0:
+        return (
+            int(r + (255 - r) * amt),
+            int(g + (255 - g) * amt),
+            int(b + (255 - b) * amt),
+        )
+    return (int(r * (1 + amt)), int(g * (1 + amt)), int(b * (1 + amt)))
 
 
 def _tinted_pixmap(svg_path: str, color: QtGui.QColor, size: int) -> QtGui.QPixmap:

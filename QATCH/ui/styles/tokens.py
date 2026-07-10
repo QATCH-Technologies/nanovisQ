@@ -502,10 +502,13 @@ def _build(mode: str) -> ColorTokens:
     t["plot_icon_btn_hover_bg"] = _a(surf(0.55) if dark else surf(1.0), 160)
     t["plot_icon_btn_hover_border"] = _a(surf(1.0) if dark else surf(1.0), 180 if dark else 200)
     t["plot_icon_btn_pressed_bg"] = _a(sem(_ACCENT, -0.18) if dark else (180, 215, 255), 190)
-    # Plot dropdown menu
-    t["plot_menu_bg"] = _a(surf(0.35) if dark else (232, 242, 252), 248)
-    t["plot_menu_border"] = _a(surf(0.9) if dark else surf(1.0), 200 if dark else 230)
-    t["plot_menu_separator"] = _a(surf(0.9) if dark else (175, 200, 228), 90)
+    # Plot dropdown menu - neutral surface tone (matches `surface`/
+    # `surface_border`, the rest of the app's flat-card language) rather
+    # than the old frosted-glass family's blue tint, which read as
+    # inconsistent with the rest of the app in light mode.
+    t["plot_menu_bg"] = _a(surf(0.35) if dark else surf(1.0), 248)
+    t["plot_menu_border"] = _a(surf(0.9), 200 if dark else 230)
+    t["plot_menu_separator"] = _a(surf(0.9) if dark else surf(0.85), 90)
     t["plot_menu_row_hover"] = _a(accent, 35 if dark else 28)
     t["plot_swatch_border"] = _a(surf(1.0) if dark else surf(1.0), 180 if dark else 210)
     # Device tabs (pill buttons)

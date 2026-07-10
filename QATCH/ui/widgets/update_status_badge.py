@@ -5,7 +5,7 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
 
 class UpdateNotificationBadge(QtWidgets.QWidget):
@@ -19,13 +19,17 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
     action_requested = QtCore.pyqtSignal()
     dismissed = QtCore.pyqtSignal()
 
-    _BG = QtGui.QColor(30, 38, 48, 235)
-    _BORDER = QtGui.QColor(255, 255, 255, 45)
     _RADIUS = 10.0
 
-    def __init__(self, anchor: QtWidgets.QWidget) -> None:
+    def __init__(
+        self,
+        anchor: QtWidgets.QWidget,
+        text: str = "Software update available",
+    ) -> None:
         super().__init__(None)
         self._anchor = anchor
+        self._bg = QtGui.QColor(30, 38, 48, 235)
+        self._border = QtGui.QColor(255, 255, 255, 45)
 
         self.setWindowFlag(QtCore.Qt.WindowType.FramelessWindowHint, True)
         self.setWindowFlag(QtCore.Qt.WindowType.Tool, True)
@@ -38,26 +42,41 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         layout.setContentsMargins(10, 5, 5, 5)
         layout.setSpacing(6)
 
-        self._label = QtWidgets.QLabel("Software update available")
-        self._label.setStyleSheet(
-            "QLabel { color: #e8edf2; font-size: 11px; font-weight: 600;"
-            " background: transparent; }"
-        )
+        self._label = QtWidgets.QLabel(text)
         layout.addWidget(self._label)
 
         self._dismiss_btn = QtWidgets.QToolButton()
         self._dismiss_btn.setText("✕")
         self._dismiss_btn.setFixedSize(16, 16)
         self._dismiss_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self._dismiss_btn.setStyleSheet(
-            "QToolButton { color: rgba(200,210,220,180); font-size: 10px;"
-            " background: transparent; border: none; }"
-            "QToolButton:hover { color: white; }"
-        )
         self._dismiss_btn.clicked.connect(self._on_dismiss)
         layout.addWidget(self._dismiss_btn)
 
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(lambda _: self._apply_theme())
+
         self.adjustSize()
+
+    def _apply_theme(self) -> None:
+        """Re-derives the pill's background/border/text colors from the
+        active theme so the badge reads correctly in both light and dark
+        mode instead of a single fixed dark-glass look.
+        """
+        tok = ThemeManager.instance().tokens()
+        self._bg = QtGui.QColor(*tok["plot_menu_bg"])
+        self._border = QtGui.QColor(*tok["plot_menu_border"])
+        text_css = tok_css(tok["plot_text_normal"])
+        muted_css = tok_css(tok["plot_text_muted"])
+        self._label.setStyleSheet(
+            f"QLabel {{ color: {text_css}; font-size: 11px; font-weight: 600;"
+            " background: transparent; }"
+        )
+        self._dismiss_btn.setStyleSheet(
+            f"QToolButton {{ color: {muted_css}; font-size: 10px;"
+            " background: transparent; border: none; }}"
+            f"QToolButton:hover {{ color: {text_css}; }}"
+        )
+        self.update()
 
     # ── Painting ──────────────────────────────────────────────────────────────
 
@@ -65,8 +84,8 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
         rf = QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
-        p.setBrush(QtGui.QBrush(self._BG))
-        p.setPen(QtGui.QPen(self._BORDER, 1.0))
+        p.setBrush(QtGui.QBrush(self._bg))
+        p.setPen(QtGui.QPen(self._border, 1.0))
         p.drawRoundedRect(rf, self._RADIUS, self._RADIUS)
         p.end()
 
@@ -109,12 +128,12 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
 
 
 class UpdateStatusIcon(QtWidgets.QToolButton):
-    """A themed, animated icon button that reflects update status.
+    """A themed icon button that reflects update status with a solid color.
 
-    Renders an SVG icon tinted to green / yellow / red / gray based on the
-    current :class:`State`. Non-static states pulse via a QVariantAnimation.
-    Clicking the button emits :pyqtSignal:`update_requested` when the state
-    is actionable (not UP_TO_DATE or CHECKING).
+    Renders an SVG icon tinted solid green / yellow / red / gray based on
+    the current :class:`State` - no pulsing/flashing. Clicking the button
+    emits :pyqtSignal:`update_requested` when the state is actionable (not
+    UP_TO_DATE or CHECKING).
 
     A small :class:`UpdateNotificationBadge` floats above this icon whenever
     the state transitions to OPTIONAL or MANDATORY. It is auto-dismissed when
@@ -124,6 +143,8 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         icon_path: Filesystem path to the SVG icon to display.
         size: Square pixel dimension of the button (default 20).
         parent: Optional parent widget.
+        badge_text: Text shown in the floating notification badge, e.g.
+            "Software update available" or "Firmware update available".
     """
 
     update_requested = QtCore.pyqtSignal()
@@ -160,28 +181,25 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         State.MANDATORY: "Required update - click to install",
     }
 
-    _PULSING = (State.CHECKING, State.OPTIONAL, State.MANDATORY)
-
     def __init__(
         self,
         icon_path: str,
         size: int = 20,
         parent: Optional[QtWidgets.QWidget] = None,
+        badge_text: str = "Software update available",
     ) -> None:
         super().__init__(parent)
         self._icon_path = icon_path
         self._size = size
         self._state = self.State.UNKNOWN
         self._detail = ""
-        self._glow: float = 1.0
+        self._badge_text = badge_text
         self._badge_dismissed = False
         self._badge: Optional[UpdateNotificationBadge] = None
         # `_refresh_icon` rebuilds a scaled+tinted QPixmap/QIcon from scratch;
-        # while pulsing that would otherwise happen on every ~16ms animation
-        # frame, indefinitely, for as long as an update stays pending. Defer
-        # it to paintEvent (guarded by this flag) so it only actually runs
-        # once per real screen refresh - and not at all while hidden, since
-        # paintEvent doesn't fire for an invisible widget.
+        # defer it to paintEvent (guarded by this flag) so it only actually
+        # runs once per real screen refresh, and not at all while hidden,
+        # since paintEvent doesn't fire for an invisible widget.
         self._icon_dirty = True
 
         self.setFixedSize(size, size)
@@ -191,14 +209,6 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         self.setAutoRaise(True)
 
         self._base_pixmap = QtGui.QPixmap(icon_path)
-
-        self._pulse = QtCore.QVariantAnimation(self)
-        self._pulse.setStartValue(0.25)
-        self._pulse.setEndValue(1.0)
-        self._pulse.setDuration(900)
-        self._pulse.setEasingCurve(QtCore.QEasingCurve.InOutSine)
-        self._pulse.setLoopCount(-1)
-        self._pulse.valueChanged.connect(self._on_pulse)
 
         ThemeManager.instance().themeChanged.connect(lambda _: self._mark_icon_dirty())
         self.clicked.connect(self._on_clicked)
@@ -219,21 +229,9 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
             state: New :class:`State` value.
             detail: Additional tooltip text, e.g. version strings.
         """
-        old_pulsing = self._state in self._PULSING
         self._state = state
         self._detail = detail
         self._update_tooltip()
-
-        new_pulsing = state in self._PULSING
-        if new_pulsing:
-            if not old_pulsing:
-                self._glow = 0.25
-                self._pulse.stop()
-                self._pulse.start()
-        else:
-            self._pulse.stop()
-            self._glow = 1.0
-
         self._mark_icon_dirty()
         self._sync_badge()
 
@@ -250,7 +248,7 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
 
     def _show_badge(self) -> None:
         if self._badge is None:
-            self._badge = UpdateNotificationBadge(self)
+            self._badge = UpdateNotificationBadge(self, text=self._badge_text)
             self._badge.action_requested.connect(self._on_clicked)
             self._badge.dismissed.connect(self._on_badge_dismissed)
         if not self.isVisible():
@@ -260,21 +258,12 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
     def _on_badge_dismissed(self) -> None:
         self._badge_dismissed = True
 
-    # ── Pulse animation ───────────────────────────────────────────────────────
-
-    def _on_pulse(self, v: float) -> None:
-        self._glow = v
-        self._mark_icon_dirty()
-
     def _mark_icon_dirty(self) -> None:
         """Marks the icon for rebuild on the next paint and requests one.
 
-        Called on every pulse frame (up to 60fps, indefinitely while an
-        update is pending) as well as on state/theme changes. Actually
-        rebuilding the icon here every time would mean paying for a
-        QPixmap+QPainter+QIcon pass on every frame regardless of whether a
-        screen refresh ever happens for it; deferring to `paintEvent`
-        collapses that to one rebuild per real repaint.
+        Called on state/theme changes. Deferring the actual rebuild (a
+        QPixmap+QPainter+QIcon pass) to `paintEvent` means a burst of
+        changes right before a repaint collapses into a single rebuild.
         """
         self._icon_dirty = True
         self.update()
@@ -309,15 +298,15 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         return QtGui.QIcon(dst)
 
     def _refresh_icon(self) -> None:
+        """Renders the icon as a solid tint for the current state - no
+        pulsing/flashing. UNKNOWN (no info yet) renders dimmed since it
+        isn't one of the three status colors; every other state is full
+        opacity.
+        """
         mode = ThemeManager.instance().mode().value
         colors = self._COLORS.get(mode, self._COLORS["light"])
         color = colors.get(self._state, colors[self.State.UNKNOWN])
-        if self._state in self._PULSING:
-            alpha = max(0.35, self._glow)
-        elif self._state == self.State.UNKNOWN:
-            alpha = 0.5
-        else:
-            alpha = 1.0
+        alpha = 0.5 if self._state == self.State.UNKNOWN else 1.0
         self.setIcon(self._tinted_icon(color, alpha))
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802

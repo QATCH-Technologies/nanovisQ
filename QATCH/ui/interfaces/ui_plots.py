@@ -759,7 +759,9 @@ class PlotTabContainer(PlotContainer):
 
         # Firmware update status icon
         _fw_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "fw-update.svg")
-        self._fw_status_icon = UpdateStatusIcon(_fw_icon_path, size=18)
+        self._fw_status_icon = UpdateStatusIcon(
+            _fw_icon_path, size=18, badge_text="Firmware update available"
+        )
         h_layout.addWidget(self._fw_status_icon)
 
         # Fullscreen button
@@ -789,7 +791,16 @@ class PlotTabContainer(PlotContainer):
         self._fw_port_states: dict[str, int] = {}
 
     def _style_menu(self, parent_widget: QtWidgets.QWidget) -> QtWidgets.QMenu:
-        """Overrides parent to create a translucent menu with section-specific grids.
+        """Overrides parent to create a translucent menu with per-section
+        color/visibility rows plus one shared pair of gridline toggles.
+
+        Grid toggles used to be duplicated per data section (Dissipation
+        major/minor, Resonance major/minor) even though both sections are
+        drawn onto the same overlaid plot area - toggling one grid
+        independently of the other just produced a grid that didn't line up
+        with (or fully cover) the visible plot. There's now a single
+        Major/Minor pair, applied to the primary (Resonance) ViewBox, which
+        is the one that actually owns the full plot rect.
 
         Args:
             parent_widget (QWidget): The widget to anchor the menu to.
@@ -806,13 +817,7 @@ class PlotTabContainer(PlotContainer):
             | QtCore.Qt.WindowType.NoDropShadowWindowHint
         )
 
-        # Section-specific grid key mapping
-        _grid_keys = {
-            "dissipation": ("grid_diss_major", "grid_diss_minor"),
-            "resonance_freq": ("grid_rf_major", "grid_rf_minor"),
-        }
-
-        for i, (key, label, color) in enumerate(self._sections):
+        for key, label, color in self._sections:
             row = PlotMenuRow(key, label, color)
             row.color_changed.connect(self.section_color_changed)
             row.visibility_changed.connect(self.section_visibility_changed)
@@ -821,20 +826,19 @@ class PlotTabContainer(PlotContainer):
             wa.setDefaultWidget(row)
             menu.addAction(wa)
 
-            major_key, minor_key = _grid_keys.get(key, (f"grid_{key}_major", f"grid_{key}_minor"))
-            for grid_key, grid_label in (
-                (major_key, "Major Gridlines"),
-                (minor_key, "Minor Gridlines"),
-            ):
-                grid_row = GridMenuRow(grid_key, grid_label)
-                grid_row.toggled.connect(self.grid_changed)
+        if self._sections:
+            menu.addSeparator()
 
-                gwa = QtWidgets.QWidgetAction(menu)
-                gwa.setDefaultWidget(grid_row)
-                menu.addAction(gwa)
+        for grid_key, grid_label in (
+            ("grid_major", "Major Gridlines"),
+            ("grid_minor", "Minor Gridlines"),
+        ):
+            grid_row = GridMenuRow(grid_key, grid_label)
+            grid_row.toggled.connect(self.grid_changed)
 
-            if i < len(self._sections) - 1:
-                menu.addSeparator()
+            gwa = QtWidgets.QWidgetAction(menu)
+            gwa.setDefaultWidget(grid_row)
+            menu.addAction(gwa)
 
         return menu
 

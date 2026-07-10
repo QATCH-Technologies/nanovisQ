@@ -62,9 +62,9 @@ from QATCH.QModel import OnyxDropEpochSignal, VoltaDropEpochSignal
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
-from QATCH.ui.components.plot_status_banner import PlotStatusBanner
+from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
-from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.ui.windows import (
     ControlsWindow,
@@ -131,7 +131,20 @@ class RoundedProgressBar(QtWidgets.QWidget):
         self._value = 0
         self._maximum = 100
         self._chunk_color = QtGui.QColor("#2E9BDA")
-        self._track_color = QtGui.QColor("#e8f4fb")
+        self._track_color = self._default_track_color()
+        ThemeManager.instance().themeChanged.connect(lambda _: self._on_theme_changed())
+
+    @staticmethod
+    def _default_track_color() -> QtGui.QColor:
+        """Theme-derived track color, so the bar reads correctly in dark
+        mode instead of the fixed pale-blue track it originally shipped
+        with (illegible against a dark background)."""
+        tok = ThemeManager.instance().tokens()
+        return QtGui.QColor(*tok["surface_border"])
+
+    def _on_theme_changed(self) -> None:
+        self._track_color = self._default_track_color()
+        self.update()
 
     def setRange(self, minimum: int, maximum: int) -> None:
         """Sets the progress range.
@@ -1832,6 +1845,10 @@ class MainWindow(QtWidgets.QMainWindow):
             container = QtWidgets.QWidget()
             container.setFixedWidth(375)
 
+            # Fallback QLabel color before the first _update_calibration_ui
+            # tick sets an inline HTML color on the status text - themed so
+            # it's still legible on the first frame in dark mode.
+            _overlay_text_css = tok_css(ThemeManager.instance().tokens()["plot_text_normal"])
             container.setStyleSheet(
                 "QWidget {"
                 "  background: rgba(255, 255, 255, 0);"
@@ -1840,7 +1857,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "  background: transparent;"
                 "  border: none;"
                 "  font-size: 10pt;"
-                "  color: #333333;"
+                f"  color: {_overlay_text_css};"
                 "}"
             )
 
@@ -3379,6 +3396,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 ax = pi.getAxis(name)
                 if ax is not None:
                     ax.setTextPen(text_pen)
+                    # Defensively re-assert the axis/tick pen as invisible
+                    # too, so a theme switch can never leave a stray pen
+                    # behind from some other styling pass.
+                    ax.setPen(pg.mkPen(None))
 
         if getattr(self, "_text1", None) is not None:
             self._annotate_welcome_text()
@@ -3387,6 +3408,21 @@ class MainWindow(QtWidgets.QMainWindow):
         peak_color = QtGui.QColor(*tok["plot_text_bright"])
         for item in getattr(self, "_multiplex_peak_labels", []):
             item.setColor(peak_color)
+
+        # Grid lines are colored from the theme only when created/toggled -
+        # refresh any that are currently visible so they don't stay stuck on
+        # the previous theme's muted tone after a light/dark switch.
+        grid_pen = pg.mkPen(QtGui.QColor(*tok["plot_text_muted"]))
+        grid_view_boxes = [pi.getViewBox() for pi in self._plt2_arr if pi is not None]
+        grid_view_boxes += [pi.getViewBox() for pi in self._plt0_arr if pi is not None]
+        grid_view_boxes += [vb for vb in self._plt3_arr if vb is not None]
+        if self._plt4 is not None:
+            grid_view_boxes.append(self._plt4.getViewBox())
+        for view_box in grid_view_boxes:
+            for attr in ("_grid_major", "_grid_minor"):
+                grid = getattr(view_box, attr, None)
+                if grid is not None and grid.isVisible():
+                    grid.setPen(grid_pen)
 
     def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.08) -> None:
         """Apply minimal glass axis styling - no spines, no ticks, floating labels."""
@@ -3953,15 +3989,16 @@ class MainWindow(QtWidgets.QMainWindow):
             self._apply_grid_item(pi.getViewBox(), key, visible)
 
     def _on_left_pane_grid_changed(self, key: str, visible: bool) -> None:
-        """Toggles grid lines on the RF/Dissipation dual-axis plot."""
-        if key.startswith("grid_rf"):
-            for pi in self._plt2_arr:
-                if pi is not None:
-                    self._apply_grid_item(pi.getViewBox(), key, visible)
-        elif key.startswith("grid_diss"):
-            for vb in self._plt3_arr:
-                if vb is not None:
-                    self._apply_grid_item(vb, key, visible)
+        """Toggles grid lines on the RF/Dissipation dual-axis plot.
+
+        Applied only to the primary (Resonance Frequency) ViewBox, which
+        owns the full plot rect with properly synced axes - the overlaid
+        Dissipation ViewBox shares the same visual area, so drawing the
+        grid there too would just double-render the same lines.
+        """
+        for pi in self._plt2_arr:
+            if pi is not None:
+                self._apply_grid_item(pi.getViewBox(), key, visible)
 
     def _apply_grid_item(self, vb, key: str, visible: bool) -> None:
         """Add or toggle a GridItem on a ViewBox for major or minor grid lines.
@@ -3978,8 +4015,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if visible:
             tok = ThemeManager.instance().tokens()
-            r, g, b, _ = tok["plot_text_muted"]
-            grid_pen = pg.mkPen(QtGui.QColor(r, g, b))
+            # Keep the token's own alpha (dropping it here rendered grid
+            # lines fully opaque instead of the intended translucent muted
+            # tone - especially visible as overly-bright/white-looking
+            # edges in dark mode).
+            grid_pen = pg.mkPen(QtGui.QColor(*tok["plot_text_muted"]))
             depth = 1 if is_major else 3
 
             if grid is None:
@@ -4221,8 +4261,19 @@ class MainWindow(QtWidgets.QMainWindow):
         label_bar = "The operation will take a few seconds to complete\u2026\nPlease wait\u2026"
         color_err = "#333333"
         css_style = Constants._CSS_YELLOW
-        overlay_bar_color = "#2E9BDA"
-        overlay_label_color = "#333333"
+
+        # Calibration progress-bar overlay colors, derived from the same
+        # semantic theme tokens (accent/success/danger) as the rest of the
+        # app instead of a fixed light-mode-only palette, so both the bar
+        # chunk and its label stay legible in dark mode.
+        _tok = ThemeManager.instance().tokens()
+        _dark = ThemeManager.instance().mode().value == "dark"
+
+        def _hex(rgb) -> str:
+            return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
+
+        overlay_bar_color = _hex(_tok["accent"])
+        overlay_label_color = tok_css(_tok["plot_text_normal"])
 
         # Evaluate Calibration State Machine
         if phase == 0:
@@ -4240,8 +4291,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 label_bar = "Baseline correction complete. Ready to measure.\nPress \u201cStart\u201d then apply drop."
                 color_err = "#008000"
                 css_style = Constants._CSS_GREEN
-                overlay_bar_color = "#28A745"
-                overlay_label_color = "#008000"
+                overlay_bar_color = _hex(_tok["success"])
+                overlay_label_color = _hex(_shade(_tok["success"][:3], 0.35 if _dark else -0.35))
                 stop_flag = 1
                 calibration_succeeded = True
 
@@ -4273,8 +4324,8 @@ class MainWindow(QtWidgets.QMainWindow):
             label_status = "Calibration Warning"
             color_err = "#ff0000"
             css_style = Constants._CSS_RED
-            overlay_bar_color = "#DA2E2E"
-            overlay_label_color = "#cc0000"
+            overlay_bar_color = _hex(_tok["danger"])
+            overlay_label_color = _hex(_shade(_tok["danger"][:3], 0.35 if _dark else -0.35))
             stop_flag = 1
             self._set_plots_dimmed(amplitude=False)
             for i in range(num_devices):
@@ -4853,6 +4904,37 @@ class MainWindow(QtWidgets.QMainWindow):
             f"<font color=#0000ff > Ref. Dissipation </font>{self._labelref2}"
         )
 
+    _AMPLITUDE_DISPLAY_POINTS = 1500
+
+    @staticmethod
+    def _downsample_xy(x: np.ndarray, y: np.ndarray, target: int):
+        """Decimates `x`/`y` to roughly `target` points via fixed-stride
+        sampling, preserving the overall curve shape.
+
+        Unlike the RF/Dissipation time series (capped to
+        `Constants._NUM_DISPLAY_POINTS`), the amplitude sweep curve is
+        otherwise plotted at full raw resolution on every tick. During
+        Initialize/calibration that sweep can be several thousand points,
+        which is imperceptibly different from a decimated version but
+        noticeably slower to repaint on every frame of the plot's
+        fullscreen-toggle resize animation.
+
+        Args:
+            x: X-values.
+            y: Y-values (same length as `x`).
+            target: Approximate number of points to keep (integer-stride
+                slicing means the actual count can land slightly above this
+                for awkward length/target ratios).
+
+        Returns:
+            (x, y) tuple, strided down if longer than `target`.
+        """
+        n = x.size if hasattr(x, "size") else len(x)
+        if n <= target:
+            return x, y
+        step = max(1, n // target)
+        return x[::step], y[::step]
+
     def _draw_amplitude_plots_reference(self) -> None:
         """Updates the amplitude plot curves specifically for reference mode.
 
@@ -4869,9 +4951,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 ci = self._ci_amp[i]
                 if ci:
-                    ci.setData(
-                        x=self.worker.get_value0_buffer(i), y=self.worker.get_value1_buffer(i)
+                    x_ds, y_ds = self._downsample_xy(
+                        self.worker.get_value0_buffer(i),
+                        self.worker.get_value1_buffer(i),
+                        self._AMPLITUDE_DISPLAY_POINTS,
                     )
+                    ci.setData(x=x_ds, y=y_ds)
 
     def _draw_freq_diss_plots_reference(self) -> None:
         """Updates frequency and dissipation curves using reference-subtracted data.
@@ -5061,7 +5146,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 ci = self._ci_amp[i]
                 if ci:
-                    ci.setData(x=self._readFREQ, y=amplitdue)
+                    x_ds, y_ds = self._downsample_xy(
+                        self._readFREQ, amplitdue, self._AMPLITUDE_DISPLAY_POINTS
+                    )
+                    ci.setData(x=x_ds, y=y_ds)
 
             if is_measurement and plot_resonance_frequency and plot_dissipation:
                 self._draw_freq_diss_channel(
@@ -5141,7 +5229,11 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             x_range = (x_max - x_min) or 1.0
             x_pad = x_range * Constants.default_plot_padding
-            plot_resonance_frequency.setXRange(x_min - x_pad, x_max + x_pad)
+            # No left-side pad: x_min is fixed historical data (the start of
+            # the run), so there's no reason to leave a gap between it and
+            # the Y axis the way there is on the right (which needs
+            # breathing room for the still-growing live edge).
+            plot_resonance_frequency.setXRange(x_min, x_max + x_pad)
 
         self._apply_freq_limits(i, plot_resonance_frequency, slice_resonance_frequency)
 
@@ -5260,8 +5352,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if p2 is None or p3 is None:
             return
 
-        _FREQ_COLOR = QtGui.QColor(46, 155, 218)
-        _DISS_COLOR = QtGui.QColor(240, 156, 53)
+        # Match whatever color the user has selected for each line (via the
+        # plot's gear menu), not the plot's original default - otherwise the
+        # markers stay locked to the default color even after a re-color.
+        _FREQ_COLOR = QtGui.QColor(
+            self._section_colors.get("resonance_freq", QtGui.QColor(46, 155, 218))
+        )
+        _DISS_COLOR = QtGui.QColor(
+            self._section_colors.get("dissipation", QtGui.QColor(240, 156, 53))
+        )
 
         FINAL_SIZE = 10
         RIPPLE_SIZE = 22
@@ -5528,21 +5627,30 @@ class MainWindow(QtWidgets.QMainWindow):
 
         label_anchor_y = y_freq + y_offset  # bottom-centre of label (anchor point)
 
-        # ── Glassmorphic label ────────────────────────────────────────────────
+        # ── Themed label ─────────────────────────────────────────────────────
+        # Colors come from the same neutral surface tokens as the plot's gear
+        # menu, rather than a fixed light-mode-only glass palette, so this
+        # reads correctly in dark mode too.
+        tok = ThemeManager.instance().tokens()
+        text_css = tok_css(tok["plot_text_normal"])
+        muted_css = tok_css(tok["plot_text_muted"])
+        fill_color = QtGui.QColor(*tok["plot_menu_bg"])
+        border_color = QtGui.QColor(*tok["plot_menu_border"])
+
         html = (
             "<div style='"
             "font-family: Segoe UI, -apple-system, system-ui, sans-serif;"
-            "font-size: 9pt; color: #2d3748;'>"
+            f"font-size: 9pt; color: {text_css};'>"
             f"<b>{label_text}</b><br/>"
-            "<span style='font-size: 8pt; color: #718096;'>"
+            f"<span style='font-size: 8pt; color: {muted_css};'>"
             f"t = {t:.2f} s"
             "</span></div>"
         )
 
         lbl = pg.TextItem(
             html=html,
-            fill=pg.mkBrush(QtGui.QColor(236, 244, 252, 220)),
-            border=pg.mkPen(QtGui.QColor(180, 210, 235, 190), width=1),
+            fill=pg.mkBrush(fill_color),
+            border=pg.mkPen(border_color, width=1),
             anchor=(0.5, 1),  # bottom-CENTRE at data point (changed from 0,1)
         )
 
@@ -5559,7 +5667,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # ── Animated leader line ──────────────────────────────────────────────
         line_pen = pg.mkPen(
-            color=QtGui.QColor(180, 210, 235, 190),
+            color=border_color,
             width=1,
             style=QtCore.Qt.DashLine,
         )
