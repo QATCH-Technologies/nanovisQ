@@ -29,6 +29,7 @@ from xml.dom import minidom
 
 import numpy as np
 import pyqtgraph as pg
+import pyqtgraph.functions as pg_fn
 import pyzipper
 import requests
 from dateutil import parser
@@ -221,6 +222,95 @@ class RoundedProgressBar(QtWidgets.QWidget):
             painter.drawRoundedRect(r, radius, radius)
 
         painter.end()
+
+
+class _ThemedGridItem(pg.GridItem):
+    """A `pg.GridItem` with a fixed, caller-specified line alpha per level.
+
+    Upstream `GridItem.generatePicture()` computes its own alpha for each
+    grid level from on-screen line density (`c = clip(5*(ppl-3), 0, 50)`)
+    and overwrites the pen's color in place - `self.opts['pen']` is
+    mutated directly, not copied - which silently discards whatever alpha
+    was configured on the pen passed to the constructor. Confirmed
+    empirically: a pen built with alpha=155 read back as alpha=50 after a
+    single repaint. Net effect: a theme-derived alpha never actually took
+    effect, and every level (major, minor) ends up sharing whatever alpha
+    the *last-processed* level happened to compute, so they don't reliably
+    read as visually distinct the way "major"/"minor" implies.
+
+    This subclass copies pyqtgraph's tick-position math (proven, still
+    handles pan/zoom/resize correctly via the base class) but always
+    stamps `self._fixed_alpha` onto the line color instead of the
+    density-based value, and never mutates `self.opts['pen']` itself.
+    Text-tick rendering is dropped since this app always constructs grids
+    with `textPen=None`.
+    """
+
+    def __init__(self, pen, alpha: int, **kwargs) -> None:
+        super().__init__(pen=pen, **kwargs)
+        self._fixed_alpha = alpha
+
+    def generatePicture(self) -> None:
+        self.picture = QtGui.QPicture()
+        p = QtGui.QPainter()
+        p.begin(self.picture)
+
+        vr = self.getViewWidget().rect()
+        dim = [vr.width(), vr.height()]
+        lvr = self.boundingRect()
+        ul = np.array([lvr.left(), lvr.top()])
+        br = np.array([lvr.right(), lvr.bottom()])
+
+        if ul[1] > br[1]:
+            ul[1], br[1] = br[1], ul[1]
+
+        base_color = QtGui.QColor(self.opts["pen"].color())
+        base_color.setAlpha(self._fixed_alpha)
+
+        lastd = [None, None]
+        for i in range(self.grid_depth - 1, -1, -1):
+            dist = br - ul
+            nl_target = 10.0**i
+            d = 10.0 ** np.floor(np.log10(np.abs(dist / nl_target)) + 0.5)
+            for ax in range(0, 2):
+                ts = self.opts["tickSpacing"][ax]
+                try:
+                    if ts[i] is not None:
+                        d[ax] = ts[i]
+                except IndexError:
+                    pass
+                lastd[ax] = d[ax]
+
+            ul1 = np.floor(ul / d) * d
+            br1 = np.ceil(br / d) * d
+            dist = br1 - ul1
+            nl = (dist / d) + 0.5
+            for ax in range(0, 2):
+                if i >= len(self.opts["tickSpacing"][ax]):
+                    continue
+                if d[ax] < lastd[ax]:
+                    continue
+
+                line_pen = QtGui.QPen(self.opts["pen"])
+                line_pen.setColor(base_color)
+                line_pen.setCosmetic(True)
+
+                bx = (ax + 1) % 2
+                for x in range(0, int(nl[ax])):
+                    p1 = np.array([0.0, 0.0])
+                    p2 = np.array([0.0, 0.0])
+                    p1[ax] = ul1[ax] + x * d[ax]
+                    p2[ax] = p1[ax]
+                    p1[bx] = ul[bx]
+                    p2[bx] = br[bx]
+                    if p1[ax] < min(ul[ax], br[ax]) or p1[ax] > max(ul[ax], br[ax]):
+                        continue
+                    p.setPen(line_pen)
+                    p.drawLine(QtCore.QPointF(p1[0], p1[1]), QtCore.QPointF(p2[0], p2[1]))
+
+        tr = self.deviceTransform()
+        p.setWorldTransform(pg_fn.invertQTransform(tr))
+        p.end()
 
 
 class _PlotDimAnimator(QtCore.QObject):
@@ -4000,14 +4090,36 @@ class MainWindow(QtWidgets.QMainWindow):
             if pi is not None:
                 self._apply_grid_item(pi.getViewBox(), key, visible)
 
-    def _apply_grid_item(self, vb, key: str, visible: bool) -> None:
-        """Add or toggle a GridItem on a ViewBox for major or minor grid lines.
+    # Fixed line alpha (0-255) for grid levels, applied via _ThemedGridItem.
+    # Deliberately below the token's own alpha (plot_text_muted is ~155) -
+    # stock pg.GridItem's internal density-based auto-alpha had been
+    # silently capping the effective value around 50/255 regardless of
+    # what pen was supplied, and even that still read as too prominent
+    # (especially against dark backgrounds), so these are tuned lower than
+    # that observed baseline rather than the token's nominal alpha.
+    _GRID_MAJOR_ALPHA = 45
+    _GRID_MINOR_ALPHA = 18
 
-        Uses pg.GridItem instead of AxisItem.setGrid so that:
-          - Grid lines appear on BOTH X and Y axes simultaneously.
-          - Major (depth=1) and minor (depth=3) are independently toggled via
-            separate attributes on the ViewBox.
-          - The pen is unaffected by ax.setPen(NoPen) (spine removal).
+    def _apply_grid_item(self, vb, key: str, visible: bool) -> None:
+        """Add or toggle a themed GridItem on a ViewBox for major or minor
+        grid lines.
+
+        Uses `_ThemedGridItem` (see its docstring) instead of the stock
+        `pg.GridItem` because the stock version silently overwrites
+        whatever pen alpha is configured with its own density-based value
+        on every repaint, which made a theme-derived alpha ineffective and
+        left major/minor levels visually indistinguishable.
+
+        Grid lines appear on BOTH X and Y axes simultaneously; major
+        (depth=1) and minor (depth=3) are independently toggled via
+        separate attributes on the ViewBox. The pen is unaffected by
+        ax.setPen(NoPen) (axis spine removal) since this draws directly
+        on the ViewBox, not through the AxisItem.
+
+        Args:
+            vb: The ViewBox to add/toggle the grid item on.
+            key: Grid key containing "_major" or "_minor".
+            visible: Whether the grid should be shown or hidden.
         """
         is_major = "_major" in key
         attr = "_grid_major" if is_major else "_grid_minor"
@@ -4015,21 +4127,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if visible:
             tok = ThemeManager.instance().tokens()
-            # Keep the token's own alpha (dropping it here rendered grid
-            # lines fully opaque instead of the intended translucent muted
-            # tone - especially visible as overly-bright/white-looking
-            # edges in dark mode).
-            grid_pen = pg.mkPen(QtGui.QColor(*tok["plot_text_muted"]))
-            depth = 1 if is_major else 3
+            base_color = QtGui.QColor(*tok["plot_text_muted"][:3])
+            grid_pen = pg.mkPen(base_color)
+            alpha = self._GRID_MAJOR_ALPHA if is_major else self._GRID_MINOR_ALPHA
 
             if grid is None:
-                grid = pg.GridItem(pen=grid_pen, textPen=None)
+                depth = 1 if is_major else 3
+                grid = _ThemedGridItem(pen=grid_pen, alpha=alpha, textPen=None)
                 grid.setZValue(-10 if is_major else -9)
                 grid.setTickSpacing(x=[None] * depth, y=[None] * depth)
                 vb.addItem(grid)
                 setattr(vb, attr, grid)
             else:
-                grid.setPen(grid_pen)
+                grid.setPen(grid_pen)  # also clears the cached picture + repaints
+                grid._fixed_alpha = alpha
 
             grid.show()
         else:
@@ -5232,8 +5343,12 @@ class MainWindow(QtWidgets.QMainWindow):
             # No left-side pad: x_min is fixed historical data (the start of
             # the run), so there's no reason to leave a gap between it and
             # the Y axis the way there is on the right (which needs
-            # breathing room for the still-growing live edge).
-            plot_resonance_frequency.setXRange(x_min, x_max + x_pad)
+            # breathing room for the still-growing live edge). padding=0 is
+            # required here - without it, setXRange() silently adds its own
+            # ~2-4% auto-padding (from the ViewBox's defaultPadding scaled
+            # by width) on *both* sides on top of whatever range is passed,
+            # which is what was reintroducing the left-side gap.
+            plot_resonance_frequency.setXRange(x_min, x_max + x_pad, padding=0)
 
         self._apply_freq_limits(i, plot_resonance_frequency, slice_resonance_frequency)
 
