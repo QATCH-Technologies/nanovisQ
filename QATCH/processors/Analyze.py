@@ -3158,7 +3158,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 "ch1": os.path.join(base_path, "detectors", "ch1_detector", "ch1.pt"),
                 "ch2": os.path.join(base_path, "detectors", "ch2_detector", "ch2.pt"),
                 "ch3": os.path.join(base_path, "detectors", "ch3_detector", "ch3.pt"),
-                "poi5_fine": os.path.join(base_path, "detectors", "eof_detector", "eof.pt"),
                 "ch1_zoom": os.path.join(
                     base_path, "detectors", "ch1_zoom_detector", "ch1_zoom.pt"
                 ),

@@ -387,7 +387,7 @@ class AccountPopup(QtWidgets.QWidget):
         if self._divider is not None:
             self._divider.setStyleSheet(
                 f"QFrame {{ background: {tok_css(tok['flat_border'])}; "
-                "border: none; max-height: 1px; }}"
+                "border: none; max-height: 1px; }"
             )
 
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")

@@ -57,20 +57,30 @@ class SegmentedControl(QtWidgets.QFrame):
         icon_size: int = 18,
         *,
         filled: bool = False,
+        variant: str = "default",
     ) -> None:
         # modes: list of (key, label) or (key, label, icon_path)
         super().__init__(parent)
         self._orientation = orientation
         self._icon_size = icon_size
         self._filled = filled
+        # variant "chips" => pill-shaped segments with a raised (surface fill
+        # + hairline border + soft shadow) selected state, per the Data
+        # Management mode-bar redesign (design 1c). "default" keeps the
+        # accent-weak wash the vertical sidebar and history filter chips use.
+        self._variant = variant
+        self._chip_shadow = None  # drop shadow attached to the active chip (chips variant)
         self.setObjectName("segmentedControl")
 
+        self._is_chips = self._variant == "chips" and orientation == QtCore.Qt.Horizontal
         if orientation == QtCore.Qt.Vertical:
             self.setFixedWidth(132)
             self._radius = 16
         else:
             self.setFixedHeight(38)
-            self._radius = 19
+            # Fully-rounded pill for chips (mock uses borderRadius:999 on a
+            # ~30px-tall chip); the default horizontal look keeps its 19px.
+            self._radius = 20 if self._is_chips else 19
 
         self._apply_container_qss()
         self._buttons: dict = {}
@@ -83,8 +93,16 @@ class SegmentedControl(QtWidgets.QFrame):
             if orientation == QtCore.Qt.Vertical
             else QtWidgets.QHBoxLayout(self)
         )
-        lay.setContentsMargins(6, 6, 6, 6)
-        lay.setSpacing(4)
+        if orientation == QtCore.Qt.Vertical:
+            lay.setContentsMargins(6, 6, 6, 6)
+            lay.setSpacing(4)
+        else:
+            # Top/bottom margin sized so 30px buttons land exactly inside the
+            # container's fixed 38px height (4 + 30 + 4) instead of overflowing
+            # it, and a little more breathing room between chips than the
+            # vertical rail needs.
+            lay.setContentsMargins(8, 4, 8, 4)
+            lay.setSpacing(6)
         self._group = QtWidgets.QButtonGroup(self)
         self._group.setExclusive(True)
 
@@ -109,7 +127,9 @@ class SegmentedControl(QtWidgets.QFrame):
                 btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
             else:
                 btn.setFixedHeight(30)
-                btn.setMinimumWidth(78)
+                # Chips hug their content (mock pads 7x13 and lets each chip
+                # size to its label); the default look keeps an even 78px min.
+                btn.setMinimumWidth(0 if self._is_chips else 78)
             btn.clicked.connect(lambda _=False, k=key: self.set_active(k))
             self._group.addButton(btn)
             lay.addWidget(btn)
@@ -154,7 +174,15 @@ class SegmentedControl(QtWidgets.QFrame):
             btn.setIcon(icon_active if key == self._active_key else icon_inactive)
 
     def _apply_qss(self) -> None:
+        if self._is_chips:
+            self._apply_chip_qss()
+            return
         tok = ThemeManager.instance().tokens()
+        # Vertical rows read best left-aligned (they share one fixed-width
+        # column); horizontal chips are sized to their own content plus a
+        # minimum width, so left-aligning there biases the label toward the
+        # icon instead of centering the pill's content.
+        text_align = "left" if self._orientation == QtCore.Qt.Vertical else "center"
         qss = f"""
             QToolButton {{
                 background: transparent;
@@ -163,7 +191,7 @@ class SegmentedControl(QtWidgets.QFrame):
                 color: {tok_css(tok["flat_text_muted"])};
                 font-size: 12px; font-weight: 600;
                 padding: 0px 9px;
-                text-align: left;
+                text-align: {text_align};
             }}
             QToolButton:hover {{
                 background: {tok_css(tok["flat_surface2"])};
@@ -181,6 +209,69 @@ class SegmentedControl(QtWidgets.QFrame):
         for btn in self._buttons.values():
             btn.setStyleSheet(qss)
 
+    def _apply_chip_qss(self) -> None:
+        """Pill-chip styling for the Data Management mode bar (design 1c).
+
+        Selected chip reads as a raised element - solid `flat_surface` fill,
+        a hairline `flat_border` outline, and accent-tinted text/icon - lifted
+        off the strip below rather than the flat accent-weak wash the default
+        variant paints. The soft drop shadow the mock shows can't come from
+        QSS on a QToolButton, so it's a QGraphicsDropShadowEffect moved onto
+        whichever chip is active (see _sync_chip_shadow).
+        """
+        tok = ThemeManager.instance().tokens()
+        radius = 15  # half the 30px chip height => fully-rounded pill
+        qss = f"""
+            QToolButton {{
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: {radius}px;
+                color: {tok_css(tok["flat_text_muted"])};
+                font-size: 12px; font-weight: 600;
+                padding: 0px 13px;
+                text-align: center;
+            }}
+            QToolButton:hover {{
+                color: {tok_css(tok["flat_text"])};
+            }}
+            QToolButton:checked {{
+                background: {tok_css(tok["flat_surface"])};
+                border: 1px solid {tok_css(tok["flat_border"])};
+                color: {tok_css(tok["flat_accent"])};
+                font-weight: 700;
+            }}
+        """
+        for btn in self._buttons.values():
+            btn.setStyleSheet(qss)
+        self._sync_chip_shadow()
+
+    def _sync_chip_shadow(self) -> None:
+        """Move the soft drop shadow onto the active chip (chips variant only).
+
+        A QGraphicsEffect belongs to exactly one widget at a time, so rather
+        than juggling one effect per chip we keep a single shadow and re-parent
+        it onto whichever button is currently checked, clearing it from the
+        rest. Matches the mock's `boxShadow` on the selected chip.
+        """
+        if not self._is_chips:
+            return
+        active_btn = self._buttons.get(self._active_key)
+        for btn in self._buttons.values():
+            if btn is not active_btn and btn.graphicsEffect() is not None:
+                # setGraphicsEffect(None) deletes the previously-set effect
+                # (Qt ownership), so drop our reference alongside it.
+                btn.setGraphicsEffect(None)
+        if active_btn is None:
+            self._chip_shadow = None
+            return
+        if active_btn.graphicsEffect() is None:
+            shadow = QtWidgets.QGraphicsDropShadowEffect(active_btn)
+            shadow.setBlurRadius(8)
+            shadow.setColor(QtGui.QColor(20, 40, 60, 60))
+            shadow.setOffset(0, 1)
+            active_btn.setGraphicsEffect(shadow)
+            self._chip_shadow = shadow
+
     # ------------------------------------------------------------------
     def set_active(self, key: str) -> None:
         if key not in self._buttons:
@@ -191,8 +282,13 @@ class SegmentedControl(QtWidgets.QFrame):
             icons = self._icons.get(k)
             if icons is not None:
                 btn.setIcon(icons[1] if is_active else icons[0])
-        if key != self._active_key:
-            self._active_key = key
+        changed = key != self._active_key
+        self._active_key = key
+        # Re-anchor the pill's drop shadow onto the now-active chip. Done every
+        # call (not just on change) so it also lands on the very first
+        # selection, where _active_key was None going in.
+        self._sync_chip_shadow()
+        if changed:
             self.modeChanged.emit(key)
 
     def active_key(self) -> Optional[str]:

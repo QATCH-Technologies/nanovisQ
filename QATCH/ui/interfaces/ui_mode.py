@@ -298,15 +298,20 @@ class UIMode:
 
         # Controls/footer bar
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
-        self._log_chevron_down = QtGui.QIcon(os.path.join(icons_dir, "down-chevron.svg"))
-        self._log_chevron_up = QtGui.QIcon(os.path.join(icons_dir, "up-chevron.svg"))
+        self._log_chevron_down_path = os.path.join(icons_dir, "down-chevron.svg")
+        self._log_chevron_up_path = os.path.join(icons_dir, "up-chevron.svg")
+        # Normal (signed-in) chevrons are tinted from the active theme in
+        # _update_log_toggle_bar_theme() - placeholders here, since that
+        # method (already wired to themeChanged) rebuilds them before the
+        # button ever shows one.
+        self._log_chevron_down = QtGui.QIcon()
+        self._log_chevron_up = QtGui.QIcon()
+        # Signed-out variant keeps its own fixed dim tint (unrelated to
+        # light/dark theme - it's read against the dimmed login overlay,
+        # which uses a consistent look regardless of theme).
         dimmed_tint = QtGui.QColor(40, 48, 56, 235)
-        self._log_chevron_down_light = self._tinted_icon(
-            os.path.join(icons_dir, "down-chevron.svg"), dimmed_tint
-        )
-        self._log_chevron_up_light = self._tinted_icon(
-            os.path.join(icons_dir, "up-chevron.svg"), dimmed_tint
-        )
+        self._log_chevron_down_light = self._tinted_icon(self._log_chevron_down_path, dimmed_tint)
+        self._log_chevron_up_light = self._tinted_icon(self._log_chevron_up_path, dimmed_tint)
 
         self.log_toggle_bar = QtWidgets.QWidget()
         self.log_toggle_bar.setObjectName("logToggleBar")
@@ -547,6 +552,14 @@ class UIMode:
         # "overlay_dim" keeps the strip/divider tint in sync with the login
         # overlay's blurred-dashboard dim level for the active theme.
         dim_css = tok_css(tokens["overlay_dim"])
+
+        # Normal (signed-in) chevrons: re-tinted from the active app theme
+        # every time this runs (including on a themeChanged switch) - a raw
+        # QIcon(svg_path) otherwise keeps whatever color is baked into the
+        # file regardless of light/dark mode.
+        footer_icon_color = QtGui.QColor(*tokens["mode_footer_text"])
+        self._log_chevron_down = self._tinted_icon(self._log_chevron_down_path, footer_icon_color)
+        self._log_chevron_up = self._tinted_icon(self._log_chevron_up_path, footer_icon_color)
         self.log_container.setStyleSheet(
             "QWidget#logContainer { background: %s; }" % (dim_css if dark else "transparent")
         )

@@ -99,6 +99,7 @@ class ColorTokens(TypedDict):
     bg_gradient_end: RGBA
     surface: RGBA
     surface_border: RGBA
+    popup_border: RGBA
     menu_item_hover: RGBA
     text_primary: RGBA
     text_secondary: RGBA
@@ -323,6 +324,31 @@ class ColorTokens(TypedDict):
     account_role_default_bg: RGBA
     account_role_default_text: RGBA
 
+    # User management widget - role wash chips (role combo + role badge).
+    # A soft-tint pill (translucent bg + saturated text), distinct from the
+    # account popup's solid role badge above - same role->hue mapping isn't
+    # reused because the two are different visual treatments.
+    user_role_admin_bg: RGBA
+    user_role_admin_bg_hover: RGBA
+    user_role_admin_border: RGBA
+    user_role_admin_text: RGBA
+    user_role_operate_bg: RGBA
+    user_role_operate_bg_hover: RGBA
+    user_role_operate_border: RGBA
+    user_role_operate_text: RGBA
+    user_role_capture_bg: RGBA
+    user_role_capture_bg_hover: RGBA
+    user_role_capture_border: RGBA
+    user_role_capture_text: RGBA
+    user_role_analyze_bg: RGBA
+    user_role_analyze_bg_hover: RGBA
+    user_role_analyze_border: RGBA
+    user_role_analyze_text: RGBA
+    user_role_default_bg: RGBA
+    user_role_default_bg_hover: RGBA
+    user_role_default_border: RGBA
+    user_role_default_text: RGBA
+
     # ---- Flat control system (Pushbutton, Line Edit, Combo Box, Spin Box,
     # Toggle, Option Card) - literal values from the app's flat design spec.
     # Unlike the rest of this file, these are NOT derived through the
@@ -438,6 +464,17 @@ def _build(mode: str) -> ColorTokens:
         t["bg_gradient_end"] = _a((244, 247, 249), 255)
     t["surface"] = _a(glass, 170 if dark else 160)
     t["surface_border"] = _a(surf(0.9), 160 if dark else 220)
+    # Border for popups/dropdowns that float as their own top-level window
+    # (AnimatedComboBox's rounded popup, the generic QComboBox/QMenu
+    # fallback chrome) - deliberately its own token rather than reusing
+    # flat_border_strong, which is tuned for small in-line hover affordances
+    # and reads as too heavy once stretched around a whole popup's edge in
+    # dark mode (light text/lines on a dark surface perceptually "irradiate"
+    # wider than the same contrast the other way around, at equal pixel
+    # width). fg(0.60) in light mode matches flat_border_strong's weight
+    # (no complaints there); dark backs off to fg(0.72) for the same
+    # perceived weight instead of matching contrast numerically.
+    t["popup_border"] = _a(fg(0.72) if dark else fg(0.60), 255)
     t["menu_item_hover"] = _a(surf(0.55) if dark else fg(0.90), 150)
     t["text_primary"] = _a(fg(0.0), 255)
     t["text_secondary"] = _a(fg(0.30), 200 if dark else 180)
@@ -469,7 +506,8 @@ def _build(mode: str) -> ColorTokens:
     t["log_control_border"] = _a(line(0.45), 160)
     t["log_control_border_hover"] = _a(line(0.70), 200)
     t["log_dropdown_bg"] = _a(surf(0.30) if dark else fg(0.96), 255)
-    t["log_dropdown_border"] = _a(surf(0.9) if dark else fg(0.78), 180)
+    # Same weight as every other floating popup border - see popup_border.
+    t["log_dropdown_border"] = t["popup_border"]
     t["log_separator"] = _a(line(0.40), 110)
     t["log_btn_hover"] = _a(surf(0.55) if dark else surf(1.0), 180)
     t["log_btn_pressed"] = _a(surf(0.68) if dark else surf(1.0), 220)
@@ -507,7 +545,8 @@ def _build(mode: str) -> ColorTokens:
     # than the old frosted-glass family's blue tint, which read as
     # inconsistent with the rest of the app in light mode.
     t["plot_menu_bg"] = _a(surf(0.35) if dark else surf(1.0), 248)
-    t["plot_menu_border"] = _a(surf(0.9), 200 if dark else 230)
+    # Same weight as every other floating popup border - see popup_border.
+    t["plot_menu_border"] = t["popup_border"]
     t["plot_menu_separator"] = _a(surf(0.9) if dark else surf(0.85), 90)
     t["plot_menu_row_hover"] = _a(accent, 35 if dark else 28)
     t["plot_swatch_border"] = _a(surf(1.0) if dark else surf(1.0), 180 if dark else 210)
@@ -756,7 +795,59 @@ _FLAT_DARK: dict = {
     "flat_shadow": (0, 0, 0, 89),
     "flat_menu_shadow": (0, 0, 0, 140),
 }
+# User management widget - role wash chips. Literal spec values (like the
+# flat control system above) rather than derived: each role is a fixed,
+# immediately-recognizable hue, and light/dark only need the text tint
+# brightened and the wash alpha bumped for contrast against a dark surface -
+# not a full re-derivation through the ramp helpers.
+_USER_ROLE_LIGHT: dict = {
+    "user_role_admin_bg": (220, 53, 69, 31),
+    "user_role_admin_bg_hover": (220, 53, 69, 56),
+    "user_role_admin_border": (220, 53, 69, 115),
+    "user_role_admin_text": (200, 35, 51, 255),
+    "user_role_operate_bg": (40, 167, 69, 31),
+    "user_role_operate_bg_hover": (40, 167, 69, 56),
+    "user_role_operate_border": (40, 167, 69, 115),
+    "user_role_operate_text": (30, 126, 52, 255),
+    "user_role_capture_bg": (255, 193, 7, 31),
+    "user_role_capture_bg_hover": (255, 193, 7, 56),
+    "user_role_capture_border": (255, 193, 7, 128),
+    "user_role_capture_text": (179, 134, 0, 255),
+    "user_role_analyze_bg": (111, 66, 193, 31),
+    "user_role_analyze_bg_hover": (111, 66, 193, 56),
+    "user_role_analyze_border": (111, 66, 193, 115),
+    "user_role_analyze_text": (111, 66, 193, 255),
+    "user_role_default_bg": (108, 117, 125, 31),
+    "user_role_default_bg_hover": (108, 117, 125, 56),
+    "user_role_default_border": (108, 117, 125, 115),
+    "user_role_default_text": (73, 80, 87, 255),
+}
+_USER_ROLE_DARK: dict = {
+    "user_role_admin_bg": (220, 70, 80, 50),
+    "user_role_admin_bg_hover": (220, 70, 80, 80),
+    "user_role_admin_border": (220, 70, 80, 140),
+    "user_role_admin_text": (255, 130, 130, 255),
+    "user_role_operate_bg": (60, 180, 90, 50),
+    "user_role_operate_bg_hover": (60, 180, 90, 80),
+    "user_role_operate_border": (60, 180, 90, 140),
+    "user_role_operate_text": (120, 220, 150, 255),
+    "user_role_capture_bg": (230, 175, 40, 50),
+    "user_role_capture_bg_hover": (230, 175, 40, 80),
+    "user_role_capture_border": (230, 175, 40, 140),
+    "user_role_capture_text": (240, 200, 90, 255),
+    "user_role_analyze_bg": (140, 100, 210, 50),
+    "user_role_analyze_bg_hover": (140, 100, 210, 80),
+    "user_role_analyze_border": (140, 100, 210, 140),
+    "user_role_analyze_text": (185, 155, 235, 255),
+    "user_role_default_bg": (140, 148, 155, 45),
+    "user_role_default_bg_hover": (140, 148, 155, 75),
+    "user_role_default_border": (140, 148, 155, 130),
+    "user_role_default_text": (205, 210, 215, 255),
+}
+
 LIGHT.update(_FLAT_LIGHT)  # type: ignore[typeddict-item]
 DARK.update(_FLAT_DARK)  # type: ignore[typeddict-item]
+LIGHT.update(_USER_ROLE_LIGHT)  # type: ignore[typeddict-item]
+DARK.update(_USER_ROLE_DARK)  # type: ignore[typeddict-item]
 
 PALETTES: dict[str, ColorTokens] = {"light": LIGHT, "dark": DARK}

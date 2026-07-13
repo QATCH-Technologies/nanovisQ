@@ -28,6 +28,8 @@ from PyQt5 import QtGui, QtWidgets
 
 from QATCH.core.constants import Constants
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
+from QATCH.ui.styles.native_titlebar import set_window_dark_titlebar
+from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode
 
 _QUIT_MESSAGE = "Are you sure you want to quit QATCH Q-1 application now?"
 
@@ -47,6 +49,20 @@ class BaseWindow(QtWidgets.QMainWindow):
 
     # Set to `True` on an instance to bypass the confirmation dialog on close.
     close_no_confirm: bool
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:  # noqa: N802
+        """Applies the active theme's native title bar color before the
+        window becomes visible.
+
+        `ThemeManager.apply_app_stylesheet()` re-themes every *currently
+        live* top-level window on a theme switch, but a window constructed
+        while some mode has already been active for a while (i.e. no switch
+        happens again while it's open) would otherwise miss that sweep
+        entirely and keep the OS default title bar - this covers that case.
+        """
+        dark = ThemeManager.instance().mode() == ThemeMode.DARK
+        set_window_dark_titlebar(self, dark)
+        super().showEvent(event)
 
     def _before_quit(self) -> None:
         """Called once after the user confirms quitting, before `QApplication.quit()`.

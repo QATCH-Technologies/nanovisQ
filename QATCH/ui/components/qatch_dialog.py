@@ -1,11 +1,11 @@
-"""QATCH.ui.components.glass_dialog
+"""QATCH.ui.components.qatch_dialog
 
 Glassmorphic modal dialog that matches the app's frosted-glass aesthetic.
 Replaces QMessageBox across all PopUp static methods - zero call-site changes.
 
 Renders a semi-transparent dim overlay over the root window with a centred
 frosted glass card containing title, body text, optional expandable details,
-and GlassPushButton actions.
+and QATCHPushButton actions.
 """
 
 from __future__ import annotations
@@ -18,13 +18,14 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.ui.components.glass_paint import paint_glass_surface
 from QATCH.ui.components.qatch_push_button import QATCHPushButton
+from QATCH.ui.components.window_utils import find_app_window
 from QATCH.ui.styles.theme_manager import (
     ThemeManager,
     dialog_message_qss,
     dialog_title_qss,
 )
 
-# (button_label, GlassPushButton_variant, return_value)
+# (button_label, QATCHPushButton_variant, return_value)
 ButtonSpec = Tuple[str, str, int]
 
 _ICONS_DIR = os.path.join(Architecture.get_path(), "QATCH", "icons")
@@ -68,7 +69,7 @@ class DialogCard(QtWidgets.QFrame):
     """Frosted glass card: paints via the shared glass-paint helper so it
     stays identical to PlotContainer and the other glass surfaces.
 
-    Shared by every modal built on `GlassDialogBase` (QATCHDialog,
+    Shared by every modal built on `DialogBase` (QATCHDialog,
     SignatureDialog, ...) so they all render the exact same card chrome.
     """
 
@@ -101,7 +102,7 @@ class DialogBase(QtWidgets.QDialog):
     """Shared modal chrome for every frosted-glass dialog in the app.
 
     Renders a semi-transparent dim overlay sized to the root window, behind
-    whatever `GlassDialogCard-based content a subclass builds in
+    whatever `DialogCard`-based content a subclass builds in
     `_build_ui`/`__init__`. Handles the frameless/translucent window setup,
     resolving the correct root window to size against, and Escape-to-cancel.
 
@@ -122,8 +123,16 @@ class DialogBase(QtWidgets.QDialog):
 
     @staticmethod
     def _find_root(widget: Optional[QtWidgets.QWidget]) -> Optional[QtWidgets.QWidget]:
-        # Prefer the currently active visible top-level window (e.g. ModeWindow)
-        # over the parent chain, which may lead to a non-displayed QMainWindow.
+        # The largest visible top-level widget is the true whole-app window -
+        # QApplication.activeWindow() alone can resolve to a smaller embedded
+        # QMainWindow (Controls/Plots/Logger each start life as their own
+        # before ui_mode.py reparents their content elsewhere) depending on
+        # focus timing, which would size the dim overlay to just that
+        # smaller window instead of covering the whole app. See
+        # window_utils.find_app_window.
+        root = find_app_window(exclude_types=(DialogBase,))
+        if root is not None:
+            return root
         active = QtWidgets.QApplication.activeWindow()
         if active and active.isVisible():
             return active
@@ -170,7 +179,7 @@ class QATCHDialog(DialogBase):
 
     Renders a semi-transparent dim overlay sized to the root window with a
     centred glass card containing title, message, optional expandable details,
-    and one or more GlassPushButton actions.
+    and one or more QATCHPushButton actions.
 
     Args:
         parent:     Ancestor widget - used to find the root window for sizing.
@@ -251,7 +260,7 @@ class QATCHDialog(DialogBase):
         header_layout.addWidget(self._icon_label)
 
         self._title_label = QtWidgets.QLabel(title)
-        self._title_label.setObjectName("GlassDialogTitle")
+        self._title_label.setObjectName("QATCHDialogTitle")
         self._title_label.setWordWrap(True)
         self._apply_title_style()
         header_layout.addWidget(self._title_label, 1)
@@ -266,7 +275,7 @@ class QATCHDialog(DialogBase):
         body_layout.setSpacing(10)
 
         self._msg_label = QtWidgets.QLabel(message)
-        self._msg_label.setObjectName("GlassDialogMessage")
+        self._msg_label.setObjectName("QATCHDialogMessage")
         self._msg_label.setWordWrap(True)
         self._msg_label.setAlignment(
             QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop

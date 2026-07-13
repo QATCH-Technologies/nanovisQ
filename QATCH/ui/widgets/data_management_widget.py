@@ -2,7 +2,7 @@
 
 Owns the overlay lifecycle (open/close, fade, fullscreen, click-outside
 dismiss) and the shared `DataServices`. Links in the five mode submodules and
-drives switching between them via a glass segmented control + QStackedWidget.
+drives switching between them via a horizontal chip bar + QStackedWidget.
 
 Replaces `export_widget.Ui_Export` in the controls UI. Compatibility shims
 (`showNormal` / `open_mode`) preserve the existing call sites.
@@ -32,7 +32,7 @@ MODE_CLASSES = [ImportMode, ExportMode, RecoverMode, AdvancedMode, HistoryMode]
 # Map the old integer tab indices to mode keys for showNormal() compatibility.
 _LEGACY_TAB_TO_KEY = {0: "import", 1: "export", 2: "recover", 3: "advanced", 4: "history"}
 
-# Position of each mode in the sidebar, used to pick slide direction.
+# Position of each mode in the chip bar, used to pick slide direction.
 _MODE_ORDER = {cls.MODE_KEY: i for i, cls in enumerate(MODE_CLASSES)}
 
 
@@ -43,7 +43,7 @@ class _GlassPanel(QtWidgets.QFrame):
     The fullscreen toggle animates alpha/border-width/radius every frame.
     Driving that through `setStyleSheet()` (the original approach) means a
     full CSS reparse + repolish of this frame AND its entire child tree
-    (header, sidebar, the active mode's whole widget tree) on every tick -
+    (header, chip bar, the active mode's whole widget tree) on every tick -
     cheap when this panel was simple, but the per-mode content has since
     grown a lot heavier (chips, option cards, scroll areas...), and that
     repolish cascade is what showed up as animation stutter. Painting these
@@ -56,13 +56,43 @@ class _GlassPanel(QtWidgets.QFrame):
         self._bg_alpha = 235
         self._border_width = 1.5
         self._radius = 12.0
+        # WA_TranslucentBackground alone stops Qt from auto-erasing this
+        # widget's backing store to an opaque palette color before every
+        # paint - needed for correct LIVE rendering of the four corners
+        # outside the rounded rect this paintEvent draws (so the dimmed
+        # scrim behind shows through instead of solid squares). It does NOT
+        # reliably survive grab()/render() for a plain child widget under a
+        # non-translucent top-level window though (verified empirically:
+        # grab() still comes back with opaque corner pixels) - the close-fade
+        # snapshot in _animate_close needs the mask below for that case.
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         ThemeManager.instance().themeChanged.connect(lambda _: self.update())
 
     def set_appearance(self, alpha, border_width, radius):
         self._bg_alpha = alpha
         self._border_width = border_width
         self._radius = radius
+        self._update_mask()
         self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_mask()
+
+    def _update_mask(self) -> None:
+        """Clips the widget's paintable area to the rounded-rect shape, so
+        the corners outside it are excluded from rendering entirely - both
+        on-screen AND via grab()/render(), which respect an active mask even
+        when they don't reliably respect WA_TranslucentBackground alone.
+        This is what actually keeps grab()-based snapshots (the close-fade
+        proxy) free of the opaque-corner artifact.
+        """
+        if self._radius <= 0:
+            self.clearMask()
+            return
+        path = QtGui.QPainterPath()
+        path.addRoundedRect(QtCore.QRectF(self.rect()), self._radius, self._radius)
+        self.setMask(QtGui.QRegion(path.toFillPolygon().toPolygon()))
 
     def paintEvent(self, event):
         tok = ThemeManager.instance().tokens()
@@ -141,6 +171,13 @@ class DataManagementWidget(QtWidgets.QWidget):
         # Fade via a composited opacity effect (animating the property is a
         # paint-time multiply) instead of re-setting the stylesheet each frame,
         # which would reparse + repolish the entire glass subtree per frame.
+        # Attached permanently and NEVER swapped via setGraphicsEffect(None)/
+        # another effect after this - QWidget.setGraphicsEffect() DELETES the
+        # widget's previously-set effect when you clear or replace it (Qt
+        # ownership rule), so toggling this on/off per-fade would destroy the
+        # C++ object out from under the live Python reference on the very
+        # next access. Correctness of glass_frame's rounded corners is
+        # instead handled by _GlassPanel's own mask (see _update_mask).
         self._glass_opacity = QtWidgets.QGraphicsOpacityEffect(self.glass_frame)
         self._glass_opacity.setOpacity(1.0)
         self.glass_frame.setGraphicsEffect(self._glass_opacity)
@@ -153,16 +190,9 @@ class DataManagementWidget(QtWidgets.QWidget):
         self._build_taskbar()
         self._build_stack()
 
-        # Header across the top.
+        # Header + chip bar across the top; content fills the full width below.
         self.main_layout.addLayout(self.top_section_layout)
-
-        # Body: vertical sidebar on the left, content stack on the right.
-        self.body_layout = QtWidgets.QHBoxLayout()
-        self.body_layout.setContentsMargins(0, 0, 0, 0)
-        self.body_layout.setSpacing(10)
-        self.body_layout.addWidget(self.sidebar_frame, 0)
-        self.body_layout.addWidget(self.content_stack, 1)
-        self.main_layout.addLayout(self.body_layout, 1)
+        self.main_layout.addWidget(self.content_stack, 1)
 
         self.base_layout.addWidget(self.glass_frame)
         self.setLayout(self.base_layout)
@@ -183,24 +213,34 @@ class DataManagementWidget(QtWidgets.QWidget):
 
         self.header_layout = QtWidgets.QHBoxLayout()
         self.header_layout.setContentsMargins(0, 0, 0, 0)
+        # Pixmap is set in _apply_theme() - the raw SVG has a fixed dark-gray
+        # fill (#333333) that reads fine in light mode but is nearly invisible
+        # against a dark panel, so it needs the same tinted_icon() treatment
+        # the fullscreen/collapse icons already get rather than being set once
+        # here untinted.
         self.window_icon_label = QtWidgets.QLabel()
-        self.window_icon_label.setPixmap(QtGui.QIcon(self.ICON_MAIN).pixmap(16, 16))
         self.window_title_label = QtWidgets.QLabel("Data Management")
         self.header_layout.addWidget(self.window_icon_label)
         self.header_layout.addWidget(self.window_title_label)
         self.header_layout.addStretch()
         self.top_section_layout.addLayout(self.header_layout)
 
-        # Vertical sidebar (glass pill) holding the mode selector, on the left.
-        self.sidebar_frame = QtWidgets.QFrame()
-        self.sidebar_frame.setObjectName("sidebarFrame")
-        # NOTE: no QGraphicsDropShadowEffect here - the glass frame now carries a
-        # QGraphicsOpacityEffect for fading, and Qt doesn't compose nested
-        # widget graphics effects reliably. The border provides the separation.
+        # Horizontal chip bar holding the mode selector, spanning the panel
+        # beneath the header (design 1c: drops the vertical sidebar so the
+        # content area below goes full-width and the switcher reads as a
+        # toolbar rather than a settings rail). A filled strip (flat_surface2)
+        # with just a bottom rule - not a rounded, fully-bordered box - sets
+        # it apart from the content stack below, matching the redesign mock
+        # (chipsRowStyle: surface2 fill + 1px bottom border, no radius).
+        self.mode_bar_frame = QtWidgets.QFrame()
+        self.mode_bar_frame.setObjectName("modeBarFrame")
 
-        sidebar_layout = QtWidgets.QVBoxLayout(self.sidebar_frame)
-        sidebar_layout.setContentsMargins(4, 6, 4, 6)
-        sidebar_layout.setSpacing(0)
+        # Full-width band: the strip's own fill/rule span the panel, so no
+        # side inset here; the mock's ~16px side padding + ~10px vertical
+        # padding come from these margins plus the control's inner margins.
+        mode_bar_layout = QtWidgets.QHBoxLayout(self.mode_bar_frame)
+        mode_bar_layout.setContentsMargins(8, 6, 8, 6)
+        mode_bar_layout.setSpacing(0)
 
         # Per-mode icon placeholders. These point at expected SVG filenames in
         # the icons folder; drop the assets in to light them up. Until then the
@@ -216,9 +256,11 @@ class DataManagementWidget(QtWidgets.QWidget):
         modes = [
             (cls.MODE_KEY, cls.MODE_LABEL, _mode_icons.get(cls.MODE_KEY)) for cls in MODE_CLASSES
         ]
-        self.segmented = SegmentedControl(modes, orientation=QtCore.Qt.Vertical)
+        self.segmented = SegmentedControl(modes, orientation=QtCore.Qt.Horizontal, variant="chips")
         self.segmented.modeChanged.connect(self._on_mode_changed)
-        sidebar_layout.addWidget(self.segmented)
+        mode_bar_layout.addWidget(self.segmented)
+        mode_bar_layout.addStretch(1)
+        self.top_section_layout.addWidget(self.mode_bar_frame)
 
         # Window control buttons (positioned absolutely on refit).
         button_size = 28
@@ -253,13 +295,21 @@ class DataManagementWidget(QtWidgets.QWidget):
 
     def _apply_theme(self) -> None:
         tok = ThemeManager.instance().tokens()
+        self.window_icon_label.setPixmap(
+            tinted_icon(self.ICON_MAIN, QtGui.QColor(*tok["flat_text"]), size=16).pixmap(16, 16)
+        )
         self.window_title_label.setStyleSheet(
             f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-weight: bold; "
             "font-size: 13px; background: transparent; }"
         )
-        self.sidebar_frame.setStyleSheet(
-            f"QFrame#sidebarFrame {{ background: {tok_css(tok['flat_surface2'])}; "
-            f"border: 1px solid {tok_css(tok['flat_border'])}; border-radius: 16px; }}"
+        # Full-width filled band with just a bottom rule (mock chipsRowStyle:
+        # flat_surface2 fill + 1px bottom border, no radius) - sets the chip
+        # row apart from the content stack below without reading as a boxed
+        # settings rail.
+        self.mode_bar_frame.setStyleSheet(
+            f"QFrame#modeBarFrame {{ background: {tok_css(tok['flat_surface2'])}; "
+            f"border: none; border-bottom: 1px solid {tok_css(tok['flat_border'])}; "
+            f"border-radius: 0px; }}"
         )
         self.btn_close.setStyleSheet(f"""
             QPushButton {{
@@ -292,6 +342,17 @@ class DataManagementWidget(QtWidgets.QWidget):
         self.content_stack = QtWidgets.QStackedWidget()
         self.content_stack.setObjectName("contentStack")
         self.content_stack.setStyleSheet("QStackedWidget#contentStack { background: transparent; }")
+        # Let _slide_to truly hide() the stack during a mode transition
+        # (cheapest possible "don't paint this") while it still reserves its
+        # layout space. Without this, stack.hide()/show() at the start/end of
+        # every slide invalidates main_layout (content_stack briefly collapses
+        # to zero height), which forces a full repaint of glass_frame - header,
+        # chip bar, everything - bracketing each slide. That's what showed up
+        # as the whole window seeming to re-render during a mode switch.
+        # Same technique as ExportMode._slide_step's step_stack.
+        stack_policy = self.content_stack.sizePolicy()
+        stack_policy.setRetainSizeWhenHidden(True)
+        self.content_stack.setSizePolicy(stack_policy)
         # Instantiate each mode with the shared services and register it.
         for cls in MODE_CLASSES:
             mode = cls(self.services, parent=self.content_stack)
@@ -320,10 +381,12 @@ class DataManagementWidget(QtWidgets.QWidget):
                 mode.on_enter()
             return
 
-        # Direction: moving DOWN the sidebar slides the new page up from below;
-        # moving UP slides it down from above.
-        going_down = _MODE_ORDER.get(key, 0) > _MODE_ORDER.get(prev_key, 0)
-        self._slide_to(prev_mode, mode, key, going_down)
+        # Direction: picking a chip to the RIGHT of the current one slides the
+        # new page in from the right (old exits left); picking one to the
+        # LEFT slides it in from the left - matching the chip bar's
+        # left-to-right ordering instead of the old vertical sidebar's.
+        going_right = _MODE_ORDER.get(key, 0) > _MODE_ORDER.get(prev_key, 0)
+        self._slide_to(prev_mode, mode, key, going_right)
 
     def _teardown_slide(self):
         """Stop any running slide and destroy its proxy clip immediately.
@@ -355,8 +418,14 @@ class DataManagementWidget(QtWidgets.QWidget):
         if self.content_stack is not None:
             self.content_stack.show()
 
-    def _slide_to(self, old_mode, new_mode, key, going_down):
-        """Cross-slide the outgoing/incoming pages vertically over the stack."""
+    def _slide_to(self, old_mode, new_mode, key, going_right):
+        """Cross-slide the outgoing/incoming pages horizontally over the stack.
+
+        Matches the chip bar's left-to-right ordering: selecting a chip to
+        the right of the current one pulls the new page in from the right
+        (old page exits left), and vice versa - the vertical-sidebar version
+        of this slid pages up/down instead.
+        """
         # Cancel any in-flight slide and fully tear down its proxy clip.
         self._teardown_slide()
 
@@ -370,7 +439,7 @@ class DataManagementWidget(QtWidgets.QWidget):
             new_mode.on_enter()
             return
 
-        h = size.height()
+        w = size.width()
 
         # Grab static pixmaps of both pages at the stack's current size.
         old_mode.resize(size)
@@ -391,12 +460,12 @@ class DataManagementWidget(QtWidgets.QWidget):
         self._slide_clip = clip
 
         rest = QtCore.QPoint(0, 0)
-        if going_down:
-            old_end = QtCore.QPoint(0, -h)  # old exits upward
-            new_start = QtCore.QPoint(0, h)  # new enters from below
+        if going_right:
+            old_end = QtCore.QPoint(-w, 0)  # old exits left
+            new_start = QtCore.QPoint(w, 0)  # new enters from the right
         else:
-            old_end = QtCore.QPoint(0, h)  # old exits downward
-            new_start = QtCore.QPoint(0, -h)  # new enters from above
+            old_end = QtCore.QPoint(w, 0)  # old exits right
+            new_start = QtCore.QPoint(-w, 0)  # new enters from the left
 
         old_lbl = QtWidgets.QLabel(clip)
         old_lbl.setPixmap(old_pix)
@@ -605,6 +674,21 @@ class DataManagementWidget(QtWidgets.QWidget):
         self.raise_()
         super().showEvent(event)
 
+    def resizeEvent(self, event):
+        # The eventFilter below only catches resizes of `parent`/its window -
+        # it does not fire when Qt resizes `self` directly (this widget IS
+        # the top-level with no parent, or the parent resizes it via layout
+        # rather than a bare geometry change the filter sees). Without this,
+        # _apply_margin_frac's mx/my margins are computed once against
+        # whatever self.width()/height() happened to be at the last refit and
+        # then stay frozen - after a fullscreen-toggle animation followed by
+        # a later resize, glass_frame (and everything inside it, including
+        # the mode bar strip) can end up rendered at a stale, too-small size
+        # instead of tracking the panel's actual current width.
+        super().resizeEvent(event)
+        if self.isVisible():
+            self._refit_to_parent()
+
     def closeEvent(self, event):
         if self._closing:
             event.accept()
@@ -715,7 +799,7 @@ class DataManagementWidget(QtWidgets.QWidget):
         # Snapshot the panel once and fade a flat pixmap proxy instead of
         # leaving the live QGraphicsOpacityEffect on glass_frame - that
         # effect forces Qt to re-render the ENTIRE live widget tree (header,
-        # sidebar, and whatever the active mode's full content is) into an
+        # chip bar, and whatever the active mode's full content is) into an
         # offscreen buffer on every single animation frame. That per-frame
         # full-subtree recomposite is what showed up as close-animation
         # stutter once the per-mode content grew heavier. A static pixmap
@@ -733,6 +817,19 @@ class DataManagementWidget(QtWidgets.QWidget):
         proxy.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         proxy.setPixmap(pix)
         proxy.setGeometry(geo)
+        # grab() bakes an opaque erase color into glass_frame's corners
+        # (outside its rounded-rect paint) rather than leaving them
+        # transparent - Qt's grab()/render() don't reliably respect a source
+        # widget's WA_TranslucentBackground for a plain child widget under a
+        # non-translucent top-level window. Masking the PROXY itself to the
+        # same rounded shape sidesteps that entirely: whatever is baked into
+        # the pixmap's corners, this on-screen label simply never displays
+        # those pixels - this is what actually fixes the white/opaque
+        # corners during the close fade.
+        proxy_radius = self.glass_frame._radius
+        proxy_path = QtGui.QPainterPath()
+        proxy_path.addRoundedRect(QtCore.QRectF(proxy.rect()), proxy_radius, proxy_radius)
+        proxy.setMask(QtGui.QRegion(proxy_path.toFillPolygon().toPolygon()))
         proxy.show()
         proxy.raise_()
         # Keep the window-control buttons (siblings of glass_frame, drawn

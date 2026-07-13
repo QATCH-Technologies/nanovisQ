@@ -1,5 +1,5 @@
 """
-glass_toggle.py
+qatch_toggle.py
 
 Animated toggle switch matching the app's flat control system (see
 QATCH.ui.components.flat_paint).
@@ -11,7 +11,7 @@ right with an OutCubic easing over 150 ms.
 
 Usage
 -----
-    toggle = GlassToggle(parent)
+    toggle = QATCHToggle(parent)
     toggle.setChecked(True)           # set initial state (no animation)
     toggle.toggled.connect(handler)   # bool signal, same as QCheckBox
 

@@ -1,7 +1,7 @@
 """
-glass_warning_label.py
+qatch_warning_label.py
 
-This module defines the `GlassWarningLabel` widget: a calm, glass-styled
+This module defines the `QATCHWarningLabel` widget: a calm, glass-styled
 informational banner used in place of harshly colored inline warning text.
 
 Three severities are supported - "info" (default, calm blue-gray), "warning"
@@ -55,7 +55,7 @@ class QATCHWarningLabel(QtWidgets.QWidget):
         *,
         severity: str = "info",
     ) -> None:
-        """Initializes the GlassWarningLabel.
+        """Initializes the QATCHWarningLabel.
 
         Args:
             text: The informational text to display in the banner.

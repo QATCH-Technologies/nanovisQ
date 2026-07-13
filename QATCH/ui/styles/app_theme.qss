@@ -133,6 +133,81 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
 }
 
 /* ═══════════════════════════════════════════════════════
+   GENERIC DROPDOWN / MENU FALLBACK
+   Base styling for any QComboBox or QMenu that doesn't opt into
+   one of the more specific objectName-scoped styles below
+   (LevelFilter, AnimatedComboBox, PlotGlassMenu) - so a plain,
+   unstyled dropdown still reads as part of the app instead of
+   falling back to bare native chrome. This matters most for the
+   popup, which always renders as its own top-level window and
+   needs a visible border to separate it from whatever sits
+   behind it. More specific selectors elsewhere in this file
+   still win over these defaults.
+   ═══════════════════════════════════════════════════════ */
+QComboBox {
+    background: {{FLAT_SURFACE}};
+    border: 1px solid {{FLAT_BORDER}};
+    border-radius: 7px;
+    padding: 4px 10px;
+    color: {{FLAT_TEXT}};
+}
+QComboBox:hover {
+    border: 1px solid {{FLAT_BORDER_STRONG}};
+}
+QComboBox:on,
+QComboBox:focus {
+    border: 1px solid {{ACCENT}};
+}
+QComboBox:disabled {
+    color: {{FLAT_TEXT_MUTED}};
+    background: {{FLAT_SURFACE2}};
+}
+QComboBox::drop-down {
+    border: none;
+    background: transparent;
+    width: 22px;
+}
+QComboBox QAbstractItemView {
+    background-color: {{FLAT_SURFACE}};
+    border: 1px solid {{POPUP_BORDER}};
+    border-radius: 8px;
+    color: {{FLAT_TEXT}};
+    padding: 4px;
+    selection-background-color: {{ACCENT_TRANSLUCENT}};
+    selection-color: {{ACCENT}};
+    outline: none;
+}
+QComboBox QAbstractItemView::item {
+    min-height: 24px;
+    border-radius: 6px;
+    padding-left: 8px;
+}
+
+QMenu {
+    background-color: {{FLAT_SURFACE}};
+    border: 1px solid {{POPUP_BORDER}};
+    border-radius: 8px;
+    padding: 5px 0px;
+}
+QMenu::item {
+    padding: 6px 22px;
+    color: {{FLAT_TEXT}};
+    background: transparent;
+}
+QMenu::item:selected {
+    background: {{ACCENT_TRANSLUCENT}};
+    color: {{ACCENT}};
+}
+QMenu::item:disabled {
+    color: {{FLAT_TEXT_MUTED}};
+}
+QMenu::separator {
+    height: 1px;
+    background: {{CTRL_HAIRLINE}};
+    margin: 4px 8px;
+}
+
+/* ═══════════════════════════════════════════════════════
    LOG CONSOLE
    All rules are scoped under #ConsoleContainer so they
    cannot bleed into the rest of the application.

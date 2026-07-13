@@ -1,6 +1,9 @@
+import math
+
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import (
     QEasingCurve,
+    QPointF,
     QPropertyAnimation,
     QRectF,
     Qt,
@@ -18,6 +21,53 @@ from PyQt5.QtWidgets import (
 )
 
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+
+
+def _rounded_polygon_path(points, radius: float) -> QPainterPath:
+    """Builds a closed path tracing `points` with each corner replaced by a
+    quadratic-Bezier round-over of `radius`, matching the soft-corner
+    language used everywhere else in the app (see e.g. flat_paint.py).
+
+    `QPainterPath` has no built-in "rounded polygon" primitive (only
+    `addRoundedRect` for axis-aligned rectangles), so each vertex is
+    rounded manually: the corner is approached along the incoming edge,
+    cut short `radius` px before the vertex, then curved through the
+    vertex itself to a point `radius` px along the outgoing edge.
+
+    Args:
+        points: Ordered vertices of the polygon (treated as a closed loop -
+            do not repeat the first point at the end).
+        radius: Desired corner radius, in px. Automatically clamped per-
+            corner so it never exceeds half of either adjacent edge
+            (prevents overlapping round-overs on small shapes).
+
+    Returns:
+        A closed QPainterPath ready to fill or stroke.
+    """
+    path = QPainterPath()
+    n = len(points)
+    for i in range(n):
+        prev_pt = points[(i - 1) % n]
+        curr_pt = points[i]
+        next_pt = points[(i + 1) % n]
+
+        in_dx, in_dy = curr_pt.x() - prev_pt.x(), curr_pt.y() - prev_pt.y()
+        out_dx, out_dy = next_pt.x() - curr_pt.x(), next_pt.y() - curr_pt.y()
+        len_in = math.hypot(in_dx, in_dy)
+        len_out = math.hypot(out_dx, out_dy)
+
+        r = min(radius, len_in / 2.0, len_out / 2.0)
+
+        start = QPointF(curr_pt.x() - (in_dx / len_in) * r, curr_pt.y() - (in_dy / len_in) * r)
+        end = QPointF(curr_pt.x() + (out_dx / len_out) * r, curr_pt.y() + (out_dy / len_out) * r)
+
+        if i == 0:
+            path.moveTo(start)
+        else:
+            path.lineTo(start)
+        path.quadTo(curr_pt, end)
+    path.closeSubpath()
+    return path
 
 
 class StartStopButton(QToolButton):
@@ -263,6 +313,11 @@ class StartStopButton(QToolButton):
         # Render icons
         painter.setPen(Qt.NoPen)
         icon_size = 2 * radius * 0.75
+        # Corner radius shared by the square/triangle glyphs below so both
+        # states read as the same rounded-icon language, matching the
+        # app's soft-corner design system rather than the sharp geometric
+        # primitives drawRect()/a straight-edged QPainterPath give by default.
+        corner_radius = icon_size * 0.12
 
         # NOTE: These have to be drawn dynamically to animate them.  The icons in the icon directory cannot be
         # animated properly so the checkmark is manually drawn, the Stop icon is drawn as a square, and the
@@ -277,26 +332,32 @@ class StartStopButton(QToolButton):
 
             check_pen = QPen(icon_color, 2.5)
             check_pen.setCapStyle(Qt.RoundCap)
+            check_pen.setJoinStyle(Qt.RoundJoin)
             painter.strokePath(path, check_pen)
 
         elif self.is_running:
             # Stop Square
             painter.setBrush(QBrush(self.color_darkred))
             s = icon_size * 0.5
-            painter.drawRect(QRectF(center.x() - s / 2, center.y() - s / 2, s, s))
+            painter.drawRoundedRect(
+                QRectF(center.x() - s / 2, center.y() - s / 2, s, s),
+                corner_radius,
+                corner_radius,
+            )
 
         else:
             # Start Triangle
             painter.setBrush(QBrush(self.color_darkgreen))
-            path = QPainterPath()
             h = icon_size * 0.6
             w = icon_size * 0.5
             x = center.x() - (w / 2) + 1.5
             y = center.y() - (h / 2)
-            path.moveTo(x, y)
-            path.lineTo(x + w, center.y())
-            path.lineTo(x, y + h)
-            path.closeSubpath()
+            triangle_points = [
+                QPointF(x, y),
+                QPointF(x + w, center.y()),
+                QPointF(x, y + h),
+            ]
+            path = _rounded_polygon_path(triangle_points, corner_radius)
             painter.drawPath(path)
 
         painter.end()

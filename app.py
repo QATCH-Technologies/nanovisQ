@@ -79,14 +79,9 @@ class QATCH:
         QtCore.QCoreApplication.setApplicationName("nanovisQ")
         self._app = QApplication(argv)
 
-        # Register bundled fonts (IBM Plex Sans/Mono, used by the flat
-        # control components) before any window is constructed.
         from QATCH.ui.styles.fonts import register_app_fonts
 
         register_app_fonts()
-
-        # Apply the persisted light/dark theme app-wide before any window
-        # (including the pre-login sign-in screen) is constructed.
         from QATCH.ui.styles.theme_manager import ThemeManager
 
         ThemeManager.instance().apply_app_stylesheet(self._app)
@@ -119,13 +114,6 @@ class QATCH:
         self.start = time.time()
 
     def flashSplashHide(self):
-        # Poll with a short sleep rather than a bare spin: `ReadyToShow` is
-        # normally already True by the time we get here (set synchronously
-        # in MainWindow.__init__), but `ask_for_update` is set later by a
-        # background update-check thread, so this second loop can genuinely
-        # wait several real seconds - a tight `pass` loop would peg a full
-        # CPU core the whole time for no benefit, since nothing here needs
-        # sub-frame precision.
         while time.time() - self.start < 3 and self.win.ReadyToShow == False:
             time.sleep(0.02)
 
@@ -133,9 +121,6 @@ class QATCH:
             time.sleep(0.02)
 
         if USE_PYI_SPLASH:
-            # Close the splash screen. It does not matter when the call
-            # to this function is made, the splash screen remains open until
-            # this function is called or the Python program is terminated.
             pyi_splash.close()
         else:
             if hasattr(self, "splash_process"):

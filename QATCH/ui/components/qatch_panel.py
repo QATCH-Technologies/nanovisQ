@@ -1,11 +1,11 @@
 """
-QATCH.ui.components.glass_panel
+QATCH.ui.components.qatch_panel
 
 Static frosted-glass content panel matching the app's glass surface family
 (see QATCH.ui.components.glass_paint). Renders a QFrame via the shared
 `paint_glass_surface` recipe with an opaque base fill, so panel content
 never bleeds through onto whatever sits behind the panel (the same
-translucency-visibility fix applied to GlassDialog's card).
+translucency-visibility fix applied to QATCHDialog's card).
 
 This replaces the several independently hand-rolled "frosted card" QFrame
 subclasses/QSS blocks that used to live inside the data-management mode
@@ -15,11 +15,11 @@ refreshed on a theme change.
 
 Usage
 -----
-    panel = GlassPanel()
+    panel = QATCHPanel()
     layout = QtWidgets.QVBoxLayout(panel)
     ...
 
-    danger_panel = GlassPanel(danger=True)   # tinted toward the danger token
+    danger_panel = QATCHPanel(danger=True)   # tinted toward the danger token
 """
 
 from __future__ import annotations

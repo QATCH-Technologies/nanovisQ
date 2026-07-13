@@ -5,6 +5,7 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.components.window_utils import app_window_bounds_global, find_app_window
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
 
@@ -73,7 +74,7 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         )
         self._dismiss_btn.setStyleSheet(
             f"QToolButton {{ color: {muted_css}; font-size: 10px;"
-            " background: transparent; border: none; }}"
+            " background: transparent; border: none; }"
             f"QToolButton:hover {{ color: {text_css}; }}"
         )
         self.update()
@@ -98,13 +99,24 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         x = anchor_right - self.width()
         y = global_pos.y() + self._anchor.height() + 4
 
-        # Constrain to the screen that contains the anchor widget so the
-        # badge never drifts to a secondary monitor.
-        screen = QtWidgets.QApplication.screenAt(global_pos)
-        if screen:
-            sg = screen.geometry()
-            x = max(sg.left(), min(x, sg.right() - self.width()))
-            y = max(sg.top(), min(y, sg.bottom() - self.height()))
+        # Constrain to the app's own window, not just the screen: the badge
+        # is a separate top-level (frameless, always-on-top) widget, so
+        # clamping only to screen geometry lets it drift past the app
+        # window's own edge onto the desktop whenever the anchor icon sits
+        # near a window edge (e.g. a maximized-but-not-fullscreen app, or a
+        # smaller window). Falls back to screen geometry if the app window
+        # can't be resolved for some reason.
+        app_window = find_app_window()
+        if app_window is not None:
+            bounds = app_window_bounds_global(app_window)
+            x = max(bounds.left(), min(x, bounds.right() - self.width()))
+            y = max(bounds.top(), min(y, bounds.bottom() - self.height()))
+        else:
+            screen = QtWidgets.QApplication.screenAt(global_pos)
+            if screen:
+                sg = screen.geometry()
+                x = max(sg.left(), min(x, sg.right() - self.width()))
+                y = max(sg.top(), min(y, sg.bottom() - self.height()))
 
         self.move(x, y)
 

@@ -104,6 +104,21 @@ class _RoundedPopup(QtWidgets.QFrame):
     height property on a `Qt::Popup` does not do reliably. Styling is scoped by
     objectName because a Qt Style Sheet *type* selector matches the Qt class name,
     not a Python subclass name.
+
+    The frame's own fill/border are painted directly in `paintEvent` (from
+    theme tokens) instead of via QSS `background-color`/`border` on this
+    `WA_TranslucentBackground` window - `WA_TranslucentBackground` + a
+    frameless `Qt::Popup` depends on the platform's layered/composited-
+    window support, which is not reliable on every Windows configuration
+    (some fall back to an opaque, uninitialized-looking white surface with
+    the styled fill never actually compositing in). Painting the fill/
+    border with QPainter writes into the widget's own raster buffer
+    directly and doesn't depend on that compositing path, matching how
+    every other themed control in this app already paints its chrome (see
+    QATCH.ui.components.flat_paint / glass_paint) rather than trusting QSS
+    for anything color-critical. `WA_TranslucentBackground` is kept only
+    for antialiasing the *outside* of the rounded corners where the
+    platform does support it; the visible fill no longer depends on it.
     """
 
     closed = QtCore.pyqtSignal()
@@ -114,6 +129,8 @@ class _RoundedPopup(QtWidgets.QFrame):
         self._reveal = 1.0  # 0..1 fraction of height currently revealed
         self._allow_hide = False  # gate for hideEvent veto (see close_animated)
         self._closing_now = False  # True while owner runs the slide-close
+        self._bg_color = QtGui.QColor(255, 255, 255)
+        self._border_color = QtGui.QColor(200, 203, 206)
         self.setObjectName("roundedComboPopup")
         self.setWindowFlags(
             QtCore.Qt.WindowType.Popup
@@ -171,16 +188,19 @@ class _RoundedPopup(QtWidgets.QFrame):
     def apply_theme(self, font: QtGui.QFont, row_h: int) -> None:
         tok = ThemeManager.instance().tokens()
         bg = tok_css(tok["flat_surface"])
-        border = tok_css(tok["flat_border"])
-        r = self._radius
-        inner = max(r - 2, 0)
+        # popup_border, not flat_border: this popup renders as its own
+        # top-level window, floating over arbitrary content, so its edge
+        # needs more contrast than the subtle border used for in-line
+        # chrome to read clearly against whatever happens to sit behind it
+        # (see tokens.py's popup_border for why this isn't flat_border_strong).
+        self._bg_color = QtGui.QColor(*tok["flat_surface"])
+        self._border_color = QtGui.QColor(*tok["popup_border"])
+        inner = max(self._radius - 2, 0)
         self._view.setFont(font)
+        # Frame fill/border are painted in paintEvent (see class docstring);
+        # only the child QListView - an ordinary, non-translucent widget -
+        # is styled via QSS here.
         self.setStyleSheet(f"""
-            QFrame#roundedComboPopup {{
-                background-color: {bg};
-                border: 1px solid {border};
-                border-radius: {r}px;
-            }}
             QListView#roundedComboView {{
                 background-color: {bg};
                 border: none;
@@ -189,6 +209,24 @@ class _RoundedPopup(QtWidgets.QFrame):
                 padding: 0px;
             }}
         """)
+        self.update()
+        # The row text/highlight colors come from _FlatItemDelegate.paint(),
+        # not QSS, so changing this stylesheet alone doesn't repaint them -
+        # a parent's update() doesn't reliably cascade into forcing an
+        # already-rendered child viewport to redraw. Without this, rows
+        # keep showing the previous theme's colors until something else
+        # (e.g. reopening the popup, which re-lays-out the view) happens to
+        # force a fresh viewport paint.
+        self._view.viewport().update()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        rect = QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setBrush(QtGui.QBrush(self._bg_color))
+        p.setPen(QtGui.QPen(self._border_color, 1.0))
+        p.drawRoundedRect(rect, self._radius, self._radius)
+        p.end()
 
     # ---- reveal (mask animation) -------------------------------------------
 

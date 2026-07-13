@@ -600,7 +600,6 @@ class QModelOnyx:
                     "detectors": {
                         "init": "path/to/init.pt",
                         "ch1": "path/to/ch1.pt",
-                        "poi5_fine": "path/to/poi5_fine.pt", # Deprecated
                         # ... etc
                     }
                 }
@@ -1104,6 +1103,190 @@ class QModelOnyx:
         # Optional: Print where it saved for easier tracking
         Log.i(self.TAG, f"Debug plot saved to: {final_save_path}")
 
+    def _log_candidates(
+        self,
+        harvested: Dict[int, List[Dict[str, Any]]],
+        final_results: Dict[int, Dict[str, Any]],
+    ) -> None:
+        """
+        Logs every harvested candidate per POI - its time, confidence, and
+        the cascade stage that produced it - with the currently-selected
+        candidate (from `final_results`, i.e. post-decode/refine) flagged.
+
+        Intended for debugging *why* a particular candidate was chosen: the
+        full pool each POI's selection was made from, side by side with the
+        winner. A selected candidate that doesn't exactly match any harvested
+        one (e.g. it moved during zoom-refinement) is logged separately as
+        "refined" so the selection is always visible even when it deviates
+        from the raw harvest.
+
+        Args:
+            harvested: Candidate store keyed by production POI id, values
+                are lists of {"time", "conf", "index", "stage"} dicts.
+            final_results: Cascade/decode/refine results keyed by production
+                POI id, values are {"time", "conf", "index"} dicts.
+        """
+        if not harvested:
+            return
+        for poi_id in sorted(harvested.keys()):
+            if poi_id == 3:
+                continue
+            name = self.POI_MAP.get(poi_id, f"POI{poi_id}")
+            cands = sorted(harvested[poi_id], key=lambda d: d["conf"], reverse=True)
+            selected = final_results.get(poi_id)
+            selected_time = float(selected["time"]) if selected else None
+
+            Log.d(self.TAG, f"[Candidates] {name} (id={poi_id}): {len(cands)} candidate(s)")
+            matched_selected = False
+            for d in cands:
+                is_selected = selected_time is not None and abs(d["time"] - selected_time) < 1e-9
+                matched_selected = matched_selected or is_selected
+                flag = "  <-- SELECTED" if is_selected else ""
+                stage = d.get("stage", "unknown")
+                Log.d(
+                    self.TAG,
+                    f"    stage={stage:<10} time={d['time']:.4f}s "
+                    f"conf={d['conf']:.3f} idx={d['index']}{flag}",
+                )
+            if selected_time is not None and not matched_selected:
+                # Selection doesn't match any harvested candidate verbatim -
+                # it moved via the decode's defensive greedy injection or
+                # zoom-refinement. Still log it so the winner is always shown.
+                Log.d(
+                    self.TAG,
+                    f"    stage={'refined':<10} time={selected_time:.4f}s "
+                    f"conf={float(selected['conf']):.3f} idx={selected['index']}  <-- SELECTED",
+                )
+
+    def _visualize_candidates(
+        self,
+        df: pd.DataFrame,
+        harvested: Dict[int, List[Dict[str, Any]]],
+        final_results: Dict[int, Dict[str, Any]],
+        save_path: str = "onyx_candidates_debug.png",
+    ) -> None:
+        """
+        Debug plot: Dissipation vs Relative_time with every harvested POI
+        candidate overlaid, marker-shaped/colored by the cascade stage that
+        produced it, and the selected (final) candidate for each POI
+        highlighted with a larger, black-outlined marker plus a vertical
+        line at its time.
+
+        Args:
+            df: The master DataFrame (post-preprocessing). Must contain
+                'Relative_time' and 'Dissipation' columns.
+            harvested: Candidate store keyed by production POI id, values
+                are lists of {"time", "conf", "index", "stage"} dicts.
+            final_results: Cascade/decode/refine results keyed by production
+                POI id, values are {"time", "conf", "index"} dicts - the
+                selected candidate per POI.
+            save_path: Base file path for the saved plot image; a timestamp
+                is inserted before the extension (mirrors `_visualize`).
+        """
+        if df is None or df.empty or not harvested:
+            return
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        base_name, ext = os.path.splitext(save_path)
+        final_save_path = f"{base_name}_{timestamp}{ext}"
+
+        time = df["Relative_time"].values
+        signal = df["Dissipation"].values if "Dissipation" in df.columns else df.iloc[:, 1].values
+
+        # One marker shape + color per cascade stage, so candidates from
+        # different steps are visually distinguishable even when several
+        # land close together in time.
+        stage_styles = {
+            "ch3": ("o", "tab:blue"),
+            "ch2": ("s", "tab:orange"),
+            "ch1": ("^", "tab:green"),
+            "init": ("D", "tab:purple"),
+            "refined": ("X", "black"),
+            "unknown": ("x", "gray"),
+        }
+        poi_line_colors = {1: "green", 2: "blue", 4: "orange", 5: "red", 6: "purple"}
+
+        plt.figure(figsize=(14, 7))
+        plt.plot(time, signal, color="gray", alpha=0.5, linewidth=1, label="Dissipation", zorder=1)
+
+        plotted_stage_labels = set()
+        for poi_id in sorted(harvested.keys()):
+            if poi_id == 3:
+                continue
+            name = self.POI_MAP.get(poi_id, f"POI{poi_id}")
+            selected = final_results.get(poi_id)
+            selected_time = float(selected["time"]) if selected else None
+
+            matched_selected = False
+            for d in harvested[poi_id]:
+                stage = d.get("stage", "unknown")
+                marker, color = stage_styles.get(stage, ("x", "gray"))
+                is_selected = selected_time is not None and abs(d["time"] - selected_time) < 1e-9
+                matched_selected = matched_selected or is_selected
+                label = None
+                if stage not in plotted_stage_labels:
+                    label = f"stage: {stage}"
+                    plotted_stage_labels.add(stage)
+                plt.scatter(
+                    d["time"],
+                    np.interp(d["time"], time, signal),
+                    marker=marker,
+                    s=110 if is_selected else 45,
+                    color=color,
+                    edgecolors="black" if is_selected else "none",
+                    linewidths=1.5 if is_selected else 0,
+                    alpha=1.0 if is_selected else 0.55,
+                    zorder=4 if is_selected else 3,
+                    label=label,
+                )
+
+            if selected_time is not None and not matched_selected:
+                # Selection doesn't match any harvested candidate verbatim
+                # (moved via decode's greedy injection or zoom-refinement) -
+                # still draw it with the same "selected" emphasis so it's
+                # never a line-only, marker-less outlier.
+                marker, color = stage_styles["refined"]
+                label = None
+                if "refined" not in plotted_stage_labels:
+                    label = "stage: refined"
+                    plotted_stage_labels.add("refined")
+                plt.scatter(
+                    selected_time,
+                    np.interp(selected_time, time, signal),
+                    marker=marker,
+                    s=110,
+                    color=color,
+                    edgecolors="black",
+                    linewidths=1.5,
+                    alpha=1.0,
+                    zorder=4,
+                    label=label,
+                )
+
+            if selected_time is not None:
+                c = poi_line_colors.get(poi_id, "black")
+                plt.axvline(
+                    x=selected_time, color=c, linestyle="-", linewidth=1.5, alpha=0.8, zorder=2
+                )
+                plt.text(
+                    selected_time,
+                    np.max(signal),
+                    f" {name}",
+                    color=c,
+                    fontsize=8,
+                    rotation=90,
+                    va="top",
+                )
+
+        plt.xlabel("Relative Time (s)")
+        plt.ylabel("Dissipation")
+        plt.title("Onyx Candidate Debug - candidates by cascade stage (selected = outlined marker)")
+        plt.legend(loc="lower right", fontsize=8, framealpha=0.9)
+        plt.tight_layout()
+        plt.savefig(final_save_path, dpi=150)
+        plt.close()
+        Log.i(self.TAG, f"Candidate debug plot saved to: {final_save_path}")
+
     def predict(
         self,
         progress_signal: Any = None,
@@ -1114,8 +1297,9 @@ class QModelOnyx:
         avg_res_freq: Optional[float] = None,
         avg_diss: Optional[float] = None,
         harvest_candidates: bool = False,
-        decode_config: bool = False,
+        decode_config: bool = True,
         refine_pois: bool = True,
+        visualize_candidates: bool = True,
     ) -> Tuple[Dict[str, Dict[str, List]], int]:
         """
         Executes the QModel Onyx prediction pipeline on the provided data.
@@ -1167,6 +1351,15 @@ class QModelOnyx:
                 the output under the reserved key "_decode". Requires
                 `model_assets["spacing_prior"]` to point at a fitted prior JSON;
                 no-ops with a warning otherwise. Defaults to False.
+            visualize_candidates (bool, optional): If True (implies harvesting),
+                logs every harvested candidate per POI - time, confidence, and
+                the cascade stage ("ch3"/"ch2"/"ch1"/"init") that
+                produced it - with the selected candidate flagged, and saves a
+                debug plot of Dissipation vs Relative_time with all candidates
+                overlaid (marker shape/color per stage) and the selected one
+                highlighted per POI. For debugging candidate pools and
+                selection decisions, independent of the cut/POI overview plot
+                from `visualize`. Defaults to False.
 
         Returns:
             Tuple[Dict[str, Dict[str, List]], int]: A tuple containing:
@@ -1227,8 +1420,9 @@ class QModelOnyx:
                 "Relative_time" if "Relative_time" in current_df.columns else current_df.columns[0]
             )
             cut_history = []
-            # decode_config consumes the harvest, so it implies harvesting.
-            harvest_candidates = harvest_candidates or decode_config
+            # decode_config and visualize_candidates both consume the
+            # harvest, so either implies harvesting.
+            harvest_candidates = harvest_candidates or decode_config or visualize_candidates
             # Candidate harvest store: poi_id -> list of {"time","conf","index"}.
             # Populated only when harvest_candidates=True. Harvesting does NOT
             # change cuts or predictions: the cascade still proceeds on
@@ -1246,10 +1440,13 @@ class QModelOnyx:
             # true event region survives whenever ANY candidate covers it.
             harvest_df = master_df.copy() if harvest_candidates else None
 
-            def harvest_stage(detector, slice_df, class_map):
+            def harvest_stage(detector, slice_df, class_map, stage_name="unknown"):
                 """Harvest all candidates for one stage from `slice_df`.
                 Returns the latest harvested candidate time (used to advance
-                the conservative harvest cut chain), or None."""
+                the conservative harvest cut chain), or None. Each candidate
+                is tagged with `stage_name` (e.g. "ch3", "ch2", "ch1", "init")
+                so downstream logging/plotting can show which cascade step
+                produced it."""
                 if not harvest_candidates or detector is None or slice_df is None:
                     return None
                 latest: Optional[float] = None
@@ -1266,6 +1463,7 @@ class QModelOnyx:
                                 "time": d["time"],
                                 "conf": d["conf"],
                                 "index": self._get_raw_index(raw_df, d["time"]),
+                                "stage": stage_name,
                             }
                         )
                         if latest is None or d["time"] > latest:
@@ -1307,7 +1505,7 @@ class QModelOnyx:
                 det_ch3 = self._load_detector_by_name("ch3")
                 if det_ch3:
                     res = det_ch3.predict_single(current_df, target_class_map={0: 6})
-                    h_latest = harvest_stage(det_ch3, harvest_df, {0: 6})
+                    h_latest = harvest_stage(det_ch3, harvest_df, {0: 6}, "ch3")
                     cut_time = process_detection(res, 6)
                     if cut_time:
                         current_df = current_df[current_df[col_time] < cut_time]
@@ -1321,7 +1519,7 @@ class QModelOnyx:
                 det_ch2 = self._load_detector_by_name("ch2")
                 if det_ch2:
                     res = det_ch2.predict_single(current_df, target_class_map={0: 5})
-                    h_latest = harvest_stage(det_ch2, harvest_df, {0: 5})
+                    h_latest = harvest_stage(det_ch2, harvest_df, {0: 5}, "ch2")
                     cut_time = process_detection(res, 5)
                     if cut_time:
                         current_df = current_df[current_df[col_time] < cut_time]
@@ -1335,7 +1533,7 @@ class QModelOnyx:
                 det_ch1 = self._load_detector_by_name("ch1")
                 if det_ch1:
                     res = det_ch1.predict_single(current_df, target_class_map={0: 4})
-                    h_latest = harvest_stage(det_ch1, harvest_df, {0: 4})
+                    h_latest = harvest_stage(det_ch1, harvest_df, {0: 4}, "ch1")
                     cut_time = process_detection(res, 4)
                     if cut_time:
                         current_df = current_df[current_df[col_time] < cut_time]
@@ -1348,22 +1546,9 @@ class QModelOnyx:
             det_init = self._load_detector_by_name("init")
             if det_init:
                 res = det_init.predict_single(current_df, target_class_map={0: 1, 1: 2})
-                harvest_stage(det_init, harvest_df, {0: 1, 1: 2})
+                harvest_stage(det_init, harvest_df, {0: 1, 1: 2}, "init")
                 process_detection(res, 1)
                 process_detection(res, 2)
-
-            if num_channels >= 3 and 5 in final_results:
-                det_fine = self._load_detector_by_name("poi5_fine")
-                if det_fine:
-                    if progress_signal:
-                        progress_signal.emit(90, "Applying Fine Adjustment...")
-                    anchor_time = final_results[5]["time"]
-                    fine_slice = master_df[master_df[col_time] >= anchor_time]
-                    res_fine = det_fine.predict_single(fine_slice, target_class_map={0: 6})
-                    harvest_stage(det_fine, fine_slice, {0: 6})
-
-                    if 6 in res_fine:
-                        process_detection(res_fine, 6)
 
             if 3 in final_results:
                 del final_results[3]
@@ -1399,6 +1584,13 @@ class QModelOnyx:
                     self._visualize(master_df, final_results, cut_history)
                 except Exception as e:
                     Log.w(self.TAG, f"Visualization failed: {e}")
+
+            if visualize_candidates:
+                try:
+                    self._log_candidates(harvested, final_results)
+                    self._visualize_candidates(master_df, harvested, final_results)
+                except Exception as e:
+                    Log.w(self.TAG, f"Candidate visualization failed: {e}")
 
             output = self._format_output(final_results)
             if harvest_candidates:

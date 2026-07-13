@@ -1,20 +1,20 @@
 """
-glass_option_card.py
+qatch_option_card.py
 
 A selectable "card" control matching the app's flat control system (see
 QATCH.ui.components.flat_paint): a flat panel with a bold title and a
 smaller description line beneath it. Cards are grouped via
-`GlassOptionCardGroup` for exclusive (radio-style) selection - used wherever
+`QATCHOptionCardGroup` for exclusive (radio-style) selection - used wherever
 a wireframe shows a labelled option instead of a plain segmented control
 (e.g. Import's "When a run already exists" policy, Export's Destination
 USB/Folder choice).
 
 Usage
 -----
-    group = GlassOptionCardGroup()
-    c1 = GlassOptionCard("Merge", "Add new, keep both")
-    c2 = GlassOptionCard("Replace", "Overwrite existing")
-    c3 = GlassOptionCard("Skip", "Leave existing")
+    group = QATCHOptionCardGroup()
+    c1 = QATCHOptionCard("Merge", "Add new, keep both")
+    c2 = QATCHOptionCard("Replace", "Overwrite existing")
+    c3 = QATCHOptionCard("Skip", "Leave existing")
     group.addCard(c1, 1)
     group.addCard(c2, 2)
     group.addCard(c3, 3)
@@ -86,7 +86,7 @@ class QATCHOptionCard(QtWidgets.QFrame):
 
     def __init__(self, title, description="", parent=None, *, show_radio=False):
         super().__init__(parent)
-        self.setObjectName("glassOptionCard")
+        self.setObjectName("qatchOptionCard")
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self._checked = False
         self._title = title
@@ -193,7 +193,7 @@ class QATCHOptionCard(QtWidgets.QFrame):
         rgba = self._rgba
         if self._checked:
             frame_qss = f"""
-                QFrame#glassOptionCard {{
+                QFrame#qatchOptionCard {{
                     background: {rgba(tok["flat_accent_weak"])};
                     border: 1.5px solid {rgba(tok["flat_accent"])};
                     border-radius: 10px;
@@ -201,12 +201,12 @@ class QATCHOptionCard(QtWidgets.QFrame):
             """
         else:
             frame_qss = f"""
-                QFrame#glassOptionCard {{
+                QFrame#qatchOptionCard {{
                     background: {rgba(tok["flat_surface"])};
                     border: 1px solid {rgba(tok["flat_border"])};
                     border-radius: 10px;
                 }}
-                QFrame#glassOptionCard:hover {{
+                QFrame#qatchOptionCard:hover {{
                     background: {rgba(tok["flat_surface2"])};
                     border: 1px solid {rgba(tok["flat_border_strong"])};
                 }}

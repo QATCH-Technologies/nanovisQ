@@ -19,7 +19,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.components import AnimatedComboBox
+from QATCH.ui.components import AnimatedComboBox, QATCHLineEdit
+from QATCH.ui.components.icon_utils import tinted_icon, tinted_pixmap
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
 if TYPE_CHECKING:
@@ -136,6 +137,8 @@ class QTextEditLogger(QtCore.QObject):
 
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
+        self._retint_toolbar_icons()
+
         # Initialize search result indicators.
         self._update_match_ui(0, 0)
 
@@ -223,20 +226,22 @@ class QTextEditLogger(QtCore.QObject):
 
         control_layout.addWidget(self.match_counter)
 
-        # Search navigation buttons.
-        up_chevron: QtGui.QIcon = QtGui.QIcon(os.path.join(self._icons_dir, "up-chevron.svg"))
-        down_chevron: QtGui.QIcon = QtGui.QIcon(os.path.join(self._icons_dir, "down-chevron.svg"))
+        # Search navigation buttons. Icons are placeholders here - tinted
+        # from the active theme (and re-tinted on theme change) by
+        # _retint_toolbar_icons(), same as the search/clear icons below.
+        self._up_chevron_path: str = os.path.join(self._icons_dir, "up-chevron.svg")
+        self._down_chevron_path: str = os.path.join(self._icons_dir, "down-chevron.svg")
 
         self.btn_find_prev: QtWidgets.QPushButton = self._create_nav_button(
             "SearchPrevBtn",
-            up_chevron,
+            QtGui.QIcon(),
             "Find Previous (Shift+Enter)",
             self.find_prev,
         )
 
         self.btn_find_next: QtWidgets.QPushButton = self._create_nav_button(
             "SearchNextBtn",
-            down_chevron,
+            QtGui.QIcon(),
             "Find Next (Enter)",
             self.find_next,
         )
@@ -277,7 +282,7 @@ class QTextEditLogger(QtCore.QObject):
         Args:
             layout (QtWidgets.QHBoxLayout): Layout that will receive the configured search widget.
         """
-        self.search_input: QtWidgets.QLineEdit = QtWidgets.QLineEdit(parent=self.container)
+        self.search_input: QATCHLineEdit = QATCHLineEdit(parent=self.container)
         self.search_input.setObjectName("SearchBar")
         self.search_input.setPlaceholderText("Find in logs...")
         self.search_input.setFixedSize(220, 28)
@@ -287,22 +292,23 @@ class QTextEditLogger(QtCore.QObject):
 
         # Update search results as the query changes.
         self.search_input.textChanged.connect(self.on_search_changed)
-        search_icon: QtGui.QIcon = QtGui.QIcon(os.path.join(self._icons_dir, "search.svg"))
-        self.search_input.addAction(
-            search_icon,
+
+        # Leading/trailing icons are placeholders here - tinted from the
+        # active theme (and re-tinted on theme change) by
+        # _retint_toolbar_icons(), since a QAction icon otherwise just
+        # renders whatever raw color is baked into the source SVG and
+        # never picks up a light/dark switch on its own.
+        self._search_icon_path: str = os.path.join(self._icons_dir, "search.svg")
+        search_action = self.search_input.addAction(
+            QtGui.QIcon(),
             QtWidgets.QLineEdit.LeadingPosition,
         )
+        assert search_action is not None
+        self.search_icon_action: QtWidgets.QAction = search_action
 
-        clear_svg: str = os.path.join(
-            self._icons_dir,
-            "clear.svg",
-        )
-
-        self._clear_icon_normal: QtGui.QIcon = QtGui.QIcon(clear_svg)
-        self._clear_icon_hover: QtGui.QIcon = self._make_lighter_icon(
-            clear_svg,
-            opacity=0.55,
-        )
+        self._clear_icon_path: str = os.path.join(self._icons_dir, "clear.svg")
+        self._clear_icon_normal: QtGui.QIcon = QtGui.QIcon()
+        self._clear_icon_hover: QtGui.QIcon = QtGui.QIcon()
 
         action = self.search_input.addAction(
             self._clear_icon_normal,
@@ -420,34 +426,54 @@ class QTextEditLogger(QtCore.QObject):
         self.search_input.setFocus()
 
     @staticmethod
-    def _make_lighter_icon(svg_path: str, opacity: float = 0.55) -> QtGui.QIcon:
-        """Create a faded (lower-opacity) version of an icon.
-
-        Loads an SVG (or image) from disk and renders a new pixmap with
-        reduced opacity, producing a "disabled/hover/faded" visual state.
+    def _faded_icon(pixmap: QtGui.QPixmap, opacity: float = 0.55) -> QtGui.QIcon:
+        """Create a faded (lower-opacity) version of an already-tinted pixmap.
 
         Args:
-            svg_path: File path to the source SVG or image asset.
+            pixmap: Source pixmap (already recolored for the active theme).
             opacity: Opacity level applied to the rendered icon. Must be
                 between 0.0 (fully transparent) and 1.0 (fully opaque).
 
         Returns:
-            A QIcon containing the faded rendering. If the source cannot be
-            loaded, returns a fallback QIcon created directly from the path.
+            A QIcon containing the faded rendering.
         """
-        src = QtGui.QPixmap(svg_path)
-        if src.isNull():
-            return QtGui.QIcon(svg_path)
-
-        faded = QtGui.QPixmap(src.size())
+        faded = QtGui.QPixmap(pixmap.size())
         faded.fill(QtCore.Qt.GlobalColor.transparent)
 
         painter = QtGui.QPainter(faded)
         painter.setOpacity(opacity)
-        painter.drawPixmap(0, 0, src)
+        painter.drawPixmap(0, 0, pixmap)
         painter.end()
 
         return QtGui.QIcon(faded)
+
+    _TOOLBAR_ICON_SIZE = 16
+
+    def _retint_toolbar_icons(self) -> None:
+        """Re-tints the search bar's icons and nav-button chevrons from the
+        active theme.
+
+        Unlike QSS-driven chrome, a QAction/QPushButton icon just renders
+        whatever raw color is baked into the source SVG and never picks up
+        a light/dark switch on its own - each of these is recolored here
+        instead, matching the muted-icon convention used elsewhere in the
+        app (e.g. QATCH.ui.components.segmented_control).
+        """
+        tok = ThemeManager.instance().tokens()
+        color = QtGui.QColor(*tok["flat_text_muted"])
+        size = self._TOOLBAR_ICON_SIZE
+
+        self.search_icon_action.setIcon(tinted_icon(self._search_icon_path, color, size))
+
+        clear_pixmap = tinted_pixmap(self._clear_icon_path, color, size)
+        self._clear_icon_normal = QtGui.QIcon(clear_pixmap)
+        self._clear_icon_hover = self._faded_icon(clear_pixmap, opacity=0.55)
+        self.clear_text_action.setIcon(
+            self._clear_icon_hover if self._clear_hovering else self._clear_icon_normal
+        )
+
+        self.btn_find_prev.setIcon(tinted_icon(self._up_chevron_path, color, size))
+        self.btn_find_next.setIcon(tinted_icon(self._down_chevron_path, color, size))
 
     def _clear_icon_rect(self) -> QtCore.QRect:
         """Calculate the clickable rectangle for the search clear icon.
@@ -841,6 +867,7 @@ class QTextEditLogger(QtCore.QObject):
             _mode: Theme mode identifier (unused but provided by signal).
         """
         self.apply_filter(self.level_filter.currentText())
+        self._retint_toolbar_icons()
 
     def _flush_pending(self) -> None:
         """Flush buffered log records into the QTextEdit in a single batch.

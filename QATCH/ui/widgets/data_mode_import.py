@@ -41,6 +41,7 @@ from QATCH.ui.components import (
     QATCHPanel,
     QATCHPushButton,
 )
+from QATCH.ui.components.icon_utils import tinted_pixmap
 from QATCH.ui.styles.theme_manager import (
     ThemeManager,
     caption_label_qss,
@@ -57,12 +58,53 @@ POLICY_MERGE = 2
 POLICY_SKIP = 3
 
 
+class _IconBadge(QtWidgets.QWidget):
+    """Circular accent-tinted backdrop behind the drop zone's icon.
+
+    A bare small icon floating directly on the zone's own background reads
+    as an afterthought; centering it in its own soft accent circle gives it
+    the visual weight of an actual focal point, matching how drop targets
+    are conventionally presented elsewhere (Finder/Explorer-style import
+    dialogs, etc.) rather than a plain file-picker icon.
+    """
+
+    _SIZE = 48
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(self._SIZE, self._SIZE)
+        self._fill = QtGui.QColor(0, 0, 0, 0)
+        self._pixmap = QtGui.QPixmap()
+
+    def set_fill(self, color: QtGui.QColor) -> None:
+        self._fill = color
+        self.update()
+
+    def set_pixmap(self, pixmap: QtGui.QPixmap) -> None:
+        self._pixmap = pixmap
+        self.update()
+
+    def paintEvent(self, event):  # noqa: N802
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(self._fill)
+        p.drawEllipse(self.rect())
+        if not self._pixmap.isNull():
+            x = (self.width() - self._pixmap.width()) // 2
+            y = (self.height() - self._pixmap.height()) // 2
+            p.drawPixmap(x, y, self._pixmap)
+        p.end()
+
+
 class _DropZone(QtWidgets.QFrame):
     """Drag-and-drop target for adding import sources (folders or ZIPs).
 
     Accepts OS file/folder drops via mimedata URLs; the "Browse…" link (and a
     click anywhere in the zone) opens the same picker dialog as before.
     """
+
+    _ICON_SIZE = 24
 
     filesDropped = QtCore.pyqtSignal(list)
     browseRequested = QtCore.pyqtSignal()
@@ -71,21 +113,18 @@ class _DropZone(QtWidgets.QFrame):
         super().__init__(parent)
         self.setObjectName("dropZone")
         self.setAcceptDrops(True)
-        self.setMinimumHeight(86)
+        self.setMinimumHeight(130)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self._active = False
+        self._icon_path = self._zone_icon_path()
 
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(12, 10, 12, 10)
-        lay.setSpacing(4)
+        lay.setContentsMargins(16, 18, 16, 18)
+        lay.setSpacing(8)
         lay.setAlignment(QtCore.Qt.AlignCenter)
 
-        self._icon_lbl = QtWidgets.QLabel()
-        self._icon_lbl.setAlignment(QtCore.Qt.AlignCenter)
-        icon = self._zone_icon()
-        if not icon.isNull():
-            self._icon_lbl.setPixmap(icon.pixmap(22, 22))
-        lay.addWidget(self._icon_lbl, 0, QtCore.Qt.AlignCenter)
+        self._icon_badge = _IconBadge()
+        lay.addWidget(self._icon_badge, 0, QtCore.Qt.AlignCenter)
 
         self._main_lbl = QtWidgets.QLabel("Drop a folder or a .zip here")
         self._main_lbl.setAlignment(QtCore.Qt.AlignCenter)
@@ -102,16 +141,16 @@ class _DropZone(QtWidgets.QFrame):
         ThemeManager.instance().themeChanged.connect(lambda _: self._set_qss(self._active))
 
     @staticmethod
-    def _zone_icon():
+    def _zone_icon_path():
         try:
             from QATCH.common.architecture import Architecture
 
             path = os.path.join(Architecture.get_path(), "QATCH", "icons", "import.svg")
             if os.path.exists(path):
-                return QtGui.QIcon(path)
+                return path
         except Exception:
             pass
-        return QtGui.QIcon()
+        return None
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
@@ -152,7 +191,7 @@ class _DropZone(QtWidgets.QFrame):
             frame_qss = f"""
                 QFrame#dropZone {{
                     background: {tok_css(tok['flat_accent_weak'])};
-                    border: 2px dashed {tok_css(tok['flat_accent'])};
+                    border: 1.5px dashed {tok_css(tok['flat_accent'])};
                     border-radius: 10px;
                 }}
             """
@@ -160,17 +199,17 @@ class _DropZone(QtWidgets.QFrame):
             frame_qss = f"""
                 QFrame#dropZone {{
                     background: {tok_css(tok['flat_surface2'])};
-                    border: 2px dashed {tok_css(tok['flat_border_strong'])};
+                    border: 1.5px dashed {tok_css(tok['flat_border_strong'])};
                     border-radius: 10px;
                 }}
                 QFrame#dropZone:hover {{
                     background: {tok_css(tok['flat_accent_weak'])};
-                    border: 2px dashed {tok_css(tok['flat_accent'])};
+                    border: 1.5px dashed {tok_css(tok['flat_accent'])};
                 }}
             """
         self.setStyleSheet(frame_qss)
         self._main_lbl.setStyleSheet(
-            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 13px; "
             "font-weight: 600; background: transparent; }"
         )
         self._browse_lbl.setStyleSheet(
@@ -178,6 +217,15 @@ class _DropZone(QtWidgets.QFrame):
             f"background: transparent; }} QLabel a {{ color: {tok_css(tok['flat_accent'])}; "
             "font-weight: 600; text-decoration: none; }"
         )
+        # Badge stays a constant accent-weak/accent pairing regardless of
+        # drag-hover state: the frame's own background+border already carry
+        # the active/idle/hover feedback, and QSS :hover can't reach this
+        # widget's custom paintEvent to keep a state-varying badge in sync.
+        self._icon_badge.set_fill(QtGui.QColor(*tok["flat_accent_weak"]))
+        if self._icon_path:
+            self._icon_badge.set_pixmap(
+                tinted_pixmap(self._icon_path, QtGui.QColor(*tok["flat_accent"]), self._ICON_SIZE)
+            )
 
 
 class _FlowLayout(QtWidgets.QLayout):
@@ -517,10 +565,12 @@ class ImportMode(DataModeWidget):
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred
         )
 
+        # Cancel sits on the left (matches Export's footer layout), status
+        # text absorbs the middle stretch, Import (primary action) sits on
+        # the right.
         action_row = QtWidgets.QHBoxLayout()
         action_row.setContentsMargins(0, 0, 0, 0)
         action_row.setSpacing(8)
-        action_row.addWidget(self.status_label, 1)
         self.btn_cancel = QATCHPushButton(" Cancel", variant="default")
         self.btn_cancel.setFixedHeight(34)
         self.btn_cancel.setEnabled(False)
@@ -529,8 +579,9 @@ class ImportMode(DataModeWidget):
         self.btn_import.setFixedHeight(34)
         self.btn_import.setEnabled(False)
         self.btn_import.clicked.connect(self._do_import)
-        action_row.addWidget(self.btn_cancel)
-        action_row.addWidget(self.btn_import)
+        action_row.addWidget(self.btn_cancel, 0)
+        action_row.addWidget(self.status_label, 1)
+        action_row.addWidget(self.btn_import, 0)
         flay.addLayout(action_row)
 
         self.root.addWidget(footer, 0)
@@ -1324,7 +1375,7 @@ class ImportMode(DataModeWidget):
                     if copied is None:  # invalid/corrupt zip already reported
                         continue  # skip this source, keep going with the rest
                 else:
-                    copied, skipped = self._import_folder(path, excluded)
+                    copied, skipped = self._import_folder(abort, path, excluded)
 
                 total_copied += copied
                 total_skipped += skipped
@@ -1469,7 +1520,7 @@ class ImportMode(DataModeWidget):
                 export_to[xfp] = exp
         return export_to
 
-    def _import_folder(self, path, excluded=None):
+    def _import_folder(self, abort, path, excluded=None):
         policy = self._policy_id()
         excluded = excluded or set()
 
@@ -1528,14 +1579,57 @@ class ImportMode(DataModeWidget):
                     exp = os.path.join(local_data, relative)
                 export_to[xfp] = exp
 
+        # A source directory can have an XML both at a parent level (e.g. a
+        # device-level XML) and again inside a nested subdirectory (e.g.
+        # each run's own XML) - export_to would then hold one entry per
+        # level. Copying the parent's entry already recurses into every
+        # subdirectory via _copytree, so keeping the nested entry too would
+        # copy its contents a second time, to a second (different)
+        # destination. Keep only the outermost directory of each such chain.
+        export_to = {k: export_to[k] for k in self._dedupe_nested_dirs(export_to.keys())}
+
         Log.i(f"{TAG} Import from {path} to {local_data}")
+        progress = {"done": 0, "total": max(len(all_files), 1), "last_pct": -1}
         copied = skipped = 0
         for src, dst in export_to.items():
+            if abort.is_set():
+                break
             rel = self._relative(src, path)
             if self._relpath_excluded(rel, excluded, Constants.slash):
                 continue  # source run was unchecked in the preview tree
-            copied, skipped = self._copytree(src, dst, policy, copied, skipped)
+            copied, skipped = self._copytree(
+                abort,
+                src,
+                dst,
+                policy,
+                copied,
+                skipped,
+                progress=progress,
+                src_label=archive_filename,
+            )
         return copied, skipped
+
+    @staticmethod
+    def _dedupe_nested_dirs(paths):
+        """Drops any path that is nested inside another path in `paths`.
+
+        Copying an outer directory already recurses into every
+        subdirectory (see `_copytree`), so a nested entry surviving
+        alongside its own ancestor would have its contents copied twice,
+        to two different destinations.
+
+        Args:
+            paths: Absolute directory paths (any iteration order).
+
+        Returns:
+            The subset of `paths` with no path nested inside another.
+        """
+        ordered = sorted(paths, key=lambda p: p.count(os.sep))
+        kept = []
+        for p in ordered:
+            if not any(p == anc or p.startswith(anc + os.sep) for anc in kept):
+                kept.append(p)
+        return kept
 
     @staticmethod
     def _relative(xfp, path):
@@ -1547,13 +1641,39 @@ class ImportMode(DataModeWidget):
                 relative = relative[:-1]
         return relative
 
-    def _copytree(self, src, dst, policy, copied=0, skipped=0, date_filter=0):
+    def _copytree(
+        self,
+        abort,
+        src,
+        dst,
+        policy,
+        copied=0,
+        skipped=0,
+        date_filter=0,
+        progress=None,
+        src_label="",
+    ):
         for item in os.listdir(src):
+            if abort.is_set():
+                break
             s = os.path.join(src, item)
             d = os.path.join(dst, item)
             if os.path.isdir(s):
-                copied, skipped = self._copytree(s, d, policy, copied, skipped, date_filter)
+                copied, skipped = self._copytree(
+                    abort, s, d, policy, copied, skipped, date_filter, progress, src_label
+                )
                 continue
+            if progress is not None:
+                progress["done"] += 1
+                pct = min(99, max(1, int(100 * progress["done"] / progress["total"])))
+                if pct != progress["last_pct"]:
+                    progress["last_pct"] = pct
+                    self.services.emit_progress(
+                        self.MODE_KEY,
+                        f"Importing {src_label}... please wait... Copying '{item}'",
+                        pct,
+                        "g",
+                    )
             allow = False
             if policy == POLICY_REPLACE:
                 allow = True

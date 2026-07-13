@@ -35,7 +35,25 @@ from typing import List, Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
+from QATCH.ui.components.icon_utils import tinted_icon, tinted_pixmap
 from QATCH.ui.components.qatch_line_edit import QATCHLineEdit
+from QATCH.ui.styles.theme_manager import (
+    ThemeManager,
+    accent_avatar_qss,
+    auth_card_qss,
+    auth_separator_qss,
+    auth_shadow_color,
+    card_title_qss,
+    close_button_qss,
+    dim_badge_qss,
+    dim_field_qss,
+    dim_text_qss,
+    error_label_qss,
+    gradient_button_qss,
+    info_wash_card_qss,
+    role_badge_qss,
+    tok_css,
+)
 
 # ---------------------------------------------------------------------------
 # Constants - kept in sync with create_user_widget.py
@@ -77,6 +95,9 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self._shake_anims: List[QtCore.QPropertyAnimation] = []
         # Controls the scrim alpha painted in paintEvent
         self._bg_alpha: int = 0
+        # (frame, field_lbl, placeholder_lbl, soon_badge) tuples from
+        # _make_future_field, re-styled in _apply_theme.
+        self._future_fields: list = []
 
         # Overlay must be transparent (scrim is drawn manually in paintEvent)
         self.setAutoFillBackground(False)
@@ -88,8 +109,63 @@ class ResetPasswordWidget(QtWidgets.QWidget):
             self.resize(parent.size())
 
         self._setup_ui()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
         self.raise_()
         self._animate_open()
+
+    # ------------------------------------------------------------------
+    # Theming
+    # ------------------------------------------------------------------
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        """Re-applies every themed style on this card to the active palette -
+        wired to ThemeManager.themeChanged so switching light/dark live
+        re-colors it instead of only picking up the new theme on next
+        construction."""
+        icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+        tok = ThemeManager.instance().tokens()
+
+        self.glass_frame.setStyleSheet(auth_card_qss("resetPwdView"))
+        self._shadow.setColor(auth_shadow_color())
+        self.btn_close.setStyleSheet(close_button_qss())
+
+        icon_color = QtGui.QColor(*tok["flat_text"])
+        icon_pm = QtGui.QPixmap(os.path.join(icons_dir, "reset-password.svg"))
+        if not icon_pm.isNull():
+            self._icon_lbl.setPixmap(
+                tinted_pixmap(os.path.join(icons_dir, "reset-password.svg"), icon_color, size=48)
+            )
+        self._lbl_title.setStyleSheet(card_title_qss())
+
+        self._info_card.setStyleSheet(info_wash_card_qss())
+        self._avatar.setStyleSheet(accent_avatar_qss())
+        self._name_lbl.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 11pt; "
+            "font-weight: 600; background: transparent; }"
+        )
+        self._role_badge.setStyleSheet(role_badge_qss(self._role))
+
+        for frame, field_lbl, placeholder_lbl, soon_badge in self._future_fields:
+            frame.setStyleSheet(dim_field_qss())
+            field_lbl.setStyleSheet(dim_text_qss())
+            placeholder_lbl.setStyleSheet(dim_text_qss(italic=True))
+            soon_badge.setStyleSheet(dim_badge_qss())
+
+        eye_color = QtGui.QColor(*tok["flat_text_muted"])
+        self._eye_on = tinted_icon(os.path.join(icons_dir, "eye-on.svg"), eye_color)
+        self._eye_off = tinted_icon(os.path.join(icons_dir, "eye-off.svg"), eye_color)
+        self._act_eye1.setIcon(self._eye_off if self._pwd1_visible else self._eye_on)
+        self._act_eye2.setIcon(self._eye_off if self._pwd2_visible else self._eye_on)
+
+        self.err_password.setStyleSheet(error_label_qss())
+
+        submit_icon_color = QtGui.QColor(*tok["flat_on_accent"])
+        self.btn_submit.setIcon(
+            tinted_icon(os.path.join(icons_dir, "right-arrow.svg"), submit_icon_color, size=20)
+        )
+        self.btn_submit.setStyleSheet(gradient_button_qss())
 
     # ------------------------------------------------------------------
     # UI Construction
@@ -105,19 +181,13 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.glass_frame = QtWidgets.QFrame(self)
         self.glass_frame.setObjectName("resetPwdView")
         self.glass_frame.setFixedWidth(_CARD_W)
-        self.glass_frame.setStyleSheet("""
-            QFrame#resetPwdView {
-                background: rgba(248, 251, 255, 215);
-                border: 1.5px solid rgba(255, 255, 255, 235);
-                border-radius: 18px;
-            }
-        """)
+        self.glass_frame.setStyleSheet(auth_card_qss("resetPwdView"))
 
-        shadow = QtWidgets.QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(44)
-        shadow.setColor(QtGui.QColor(15, 40, 70, 90))
-        shadow.setOffset(0, 10)
-        self.glass_frame.setGraphicsEffect(shadow)
+        self._shadow = QtWidgets.QGraphicsDropShadowEffect(self)
+        self._shadow.setBlurRadius(44)
+        self._shadow.setColor(auth_shadow_color())
+        self._shadow.setOffset(0, 10)
+        self.glass_frame.setGraphicsEffect(self._shadow)
 
         self.main_layout = QtWidgets.QVBoxLayout(self.glass_frame)
         self.main_layout.setContentsMargins(28, 14, 28, 28)
@@ -131,18 +201,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.btn_close = QtWidgets.QPushButton("x")
         self.btn_close.setFixedSize(28, 28)
         self.btn_close.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.btn_close.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: rgba(110, 120, 130, 190);
-                border: none;
-                font-size: 18px;
-                font-weight: bold;
-                padding-bottom: 1px;
-            }
-            QPushButton:hover   { color: rgba(210, 55, 55, 230); }
-            QPushButton:pressed { color: rgba(160, 30, 30, 255); }
-        """)
+        self.btn_close.setStyleSheet(close_button_qss())
         self.btn_close.clicked.connect(self._reject)
         close_row.addWidget(self.btn_close)
         self.main_layout.addLayout(close_row)
@@ -153,31 +212,23 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         icon_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         icon_pm = QtGui.QPixmap(os.path.join(icons_dir, "reset-password.svg"))
         if not icon_pm.isNull():
-            icon_pm = icon_pm.scaled(
-                48,
-                48,
-                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
+            icon_color = QtGui.QColor(*ThemeManager.instance().tokens()["flat_text"])
+            icon_lbl.setPixmap(
+                tinted_pixmap(os.path.join(icons_dir, "reset-password.svg"), icon_color, size=48)
             )
-            icon_lbl.setPixmap(icon_pm)
         else:
             icon_lbl.setText("🔑")
             icon_lbl.setStyleSheet("font-size: 30px; background: transparent;")
         icon_lbl.setFixedHeight(52)
+        self._icon_lbl = icon_lbl
         self.main_layout.addWidget(icon_lbl, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
         # ── Row 3: title ───────────────────────────────────────────────
         lbl_title = QtWidgets.QLabel("Reset Password")
         lbl_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         lbl_title.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        lbl_title.setStyleSheet("""
-            QLabel {
-                color: rgba(50, 55, 65, 220);
-                font-size: 14pt;
-                font-weight: 700;
-                background: transparent;
-            }
-        """)
+        lbl_title.setStyleSheet(card_title_qss())
+        self._lbl_title = lbl_title
         self.main_layout.addWidget(lbl_title)
         self.main_layout.addSpacing(12)
 
@@ -200,8 +251,9 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.main_layout.addSpacing(10)
 
         # ── Row 7 & 8: password inputs ─────────────────────────────────
-        self._eye_on = QtGui.QIcon(os.path.join(icons_dir, "eye-on.svg"))
-        self._eye_off = QtGui.QIcon(os.path.join(icons_dir, "eye-off.svg"))
+        eye_color = QtGui.QColor(*ThemeManager.instance().tokens()["flat_text_muted"])
+        self._eye_on = tinted_icon(os.path.join(icons_dir, "eye-on.svg"), eye_color)
+        self._eye_off = tinted_icon(os.path.join(icons_dir, "eye-off.svg"), eye_color)
         self._pwd1_visible = False
         self._pwd2_visible = False
 
@@ -237,44 +289,15 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         btn_row.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         self.btn_submit = QtWidgets.QPushButton("")
-        self.btn_submit.setIcon(QtGui.QIcon(os.path.join(icons_dir, "right-arrow.svg")))
+        submit_icon_color = QtGui.QColor(*ThemeManager.instance().tokens()["flat_on_accent"])
+        self.btn_submit.setIcon(
+            tinted_icon(os.path.join(icons_dir, "right-arrow.svg"), submit_icon_color, size=20)
+        )
         self.btn_submit.setIconSize(QtCore.QSize(20, 20))
         self.btn_submit.setFixedSize(40, 40)
         self.btn_submit.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_submit.setToolTip("Confirm password reset")
-        self.btn_submit.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(45, 165, 250, 210),
-                    stop:1 rgba(15, 125, 210, 190)
-                );
-                border-top:    1px solid rgba(255, 255, 255, 100);
-                border-left:   1px solid rgba(255, 255, 255, 50);
-                border-right:  1px solid rgba(0, 80, 150, 50);
-                border-bottom: 1px solid rgba(0, 80, 150, 80);
-                border-radius: 20px;
-                color: rgba(255, 255, 255, 255);
-                font-size: 17px;
-                font-weight: bold;
-                padding-left: 2px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(65, 185, 255, 240),
-                    stop:1 rgba(25, 145, 230, 220)
-                );
-                border-top: 1px solid rgba(255, 255, 255, 140);
-            }
-            QPushButton:pressed {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(15, 115, 200, 220),
-                    stop:1 rgba(5, 95, 160, 200)
-                );
-            }
-        """)
+        self.btn_submit.setStyleSheet(gradient_button_qss())
         self.btn_submit.clicked.connect(self._validate_and_accept)
 
         btn_row.addWidget(self.btn_submit)
@@ -289,13 +312,8 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         """Returns a mini profile card showing the target user's identity."""
         card = QtWidgets.QFrame()
         card.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        card.setStyleSheet("""
-            QFrame {
-                background: rgba(255, 255, 255, 55);
-                border: 1px solid rgba(185, 218, 248, 100);
-                border-radius: 12px;
-            }
-        """)
+        card.setStyleSheet(info_wash_card_qss())
+        self._info_card = card
 
         lay = QtWidgets.QHBoxLayout(card)
         lay.setContentsMargins(14, 10, 14, 10)
@@ -306,16 +324,8 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         avatar.setFixedSize(46, 46)
         avatar.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         avatar.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        avatar.setStyleSheet("""
-            QLabel {
-                background: rgba(45, 165, 250, 100);
-                color: rgba(10, 70, 150, 240);
-                border: 1.5px solid rgba(45, 165, 250, 180);
-                border-radius: 23px;
-                font-weight: 700;
-                font-size: 13pt;
-            }
-        """)
+        avatar.setStyleSheet(accent_avatar_qss())
+        self._avatar = avatar
 
         # ── Name + role column ────────────────────────────────────────
         col = QtWidgets.QVBoxLayout()
@@ -324,17 +334,15 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
         name_lbl = QtWidgets.QLabel(self._name)
         name_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        name_lbl.setStyleSheet("""
-            QLabel {
-                color: rgba(35, 40, 55, 225);
-                font-size: 11pt;
-                font-weight: 600;
-                background: transparent;
-            }
-        """)
+        name_lbl.setStyleSheet(
+            f"QLabel {{ color: {tok_css(ThemeManager.instance().tokens()['flat_text'])}; "
+            "font-size: 11pt; font-weight: 600; background: transparent; }"
+        )
+        self._name_lbl = name_lbl
 
+        self._role_badge = self._make_role_badge(self._role)
         col.addWidget(name_lbl)
-        col.addWidget(self._make_role_badge(self._role))
+        col.addWidget(self._role_badge)
 
         lay.addWidget(avatar)
         lay.addLayout(col)
@@ -344,33 +352,9 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
     def _make_role_badge(self, role_name: str) -> QtWidgets.QLabel:
         """Returns a colour-coded role pill label matching the table's role badges."""
-        role_upper = str(role_name).upper()
-        if "ADMIN" in role_upper:
-            bg, border, color = "rgba(220,53,69,0.15)", "rgba(220,53,69,0.40)", "#C82333"
-        elif "AUDIT" in role_upper or "MANAGER" in role_upper:
-            bg, border, color = "rgba(255,193,7,0.18)", "rgba(255,193,7,0.45)", "#B38600"
-        elif "OPERATE" in role_upper:
-            bg, border, color = "rgba(40,167,69,0.15)", "rgba(40,167,69,0.40)", "#1E7E34"
-        elif "ANALYZE" in role_upper:
-            bg, border, color = "rgba(111,66,193,0.15)", "rgba(111,66,193,0.40)", "#6F42C1"
-        elif "CAPTURE" in role_upper:
-            bg, border, color = "rgba(255,193,7,0.15)", "rgba(255,193,7,0.40)", "#B38600"
-        else:
-            bg, border, color = "rgba(10,163,230,0.15)", "rgba(10,163,230,0.40)", "#0AA3E6"
-
         badge = QtWidgets.QLabel(role_name)
         badge.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        badge.setStyleSheet(f"""
-            QLabel {{
-                background: {bg};
-                border: 1px solid {border};
-                color: {color};
-                border-radius: 9px;
-                padding: 2px 10px;
-                font-weight: bold;
-                font-size: 9pt;
-            }}
-        """)
+        badge.setStyleSheet(role_badge_qss(role_name))
         return badge
 
     def _make_future_field(self, label_text: str, placeholder: str) -> QtWidgets.QFrame:
@@ -382,13 +366,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         frame = QtWidgets.QFrame()
         frame.setFixedHeight(_INPUT_H)
         frame.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        frame.setStyleSheet("""
-            QFrame {
-                background: rgba(245, 247, 252, 30);
-                border: 1px solid rgba(200, 210, 222, 60);
-                border-radius: 17px;
-            }
-        """)
+        frame.setStyleSheet(dim_field_qss())
 
         lay = QtWidgets.QHBoxLayout(frame)
         lay.setContentsMargins(15, 0, 10, 0)
@@ -396,43 +374,22 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
         field_lbl = QtWidgets.QLabel(label_text)
         field_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        field_lbl.setStyleSheet("""
-            QLabel {
-                color: rgba(140, 152, 168, 140);
-                font-size: 10pt;
-                background: transparent;
-            }
-        """)
+        field_lbl.setStyleSheet(dim_text_qss())
 
         placeholder_lbl = QtWidgets.QLabel(placeholder)
         placeholder_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        placeholder_lbl.setStyleSheet("""
-            QLabel {
-                color: rgba(160, 170, 185, 100);
-                font-size: 10pt;
-                font-style: italic;
-                background: transparent;
-            }
-        """)
+        placeholder_lbl.setStyleSheet(dim_text_qss(italic=True))
 
         soon_badge = QtWidgets.QLabel("coming soon")
         soon_badge.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        soon_badge.setStyleSheet("""
-            QLabel {
-                color: rgba(150, 160, 175, 160);
-                background: rgba(185, 195, 210, 40);
-                border: 1px solid rgba(185, 195, 210, 75);
-                border-radius: 9px;
-                padding: 1px 8px;
-                font-size: 8pt;
-            }
-        """)
+        soon_badge.setStyleSheet(dim_badge_qss())
 
         lay.addWidget(field_lbl)
         lay.addWidget(placeholder_lbl)
         lay.addStretch()
         lay.addWidget(soon_badge)
 
+        self._future_fields.append((frame, field_lbl, placeholder_lbl, soon_badge))
         return frame
 
     @staticmethod
@@ -441,7 +398,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         sep = QtWidgets.QWidget()
         sep.setFixedHeight(1)
         sep.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        sep.setStyleSheet("QWidget { background: rgba(185, 218, 248, 75); }")
+        sep.setStyleSheet(auth_separator_qss())
         return sep
 
     @staticmethod
@@ -450,15 +407,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         lbl = QtWidgets.QLabel("")
         lbl.setWordWrap(True)
         lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        lbl.setStyleSheet("""
-            QLabel {
-                color: rgba(210, 55, 55, 220);
-                font-size: 8.5pt;
-                font-weight: 600;
-                background: transparent;
-                padding-left: 6px;
-            }
-        """)
+        lbl.setStyleSheet(error_label_qss())
         lbl.setVisible(False)
         return lbl
 

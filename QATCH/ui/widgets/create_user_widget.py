@@ -26,6 +26,17 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.core.constants import UserRoles
 from QATCH.ui.components import AnimatedComboBox, QATCHLineEdit
+from QATCH.ui.components.icon_utils import tinted_icon, tinted_pixmap
+from QATCH.ui.styles.theme_manager import (
+    ThemeManager,
+    auth_card_qss,
+    auth_shadow_color,
+    card_title_qss,
+    close_button_qss,
+    error_label_qss,
+    glass_combo_qss,
+    gradient_button_qss,
+)
 
 _INPUT_H: int = 34
 
@@ -86,8 +97,50 @@ class CreateUserWidget(QtWidgets.QWidget):
             self.resize(parent.size())
 
         self._setup_ui()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
         self.raise_()
         self._animate_open()
+
+    # ------------------------------------------------------------------
+    # Theming
+    # ------------------------------------------------------------------
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        """Re-applies every themed style on this card to the active palette -
+        wired to ThemeManager.themeChanged so switching light/dark live
+        re-colors it instead of only picking up the new theme on next
+        construction."""
+        icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+        tok = ThemeManager.instance().tokens()
+
+        self.glass_frame.setStyleSheet(auth_card_qss("createUserView"))
+        self._shadow.setColor(auth_shadow_color())
+        self.btn_close.setStyleSheet(close_button_qss())
+
+        icon_color = QtGui.QColor(*tok["flat_text"])
+        self._icon_lbl.setPixmap(
+            tinted_pixmap(os.path.join(icons_dir, "user-circle.svg"), icon_color, size=48)
+        )
+        self._lbl_title.setStyleSheet(card_title_qss())
+
+        eye_color = QtGui.QColor(*tok["flat_text_muted"])
+        self._eye_on = tinted_icon(os.path.join(icons_dir, "eye-on.svg"), eye_color)
+        self._eye_off = tinted_icon(os.path.join(icons_dir, "eye-off.svg"), eye_color)
+        self._act_eye1.setIcon(self._eye_off if self._pwd1_visible else self._eye_on)
+        self._act_eye2.setIcon(self._eye_off if self._pwd2_visible else self._eye_on)
+
+        self.cmb_role.setStyleSheet(glass_combo_qss(error=False))
+
+        for err_lbl in (self.err_name, self.err_email, self.err_password):
+            err_lbl.setStyleSheet(error_label_qss())
+
+        submit_icon_color = QtGui.QColor(*tok["flat_on_accent"])
+        self.btn_create.setIcon(
+            tinted_icon(os.path.join(icons_dir, "right-arrow.svg"), submit_icon_color, size=20)
+        )
+        self.btn_create.setStyleSheet(gradient_button_qss())
 
     def _setup_ui(self) -> None:
         """Builds and arranges the UI components of the widget."""
@@ -99,19 +152,13 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.glass_frame = QtWidgets.QFrame(self)
         self.glass_frame.setObjectName("createUserView")
         self.glass_frame.setFixedWidth(440)
-        self.glass_frame.setStyleSheet("""
-            QFrame#createUserView {
-                background: rgba(248, 251, 255, 215);
-                border: 1.5px solid rgba(255, 255, 255, 235);
-                border-radius: 18px;
-            }
-        """)
+        self.glass_frame.setStyleSheet(auth_card_qss("createUserView"))
 
-        shadow = QtWidgets.QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(44)
-        shadow.setColor(QtGui.QColor(15, 40, 70, 90))
-        shadow.setOffset(0, 10)
-        self.glass_frame.setGraphicsEffect(shadow)
+        self._shadow = QtWidgets.QGraphicsDropShadowEffect(self)
+        self._shadow.setBlurRadius(44)
+        self._shadow.setColor(auth_shadow_color())
+        self._shadow.setOffset(0, 10)
+        self.glass_frame.setGraphicsEffect(self._shadow)
 
         self.main_layout = QtWidgets.QVBoxLayout(self.glass_frame)
         self.main_layout.setContentsMargins(28, 14, 28, 28)
@@ -127,18 +174,7 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.btn_close = QtWidgets.QPushButton("x")
         self.btn_close.setFixedSize(28, 28)
         self.btn_close.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.btn_close.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: rgba(110, 120, 130, 190);
-                border: none;
-                font-size: 18px;
-                font-weight: bold;
-                padding-bottom: 1px;
-            }
-            QPushButton:hover { color: rgba(210, 55, 55, 230); }
-            QPushButton:pressed { color: rgba(160, 30, 30, 255); }
-        """)
+        self.btn_close.setStyleSheet(close_button_qss())
         self.btn_close.clicked.connect(self._reject)
         close_row.addWidget(self.btn_close)
         self.main_layout.addLayout(close_row)
@@ -148,35 +184,25 @@ class CreateUserWidget(QtWidgets.QWidget):
         icon_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         icon_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         icon_path = os.path.join(icons_dir, "user-circle.svg")
-        icon_pm = QtGui.QPixmap(icon_path)
-        icon_pm = icon_pm.scaled(
-            48,
-            48,
-            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-            QtCore.Qt.TransformationMode.SmoothTransformation,
-        )
-        icon_lbl.setPixmap(icon_pm)
+        icon_color = QtGui.QColor(*ThemeManager.instance().tokens()["flat_text"])
+        icon_lbl.setPixmap(tinted_pixmap(icon_path, icon_color, size=48))
         icon_lbl.setFixedHeight(52)
+        self._icon_lbl = icon_lbl
         self.main_layout.addWidget(icon_lbl, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
         # Title
         lbl_title = QtWidgets.QLabel("Create User")
         lbl_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         lbl_title.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        lbl_title.setStyleSheet("""
-            QLabel {
-                color: rgba(50, 55, 65, 220);
-                font-size: 14pt;
-                font-weight: 700;
-                background: transparent;
-            }
-        """)
+        lbl_title.setStyleSheet(card_title_qss())
+        self._lbl_title = lbl_title
         self.main_layout.addWidget(lbl_title)
         self.main_layout.addSpacing(6)
 
         # Hide / show icons
-        self._eye_on = QtGui.QIcon(os.path.join(icons_dir, "eye-on.svg"))
-        self._eye_off = QtGui.QIcon(os.path.join(icons_dir, "eye-off.svg"))
+        eye_color = QtGui.QColor(*ThemeManager.instance().tokens()["flat_text_muted"])
+        self._eye_on = tinted_icon(os.path.join(icons_dir, "eye-on.svg"), eye_color)
+        self._eye_off = tinted_icon(os.path.join(icons_dir, "eye-off.svg"), eye_color)
         self._pwd1_visible = False
         self._pwd2_visible = False
 
@@ -218,7 +244,7 @@ class CreateUserWidget(QtWidgets.QWidget):
             label = r + " (Capture & Analyze)" if r == UserRoles.OPERATE.name else r
             self.cmb_role.addItem(label, r)
 
-        self.cmb_role.setStyleSheet(self._combo_style(error=False))
+        self.cmb_role.setStyleSheet(glass_combo_qss(error=False))
         self.main_layout.addWidget(self.cmb_role)
 
         # Username
@@ -273,44 +299,15 @@ class CreateUserWidget(QtWidgets.QWidget):
         btn_layout = QtWidgets.QHBoxLayout()
         btn_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.btn_create = QtWidgets.QPushButton("")
-        self.btn_create.setIcon(QtGui.QIcon(os.path.join(icons_dir, "right-arrow.svg")))
+        submit_icon_color = QtGui.QColor(*ThemeManager.instance().tokens()["flat_on_accent"])
+        self.btn_create.setIcon(
+            tinted_icon(os.path.join(icons_dir, "right-arrow.svg"), submit_icon_color, size=20)
+        )
         self.btn_create.setIconSize(QtCore.QSize(20, 20))
         self.btn_create.setFixedSize(40, 40)
         self.btn_create.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_create.setToolTip("Create User")
-        self.btn_create.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(45, 165, 250, 210),
-                    stop:1 rgba(15, 125, 210, 190)
-                );
-                border-top:    1px solid rgba(255, 255, 255, 100);
-                border-left:   1px solid rgba(255, 255, 255, 50);
-                border-right:  1px solid rgba(0, 80, 150, 50);
-                border-bottom: 1px solid rgba(0, 80, 150, 80);
-                border-radius: 20px;
-                color: rgba(255, 255, 255, 255);
-                font-size: 17px;
-                font-weight: bold;
-                padding-left: 2px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(65, 185, 255, 240),
-                    stop:1 rgba(25, 145, 230, 220)
-                );
-                border-top: 1px solid rgba(255, 255, 255, 140);
-            }
-            QPushButton:pressed {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(15, 115, 200, 220),
-                    stop:1 rgba(5, 95, 160, 200)
-                );
-            }
-        """)
+        self.btn_create.setStyleSheet(gradient_button_qss())
         self.btn_create.clicked.connect(self._validate_and_accept)
         btn_layout.addWidget(self.btn_create)
         self.main_layout.addLayout(btn_layout)
@@ -337,96 +334,9 @@ class CreateUserWidget(QtWidgets.QWidget):
         lbl = QtWidgets.QLabel("")
         lbl.setWordWrap(True)
         lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        lbl.setStyleSheet("""
-            QLabel {
-                color: rgba(210, 55, 55, 220);
-                font-size: 8.5pt;
-                font-weight: 600;
-                background: transparent;
-                padding-left: 6px;
-            }
-        """)
+        lbl.setStyleSheet(error_label_qss())
         lbl.setVisible(False)
         return lbl
-
-    @staticmethod
-    def _combo_style(*, error: bool = False) -> str:
-        """Generates the QSS stylesheet for the role combobox.
-
-        Matches the `GlassLineEdit` visual style, with an optional error state.
-
-        Args:
-            error (bool, optional): Whether to generate the error (red) style.
-                Defaults to False.
-
-        Returns:
-            str: The stylesheet string.
-        """
-        if error:
-            bg = "rgba(255, 220, 220, 80)"
-            border = "1.5px solid rgba(210, 55, 55, 180)"
-            color = "rgba(210, 55, 55, 230)"
-        else:
-            bg = "rgba(255, 255, 255, 72)"
-            border = "1px solid rgba(255, 255, 255, 130)"
-            color = "rgba(38, 48, 58, 230)"
-
-        return f"""
-            QComboBox {{
-                background: {bg};
-                border: {border};
-                border-radius: {_INPUT_H // 2}px;
-                padding: 0px 14px;
-                color: {color};
-                font-size: 10pt;
-                min-height: {_INPUT_H}px;
-            }}
-            QComboBox:hover {{
-                background: rgba(255, 255, 255, 110);
-                border: 1px solid rgba(255, 255, 255, 200);
-            }}
-            QComboBox:on {{
-                background: rgba(255, 255, 255, 130);
-                border: 1.5px solid rgba(185, 218, 248, 150);
-            }}
-            QComboBox::drop-down {{
-                subcontrol-origin:   padding;
-                subcontrol-position: right center;
-                width: 32px;
-                border: none;
-            }}
-            QComboBox::down-arrow {{
-                image: none; /* Handled dynamically by AnimatedComboBox */
-            }}           
-            /* --- Dropdown Window --- */
-            QComboBox QAbstractItemView {{
-                background:               rgba(245, 249, 254, 250);
-                border:                   1px solid rgba(185, 218, 248, 160);
-                border-radius:            10px;
-                selection-background-color: transparent;
-                selection-color:          rgba(38, 48, 58, 230);
-                color:                    rgba(38, 48, 58, 230);
-                font-size:                10pt;
-                padding:                  4px; /* Uniform padding prevents items from touching corners */
-                outline:                  none;
-            }}
-                      QComboBox QAbstractItemView::viewport {{
-                background: transparent;
-                border-radius: 10px;
-            }}           
-            /* --- Shrunken Menu Items --- */
-            QComboBox QAbstractItemView::item {{
-                padding:       4px 10px; /* Reduced from 7px 14px */
-                min-height:    20px;     /* Reduced from 28px */
-                border-radius: 5px;      /* Rounds the highlight so it doesn't bleed */
-            }}           
-            QComboBox QAbstractItemView::item:hover {{
-                background: rgba(10, 163, 230, 45);
-            }}          
-            QComboBox QAbstractItemView::item:selected {{
-                background: rgba(10, 163, 230, 80);
-            }}
-        """
 
     def _clear_field_errors(
         self,

@@ -519,7 +519,7 @@ class AnimatedDoubleSpinBox(_OdometerMixin, QtWidgets.QDoubleSpinBox):
 
     Visual + motion identity:
       * Flat rounded body (radius 7px) with hover / focus-ring / error states,
-        painted the same way as GlassLineEdit/AnimatedComboBox.
+        painted the same way as QATCHLineEdit/AnimatedComboBox.
       * Custom stacked up/down chevrons (native step buttons suppressed) that
         recolor (idle -> accent) on hover, flash on press, and auto-repeat on
         hold.

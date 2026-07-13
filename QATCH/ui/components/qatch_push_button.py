@@ -1,5 +1,5 @@
 """
-glass_push_button.py
+qatch_push_button.py
 
 A QPushButton subclass matching the app's flat control system (see
 QATCH.ui.components.flat_paint). Also the single home for what used to be
@@ -32,12 +32,12 @@ is not carried forward; an unrecognized variant name falls back to
 
 Usage
 -----
-    btn = GlassPushButton(" Add", variant="primary")
+    btn = QATCHPushButton(" Add", variant="primary")
     btn.setIcon(QtGui.QIcon(path))
     btn.setIconSize(QtCore.QSize(18, 18))
     btn.setFixedHeight(34)
 
-    btn_link = GlassPushButton("Reset", variant="ghost")   # was BorderlessActionButton
+    btn_link = QATCHPushButton("Reset", variant="ghost")   # was BorderlessActionButton
 
     # Switch state at runtime (e.g. delete -> confirmation mode):
     btn_del.set_variant("destructive")
