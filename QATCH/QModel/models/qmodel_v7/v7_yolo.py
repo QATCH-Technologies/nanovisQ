@@ -572,7 +572,6 @@ class QModelV7:
                     "detectors": {
                         "init": "path/to/init.pt",
                         "ch1": "path/to/ch1.pt",
-                        "poi5_fine": "path/to/poi5_fine.pt", # Deprecated
                         # ... etc
                     }
                 }
@@ -1321,19 +1320,6 @@ class QModelV7:
                 harvest_stage(det_init, harvest_df, {0: 1, 1: 2})
                 process_detection(res, 1)
                 process_detection(res, 2)
-
-            if num_channels >= 3 and 5 in final_results:
-                det_fine = self._load_detector_by_name("poi5_fine")
-                if det_fine:
-                    if progress_signal:
-                        progress_signal.emit(90, "Applying Fine Adjustment...")
-                    anchor_time = final_results[5]["time"]
-                    fine_slice = master_df[master_df[col_time] >= anchor_time]
-                    res_fine = det_fine.predict_single(fine_slice, target_class_map={0: 6})
-                    harvest_stage(det_fine, fine_slice, {0: 6})
-
-                    if 6 in res_fine:
-                        process_detection(res_fine, 6)
 
             if 3 in final_results:
                 del final_results[3]
