@@ -1,4 +1,5 @@
-from typing import Optional, Dict
+from typing import Dict, Optional
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.styles.theme_manager import ThemeManager

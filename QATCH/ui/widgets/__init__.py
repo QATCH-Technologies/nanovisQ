@@ -22,11 +22,12 @@ from .run_info_widget import RunInfoWindow
 from .saved_state_dot import SavedStateDot
 from .sliding_panel import SlidingPanel
 from .splash_screen_widget import QatchSplashScreen
+from .table_view_widget import TableView
 from .toggle_list_widget import ToggleListWidget
+from .update_status_badge import UpdateStatusIcon
 from .user_preferences_widget import UserPreferencesWidget
 from .user_profiles_manager_widget import UserProfilesManagerWidget
 from .well_plate_widget import WellPlate
-from .update_status_badge import UpdateStatusIcon
 
 __all__ = [
     "AdvancedMainWidget",
@@ -50,6 +51,7 @@ __all__ = [
     "RunInfoWindow",
     "FloatingMessageBadgeWidget",
     "QatchSplashScreen",
+    "TableView",
     "ToggleListWidget",
     "UserPreferencesWidget",
     "UserProfilesManagerWidget",

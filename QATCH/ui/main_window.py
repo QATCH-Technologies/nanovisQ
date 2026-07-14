@@ -47,14 +47,8 @@ from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, OperationType, UpdateEngines, UserRoles
 from QATCH.core.worker import Worker
-from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.Device import serial  # real device hardware
 from QATCH.processors.drying_detector import DryingDetection
-from QATCH.processors.InterpTemps import (
-    ActionType,
-    InterpTempsProcess,
-    QueueCommandFormat,
-)
 from QATCH.processors.updater import (
     UpdaterTask_Dbx,
     UpdaterTask_Git,
@@ -68,6 +62,7 @@ from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.ui.windows import (
+    AnalyzeWindow,
     ControlsWindow,
     InfoWindow,
     LoggerWindow,
@@ -487,7 +482,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plots_window = PlotsWindow()
         self.info_window = InfoWindow()
         self.login_window = LoginWindow(self)
-        self.analyze_process = AnalyzeProcess(self)
+        self.analyze_process = AnalyzeWindow(self)
 
         # Configures the database file for VisQ.AI (if missing or out-of-date).
         # NOTE: This must be done before instantiating the `VisQAIWindow` class
@@ -4154,7 +4149,11 @@ class MainWindow(QtWidgets.QMainWindow):
             if pi is None:
                 continue
             self._apply_grid_item(
-                pi.getViewBox(), key, visible, x_axis=pi.getAxis("bottom"), y_axis=pi.getAxis("left")
+                pi.getViewBox(),
+                key,
+                visible,
+                x_axis=pi.getAxis("bottom"),
+                y_axis=pi.getAxis("left"),
             )
 
     def _reposition_rf_diss_titles(self, pi) -> None:
