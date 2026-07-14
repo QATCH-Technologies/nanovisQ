@@ -242,7 +242,7 @@ class ControlsWindow(BaseWindow):
             "Tweed v{} ({})".format(
                 ".".join(str(model_data_version).split(".")[:2]), model_data_release
             ),
-            lambda: self.parent.analyze_process.set_new_prediction_model(
+            lambda: self.parent.analyze_window.ui.set_new_prediction_model(
                 Constants.list_predict_models[0]
             ),
         )
@@ -250,7 +250,7 @@ class ControlsWindow(BaseWindow):
 
         self.qmodel_indus_version = self.menubar[5].addAction(
             "Indus v{} ({})".format(".".join(str(qmodel4_version).split(".")[:2]), qmodel4_release),
-            lambda: self.parent.analyze_process.set_new_prediction_model(
+            lambda: self.parent.analyze_window.ui.set_new_prediction_model(
                 Constants.list_predict_models[1]
             ),
         )
@@ -258,7 +258,7 @@ class ControlsWindow(BaseWindow):
 
         self.qmodel_volta_version = self.menubar[5].addAction(
             "Volta v{} ({})".format(".".join(str(qmodel6_version).split(".")[:2]), qmodel6_release),
-            lambda: self.parent.analyze_process.set_new_prediction_model(
+            lambda: self.parent.analyze_window.ui.set_new_prediction_model(
                 Constants.list_predict_models[2]
             ),
         )
@@ -266,7 +266,7 @@ class ControlsWindow(BaseWindow):
 
         self.qmodel_onyx_version = self.menubar[5].addAction(
             "Onyx v{} ({})".format(".".join(str(qmodel7_version).split(".")[:2]), qmodel7_release),
-            lambda: self.parent.analyze_process.set_new_prediction_model(
+            lambda: self.parent.analyze_window.ui.set_new_prediction_model(
                 Constants.list_predict_models[3]
             ),
         )
@@ -593,7 +593,7 @@ class ControlsWindow(BaseWindow):
                 self.userrole = UserRoles(role)
                 self.signinout.setText("&Sign Out")
                 self.ui.tool_User.setText(name)
-                self.parent.analyze_process.tool_User.setText(name)
+                self.parent.analyze_window.ui.tool_User.setText(name)
 
                 # Update management action context
                 if self.userrole != UserRoles.ADMIN:
@@ -610,7 +610,7 @@ class ControlsWindow(BaseWindow):
                 self.signinout.setText("&Sign In")
                 self.manage.setText("&Manage Users...")
                 self.ui.tool_User.setText("Anonymous")
-                self.parent.analyze_process.tool_User.setText("Anonymous")
+                self.parent.analyze_window.ui.tool_User.setText("Anonymous")
             else:
                 Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
 
@@ -654,7 +654,7 @@ class ControlsWindow(BaseWindow):
             self.signinout.setText("&Sign In")
             self.manage.setText("&Manage Users...")
             self.ui.tool_User.setText("Anonymous")
-            self.parent.analyze_process.tool_User.setText("Anonymous")
+            self.parent.analyze_window.ui.tool_User.setText("Anonymous")
             self.parent.mode_window.ui._set_no_user_mode(None)
 
         # Update UI if user information changed
@@ -665,7 +665,7 @@ class ControlsWindow(BaseWindow):
             self.signinout.setText("&Sign Out")
             self.manage.setText("&Manage Users...")
             self.ui.tool_User.setText(admin)
-            self.parent.analyze_process.tool_User.setText(admin)
+            self.parent.analyze_window.ui.tool_User.setText(admin)
 
         # Display the management overlay
         if allow:

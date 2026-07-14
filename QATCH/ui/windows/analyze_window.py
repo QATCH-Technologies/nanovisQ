@@ -12,3 +12,4 @@ class AnalyzeWindow(BaseWindow):
         super().__init__()
         self.ui = UIAnalyze()
         self.ui.setup_ui(self, parent)
+        self.setCentralWidget(self.ui)

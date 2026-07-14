@@ -1,14 +1,20 @@
+import hashlib
 import os
 import sys
+from datetime import date, datetime
+from time import localtime, monotonic, strftime
 from xml.dom import minidom
 
 import numpy as np
+import pyzipper
 from numpy import loadtxt
 from PyQt5 import QtCore, QtWidgets
 from scipy.interpolate import interp1d
 
 from QATCH.common.fileStorage import secure_open
 from QATCH.common.logger import Logger as Log
+from QATCH.common.userProfiles import UserProfiles
+from QATCH.core.constants import Constants
 from QATCH.ui.widgets.table_view_widget import TableView
 
 TAG = "[AnalyzeWorker]"
@@ -204,7 +210,7 @@ class AnalyzeWorker(QtCore.QObject):
                     xml = doc.documentElement
 
                     # create new batch_params element
-                    recorded_at = dt.datetime.now().isoformat()
+                    recorded_at = datetime.now().isoformat()
                     batch_params = doc.createElement("batch_params")
                     batch_params.setAttribute("recorded", recorded_at)
                     xml.appendChild(batch_params)
@@ -3022,7 +3028,7 @@ class AnalyzeWorker(QtCore.QObject):
                 encryption=pyzipper.WZ_AES,
             ) as zf:
                 # Add a protected file to the zip archive
-                friendly_name = f"{folder} ({dt.date.today()})"
+                friendly_name = f"{folder} ({date.today()})"
                 zf.comment = friendly_name.encode()  # run name
                 if (
                     False and UserProfiles.count() > 0 and enabled == False
@@ -3521,3 +3527,28 @@ class AnalyzeWorker(QtCore.QObject):
         except Exception as e:
             Log.e("ERROR:", e)
         return np.round(output, 2)
+
+class ResizeFilter(QtCore.QObject):
+    def __init__(self, worker, parent=None):
+        super().__init__(parent)
+        self.worker = worker
+        self._draw_pending = False
+        self._draw_delay = 250  # ms
+
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QEvent.Type.Resize:
+            self._resize_time = monotonic()
+            if not self._draw_pending:
+                self._draw_pending = True
+                QtCore.QTimer.singleShot(self._draw_delay, self._draw_idle)
+        return super().eventFilter(obj, event)
+
+    def _draw_idle(self):
+        # convert secs -> ms: compare ms to ms
+        if (monotonic() - self._resize_time) * 1000 < self._draw_delay:
+            # resize event still occurring, try again later
+            QtCore.QTimer.singleShot(self._draw_delay, self._draw_idle)
+        else:
+            # resize event finished, hysteresis elapsed: redraw!
+            self.worker.place_text_avoiding_data()
+            self._draw_pending = False

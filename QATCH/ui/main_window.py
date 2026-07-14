@@ -482,7 +482,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plots_window = PlotsWindow()
         self.info_window = InfoWindow()
         self.login_window = LoginWindow(self)
-        self.analyze_process = AnalyzeWindow(self)
+        self.analyze_window = AnalyzeWindow(self)
 
         # Configures the database file for VisQ.AI (if missing or out-of-date).
         # NOTE: This must be done before instantiating the `VisQAIWindow` class
@@ -735,11 +735,11 @@ class MainWindow(QtWidgets.QMainWindow):
             for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
                 self.data_devices = dirs  # show all available devices in logged data
                 break
-            self.analyze_process.scan_for_most_recent_run = True
-            self.analyze_process.hide()
-            self.analyze_process.reset()
-            self.analyze_process.showMaximized()
-            self.analyze_process.check_user_info()
+            self.analyze_window.ui.scan_for_most_recent_run = True
+            self.analyze_window.hide()
+            self.analyze_window.ui.reset()
+            self.analyze_window.showMaximized()
+            self.analyze_window.ui.check_user_info()
             if len(self.data_devices) > 0:
                 pass
             else:
@@ -838,7 +838,7 @@ class MainWindow(QtWidgets.QMainWindow):
             xml_path = data_path[0:-3] + "xml"
             # set always, even if not found
             Log.d(TAG, f"XML PATH= {xml_path}, DATA PATH = {data_path}")
-            self.analyze_process.setXmlPath(xml_path)
+            self.analyze_window.ui.setXmlPath(xml_path)
             if os.path.exists(xml_path):
                 doc = minidom.parse(xml_path)
                 metrics = doc.getElementsByTagName("metric")
@@ -860,11 +860,11 @@ class MainWindow(QtWidgets.QMainWindow):
             captured = os.path.getctime(data_path)
             captured = datetime.fromtimestamp(captured, timezone.utc)
             captured = captured.strftime("%Y-%m-%d")  # %H:%M:%S")
-        self.analyze_process.text_Created.setText("Loaded: {} ({})".format(data_folder, captured))
-        if hasattr(self.analyze_process, "_batched_runs") and self.analyze_process._batched_runs:
-            self.analyze_process._current_run = self.analyze_process.text_Created.text()
+        self.analyze_window.ui.text_Created.setText("Loaded: {} ({})".format(data_folder, captured))
+        if hasattr(self.analyze_window.ui, "_batched_runs") and self.analyze_window.ui._batched_runs:
+            self.analyze_window.ui._current_run = self.analyze_window.ui.text_Created.text()
 
-        self.analyze_process.analyze_data(data_path)
+        self.analyze_window.ui.analyze_data(data_path)
 
     def refresh_data_files(self):
         Log.i(TAG, "Refreshing data files...")

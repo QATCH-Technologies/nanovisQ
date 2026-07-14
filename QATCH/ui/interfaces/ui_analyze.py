@@ -51,6 +51,8 @@ from QATCH.ui.dialogs.signature_dialog import (
 )
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 from QATCH.ui.widgets.table_view_widget import TableView
+from QATCH.ui.workers.analyze_worker import AnalyzeWorker
+from QATCH.ui.workers.run_scan_worker import RunScanWorker
 
 if TYPE_CHECKING:
     from QATCH.ui.main_window import MainWindow
@@ -92,7 +94,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
     def setup_ui(self, analyze_window: "AnalyzeWindow", parent: "MainWindow"):
         super(UIAnalyze, self).__init__(None)
-        self.parent = parent
+        self.parent: "MainWindow" = parent
         assert (
             self.parent is not None
         ), "AnalyzeProcess requires a valid MainWindow parent for proper operation."
@@ -1322,7 +1324,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 self.parent.controls_window.userrole = UserRoles(new_userrole)
                 self.parent.controls_window.signinout.setText("&Sign Out")
                 self.parent.controls_window.ui.tool_User.setText(new_username)
-                self.parent.analyze_process.tool_User.setText(new_username)
+                self.parent.analyze_window.ui.tool_User.setText(new_username)
                 if self.parent.controls_window.userrole != UserRoles.ADMIN:
                     self.parent.controls_window.manage.setText("&Change Password...")
                 return new_username, new_initials
@@ -1339,7 +1341,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 self.parent.controls_window.signinout.setText("&Sign In")
                 self.parent.controls_window.manage.setText("&Manage Users...")
                 self.parent.controls_window.ui.tool_User.setText("Anonymous")
-                self.parent.analyze_process.tool_User.setText("Anonymous")
+                self.parent.analyze_window.ui.tool_User.setText("Anonymous")
                 PopUp.warning(
                     self,
                     Constants.app_title,
@@ -1351,7 +1353,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 self.parent.controls_window.userrole = UserRoles(new_userrole)
                 self.parent.controls_window.signinout.setText("&Sign Out")
                 self.parent.controls_window.ui.tool_User.setText(new_username)
-                self.parent.analyze_process.tool_User.setText(new_username)
+                self.parent.analyze_window.ui.tool_User.setText(new_username)
                 if self.parent.controls_window.userrole != UserRoles.ADMIN:
                     self.parent.controls_window.manage.setText("&Change Password...")
                 PopUp.warning(
@@ -6468,7 +6470,6 @@ class UIAnalyze(QtWidgets.QWidget):
             )
             Log.e(TAG, f"Error Details: {str(e)}")
             return [None, None]
-
 
 class ResizeFilter(QtCore.QObject):
     def __init__(self, worker, parent=None):

@@ -10,7 +10,6 @@ from typing import (
 from PyQt5 import QtCore
 
 from QATCH.common.fileStorage import FileStorage
-from QATCH.ui.interfaces import UIAnalyze
 
 
 class RunScanWorker(QtCore.QThread):
@@ -57,6 +56,8 @@ class RunScanWorker(QtCore.QThread):
         cached runs are missing. It then uses a thread pool to perform parallel
         scans of individual run folders.
         """
+        from QATCH.ui.interfaces import UIAnalyze
+
         num_devices = len(self.devices_to_scan)
 
         for i, data_device in enumerate(self.devices_to_scan):
