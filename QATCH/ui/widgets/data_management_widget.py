@@ -14,9 +14,13 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
 from QATCH.common.data_service import DataServices
-from QATCH.common.logger import Logger as Log
 from QATCH.ui.components import SegmentedControl
-from QATCH.ui.components.icon_utils import tinted_icon
+from QATCH.ui.components.overlay_shell import (
+    FULLSCREEN_ANIM_EASING,
+    OverlayLifecycleMixin,
+    rebuild_fullscreen_icons,
+    run_variant_animation,
+)
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets.data_mode_advanced import AdvancedMode
 from QATCH.ui.widgets.data_mode_export import ExportMode
@@ -124,7 +128,7 @@ class _GlassPanel(QtWidgets.QFrame):
 # ======================================================================
 #  Container
 # ======================================================================
-class DataManagementWidget(QtWidgets.QWidget):
+class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.ICON_MAIN = os.path.join(
@@ -133,58 +137,32 @@ class DataManagementWidget(QtWidgets.QWidget):
         self.ICON_EXPAND = os.path.join(Architecture.get_path(), "QATCH", "icons", "expand.svg")
         self.ICON_COLLAPSE = os.path.join(Architecture.get_path(), "QATCH", "icons", "collapse.svg")
 
-        self.parent = parent
-
         # Shared machinery, injected into every mode.
         self.services = DataServices(self)
 
-        # --- Overlay / glass setup (child-widget scrim; no WA_TranslucentBackground) ---
-        self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        if parent is not None:
-            parent.installEventFilter(self)
-            top = parent.window()
-            if top is not parent:
-                top.installEventFilter(self)
-
-        # Animation / geometry state
-        self._scrim_alpha = 0
-        self._panel_alpha = 235
-        self._closing = False
-        self._is_fullscreen = False
-        self._default_margin_pct = 0.175
-        self._revealed = False
+        # Animation / geometry state not covered by the shared overlay shell.
         self._current_key = None  # active mode (container-tracked, not segmented)
         self._slide_group = None  # running slide transition, if any
         self._slide_clip = None  # proxy clip frame for the running slide, if any
-        self._fade_anim = None  # single reusable open/close fade
-        self._fs_anim = None  # fullscreen geometry animation
-        self._close_in_progress = False
         self._close_fade_proxy = None  # static-pixmap stand-in animated during close
 
-        self.base_layout = QtWidgets.QVBoxLayout(self)
-        self.base_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.glass_frame = _GlassPanel(self)
-        self.glass_frame.setObjectName("dmview")
-
-        # Fade via a composited opacity effect (animating the property is a
-        # paint-time multiply) instead of re-setting the stylesheet each frame,
-        # which would reparse + repolish the entire glass subtree per frame.
-        # Attached permanently and NEVER swapped via setGraphicsEffect(None)/
-        # another effect after this - QWidget.setGraphicsEffect() DELETES the
-        # widget's previously-set effect when you clear or replace it (Qt
-        # ownership rule), so toggling this on/off per-fade would destroy the
-        # C++ object out from under the live Python reference on the very
-        # next access. Correctness of glass_frame's rounded corners is
-        # instead handled by _GlassPanel's own mask (see _update_mask).
-        self._glass_opacity = QtWidgets.QGraphicsOpacityEffect(self.glass_frame)
-        self._glass_opacity.setOpacity(1.0)
-        self.glass_frame.setGraphicsEffect(self._glass_opacity)
-
-        self.main_layout = QtWidgets.QVBoxLayout(self.glass_frame)
-        self.main_layout.setContentsMargins(12, 8, 12, 12)
-        self.main_layout.setSpacing(10)
+        # Overlay scaffolding (scrim/panel state, base_layout + opacity
+        # effect + main_layout, parent-resize event filter) - shared with
+        # UserProfilesManagerWidget/UserPreferencesWidget via
+        # OverlayLifecycleMixin. `_GlassPanel` is custom-painted (see its
+        # class docstring for why), so it's built here and handed in rather
+        # than letting the shell create a plain QSS-styled QFrame.
+        glass_frame = _GlassPanel(self)
+        glass_frame.setObjectName("dmview")
+        self._init_overlay_shell(
+            parent,
+            "dmview",
+            panel_alpha=235,
+            margin_pct=0.175,
+            content_margins=(12, 8, 12, 12),
+            content_spacing=10,
+            glass_frame=glass_frame,
+        )
 
         self._modes = {}  # key -> mode widget
         self._build_taskbar()
@@ -194,14 +172,8 @@ class DataManagementWidget(QtWidgets.QWidget):
         self.main_layout.addLayout(self.top_section_layout)
         self.main_layout.addWidget(self.content_stack, 1)
 
-        self.base_layout.addWidget(self.glass_frame)
-        self.setLayout(self.base_layout)
-
         # Start hidden + pre-fitted to avoid the tiny-dialog flash.
-        self.hide()
-        self._scrim_alpha = 0
-        self.glass_frame.hide()
-        self._refit_to_parent()
+        self._finish_overlay_shell()
 
     # ------------------------------------------------------------------
     #  Build
@@ -211,18 +183,9 @@ class DataManagementWidget(QtWidgets.QWidget):
         self.top_section_layout = QtWidgets.QVBoxLayout()
         self.top_section_layout.setSpacing(10)
 
-        self.header_layout = QtWidgets.QHBoxLayout()
-        self.header_layout.setContentsMargins(0, 0, 0, 0)
-        # Pixmap is set in _apply_theme() - the raw SVG has a fixed dark-gray
-        # fill (#333333) that reads fine in light mode but is nearly invisible
-        # against a dark panel, so it needs the same tinted_icon() treatment
-        # the fullscreen/collapse icons already get rather than being set once
-        # here untinted.
-        self.window_icon_label = QtWidgets.QLabel()
-        self.window_title_label = QtWidgets.QLabel("Data Management")
-        self.header_layout.addWidget(self.window_icon_label)
-        self.header_layout.addWidget(self.window_title_label)
-        self.header_layout.addStretch()
+        self.header_layout = self._build_overlay_header(
+            self.ICON_MAIN, "Data Management", fullscreen=True
+        )
         self.top_section_layout.addLayout(self.header_layout)
 
         # Horizontal chip bar holding the mode selector, spanning the panel
@@ -262,28 +225,6 @@ class DataManagementWidget(QtWidgets.QWidget):
         mode_bar_layout.addStretch(1)
         self.top_section_layout.addWidget(self.mode_bar_frame)
 
-        # Window control buttons (positioned absolutely on refit).
-        button_size = 28
-        icon_size = QtCore.QSize(14, 14)
-
-        self._rebuild_fs_icons()
-
-        self.btn_fullscreen = QtWidgets.QPushButton("", self)
-        self.btn_fullscreen.setFixedSize(button_size, button_size)
-        self.btn_fullscreen.setIcon(self._fs_normal_icon)
-        self.btn_fullscreen.setIconSize(icon_size)
-        self.btn_fullscreen.setToolTip("Toggle Fullscreen")
-        self.btn_fullscreen.setStyleSheet("QPushButton { background: transparent; border: none; }")
-        self.btn_fullscreen.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.btn_fullscreen.installEventFilter(self)
-        self.btn_fullscreen.clicked.connect(self.toggle_fullscreen)
-
-        self.btn_close = QtWidgets.QPushButton("x", self)
-        self.btn_close.setFixedSize(button_size, button_size)
-        self.btn_close.setToolTip("Close")
-        self.btn_close.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.btn_close.clicked.connect(self.close)
-
         self._apply_theme()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
@@ -295,13 +236,7 @@ class DataManagementWidget(QtWidgets.QWidget):
 
     def _apply_theme(self) -> None:
         tok = ThemeManager.instance().tokens()
-        self.window_icon_label.setPixmap(
-            tinted_icon(self.ICON_MAIN, QtGui.QColor(*tok["flat_text"]), size=16).pixmap(16, 16)
-        )
-        self.window_title_label.setStyleSheet(
-            f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-weight: bold; "
-            "font-size: 13px; background: transparent; }"
-        )
+        self._refresh_header_theme()
         # Full-width filled band with just a bottom rule (mock chipsRowStyle:
         # flat_surface2 fill + 1px bottom border, no radius) - sets the chip
         # row apart from the content stack below without reading as a boxed
@@ -311,32 +246,12 @@ class DataManagementWidget(QtWidgets.QWidget):
             f"border: none; border-bottom: 1px solid {tok_css(tok['flat_border'])}; "
             f"border-radius: 0px; }}"
         )
-        self.btn_close.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent; border: none;
-                color: {tok_css(tok['flat_text_muted'])};
-                font-size: 18px; font-weight: bold; padding-bottom: 2px;
-            }}
-            QPushButton:hover   {{ color: {tok_css(tok['flat_error'])}; }}
-            QPushButton:pressed {{ color: {tok_css(tok['flat_error_weak'])}; }}
-        """)
-        self._rebuild_fs_icons()
 
     def _rebuild_fs_icons(self) -> None:
-        """Rebuilds the fullscreen button's normal/hover icon pixmaps from
-        the active theme's tokens, for the icon matching the current
-        fullscreen state (expand vs. collapse)."""
-        tok = ThemeManager.instance().tokens()
-        self._FS_NORMAL = QtGui.QColor(*tok["flat_text_muted"])
-        self._FS_HOVER = QtGui.QColor(*tok["flat_text"])
-        icon_path = self.ICON_COLLAPSE if self._is_fullscreen else self.ICON_EXPAND
-        self._fs_normal_icon = tinted_icon(icon_path, self._FS_NORMAL, size=14)
-        self._fs_hover_icon = tinted_icon(icon_path, self._FS_HOVER, size=14)
-        if getattr(self, "btn_fullscreen", None) is not None:
-            if self.btn_fullscreen.underMouse():
-                self.btn_fullscreen.setIcon(self._fs_hover_icon)
-            else:
-                self.btn_fullscreen.setIcon(self._fs_normal_icon)
+        """Rebuilds the fullscreen button's normal/hover icon pixmaps for the
+        icon matching the current fullscreen state - shared with
+        UserProfilesManagerWidget via `overlay_shell.rebuild_fullscreen_icons`."""
+        rebuild_fullscreen_icons(self, self.ICON_EXPAND, self.ICON_COLLAPSE)
 
     def _build_stack(self):
         self.content_stack = QtWidgets.QStackedWidget()
@@ -537,56 +452,17 @@ class DataManagementWidget(QtWidgets.QWidget):
         shadow.setOffset(offset[0], offset[1])
         widget.setGraphicsEffect(shadow)
 
-    def _refit_to_parent(self, frac=None):
-        if self.parent is None:
-            geo = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        else:
-            geo = self.parent.rect()
-        self.setGeometry(geo)
-
-        # If a fullscreen toggle animation is actively running, let it handle the
-        # margins. _apply_margin_frac (called below) repositions btn_close/
-        # btn_fullscreen, and those buttons have an eventFilter installed on
-        # them, so every animation frame's button move re-enters here via a
-        # Move event - without this guard it would snap the margins to the
-        # final _is_fullscreen state on every tick, defeating the animation.
-        if self._fs_anim is not None and self._fs_anim.state() == QtCore.QAbstractAnimation.Running:
-            return
-
-        if frac is None:
-            frac = 0.0 if self._is_fullscreen else self._default_margin_pct
-        self._apply_margin_frac(frac)
-
-    def _apply_margin_frac(self, frac):
-        """Position the glass panel inset by `frac` of each dimension.
-
-        frac == 0 -> fullscreen (flush, no radius/border); frac == self._default_margin_pct
-        -> fully inset. Border, radius and background alpha interpolate
-        continuously with frac (matching the live margin) so the fullscreen
-        toggle reads as one smooth motion instead of snapping partway through.
-        """
-        w, h = self.width(), self.height()
-        mx = int(w * frac)
-        my = int(h * frac)
-        self.base_layout.setContentsMargins(mx, my, mx, my)
-
+    def _apply_panel_appearance(self, frac: float) -> None:
+        """Interpolates the (custom-painted) glass panel's alpha/border/
+        radius continuously with `frac`, matching the live margin so the
+        fullscreen toggle reads as one smooth motion instead of snapping
+        partway through. frac == 0 -> fullscreen (flush, no radius/border);
+        frac == `_default_margin_pct` -> fully inset."""
         p = 0.0 if self._default_margin_pct <= 0 else min(1.0, frac / self._default_margin_pct)
         alpha = int(255 + (235 - 255) * p)
         border = 1.5 * p
         radius = 12.0 * p
         self.glass_frame.set_appearance(alpha, border, radius)
-
-        self._update_buttons_position(mx, my)
-
-    def _update_buttons_position(self, mx, my):
-        w = self.width()
-        btn_sz = 28
-        close_x = w - mx - 14 - btn_sz
-        close_y = my + 14
-        self.btn_close.setGeometry(close_x, close_y, btn_sz, btn_sz)
-        self.btn_close.raise_()
-        self.btn_fullscreen.setGeometry(close_x - 6 - btn_sz, close_y, btn_sz, btn_sz)
-        self.btn_fullscreen.raise_()
 
     def toggle_fullscreen(self):
         self._is_fullscreen = not self._is_fullscreen
@@ -597,82 +473,33 @@ class DataManagementWidget(QtWidgets.QWidget):
         target = 0.0 if self._is_fullscreen else self._default_margin_pct
         start = self._default_margin_pct if self._is_fullscreen else 0.0
 
-        # Tear down any prior fullscreen animation.
-        if self._fs_anim is not None:
-            try:
-                self._fs_anim.stop()
-                self._fs_anim.valueChanged.disconnect()
-            except (TypeError, RuntimeError):
-                pass
-            self._fs_anim.deleteLater()
-            self._fs_anim = None
+        def _step(t):
+            frac = start + (target - start) * t
+            self._apply_margin_frac(frac)
 
-        anim = QtCore.QVariantAnimation(self)
-        anim.setDuration(240)
-        anim.setEasingCurve(QtCore.QEasingCurve.InOutCubic)
-        anim.setStartValue(float(start))
-        anim.setEndValue(float(target))
-        anim.valueChanged.connect(lambda f: self._apply_margin_frac(float(f)))
-
-        def _fs_done():
-            self._apply_margin_frac(target)
-            done = self._fs_anim
-            self._fs_anim = None
-            if done is not None:
-                done.deleteLater()
-
-        anim.finished.connect(_fs_done)
-        self._fs_anim = anim
-        anim.start()
+        run_variant_animation(
+            self, "_fs_anim", duration=240, easing=FULLSCREEN_ANIM_EASING, on_step=_step,
+        )
 
     # ------------------------------------------------------------------
     #  Show / hide with fade
     # ------------------------------------------------------------------
-    def setVisible(self, visible):
-        if visible and not self.isVisible():
-            self.services.start()  # spin up the shared USB loop on open
-            self._scrim_alpha = 0
-            self._panel_alpha = 0
-            self._set_glass_opacity(0.0)  # start transparent; fade brings it in
-            self.glass_frame.hide()
-            self._refit_to_parent()
-            super().setVisible(True)
-            self._refit_to_parent()
-            if self.layout() is not None:
-                self.layout().activate()
+    def _on_before_reveal(self) -> None:
+        self.services.start()  # spin up the shared USB loop on open
 
-            def _reveal():
-                self._refit_to_parent()
-                if self.layout() is not None:
-                    self.layout().activate()
-                self._revealed = True
-                self.glass_frame.show()
-                self.glass_frame.raise_()
-                self.btn_close.raise_()
-                self.btn_fullscreen.raise_()
-                self.update()
-                self._animate_open()
-                # Populate the active mode AFTER the fade has started, on a
-                # later event-loop turn, so heavy on_enter work (e.g. parsing a
-                # long import/export history) doesn't block the open animation.
-                key = self.segmented.active_key()
+    def _on_after_reveal(self) -> None:
+        # Populate the active mode AFTER the fade has started, on a later
+        # event-loop turn, so heavy on_enter work (e.g. parsing a long
+        # import/export history) doesn't block the open animation.
+        key = self.segmented.active_key()
 
-                def _populate():
-                    if key in self._modes:
-                        self.content_stack.setCurrentWidget(self._modes[key])
-                        self._current_key = key
-                        self._modes[key].on_enter()
+        def _populate():
+            if key in self._modes:
+                self.content_stack.setCurrentWidget(self._modes[key])
+                self._current_key = key
+                self._modes[key].on_enter()
 
-                QtCore.QTimer.singleShot(16, _populate)
-
-            QtCore.QTimer.singleShot(0, _reveal)
-            return
-        super().setVisible(visible)
-
-    def showEvent(self, event):
-        self._refit_to_parent()
-        self.raise_()
-        super().showEvent(event)
+        QtCore.QTimer.singleShot(16, _populate)
 
     def resizeEvent(self, event):
         # The eventFilter below only catches resizes of `parent`/its window -
@@ -689,112 +516,12 @@ class DataManagementWidget(QtWidgets.QWidget):
         if self.isVisible():
             self._refit_to_parent()
 
-    def closeEvent(self, event):
-        if self._closing:
-            event.accept()
-            return
-        anim = getattr(self, "_fade_anim", None)
-        if anim is not None and anim.state() == QtCore.QAbstractAnimation.Running:
-            # A close fade is already running; let it finish.
-            if self._close_in_progress:
-                event.ignore()
-                return
-        event.ignore()
-        self._close_in_progress = True
-        self._animate_close()
-
-    def _set_panel_alpha(self, alpha):
-        # Kept for compatibility (close/do_close reset state through this), but
-        # the glass stylesheet alpha is now FIXED; visual fade is via the
-        # opacity effect. We only restyle when border/radius actually change
-        # (fullscreen toggle handles that separately).
-        self._panel_alpha = int(alpha)
-
-    def _set_glass_opacity(self, frac):
-        frac = max(0.0, min(1.0, float(frac)))
-        if self._glass_opacity is not None:
-            self._glass_opacity.setOpacity(frac)
-
     # ------------------------------------------------------------------
-    #  Animation driver - ONE reusable QVariantAnimation, never accumulate.
+    #  Overlay shell hooks (see QATCH.ui.components.overlay_shell for the
+    #  shared init scaffolding, fade engine, reveal-on-open sequence, and
+    #  scrim/mouse event handlers this widget inherits from
+    #  OverlayLifecycleMixin)
     # ------------------------------------------------------------------
-    def _stop_anim(self):
-        """Stop and fully tear down any running fade so it can't keep firing."""
-        anim = getattr(self, "_fade_anim", None)
-        if anim is not None:
-            try:
-                anim.stop()
-                anim.valueChanged.disconnect()
-                anim.finished.disconnect()
-            except (TypeError, RuntimeError):
-                pass
-            anim.deleteLater()
-            self._fade_anim = None
-
-    def _run_fade(
-        self,
-        scrim_from,
-        scrim_to,
-        op_from,
-        op_to,
-        duration,
-        easing,
-        on_done=None,
-        opacity_effect=None,
-    ):
-        """Animate the scrim alpha (cheap paintEvent) and an opacity effect
-        (composited) from fixed endpoints. No per-frame stylesheet.
-
-        `opacity_effect` defaults to the live glass_frame's own effect
-        (the open fade). The close fade passes a lightweight effect on a
-        static pixmap proxy instead - see `_animate_close`.
-        """
-        self._stop_anim()
-        effect = opacity_effect if opacity_effect is not None else self._glass_opacity
-        anim = QtCore.QVariantAnimation(self)
-        anim.setDuration(duration)
-        anim.setEasingCurve(easing)
-        anim.setStartValue(0.0)
-        anim.setEndValue(1.0)
-
-        def _set_opacity(frac):
-            if effect is not None:
-                effect.setOpacity(max(0.0, min(1.0, float(frac))))
-
-        def _step(t):
-            self._scrim_alpha = int(scrim_from + (scrim_to - scrim_from) * t)
-            _set_opacity(op_from + (op_to - op_from) * t)
-            self.update()  # repaint the scrim only
-
-        def _settle():
-            self._scrim_alpha = int(scrim_to)
-            _set_opacity(op_to)
-            self.update()
-            done_anim = self._fade_anim
-            self._fade_anim = None
-            if done_anim is not None:
-                done_anim.deleteLater()
-            if on_done is not None:
-                on_done()
-
-        anim.valueChanged.connect(_step)
-        anim.finished.connect(_settle)
-        self._fade_anim = anim
-        anim.start()
-
-    def _animate_open(self):
-        self._scrim_alpha = 0
-        self._set_glass_opacity(0.0)
-        self.update()
-        self._run_fade(
-            scrim_from=0,
-            scrim_to=65,
-            op_from=0.0,
-            op_to=1.0,
-            duration=200,
-            easing=QtCore.QEasingCurve.OutQuad,
-        )
-
     def _animate_close(self):
         # Snapshot the panel once and fade a flat pixmap proxy instead of
         # leaving the live QGraphicsOpacityEffect on glass_frame - that
@@ -868,45 +595,12 @@ class DataManagementWidget(QtWidgets.QWidget):
 
     def _do_close(self):
         self.services.stop()  # tear down the shared USB loop on close
-        self._stop_anim()
         self._teardown_close_fade_proxy()
         self._teardown_slide()
-        self._closing = True
-        self.close()
-        self._closing = False
-        self._close_in_progress = False
         self._is_fullscreen = False
         # Restore the expand icon for the next open.
         self._rebuild_fs_icons()
         self._panel_alpha = 235
         self._current_key = None
-        self._set_glass_opacity(1.0)
         self.content_stack.show()
-        self.glass_frame.show()
-        self._refit_to_parent()
-
-    # ------------------------------------------------------------------
-    #  Events
-    # ------------------------------------------------------------------
-    def eventFilter(self, obj, event):
-        if hasattr(self, "btn_fullscreen") and obj is self.btn_fullscreen:
-            if event.type() == QtCore.QEvent.Enter:
-                self.btn_fullscreen.setIcon(self._fs_hover_icon)
-            elif event.type() == QtCore.QEvent.Leave:
-                self.btn_fullscreen.setIcon(self._fs_normal_icon)
-        if event.type() in (QtCore.QEvent.Type.Resize, QtCore.QEvent.Type.Move):
-            if self.isVisible():
-                self._refit_to_parent()
-        return super().eventFilter(obj, event)
-
-    def paintEvent(self, event):
-        painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        painter.fillRect(self.rect(), QtGui.QColor(0, 0, 0, self._scrim_alpha))
-        painter.end()
-
-    def mousePressEvent(self, event):
-        if not self.glass_frame.geometry().contains(event.pos()):
-            self.close()
-        else:
-            super().mousePressEvent(event)
+        super()._do_close()

@@ -681,7 +681,11 @@ class UIMode:
             return False if obj is None else None
 
         # Apply UI Changes for Sign-In Mode
-        self.parent.controls_window.ui_preferences.hide()
+        # ui_preferences is lazily created on first open (see
+        # ControlsWindow.preferences()), so it may still be None here if
+        # the user never opened it this session.
+        if self.parent.controls_window.ui_preferences is not None:
+            self.parent.controls_window.ui_preferences.hide()
         self.active_highlight.hide()
         for widget in [self.mode_run, self.mode_analyze, self.mode_learn]:
             widget.setProperty("active", "false")

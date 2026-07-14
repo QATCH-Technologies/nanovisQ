@@ -61,7 +61,6 @@ from QATCH.ui.widgets import (
     AdvancedMainWidget,
     ControlsWidget,
     SavedStateDot,
-    UserPreferencesWidget,
     UserProfilesManagerWidget,
     WellPlate,
 )
@@ -3919,15 +3918,17 @@ class UIControls:
             Log.e(f"Error signing out user: {exc}")
 
     def _open_user_preferences(self) -> None:
-        """Open the existing User Preferences window from the account popup."""
+        """Open the User Preferences overlay from the account popup.
+
+        Delegates to `ControlsWindow.preferences()`, which lazily creates
+        the overlay (parented to the full app window) and shows it - see
+        that method for why construction can't happen here with `self.parent`
+        used as the Qt parent directly (this used to work only because the
+        old widget was a standalone top-level window that never used its
+        `parent` argument for actual Qt parenting).
+        """
         try:
-            existing = getattr(self.parent, "ui_preferences", None)
-            if existing is None:
-                existing = UserPreferencesWidget(self.parent)
-                self.parent.ui_preferences = existing
-            existing.showNormal()
-            existing.raise_()
-            existing.activateWindow()
+            self.parent.preferences()
         except Exception as exc:
             Log.e(f"UIControls._open_user_preferences error: {exc}")
 

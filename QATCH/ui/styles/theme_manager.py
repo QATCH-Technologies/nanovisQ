@@ -28,6 +28,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
+from QATCH.ui.styles.fonts import FONT_MONO
 from QATCH.ui.styles.native_titlebar import apply_dark_titlebar_to_all_windows
 from QATCH.ui.styles.style_loader import StyleLoader
 from QATCH.ui.styles.tokens import PALETTES, ColorTokens
@@ -569,6 +570,38 @@ def auth_separator_qss() -> str:
     """QSS for a 1px horizontal divider rule inside an auth card."""
     tok = ThemeManager.instance().tokens()
     return f"QWidget {{ background: {tok_css(tok['flat_border'])}; }}"
+
+
+def field_label_qss() -> str:
+    """QSS for a compact semibold field-name QLabel that precedes an inline
+    control (e.g. "Date Format" ahead of a QComboBox) - full `flat_text`
+    color and a fixed weight, distinct from the muted `desc_label_qss`."""
+    tok = ThemeManager.instance().tokens()
+    return (
+        f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12.5px; "
+        "font-weight: 600; background: transparent; }"
+    )
+
+
+def mono_preview_qss() -> str:
+    """QSS for an accent-colored monospace preview readout (e.g. a
+    generated file-name/date-time pattern), resolved fresh from the active
+    theme's `flat_accent` token."""
+    tok = ThemeManager.instance().tokens()
+    return (
+        f"QLabel {{ color: {tok_css(tok['flat_accent'])}; "
+        f"font-family: '{FONT_MONO}'; font-size: 12.5px; background: transparent; }}"
+    )
+
+
+def window_canvas_qss(object_name: str) -> str:
+    """QSS for a standalone top-level QWidget's own background fill
+    (`flat_surface2`) - for windows that keep their native OS title bar
+    (no frameless/translucent chrome) but still need a theme-correct canvas
+    instead of falling back to the OS's default (light-only) widget
+    background."""
+    tok = ThemeManager.instance().tokens()
+    return f"QWidget#{object_name} {{ background: {tok_css(tok['flat_surface2'])}; }}"
 
 
 class ThemeManager(QtCore.QObject):

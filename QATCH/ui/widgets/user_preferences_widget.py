@@ -1,36 +1,94 @@
-from QATCH.common.architecture import Architecture
-from QATCH.common.logger import Logger as Log
-from QATCH.common.fileStorage import FileStorage
-from QATCH.common.userProfiles import UserProfiles, UserPreferences
-from QATCH.core.constants import Constants, UserRoles
-from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode
-from PyQt5.QtWidgets import (
-    QMessageBox,
-    QWidget,
-    QVBoxLayout,
-    QTabWidget,
-    QComboBox,
-    QPushButton,
-    QHBoxLayout,
-    QLabel,
-    QCheckBox,
-    QLineEdit,
-    QFileDialog,
-    QSizePolicy,
-)
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon
+"""
+QATCH.ui.widgets.user_preferences_widget
+
+Glassmorphic "Preferences" overlay - same overlay shell convention as
+`QATCH.ui.widgets.data_management_widget.DataManagementWidget` and
+`QATCH.ui.widgets.user_profiles_manager_widget.UserProfilesManagerWidget`:
+a child widget reparented over the app's central widget, dimmed scrim +
+fade-in/out glass panel, click-outside-to-dismiss, and a `showNormal()`
+compatibility shim so existing call sites in
+`QATCH.ui.windows.controls_windows` / `QATCH.ui.interfaces.ui_controls`
+don't need to change shape. The overlay lifecycle itself (init scaffolding,
+fade animations, parent-tracking geometry fit, scrim paint, click-outside
+dismiss) is shared with those two widgets via
+`QATCH.ui.components.overlay_shell.OverlayLifecycleMixin` - only this
+widget's own content (a vertical `SegmentedControl` sidebar over section
+pages, no fullscreen toggle) lives here. Every panel is styled from the
+shared flat control system (QATCH.ui.styles.theme_manager /
+QATCH.ui.components) so it matches the rest of the app and stays correct
+across light/dark theme changes.
+"""
+
+from __future__ import annotations
+
 import os
+from datetime import datetime
+
+from PyQt5 import QtCore, QtGui, QtWidgets
+
+from QATCH.common.architecture import Architecture
+from QATCH.common.fileStorage import FileStorage
+from QATCH.common.logger import Logger as Log
+from QATCH.common.userProfiles import UserPreferences, UserProfiles
+from QATCH.core.constants import Constants, UserRoles
+from QATCH.ui.components import (
+    QATCHLineEdit,
+    QATCHOptionCard,
+    QATCHOptionCardGroup,
+    QATCHPushButton,
+    QATCHToggle,
+    SegmentedControl,
+)
+from QATCH.ui.components.overlay_shell import (
+    FULLSCREEN_ANIM_EASING,
+    OverlayLifecycleMixin,
+    rebuild_fullscreen_icons,
+    run_variant_animation,
+)
+from QATCH.ui.dialogs.pop_up_dialog import PopUp
+from QATCH.ui.styles.theme_manager import (
+    ThemeManager,
+    ThemeMode,
+    caption_label_qss,
+    desc_label_qss,
+    field_label_qss,
+    glass_panel_qss,
+    hairline_qss,
+    info_wash_card_qss,
+    mono_preview_qss,
+    surface_panel_qss,
+    tok_css,
+)
 
 TAG = "[Preferences]"
 SELECT_TAG_PROMPT = Constants.select_tag_prompt
 SUBFOLDER_FIELD = Constants.subfolder_field
 
+_ICONS_DIR = os.path.join(Architecture.get_path(), "QATCH", "icons")
+_ICON_PREFERENCES = os.path.join(_ICONS_DIR, "preferences.svg")
+_ICON_DATETIME = os.path.join(_ICONS_DIR, "date-range.svg")
+_ICON_FILENAMING = os.path.join(_ICONS_DIR, "barcode.svg")
+_ICON_DATAPATHS = os.path.join(_ICONS_DIR, "import-export.svg")
+_ICON_APPEARANCE = os.path.join(_ICONS_DIR, "color-palette.svg")
 
-class UserPreferencesWidget(QWidget):
-    def __init__(self, parent):
-        super().__init__()
-        self.parent = parent
+
+class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
+    def __init__(self, controller, parent=None):
+        """Args:
+        controller: Business-logic owner (the `ControlsWindow` instance) -
+            used only for `.userrole` in `check_user_role()`. Kept distinct
+            from `parent` (the Qt overlay parent, stored as `self.parent`
+            per the `DataManagementWidget`/`UserProfilesManagerWidget`
+            convention) since the two are no longer the same widget now
+            that this is an overlay reparented onto the app's central
+            widget instead of a standalone top-level window.
+        parent: The overlay host widget (typically the main window's
+            central widget) this panel is reparented onto and fitted to.
+        """
+        super().__init__(parent)
+        self._controller = controller
+        self.ICON_EXPAND = os.path.join(_ICONS_DIR, "expand.svg")
+        self.ICON_COLLAPSE = os.path.join(_ICONS_DIR, "collapse.svg")
 
         # Assume non-admin user role until proven otherwise
         self._is_admin = False  # call 'check_user_role()' to set
@@ -39,263 +97,463 @@ class UserPreferencesWidget(QWidget):
         UserProfiles.user_preferences = UserPreferences(UserProfiles.get_session_file())
         UserProfiles.user_preferences.set_preferences()
 
-        self.setWindowTitle("Preferences")
-        self.setWindowIcon(QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "preferences.svg")))
-
         # Initialize the _updating flag to avoid recursion
         self._updating = False  # Initialize the _updating flag
 
-        # Set minimum size for the window (width, height) based on the desired size
-        self.setMinimumSize(550, 475)
+        # Widgets registered here get their QSS re-applied on theme change
+        # (see _on_theme_changed) since each was styled with a one-shot
+        # setStyleSheet() call rather than a live-token paintEvent.
+        self._wells: list[tuple[QtWidgets.QFrame, str]] = []
+        self._captions: list[QtWidgets.QLabel] = []
+        self._descs: list[QtWidgets.QLabel] = []
+        self._field_labels: list[QtWidgets.QLabel] = []
+        self._hairlines: list[QtWidgets.QFrame] = []
+        self._preview_boxes: list[QtWidgets.QFrame] = []
+        self._preview_labels: list[QtWidgets.QLabel] = []
 
-        # Layout for the main window
-        main_layout = QVBoxLayout()
+        # Overlay scaffolding (scrim/panel state, base_layout + glass_frame +
+        # opacity effect + main_layout, parent-resize event filter) - shared
+        # with DataManagementWidget/UserProfilesManagerWidget via
+        # OverlayLifecycleMixin.
+        self._init_overlay_shell(
+            parent,
+            "prefsview",
+            panel_alpha=215,
+            margin_pct=0.175,
+            content_margins=(20, 14, 20, 20),
+            content_spacing=14,
+        )
 
-        # Tab widget to contain both tabs
-        self.tab_widget = QTabWidget()
+        self.main_layout.addLayout(
+            self._build_overlay_header(_ICON_PREFERENCES, "Preferences", fullscreen=True)
+        )
 
-        # Date and time preferences tab
-        date_time_tab = QWidget()
-        date_time_layout = QVBoxLayout()
+        self._section_keys = ["datetime", "filenaming", "datapaths", "appearance"]
+        nav_modes = [
+            ("datetime", "Date/Time", _ICON_DATETIME),
+            ("filenaming", "File Naming", _ICON_FILENAMING),
+            ("datapaths", "Data Paths", _ICON_DATAPATHS),
+            ("appearance", "Appearance", _ICON_APPEARANCE),
+        ]
+        self.nav = SegmentedControl(nav_modes, orientation=QtCore.Qt.Vertical)
+        self.nav.modeChanged.connect(self.handle_section_change)
 
-        # Date format dropdown
-        date_format_layout = QHBoxLayout()  # Horizontal layout for date format
-        date_format_label = QLabel("Date Format:")
-        date_format_layout.addWidget(date_format_label)
-        self.date_format_combo = QComboBox()
+        self.content_stack = QtWidgets.QStackedWidget()
+        self.content_stack.addWidget(self._build_datetime_page())
+        self.content_stack.addWidget(self._build_filenaming_page())
+        self.content_stack.addWidget(self._build_datapaths_page())
+        self.content_stack.addWidget(self._build_appearance_page())
+
+        body_row = QtWidgets.QHBoxLayout()
+        body_row.setSpacing(14)
+        body_row.addWidget(self.nav)
+        body_row.addWidget(self.content_stack, 1)
+        self.main_layout.addLayout(body_row, 1)
+
+        self.main_layout.addLayout(self._build_action_bar())
+
+        # Manually fire the folder-sync handler on UI initialization.
+        # NOTE: This must be after ALL write-directory layout objects exist.
+        self.toggle_folder_sync(self.sync_write_with_load.isChecked())
+
+        # Start hidden + pre-fitted to avoid the tiny-panel flash.
+        self._finish_overlay_shell()
+
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
+    def _build_datetime_page(self) -> QtWidgets.QWidget:
+        well = self._well("dtWell")
+        lay = QtWidgets.QVBoxLayout(well)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.setSpacing(14)
+
+        lay.addWidget(self._caption("Date & Time Format"))
+
+        date_row = QtWidgets.QHBoxLayout()
+        date_row.setSpacing(10)
+        date_label = self._field_label("Date Format")
+        date_label.setFixedWidth(110)
+        date_row.addWidget(date_label)
+        self.date_format_combo = QtWidgets.QComboBox()
         self.date_format_combo.addItems(Constants.date_formats)
-        date_format_layout.addWidget(self.date_format_combo)
-        date_time_layout.addLayout(date_format_layout)
+        self.date_format_combo.setFixedHeight(34)
+        date_row.addWidget(self.date_format_combo, 1)
+        lay.addLayout(date_row)
 
-        # Time format dropdown
-        time_format_layout = QHBoxLayout()  # Horizontal layout for time format
-        time_format_label = QLabel("Time Format:")
-        time_format_layout.addWidget(time_format_label)
-        self.time_format_combo = QComboBox()
+        time_row = QtWidgets.QHBoxLayout()
+        time_row.setSpacing(10)
+        time_label = self._field_label("Time Format")
+        time_label.setFixedWidth(110)
+        time_row.addWidget(time_label)
+        self.time_format_combo = QtWidgets.QComboBox()
         self.time_format_combo.addItems(Constants.time_formats)
-        time_format_layout.addWidget(self.time_format_combo)
-        date_time_layout.addLayout(time_format_layout)
+        self.time_format_combo.setFixedHeight(34)
+        time_row.addWidget(self.time_format_combo, 1)
+        lay.addLayout(time_row)
 
-        # Preview button for Date and Time format
-        self.preview_date_time_button = QPushButton("Preview Date && Time Format")
+        lay.addWidget(
+            self._desc("HH = 24-hour clock · hh = 12-hour clock with an AM/PM (A) suffix.")
+        )
+        lay.addStretch()
+
+        self.preview_date_time_button = QATCHPushButton(
+            "Preview Date && Time Format", variant="secondary"
+        )
+        self.preview_date_time_button.setFixedHeight(34)
         self.preview_date_time_button.clicked.connect(self.preview_date_time_format)
-        self.preview_date_time_label = QLabel("Preview will appear here.")
-        preview_layout = QVBoxLayout()  # Layout for preview button and label
-        preview_layout.addWidget(self.preview_date_time_button)
-        preview_layout.addStretch()
-        preview_layout.addWidget(self.preview_date_time_label)
-        date_time_layout.addLayout(preview_layout)
+        lay.addWidget(self.preview_date_time_button)
 
-        date_time_tab.setLayout(date_time_layout)
+        self.preview_date_time_label = QtWidgets.QLabel("Preview will appear here.")
+        lay.addWidget(self._preview_box(self.preview_date_time_label))
 
-        # File and folder format preferences tab
-        file_folder_tab = QWidget()
-        file_folder_layout = QVBoxLayout()
+        return well
 
-        # Label for file and folder format instructions
-        format_label = QLabel("Select tags for the file and folder format:")
-        file_folder_layout.addWidget(format_label)
+    def _build_filenaming_page(self) -> QtWidgets.QWidget:
+        well = self._well("fileWell")
+        lay = QtWidgets.QVBoxLayout(well)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.setSpacing(14)
 
         # Tags available
         self.tags = Constants.valid_tags
-
-        # Initialize the list of selected tags
         self.selected_tags = []
 
-        # File Format Section
-        file_format_label = QLabel("File Format:")
-        file_folder_layout.addWidget(file_format_label)
-
-        # Create a container to hold the file format dropdowns horizontally
-        self.file_format_container = QHBoxLayout()
-        self.file_format_combos = []  # List to keep track of file format combo boxes
-        self.add_dropdown(self.file_format_container)  # Add the first dropdown
-        file_folder_layout.addLayout(self.file_format_container)
-
-        # File Format Button and Delimiter
-        file_button_layout = QHBoxLayout()
-        file_button_layout.setAlignment(Qt.AlignLeft)  # Align buttons to the left
-        add_file_button = QPushButton("+")
-        add_file_button.setFixedSize(40, 30)  # Set fixed size for the button
-        add_file_button.clicked.connect(lambda: self.add_dropdown(self.file_format_container))
-        file_button_layout.addWidget(add_file_button)
-
-        remove_file_button = QPushButton("-")
-        # Set fixed size for the button
-        remove_file_button.setFixedSize(40, 30)
-        remove_file_button.clicked.connect(
-            lambda: self.remove_last_dropdown(self.file_format_container)
+        lay.addWidget(self._caption("File Name Format"))
+        lay.addWidget(
+            self._desc("Choose the tags used to build each exported file name, in order.")
         )
-        file_button_layout.addWidget(remove_file_button)
 
-        # Delimiter selection for file format
-        self.file_delimiter_combo = QComboBox()
-        # Set fixed size for the delimiter dropdown
-        self.file_delimiter_combo.setFixedSize(40, 28)
-        self.file_delimiter_combo.addItems(Constants.path_delimiters)
-        file_button_layout.addWidget(self.file_delimiter_combo)
+        self.file_format_container = QtWidgets.QHBoxLayout()
+        self.file_format_container.setSpacing(8)
+        self.file_format_combos = []
+        self.add_dropdown(self.file_format_container)
+        lay.addLayout(self.file_format_container)
+        lay.addLayout(self._build_format_controls_row(self.file_format_container))
+        self.file_delimiter_combo = self._last_delimiter_combo
 
-        file_folder_layout.addLayout(file_button_layout)
+        lay.addWidget(self._hairline())
 
-        # Folder Format Section
-        folder_format_label = QLabel("Folder Format:")
-        file_folder_layout.addWidget(folder_format_label)
+        lay.addWidget(self._caption("Folder Name Format"))
+        lay.addWidget(
+            self._desc("Choose the tags used to build the destination subfolder path.")
+        )
 
-        # Create a container to hold the folder format dropdowns horizontally
-        self.folder_format_container = QHBoxLayout()
-        self.folder_format_combos = []  # List to keep track of folder format combo boxes
-        # Add the first dropdown
+        self.folder_format_container = QtWidgets.QHBoxLayout()
+        self.folder_format_container.setSpacing(8)
+        self.folder_format_combos = []
         self.add_dropdown(self.folder_format_container)
-        file_folder_layout.addLayout(self.folder_format_container)
+        lay.addLayout(self.folder_format_container)
+        lay.addLayout(self._build_format_controls_row(self.folder_format_container))
+        self.folder_delimiter_combo = self._last_delimiter_combo
 
-        # Folder Format Button and Delimiter
-        folder_button_layout = QHBoxLayout()
-        folder_button_layout.setAlignment(Qt.AlignLeft)  # Align buttons to the left
-        add_folder_button = QPushButton("+")
-        add_folder_button.setFixedSize(40, 30)  # Set fixed size for the button
-        add_folder_button.clicked.connect(lambda: self.add_dropdown(self.folder_format_container))
-        folder_button_layout.addWidget(add_folder_button)
+        lay.addStretch()
 
-        remove_folder_button = QPushButton("-")
-        # Set fixed size for the button
-        remove_folder_button.setFixedSize(40, 30)
-        remove_folder_button.clicked.connect(
-            lambda: self.remove_last_dropdown(self.folder_format_container)
-        )
-        folder_button_layout.addWidget(remove_folder_button)
-
-        # Delimiter selection for folder format
-        self.folder_delimiter_combo = QComboBox()
-        # Set fixed size for the delimiter dropdown
-        self.folder_delimiter_combo.setFixedSize(40, 30)
-        self.folder_delimiter_combo.addItems(Constants.path_delimiters)
-        folder_button_layout.addWidget(self.folder_delimiter_combo)
-
-        file_folder_layout.addLayout(folder_button_layout)
-
-        # Preview button and label
-        self.preview_button = QPushButton("Preview File && Folder Format")
+        self.preview_button = QATCHPushButton("Preview File && Folder Format", variant="secondary")
+        self.preview_button.setFixedHeight(34)
         self.preview_button.clicked.connect(self.preview_format)
-        self.preview_label = QLabel("Preview will appear here.")
-        file_folder_layout.addWidget(self.preview_button)
-        file_folder_layout.addStretch()
-        file_folder_layout.addWidget(self.preview_label)
+        lay.addWidget(self.preview_button)
 
-        file_folder_tab.setLayout(file_folder_layout)
-        # Default Data Path Tab
-        default_data_tab = QWidget()
-        # Main layout
-        default_data_layout = QVBoxLayout()
+        self.preview_label = QtWidgets.QLabel("Preview will appear here.")
+        lay.addWidget(self._preview_box(self.preview_label))
 
-        # Load directory section
-        load_label = QLabel("Select or input a load directory:")
-        load_label.setAlignment(Qt.AlignLeft)
-        default_data_layout.addWidget(load_label)
+        return well
 
-        load_directory_layout = QHBoxLayout()
-        self.load_directory_input = QLineEdit()
-        load_directory_layout.addWidget(self.load_directory_input)
+    def _build_format_controls_row(self, container: QtWidgets.QHBoxLayout) -> QtWidgets.QHBoxLayout:
+        """Builds the "+"/"-"/delimiter control row beneath a tag-dropdown
+        container (file or folder format). Stashes the delimiter combo on
+        `self._last_delimiter_combo` for the caller to pick up, since each
+        row needs its own combo but this helper is shared by both."""
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(8)
+        row.setAlignment(QtCore.Qt.AlignLeft)
 
-        load_browse_button = QPushButton("Browse")
+        add_button = QATCHPushButton("+", variant="secondary")
+        add_button.setFixedSize(40, 30)
+        add_button.clicked.connect(lambda: self.add_dropdown(container))
+        row.addWidget(add_button)
+
+        remove_button = QATCHPushButton("-", variant="secondary")
+        remove_button.setFixedSize(40, 30)
+        remove_button.clicked.connect(lambda: self.remove_last_dropdown(container))
+        row.addWidget(remove_button)
+
+        row.addSpacing(6)
+        delim_label = self._desc("Delimiter")
+        row.addWidget(delim_label)
+
+        delimiter_combo = QtWidgets.QComboBox()
+        delimiter_combo.setFixedSize(56, 30)
+        delimiter_combo.addItems(Constants.path_delimiters)
+        row.addWidget(delimiter_combo)
+        self._last_delimiter_combo = delimiter_combo
+
+        row.addStretch()
+        return row
+
+    def _build_datapaths_page(self) -> QtWidgets.QWidget:
+        well = self._well("pathsWell")
+        lay = QtWidgets.QVBoxLayout(well)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.setSpacing(10)
+
+        lay.addWidget(self._caption("Load Directory"))
+        lay.addWidget(self._desc("Where runs are read from when opening or analyzing data."))
+
+        load_row = QtWidgets.QHBoxLayout()
+        load_row.setSpacing(8)
+        self.load_directory_input = QATCHLineEdit()
+        self.load_directory_input.setFixedHeight(34)
+        load_row.addWidget(self.load_directory_input, 1)
+        load_browse_button = QATCHPushButton("Browse…", variant="secondary")
+        load_browse_button.setFixedHeight(34)
         load_browse_button.clicked.connect(self.open_load_file_dialog)
-        load_directory_layout.addWidget(load_browse_button)
+        load_row.addWidget(load_browse_button)
+        lay.addLayout(load_row)
 
-        default_data_layout.addLayout(load_directory_layout)
+        lay.addWidget(self._hairline())
 
-        # Write directory section
-        write_directory_layout_1 = QHBoxLayout()
-        write_label = QLabel("Select or input a write directory:")
-        write_label.setAlignment(Qt.AlignLeft)
-        write_directory_layout_1.addWidget(write_label)
+        write_caption_row = QtWidgets.QHBoxLayout()
+        write_caption_row.addWidget(self._caption("Write Directory"))
+        write_caption_row.addStretch()
+        self.sync_write_with_load = QATCHToggle()
+        write_caption_row.addWidget(self.sync_write_with_load)
+        write_caption_row.addWidget(self._desc("Same as load directory"))
+        lay.addLayout(write_caption_row)
+        lay.addWidget(self._desc("Destination for newly captured runs."))
 
-        self.sync_write_with_load = QCheckBox("Same as load directory")
-        self.sync_write_with_load.stateChanged.connect(self.toggle_folder_sync)
-        if True:  # 2 layout options available (use one or the other)
-            write_directory_layout_1.addWidget(self.sync_write_with_load, alignment=Qt.AlignRight)
-        else:
-            self.sync_write_with_load.setLayoutDirection(Qt.RightToLeft)
-            write_directory_layout_1.addWidget(self.sync_write_with_load)
-
-        default_data_layout.addLayout(write_directory_layout_1)
-
-        write_directory_layout_2 = QHBoxLayout()
-        self.write_directory_input = QLineEdit()
-        write_directory_layout_2.addWidget(self.write_directory_input)
-
-        self.write_browse_button = QPushButton("Browse")
+        write_row = QtWidgets.QHBoxLayout()
+        write_row.setSpacing(8)
+        self.write_directory_input = QATCHLineEdit()
+        self.write_directory_input.setFixedHeight(34)
+        write_row.addWidget(self.write_directory_input, 1)
+        self.write_browse_button = QATCHPushButton("Browse…", variant="secondary")
+        self.write_browse_button.setFixedHeight(34)
         self.write_browse_button.clicked.connect(self.open_write_file_dialog)
-        write_directory_layout_2.addWidget(self.write_browse_button)
+        write_row.addWidget(self.write_browse_button)
+        lay.addLayout(write_row)
 
-        default_data_layout.addLayout(write_directory_layout_2)
+        self.sync_write_with_load.toggled.connect(self.toggle_folder_sync)
 
-        # Manually fire 'stateChanged' event on UI initialization
-        # NOTE: This must be after ALL write layout objects created
-        self.toggle_folder_sync(self.sync_write_with_load.checkState())
+        lay.addStretch()
+        return well
 
-        # Spacer to push elements down if necessary
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        default_data_layout.addWidget(spacer)
+    def _build_appearance_page(self) -> QtWidgets.QWidget:
+        well = self._well("appearanceWell")
+        lay = QtWidgets.QVBoxLayout(well)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.setSpacing(14)
 
-        default_data_tab.setLayout(default_data_layout)
+        lay.addWidget(self._caption("Theme"))
 
-        # Appearance tab: light/dark theme, applied immediately and
-        # persisted independently of the Save/global-preferences flow below
-        # (it's a single app-wide setting, not a per-user preference, so it
-        # also applies to the pre-login sign-in screen).
-        appearance_tab = QWidget()
-        appearance_layout = QVBoxLayout()
+        cards_row = QtWidgets.QHBoxLayout()
+        cards_row.setSpacing(12)
+        light_card = QATCHOptionCard(
+            "Light", "Bright canvas for well-lit rooms.", show_radio=True
+        )
+        dark_card = QATCHOptionCard(
+            "Dark", "Low-glare canvas for dim rooms.", show_radio=True
+        )
+        cards_row.addWidget(light_card, 1)
+        cards_row.addWidget(dark_card, 1)
+        lay.addLayout(cards_row)
 
-        theme_layout = QHBoxLayout()
-        theme_label = QLabel("Theme:")
-        theme_layout.addWidget(theme_label)
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Light", "Dark"])
-        self.theme_combo.setCurrentText(ThemeManager.instance().mode().value.capitalize())
-        self.theme_combo.currentTextChanged.connect(self.change_theme)
-        theme_layout.addWidget(self.theme_combo)
-        theme_layout.addStretch()
-        appearance_layout.addLayout(theme_layout)
+        self._theme_cards = QATCHOptionCardGroup()
+        self._theme_cards.addCard(light_card, "light")
+        self._theme_cards.addCard(dark_card, "dark")
+        # Set the initial selection BEFORE connecting `toggled`, so this
+        # doesn't fire an app-wide theme re-application during construction
+        # (mirrors the old combo box's setCurrentText-before-connect order).
+        self._theme_cards.setCheckedId(ThemeManager.instance().mode().value)
+        self._theme_cards.toggled.connect(lambda card, checked: self.change_theme(card.text()))
 
-        appearance_spacer = QWidget()
-        appearance_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        appearance_layout.addWidget(appearance_spacer)
+        lay.addWidget(
+            self._desc(
+                "Applies instantly and app-wide, including the sign-in screen. "
+                "Saved separately from your other preferences."
+            )
+        )
+        lay.addStretch()
+        return well
 
-        appearance_tab.setLayout(appearance_layout)
+    def _build_action_bar(self) -> QtWidgets.QHBoxLayout:
+        action_bar = QtWidgets.QHBoxLayout()
+        action_bar.setSpacing(12)
 
-        # Add tabs to the tab widget
-        self.tab_widget.addTab(date_time_tab, "Date and Time Preferences")
-        self.tab_widget.addTab(file_folder_tab, "File and Folder Preferences")
-        self.tab_widget.addTab(default_data_tab, "Default Data Paths")
-        self.tab_widget.addTab(appearance_tab, "Appearance")
-        # Connect tab change signal to handler
-        self.tab_widget.currentChanged.connect(self.handle_tab_change)
+        self.global_pref_toggle = QATCHToggle()
+        action_bar.addWidget(self.global_pref_toggle)
 
-        # Add the tab widget to the main layout
-        main_layout.addWidget(self.tab_widget)
-        # Label to display status of global preferences
-        self.global_pref_label = QLabel("Use global preferences: OFF")
-        main_layout.addWidget(self.global_pref_label)
+        global_text_col = QtWidgets.QVBoxLayout()
+        global_text_col.setContentsMargins(0, 0, 0, 0)
+        global_text_col.setSpacing(1)
+        global_text_col.addWidget(self._field_label("Use global preferences"))
+        self.global_pref_label = self._desc("Off — settings apply to you only")
+        global_text_col.addWidget(self.global_pref_label)
+        action_bar.addLayout(global_text_col)
 
-        # Toggle checkbox for global preferences
-        self.global_pref_toggle = QCheckBox("Use global preferences", self)
-        self.global_pref_toggle.stateChanged.connect(self.toggle_global_preferences)
-        main_layout.addWidget(self.global_pref_toggle)
-        # Submit button
-        self.submit_button = QPushButton("Save Preferences")
-        self.submit_button.clicked.connect(self.save_preferences)
-        main_layout.addWidget(self.submit_button)
-        reset_button = QPushButton("Reset to Default Preferences")
+        action_bar.addStretch()
+
+        reset_button = QATCHPushButton("Reset to Default", variant="secondary")
+        reset_button.setFixedHeight(34)
         reset_button.clicked.connect(self.reset_to_default_preferences)
-        main_layout.addWidget(reset_button)
-        # Set the layout for the window
-        self.setLayout(main_layout)
+        action_bar.addWidget(reset_button)
 
+        self.submit_button = QATCHPushButton("Save Preferences", variant="primary")
+        self.submit_button.setFixedHeight(34)
+        self.submit_button.setMinimumWidth(150)
+        self.submit_button.clicked.connect(self.save_preferences)
+        action_bar.addWidget(self.submit_button)
+
+        self.global_pref_toggle.toggled.connect(self.toggle_global_preferences)
+
+        return action_bar
+
+    # ------------------------------------------------------------------
+    # Themed-widget factories (each registers itself for _on_theme_changed)
+    # ------------------------------------------------------------------
+    def _well(self, object_name: str) -> QtWidgets.QFrame:
+        frame = QtWidgets.QFrame()
+        frame.setObjectName(object_name)
+        frame.setStyleSheet(surface_panel_qss(object_name))
+        self._wells.append((frame, object_name))
+        return frame
+
+    def _caption(self, text: str) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(text.upper())
+        lbl.setStyleSheet(caption_label_qss())
+        self._captions.append(lbl)
+        return lbl
+
+    def _desc(self, text: str) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(text)
+        lbl.setWordWrap(True)
+        lbl.setStyleSheet(desc_label_qss())
+        self._descs.append(lbl)
+        return lbl
+
+    def _field_label(self, text: str) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(text)
+        lbl.setStyleSheet(field_label_qss())
+        self._field_labels.append(lbl)
+        return lbl
+
+    def _hairline(self) -> QtWidgets.QFrame:
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.HLine)
+        line.setFixedHeight(1)
+        line.setStyleSheet(hairline_qss())
+        self._hairlines.append(line)
+        return line
+
+    def _preview_box(self, label: QtWidgets.QLabel) -> QtWidgets.QFrame:
+        box = QtWidgets.QFrame()
+        box.setObjectName("previewBox")
+        box.setStyleSheet(info_wash_card_qss("previewBox"))
+
+        lay = QtWidgets.QVBoxLayout(box)
+        lay.setContentsMargins(13, 10, 13, 10)
+        lay.setSpacing(5)
+        lay.addWidget(self._caption("Preview"))
+
+        label.setWordWrap(True)
+        label.setStyleSheet(mono_preview_qss())
+        self._preview_labels.append(label)
+        lay.addWidget(label)
+
+        self._preview_boxes.append(box)
+        return box
+
+    def _sync_theme_cards(self, mode: str) -> None:
+        if self._theme_cards.checkedId() != mode:
+            self._theme_cards.setCheckedId(mode)
+
+    def _on_theme_changed(self, mode: str) -> None:
+        self._apply_panel_appearance(self._current_margin_frac())
+        self._refresh_header_theme()
+        for frame, name in self._wells:
+            frame.setStyleSheet(surface_panel_qss(name))
+        for lbl in self._captions:
+            lbl.setStyleSheet(caption_label_qss())
+        for lbl in self._descs:
+            lbl.setStyleSheet(desc_label_qss())
+        for lbl in self._field_labels:
+            lbl.setStyleSheet(field_label_qss())
+        for line in self._hairlines:
+            line.setStyleSheet(hairline_qss())
+        for box in self._preview_boxes:
+            box.setStyleSheet(info_wash_card_qss("previewBox"))
+        for lbl in self._preview_labels:
+            lbl.setStyleSheet(mono_preview_qss())
+        self._sync_theme_cards(mode)
+
+    # ------------------------------------------------------------------
+    # Overlay shell hooks (see QATCH.ui.components.overlay_shell for the
+    # shared init scaffolding, fade engine, geometry fit, and event
+    # handlers this widget inherits from OverlayLifecycleMixin)
+    # ------------------------------------------------------------------
+    def _apply_panel_appearance(self, frac: float) -> None:
+        """Interpolates the glass panel's alpha/border/radius continuously
+        with `frac`, matching the live margin so the fullscreen toggle reads
+        as one smooth motion instead of snapping partway through - same
+        recipe as DataManagementWidget/UserProfilesManagerWidget. frac == 0
+        -> fullscreen (flush, no radius/border, opaque); frac ==
+        `_default_margin_pct` -> fully inset."""
+        p = 0.0 if self._default_margin_pct <= 0 else min(1.0, frac / self._default_margin_pct)
+        alpha = int(255 + (215 - 255) * p)
+        border = 1.5 * p
+        radius = 12.0 * p
+        self._panel_alpha = alpha
+        self.glass_frame.setStyleSheet(glass_panel_qss("prefsview", alpha, border, radius))
+
+    def _rebuild_fs_icons(self) -> None:
+        """Rebuilds the fullscreen button's normal/hover icon pixmaps for the
+        icon matching the current fullscreen state - shared with
+        DataManagementWidget/UserProfilesManagerWidget via
+        `overlay_shell.rebuild_fullscreen_icons`."""
+        rebuild_fullscreen_icons(self, self.ICON_EXPAND, self.ICON_COLLAPSE)
+
+    def toggle_fullscreen(self) -> None:
+        self._is_fullscreen = not self._is_fullscreen
+        self._rebuild_fs_icons()
+
+        target = 0.0 if self._is_fullscreen else self._default_margin_pct
+        start = self._default_margin_pct if self._is_fullscreen else 0.0
+
+        def _step(t):
+            frac = start + (target - start) * t
+            self._apply_margin_frac(frac)
+
+        run_variant_animation(
+            self, "_fs_anim", duration=240, easing=FULLSCREEN_ANIM_EASING, on_step=_step,
+        )
+
+    def _animate_close(self) -> None:
+        """A fullscreen expand/collapse may still be in flight when the
+        overlay is dismissed - stop it cleanly before the shared fade-out
+        takes over."""
+        fs_anim = getattr(self, "_fs_anim", None)
+        if fs_anim is not None and fs_anim.state() == QtCore.QAbstractAnimation.Running:
+            fs_anim.stop()
+        super()._animate_close()
+
+    def _do_close(self) -> None:
+        """Resets to inset state so the next open always starts clean,
+        regardless of whether this closed from fullscreen."""
+        if getattr(self, "_is_fullscreen", False):
+            self._is_fullscreen = False
+            self._rebuild_fs_icons()
+        super()._do_close()
+
+    # ------------------------------------------------------------------
+    # Public API (called from controls_windows.py / ui_controls.py)
+    # ------------------------------------------------------------------
     def showNormal(self, tab_idx=0):
-        super(UserPreferencesWidget, self).hide()
-        super(UserPreferencesWidget, self).showNormal()
-        self.resize(self.minimumSize())
-
+        """Compatibility shim for the old standalone-window call sites
+        (`controls_windows.py`'s `preferences()`, `ui_controls.py`'s
+        `_open_user_preferences`) - opens the overlay on a specific
+        section instead of restoring a native window."""
         # Reset labels to un-previewed states
         self.preview_date_time_label.setText("Preview will appear here.")
         self.preview_label.setText("Preview will appear here.")
@@ -314,14 +572,20 @@ class UserPreferencesWidget(QWidget):
             self.global_pref_toggle.setChecked(True)
             self.global_pref_toggle.setEnabled(False)
 
-        self.tab_widget.setCurrentIndex(tab_idx)
+        if 0 <= tab_idx < len(self._section_keys):
+            self.nav.set_active(self._section_keys[tab_idx])
+        else:
+            self.nav.set_active(self._section_keys[0])
+
+        self.setVisible(True)
 
     def check_user_role(self):
-        self._is_admin = UserProfiles.check(self.parent.userrole, UserRoles.ADMIN)
+        self._is_admin = UserProfiles.check(self._controller.userrole, UserRoles.ADMIN)
 
-    def handle_tab_change(self, index):
-        """Handle tab change and load preferences if needed."""
-        # Check if the file and folder preferences tab is selected
+    def handle_section_change(self, key: str) -> None:
+        """Handle sidebar-section change and load preferences if needed."""
+        if key in self._section_keys:
+            self.content_stack.setCurrentIndex(self._section_keys.index(key))
         if self.global_pref_toggle.isChecked():
             self.load_global_preferences()
         elif hasattr(UserProfiles.user_preferences, "_user_preferences_path"):
@@ -329,7 +593,7 @@ class UserPreferencesWidget(QWidget):
 
     def open_load_file_dialog(self) -> bool:
         # Open file dialog for directory selection
-        selected_directory = QFileDialog.getExistingDirectory(
+        selected_directory = QtWidgets.QFileDialog.getExistingDirectory(
             self, "Select Directory", self.load_directory_input.text()
         )
         if selected_directory:
@@ -343,7 +607,7 @@ class UserPreferencesWidget(QWidget):
 
     def open_write_file_dialog(self) -> bool:
         # Open file dialog for directory selection
-        selected_directory = QFileDialog.getExistingDirectory(
+        selected_directory = QtWidgets.QFileDialog.getExistingDirectory(
             self, "Select Directory", self.write_directory_input.text()
         )
         if selected_directory:
@@ -355,20 +619,20 @@ class UserPreferencesWidget(QWidget):
     def change_theme(self, theme_text: str) -> None:
         """Switches the app-wide light/dark theme immediately.
 
-        Unlike the other tabs, this isn't staged behind "Save Preferences" -
-        ThemeManager applies and persists the change itself the moment the
-        combo box selection changes.
+        Unlike the other sections, this isn't staged behind "Save
+        Preferences" - ThemeManager applies and persists the change itself
+        the moment a theme card is selected.
         """
         ThemeManager.instance().set_mode(ThemeMode(theme_text.lower()))
 
-    def toggle_folder_sync(self, state):
-        is_synced = True if (state == Qt.CheckState.Checked) else False
+    def toggle_folder_sync(self, checked: bool):
+        is_synced = bool(checked)
         self.write_directory_input.setEnabled(not is_synced)
         self.write_browse_button.setEnabled(not is_synced)
         if is_synced:
             self.write_directory_input.setText(self.load_directory_input.text())
-        if self.sync_write_with_load.checkState() != state:
-            self.sync_write_with_load.setCheckState(state)
+        if self.sync_write_with_load.isChecked() != is_synced:
+            self.sync_write_with_load.setChecked(is_synced)
 
     def add_dropdown(self, layout):
         """Add a new dropdown to the layout."""
@@ -379,7 +643,10 @@ class UserPreferencesWidget(QWidget):
             combo_list = self.folder_format_combos
 
         if len(combo_list) < len(self.tags):  # Ensure no more than 7 dropdowns
-            combo = QComboBox()
+            combo = QtWidgets.QComboBox()
+            combo.setFixedHeight(34)
+            combo.setMinimumWidth(92)
+            combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
             # Add the "Select tag" placeholder as the first item
             combo.addItem(SELECT_TAG_PROMPT)
             # # Add "Subfolder" field as the 2nd item for folder format only
@@ -424,9 +691,11 @@ class UserPreferencesWidget(QWidget):
         is_checked = self.global_pref_toggle.isChecked()
         self.check_user_role()  # updates self._is_admin
 
-        # Update the label
+        # Update the status subtitle
         self.global_pref_label.setText(
-            "Use global preferences: ON" if is_checked else "Use global preferences: OFF"
+            "On — applies to every user on this instrument"
+            if is_checked
+            else "Off — settings apply to you only"
         )
 
         # Load preferences
@@ -471,7 +740,7 @@ class UserPreferencesWidget(QWidget):
 
     def disable_add_remove_buttons(self, disable):
         """Disable add and remove buttons for file and folder format layouts."""
-        for button in self.findChildren(QPushButton):
+        for button in self.findChildren(QtWidgets.QPushButton):
             if button.text() in ["+", "-"]:
                 button.setEnabled(not disable)
 
@@ -481,9 +750,9 @@ class UserPreferencesWidget(QWidget):
             item = layout.itemAt(i)
             if item:
                 widget = item.widget()
-                if isinstance(widget, QComboBox):
+                if isinstance(widget, QtWidgets.QComboBox):
                     widget.setEnabled(not enable)
-                elif isinstance(widget, QWidget) and widget.layout():
+                elif isinstance(widget, QtWidgets.QWidget) and widget.layout():
                     # Recursively disable combo boxes in nested layouts
                     self.disable_all_combos_in_layout(widget.layout(), enable)
 
@@ -491,9 +760,6 @@ class UserPreferencesWidget(QWidget):
         """Preview the date and time format based on selected options."""
         date_format = self.date_format_combo.currentText()
         time_format = self.time_format_combo.currentText()
-
-        # Example date and time string to preview
-        from datetime import datetime
 
         current_datetime = datetime.now()
 
@@ -508,11 +774,7 @@ class UserPreferencesWidget(QWidget):
         global_preferences = UserProfiles.user_preferences.load_global_preferences()
         UserProfiles.user_preferences.set_preferences()
         # Update the folder sync state based on the dictionary
-        paths_synced = (
-            Qt.CheckState.Checked
-            if (global_preferences["load_data_path"] == global_preferences["write_data_path"])
-            else Qt.CheckState.Unchecked
-        )
+        paths_synced = global_preferences["load_data_path"] == global_preferences["write_data_path"]
         self.toggle_folder_sync(paths_synced)
         # Reset the load and write paths based on the dictionary
         self.load_directory_input.setText(global_preferences["load_data_path"])
@@ -540,18 +802,14 @@ class UserPreferencesWidget(QWidget):
         self.folder_delimiter_combo.setCurrentText(global_preferences["folder_format_delimiter"])
         # Reset global preferences toggle
         self.global_pref_toggle.setChecked(True)
-        self.global_pref_label.setText("Use global preferences: ON")
+        self.global_pref_label.setText("On — applies to every user on this instrument")
 
     def load_user_preferences(self):
         UserProfiles.user_preferences.set_use_global(use_global=False)
         user_preferences = UserProfiles.user_preferences.load_user_preferences()
         UserProfiles.user_preferences.set_preferences()
         # Update the folder sync state based on the dictionary
-        paths_synced = (
-            Qt.CheckState.Checked
-            if (user_preferences["load_data_path"] == user_preferences["write_data_path"])
-            else Qt.CheckState.Unchecked
-        )
+        paths_synced = user_preferences["load_data_path"] == user_preferences["write_data_path"]
         self.toggle_folder_sync(paths_synced)
         # Reset the load and write paths based on the dictionary
         self.load_directory_input.setText(user_preferences["load_data_path"])
@@ -580,17 +838,11 @@ class UserPreferencesWidget(QWidget):
 
         # Reset global preferences toggle
         self.global_pref_toggle.setChecked(False)
-        self.global_pref_label.setText("Use global preferences: OFF")
+        self.global_pref_label.setText("Off — settings apply to you only")
 
     def show_error_dialog(self, title, message):
-        """
-        Show an error dialog with the specified title and message.
-        """
-        error_dialog = QMessageBox()
-        error_dialog.setIcon(QMessageBox.Critical)
-        error_dialog.setWindowTitle(title)
-        error_dialog.setText(message)
-        error_dialog.exec_()
+        """Show a themed error dialog with the specified title and message."""
+        PopUp.critical(self, title, message, ok_only=True)
 
     def preview_format(self):
         """Preview the file and folder format based on selected tags."""
@@ -672,7 +924,7 @@ class UserPreferencesWidget(QWidget):
         folder_delimiter = self.folder_delimiter_combo.currentText()
 
         # Check "Port" exists in format dropdowns
-        if not "Port" in file_format:
+        if "Port" not in file_format:
             self.show_error_dialog(
                 "File Format Error",
                 'The "Port" tag must exist in the file format to create unique paths for multiplex runs.\n'
@@ -739,24 +991,17 @@ class UserPreferencesWidget(QWidget):
         if write_globals:
             UserProfiles.user_preferences.write_global_preferences()
 
-        # Show a popup window to confirm preferences were saved
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.setWindowTitle("Preferences Saved")
-        msg_box.setText("Your preferences have been successfully saved.")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+        # Confirm preferences were saved
+        PopUp.information(
+            self, "Preferences Saved", "Your preferences have been successfully saved."
+        )
 
     def reset_to_default_preferences(self):
         """Reset preferences to their default values based on a dictionary."""
         # Update folder sync state based on the dictionary
         paths_synced = (
-            Qt.CheckState.Checked
-            if (
-                Constants.default_preferences["load_data_path"]
-                == Constants.default_preferences["write_data_path"]
-            )
-            else Qt.CheckState.Unchecked
+            Constants.default_preferences["load_data_path"]
+            == Constants.default_preferences["write_data_path"]
         )
         self.toggle_folder_sync(paths_synced)
         # Reset the load and write paths based on the dictionary
