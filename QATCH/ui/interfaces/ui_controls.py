@@ -687,7 +687,7 @@ class UIControls:
         # Wired to the main window's device-info handler in mainWindow.py.
         self.pButton_Configure = QATCHPushButton(variant="default")
         self.pButton_Configure.setToolTip("Configure device / position info")
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "wrench.svg")
         self.pButton_Configure.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Configure.setIconSize(QtCore.QSize(18, 18))
         self.pButton_Configure.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
@@ -1208,6 +1208,9 @@ class UIControls:
         self.tool_Advanced.setCheckable(True)
         self.tool_Advanced.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.tool_Advanced.clicked.connect(self.action_advanced)
+        self.tool_Advanced.toggled.connect(
+            lambda _: self._refresh_checkable_style(self.tool_Advanced)
+        )
         self.tool_bar_2.addWidget(self.tool_Advanced)
 
         self.tool_bar_2.addSeparator()
@@ -1224,6 +1227,7 @@ class UIControls:
         self.tool_User.setCheckable(True)
         self.tool_User.setEnabled(self._is_user_signed_in())
         self.tool_User.clicked.connect(self._toggle_account_popup)
+        self.tool_User.toggled.connect(lambda _: self._refresh_checkable_style(self.tool_User))
         self.tool_bar_2.addWidget(self.tool_User)
 
         self.toolBar.addWidget(self.tool_bar_2)
@@ -2967,7 +2971,7 @@ class UIControls:
         buttons_icons = [
             (getattr(self, "pButton_ID", None), "search.svg", text_color),
             (getattr(self, "pButton_Refresh", None), "refresh-cw.svg", text_color),
-            (getattr(self, "pButton_Configure", None), "gear.svg", text_color),
+            (getattr(self, "pButton_Configure", None), "wrench.svg", text_color),
             (getattr(self, "pButton_PlateConfig", None), "plate-config.svg", text_color),
             (getattr(self, "pButton_Start", None), "play-filled.svg", text_color),
             (getattr(self, "pButton_Stop", None), "stop-filled.svg", text_color),
@@ -3587,6 +3591,7 @@ class UIControls:
             self.cBox_Port,
             self.pButton_ID,
             self.pButton_Refresh,
+            self.pButton_Configure,
         )
         port_section = section("Serial COM Port", port_row)
 
@@ -3670,6 +3675,22 @@ class UIControls:
 
         return outer
 
+    @staticmethod
+    def _refresh_checkable_style(btn: QtWidgets.QAbstractButton) -> None:
+        """Forces an immediate QSS repolish of a checkable toolbar button.
+
+        Connected to `toggled` for `tool_Advanced`/`tool_User` so the
+        `:checked` highlight (see `app_theme.qss`'s `CtrlToolBar QToolButton`
+        rules) repaints the instant the state actually changes, covering
+        every place that flips it - the native click auto-toggle as well as
+        the explicit `setChecked()` calls in `action_advanced`/
+        `_toggle_account_popup` - rather than only the ones that happen to
+        already be visually in sync.
+        """
+        btn.style().unpolish(btn)
+        btn.style().polish(btn)
+        btn.update()
+
     def action_advanced(self, obj=None) -> None:
         """Toggle the advanced control panel popup.
 
@@ -3686,6 +3707,24 @@ class UIControls:
             closed_at = getattr(self, "_advanced_popup_closed_at", 0.0)
             if monotonic() - closed_at < 0.25:
                 self.tool_Advanced.setChecked(False)
+                # `prev.deleteLater()` destroys the whole popup subtree,
+                # including `_advanced_content_container`/`device_info_container`
+                # if they're still parented inside it (they're built once and
+                # reused across every popup open via `AdvancedMainWidget.toggle`,
+                # not rebuilt per-popup) - deleting them here would leave those
+                # cached attributes pointing at a dead C++ object, raising
+                # "wrapped C/C++ object ... has been deleted" the next time
+                # they're reparented into a new popup. Detach them first so
+                # only the popup shell itself gets torn down.
+                for content in (
+                    getattr(self, "_advanced_content_container", None),
+                    getattr(self, "device_info_container", None),
+                ):
+                    if content is not None:
+                        try:
+                            content.setParent(None)
+                        except RuntimeError:
+                            pass
                 prev.deleteLater()
                 self._advanced_popup = None
                 return

@@ -2902,11 +2902,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # If port changed, uncheck "Identify" button and close port (if open)
         self._port_identify_stop()
 
-        # Program Position ID if asked
-        if self.controls_window.ui.cBox_Port.currentData() == "CMD_DEV_INFO":
-            self._configure_device_info()
-            return  # skip the rest of this method
-
         # Inform Upgrader class to perform version check on next run
         self.firmware_updater.checkAgain()
 
@@ -6606,21 +6601,23 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.controls_window.ui.cBox_Port.addItem(
                         controller_port[0], controller_port[1], controller_port[2]
                     )
-                # The last item is the device-config entry. When at least one
-                # real device port was added it offers "Configure..."; with no
-                # device connected it reads "No device connected" and is left
-                # non-actionable (its data stays empty so selecting it does
-                # nothing in _port_changed).
+                # The last item is a non-selectable structural placeholder,
+                # kept purely so downstream "real port count" math (`count()
+                # - 1` at various call sites) stays valid. It used to double
+                # as a "Configure..." shortcut; that's now the dedicated
+                # pButton_Configure button (see _configure_device_info /
+                # _update_configure_enabled) instead, so this entry is always
+                # greyed out and never triggers anything when selected.
                 if self.controls_window.ui.cBox_Port.count() > 0:
-                    self.controls_window.ui.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
+                    self.controls_window.ui.cBox_Port.addItem("", "CMD_DEV_INFO")
                 else:
                     self.controls_window.ui.cBox_Port.addItem("No device connected", "")
-                    # Grey it out so it reads as a status, not a choice.
-                    _idx = self.controls_window.ui.cBox_Port.count() - 1
-                    _model = self.controls_window.ui.cBox_Port.model()
-                    _item = _model.item(_idx) if hasattr(_model, "item") else None
-                    if _item is not None:
-                        _item.setEnabled(False)
+                # Grey it out so it reads as a status, not a choice.
+                _idx = self.controls_window.ui.cBox_Port.count() - 1
+                _model = self.controls_window.ui.cBox_Port.model()
+                _item = _model.item(_idx) if hasattr(_model, "item") else None
+                if _item is not None:
+                    _item.setEnabled(False)
 
             # Show/hide "Next Port" button (as HW supports it)
             self.controls_window.ui.action_NextPortRow.setVisible(flux_controller_exists)
