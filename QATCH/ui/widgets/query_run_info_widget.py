@@ -1879,7 +1879,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.detect_change()
 
     def calc_params(self):
-        from QATCH.processors.Analyze import AnalyzeProcess
+        from QATCH.processors.analyze_formulas import AnalyzeFormulas
 
         if self.t3.text() != "0":
             self.t3.setText("0")  # Surfactant locked
@@ -1945,13 +1945,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
         try:
             # Log.d(f"passing in {surfactant} and {concentration}")
-            surface_tension = AnalyzeProcess.Lookup_ST(
+            surface_tension = AnalyzeFormulas.Lookup_ST(
                 surfactant=surfactant, concentration=protein_concentration
             )
-            contact_angle = AnalyzeProcess.Lookup_CA(
+            contact_angle = AnalyzeFormulas.Lookup_CA(
                 surfactant=surfactant, concentration=protein_concentration
             )
-            density = AnalyzeProcess.Lookup_DN(
+            density = AnalyzeFormulas.Lookup_DN(
                 surfactant=surfactant,
                 concentration=protein_concentration,
                 stabilizer_type=stabilizer_type,
@@ -1985,14 +1985,14 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             bool : True if confirmation and writing of run_info was successful.  On errors, False is returned
                 indicating a failed writing attempt.
         """
-        from QATCH.processors.Analyze import AnalyzeProcess
+        from QATCH.processors.analyze_formulas import AnalyzeFormulas
 
         # Parameter initialization
         surfactant = 0  # float(self.t3.text()) if len(self.t3.text()) else 0
         concentration = float(self.t4.text()) if len(self.t4.text()) else 0
         if self.b1.isChecked():  # IS bioformulation
             protein_concentration = float(self.t12.text()) if len(self.t12.text()) else 0
-            st = AnalyzeProcess.Lookup_ST(
+            st = AnalyzeFormulas.Lookup_ST(
                 surfactant=surfactant, concentration=protein_concentration
             )
         else:  # NOT bioformulation

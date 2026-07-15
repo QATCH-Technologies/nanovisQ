@@ -1,3 +1,4 @@
+from .analyze_window import AnalyzeWindow
 from .base_window import BaseWindow
 from .controls_windows import ControlsWindow
 from .info_window import InfoWindow
@@ -7,6 +8,7 @@ from .mode_window import ModeWindow
 from .plots_window import PlotsWindow
 
 __all__ = [
+    "AnalyzeWindow",
     "BaseWindow",
     "ControlsWindow",
     "InfoWindow",

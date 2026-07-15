@@ -1299,7 +1299,7 @@ class QModelOnyx:
         harvest_candidates: bool = False,
         decode_config: bool = True,
         refine_pois: bool = True,
-        visualize_candidates: bool = True,
+        visualize_candidates: bool = False,
     ) -> Tuple[Dict[str, Dict[str, List]], int]:
         """
         Executes the QModel Onyx prediction pipeline on the provided data.

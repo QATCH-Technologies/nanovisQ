@@ -94,7 +94,11 @@ class ControlsWindow(BaseWindow):
         self.ui.setup_ui(self)
 
         self.data_management_widget: Optional[Any] = None
-        self.ui_preferences: UserPreferencesWidget = UserPreferencesWidget(self)
+        # Lazily created on first open (see preferences()) - same reasoning
+        # as data_management_widget: it needs to be parented to the full
+        # app window's central widget, which may not exist yet this early
+        # in startup.
+        self.ui_preferences: Optional[UserPreferencesWidget] = None
         self.current_timer: QtCore.QTimer = QtCore.QTimer()
 
         UserProfiles().session_end()
@@ -238,7 +242,7 @@ class ControlsWindow(BaseWindow):
             "Tweed v{} ({})".format(
                 ".".join(str(model_data_version).split(".")[:2]), model_data_release
             ),
-            lambda: self.parent.analyze_process.set_new_prediction_model(
+            lambda: self.parent.analyze_window.ui.set_new_prediction_model(
                 Constants.list_predict_models[0]
             ),
         )
@@ -246,7 +250,7 @@ class ControlsWindow(BaseWindow):
 
         self.qmodel_indus_version = self.menubar[5].addAction(
             "Indus v{} ({})".format(".".join(str(qmodel4_version).split(".")[:2]), qmodel4_release),
-            lambda: self.parent.analyze_process.set_new_prediction_model(
+            lambda: self.parent.analyze_window.ui.set_new_prediction_model(
                 Constants.list_predict_models[1]
             ),
         )
@@ -254,7 +258,7 @@ class ControlsWindow(BaseWindow):
 
         self.qmodel_volta_version = self.menubar[5].addAction(
             "Volta v{} ({})".format(".".join(str(qmodel6_version).split(".")[:2]), qmodel6_release),
-            lambda: self.parent.analyze_process.set_new_prediction_model(
+            lambda: self.parent.analyze_window.ui.set_new_prediction_model(
                 Constants.list_predict_models[2]
             ),
         )
@@ -262,7 +266,7 @@ class ControlsWindow(BaseWindow):
 
         self.qmodel_onyx_version = self.menubar[5].addAction(
             "Onyx v{} ({})".format(".".join(str(qmodel7_version).split(".")[:2]), qmodel7_release),
-            lambda: self.parent.analyze_process.set_new_prediction_model(
+            lambda: self.parent.analyze_window.ui.set_new_prediction_model(
                 Constants.list_predict_models[3]
             ),
         )
@@ -514,13 +518,26 @@ class ControlsWindow(BaseWindow):
         """Opens the data management interface in 'recover' mode."""
         self._open_data_management("recover")
 
-    def preferences(self) -> None:
-        """Displays the user preferences dialog.
+    def _ensure_preferences_widget(self) -> UserPreferencesWidget:
+        """Lazily creates (or re-parents) the user preferences overlay.
 
-        Ensures the preferences widget is visible and restored to normal state
-        for user configuration.
+        Mirrors `_open_data_management`'s lazy-create-and-cache pattern so
+        the overlay is parented to the full application window instead of
+        just the controls bar, and re-fitted to the current window size
+        before use (in case the app window resized since it was created).
+        Shared by `preferences()` (visible open) and `set_working_directory()`
+        (headless use of the same widget to drive a directory-picker + save).
         """
-        self.ui_preferences.showNormal(0)
+        parent = self._data_overlay_parent()
+        if self.ui_preferences is None or self.ui_preferences.parent is not parent:
+            self.ui_preferences = UserPreferencesWidget(self, parent=parent)
+        with suppress(Exception):
+            self.ui_preferences.setGeometry(parent.rect())
+        return self.ui_preferences
+
+    def preferences(self) -> None:
+        """Displays the user preferences overlay, creating it on first use."""
+        self._ensure_preferences_widget().showNormal(0)
 
     def scan_subnets(self) -> None:
         """Initiates a network scan for connected devices and refreshes the port list.
@@ -541,11 +558,12 @@ class ControlsWindow(BaseWindow):
         an automatic save by programmatically clicking the submit button.
         """
         # Loads global/user preferences
-        self.ui_preferences.toggle_global_preferences()
-        self.ui_preferences.sync_write_with_load.setChecked(True)
-        result = self.ui_preferences.open_load_file_dialog()
-        if result and self.ui_preferences.submit_button.isEnabled():
-            self.ui_preferences.submit_button.click()
+        prefs = self._ensure_preferences_widget()
+        prefs.toggle_global_preferences()
+        prefs.sync_write_with_load.setChecked(True)
+        result = prefs.open_load_file_dialog()
+        if result and prefs.submit_button.isEnabled():
+            prefs.submit_button.click()
         else:
             Log.w(TAG, "Working directory not changed.")
 
@@ -575,7 +593,7 @@ class ControlsWindow(BaseWindow):
                 self.userrole = UserRoles(role)
                 self.signinout.setText("&Sign Out")
                 self.ui.tool_User.setText(name)
-                self.parent.analyze_process.tool_User.setText(name)
+                self.parent.analyze_window.ui.tool_User.setText(name)
 
                 # Update management action context
                 if self.userrole != UserRoles.ADMIN:
@@ -592,7 +610,7 @@ class ControlsWindow(BaseWindow):
                 self.signinout.setText("&Sign In")
                 self.manage.setText("&Manage Users...")
                 self.ui.tool_User.setText("Anonymous")
-                self.parent.analyze_process.tool_User.setText("Anonymous")
+                self.parent.analyze_window.ui.tool_User.setText("Anonymous")
             else:
                 Log.d("User has unsaved changes in Analyze mode. Sign out aborted.")
 
@@ -636,7 +654,7 @@ class ControlsWindow(BaseWindow):
             self.signinout.setText("&Sign In")
             self.manage.setText("&Manage Users...")
             self.ui.tool_User.setText("Anonymous")
-            self.parent.analyze_process.tool_User.setText("Anonymous")
+            self.parent.analyze_window.ui.tool_User.setText("Anonymous")
             self.parent.mode_window.ui._set_no_user_mode(None)
 
         # Update UI if user information changed
@@ -647,7 +665,7 @@ class ControlsWindow(BaseWindow):
             self.signinout.setText("&Sign Out")
             self.manage.setText("&Manage Users...")
             self.ui.tool_User.setText(admin)
-            self.parent.analyze_process.tool_User.setText(admin)
+            self.parent.analyze_window.ui.tool_User.setText(admin)
 
         # Display the management overlay
         if allow:

@@ -554,7 +554,7 @@ class UILogin:
         controls.userrole = UserRoles(role)
         controls.signinout.setText("&Sign Out")
         controls.ui.tool_User.setText(name)
-        self.parent.analyze_process.tool_User.setText(name)
+        self.parent.analyze_window.ui.tool_User.setText(name)
 
         controls.set_signed_in_menu_state(True)
         self.parent.mode_window.ui.mark_signed_in()

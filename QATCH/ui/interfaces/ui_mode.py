@@ -237,7 +237,7 @@ class UIMode:
         self.analyze.setLineWidth(0)
         self.analyze.setMidLineWidth(0)
         self.analyze.setWidgetResizable(True)
-        self.analyze.setWidget(parent.analyze_process)
+        self.analyze.setWidget(parent.analyze_window)
         self.analyze.setMinimumSize(QtCore.QSize(1000, 122))
 
         # learn mode view frame: VisQ.AI
@@ -616,7 +616,7 @@ class UIMode:
 
         # Check for busy and/or unsaved changes in Analyze or VisQ.AI
         for processor, name in [
-            (self.parent.analyze_process, "Analyze"),
+            (self.parent.analyze_window.ui, "Analyze"),
             (self.parent.visq_window, "VisQ.AI™"),
         ]:
             if processor.isBusy():
@@ -681,7 +681,11 @@ class UIMode:
             return False if obj is None else None
 
         # Apply UI Changes for Sign-In Mode
-        self.parent.controls_window.ui_preferences.hide()
+        # ui_preferences is lazily created on first open (see
+        # ControlsWindow.preferences()), so it may still be None here if
+        # the user never opened it this session.
+        if self.parent.controls_window.ui_preferences is not None:
+            self.parent.controls_window.ui_preferences.hide()
         self.active_highlight.hide()
         for widget in [self.mode_run, self.mode_analyze, self.mode_learn]:
             widget.setProperty("active", "false")

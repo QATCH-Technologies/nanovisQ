@@ -29,7 +29,7 @@ from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants
-from QATCH.processors.Analyze import AnalyzeProcess
+from QATCH.processors.analyze_formulas import AnalyzeFormulas
 from QATCH.processors.InterpTemps import (
     ActionType,
     InterpTempsProcess,
@@ -264,7 +264,7 @@ class RenameOutputFilesWorker(QtCore.QObject):
                         Log.e(TAG, f"Unable to lookup device info for: {dev_name}. Error: {e}")
 
                     force_save = True
-                    is_good = AnalyzeProcess.run_qmodel_tweed(old_path)
+                    is_good = AnalyzeFormulas.run_qmodel_tweed(old_path)
 
                     # WARNING: Blocking UI call
                     # WARNING: Blocking UI call
