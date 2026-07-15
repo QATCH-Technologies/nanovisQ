@@ -105,8 +105,12 @@ class QModelV7Live(QModelV7FillClassifier):
     # Key   : channel count (matches current_prediction after state change)
     # Value : (threshold_seconds, display_message)
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min since Initial Fill confirmed, no ch1 yet
+        0: (
+            80.0,
+            "Data Ready, You Can Stop",
+        ),  # >= 1:20 min since Initial Fill confirmed, no ch1 yet
         1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min since Initial Fill confirmed, no ch2 yet
+        2: (300.0, "Data Ready, You Can Stop"),  # >= 5 min since Initial Fill confirmed, no ch3 yet
         3: (None, "Data Ready, Stop"),  # always on 3-channel confirmation
     }
 
@@ -433,8 +437,8 @@ class QModelV7Live(QModelV7FillClassifier):
         # Check whether the previous channel's extended-fill latch was armed.
         # If so, now that this channel has finally been confirmed, emit the message.
         # This must run before any early return so that channels not in
-        # DURATION_THRESHOLDS (e.g. channel 2) still release the latch for
-        # channel 1 when they are confirmed.
+        # DURATION_THRESHOLDS still release the previous channel's latch when
+        # they are confirmed.
         prev_channel = channel - 1
         if self._extended_fill_latched.get(prev_channel, False):
             _, prev_message = self.DURATION_THRESHOLDS.get(prev_channel, (None, None))
