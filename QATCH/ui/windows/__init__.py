@@ -6,6 +6,7 @@ from .logger_window import LoggerWindow
 from .login_window import LoginWindow
 from .mode_window import ModeWindow
 from .plots_window import PlotsWindow
+from .review_window import ReviewWindow
 
 __all__ = [
     "AnalyzeWindow",
@@ -16,4 +17,5 @@ __all__ = [
     "LoginWindow",
     "ModeWindow",
     "PlotsWindow",
+    "ReviewWindow",
 ]

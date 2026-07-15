@@ -60,6 +60,7 @@ from QATCH.QModel import OnyxDropEpochSignal, VoltaDropEpochSignal
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.widgets.floating_message_badge_widget import FloatingMessageBadgeWidget
 from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.ui.windows import (
     AnalyzeWindow,
@@ -69,6 +70,7 @@ from QATCH.ui.windows import (
     LoginWindow,
     ModeWindow,
     PlotsWindow,
+    ReviewWindow,
 )
 from QATCH.ui.workers import (
     ExtractWorker,
@@ -483,6 +485,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.info_window = InfoWindow()
         self.login_window = LoginWindow(self)
         self.analyze_window = AnalyzeWindow(self)
+        self.review_window = ReviewWindow()
 
         # Configures the database file for VisQ.AI (if missing or out-of-date).
         # NOTE: This must be done before instantiating the `VisQAIWindow` class
@@ -694,6 +697,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Messaging attribute for early stop messages.
         self._fill_display_msg: Optional[str] = None
+
+        # --- Auto-stop state ---
+        # Watches `self._fill_display_msg` (see `_update_fill_classifier`) for a
+        # "you can stop now" message and, if Auto-stop is enabled, counts down
+        # before calling `stop()` automatically. See `_maybe_trigger_auto_stop`.
+        self._auto_stop_triggered = False
+        self._auto_stop_reason: Optional[str] = None
+        self._auto_stop_remaining: int = 0
+        self._auto_stop_timer = QtCore.QTimer(self)
+        self._auto_stop_timer.setInterval(1000)
+        self._auto_stop_timer.timeout.connect(self._on_auto_stop_tick)
+        self._auto_stop_badge = FloatingMessageBadgeWidget(
+            self, os.path.join(Architecture.get_path(), "QATCH", "icons", "clear.svg")
+        )
 
         # --- fill-event marker state ---
         # Per-channel list of cleanup callables; each removes one persistent marker.
@@ -1278,6 +1295,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_dry_msg = "Preparing sensor..."
         self._last_dry_status = False
         self._fill_display_msg = None
+        self._auto_stop_triggered = False
+        self._cancel_auto_stop_countdown()
         # Instantiates process
         self.worker.config(
             QCS_on=self._QCS_installed,
@@ -1578,6 +1597,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def stop(self):
 
         # This function is connected to the clicked signal of the Stop button.
+        self._cancel_auto_stop_countdown()
         self.controls_window.ui.infostatus.setStyleSheet(
             "background: white; padding: 1px; border: 1px solid #cccccc"
         )
@@ -4765,8 +4785,66 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self.controls_window.ui, "run_controls"):
                 self.controls_window.ui.run_controls.update_progress(ui_step, 5, status_msg)
 
+            self._maybe_trigger_auto_stop()
+
         except Exception as e:
             Log.e(TAG, f"Error retrieving fill status: {e}")
+
+    def _maybe_trigger_auto_stop(self) -> None:
+        """Starts the auto-stop countdown when Auto-stop is enabled and the
+        fill/dry status is telling the user to stop.
+
+        Watches `self._fill_display_msg` - the same text shown on the plot
+        status banner and the run-controls status label - for one of the
+        "you can stop now" messages the fill-status classifier emits
+        (`Constants._AUTO_STOP_MESSAGES`): an early-stop message once enough
+        of the run is confirmed, or the full-fill completion message. Fires
+        at most once per run; a fresh run re-arms it (see `start()`).
+        """
+        if self._auto_stop_triggered:
+            return
+        if self._fill_display_msg not in Constants._AUTO_STOP_MESSAGES:
+            return
+        if not self.controls_window.ui.chBox_AutoStop.isChecked():
+            return
+        if not self.controls_window.ui.run_controls.btn.is_running:
+            return
+
+        self._auto_stop_triggered = True
+        self._auto_stop_reason = self._fill_display_msg
+        self._auto_stop_remaining = 3
+        self._show_auto_stop_message()
+        self._auto_stop_timer.start()
+
+    def _on_auto_stop_tick(self) -> None:
+        """Advances the auto-stop countdown by one second, stopping the run at zero."""
+        self._auto_stop_remaining -= 1
+        if self._auto_stop_remaining <= 0:
+            self._auto_stop_timer.stop()
+            self._auto_stop_badge.clear()
+            self.stop()
+            return
+        self._show_auto_stop_message()
+
+    def _show_auto_stop_message(self) -> None:
+        """Displays/refreshes the floating auto-stop countdown banner."""
+        self._auto_stop_badge.show_message(
+            f"{self._auto_stop_reason} - Auto-stopping in "
+            f"{self._auto_stop_remaining}…",
+            is_error=False,
+            parent_widget=self.controls_window.ui.run_controls,
+        )
+
+    def _cancel_auto_stop_countdown(self) -> None:
+        """Cancels any in-progress auto-stop countdown and hides its banner.
+
+        Safe to call unconditionally (e.g. from `stop()`, whether the stop
+        was manual or auto-triggered, and from `start()` to re-arm a fresh
+        run).
+        """
+        if self._auto_stop_timer.isActive():
+            self._auto_stop_timer.stop()
+        self._auto_stop_badge.clear()
 
     def _update_tec_display(self, data_temperature: np.ndarray) -> None:
         """Refreshes the TEC status label and styling.

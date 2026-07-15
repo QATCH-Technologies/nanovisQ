@@ -141,6 +141,13 @@ class UIMode:
         self.mode_analyze.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.mode_analyze.mousePressEvent = self._click(self._set_analyze_mode)
 
+        # Review Mode
+        self.mode_review = QtWidgets.QLabel("Review")
+        self.mode_review.setObjectName("menuItem")
+        self.mode_review.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.mode_review.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.mode_review.mousePressEvent = self._click(self._set_review_mode)
+
         # Tools Header
         self.mode_tools = QtWidgets.QLabel("<b>TOOLS</b>")
         self.mode_tools.setObjectName("menuSectionHeader")
@@ -174,6 +181,7 @@ class UIMode:
         self.mode_mode.setFont(smooth_font)
         self.mode_run.setFont(smooth_font)
         self.mode_analyze.setFont(smooth_font)
+        self.mode_review.setFont(smooth_font)
         self.mode_tools.setFont(smooth_font)
         self.mode_learn.setFont(smooth_font)
         self.mode_donnan.setFont(smooth_font)
@@ -182,6 +190,7 @@ class UIMode:
         # Initialize dynamic properties
         self.mode_run.setProperty("active", "false")
         self.mode_analyze.setProperty("active", "false")
+        self.mode_review.setProperty("active", "false")
         self.mode_learn.setProperty("active", "false")
         self.mode_donnan.setProperty("active", "false")
         self.mode_injection.setProperty("active", "false")
@@ -191,6 +200,7 @@ class UIMode:
         modelayout.addWidget(self.mode_mode)
         modelayout.addWidget(self.mode_run)
         modelayout.addWidget(self.mode_analyze)
+        modelayout.addWidget(self.mode_review)
         modelayout.addWidget(self.mode_tools)
         if Constants.show_visQ_in_R_builds:
             modelayout.addWidget(self.mode_learn)
@@ -270,6 +280,16 @@ class UIMode:
         self.injection_ui.setWidgetResizable(True)
         self.injection_ui.setWidget(self.injection_calc_module)
         self.injection_ui.setMinimumSize(QtCore.QSize(1000, 122))
+
+        # review mode view frame: Review (currently a "coming soon" placeholder)
+        self.review_ui = QtWidgets.QScrollArea()
+        self.review_ui.setObjectName("review_ui")
+        self.review_ui.setFrameShape(QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+        self.review_ui.setLineWidth(0)
+        self.review_ui.setMidLineWidth(0)
+        self.review_ui.setWidgetResizable(True)
+        self.review_ui.setWidget(parent.review_window.ui.centralwidget)
+        self.review_ui.setMinimumSize(QtCore.QSize(1000, 122))
         # log view frame: Logger
         self.logview = QtWidgets.QScrollArea()
         self.logview.setObjectName("logview")
@@ -447,7 +467,7 @@ class UIMode:
             self.mode_anim.setEndValue(target_widget.geometry())
             self.mode_anim.setEasingCurve(QtCore.QEasingCurve.InOutQuad)
             self.mode_anim.start()
-        menu_items = [self.mode_run, self.mode_analyze, self.mode_learn]
+        menu_items = [self.mode_run, self.mode_analyze, self.mode_review, self.mode_learn]
         for widget in menu_items:
             is_active = widget == target_widget
             widget.setProperty("active", "true" if is_active else "false")
@@ -894,6 +914,74 @@ class UIMode:
         self.animate_mode_highlight(self.mode_analyze)
         self.splitter.replaceWidget(0, target_widget)
         self.parent.viewTutorialPage([5, 6])  # analyze / prior results
+
+        return True if obj is None else None
+
+    def _set_review_mode(
+        self,
+        obj: Optional[Any] = None,
+    ) -> Optional[bool]:
+        """
+        Switches the application to 'Review' mode.
+
+        Review is not yet implemented; selecting it shows a "coming soon"
+        placeholder in place of the usual mode content.
+
+        Args:
+            obj (Optional[Any]): The event object triggering the mode change (e.g., QMouseEvent).
+                If None, it indicates the function was called programmatically rather than
+                via a UI interaction.
+
+        Returns:
+            Optional[bool]:
+                - True if the mode was successfully changed or already active (programmatic call).
+                - False: the mode change was aborted due to not being allowed (programmatic call).
+                - None if triggered via a UI event.
+        """
+        current_widget = self.splitter.widget(0)
+        target_widget = self.review_ui
+
+        # Already in Review mode
+        if current_widget == target_widget and not self._force_splitter_mode_set:
+            Log.d("Review mode already active. Skipping mode change request.")
+            self.animate_mode_highlight(self.mode_review)
+            return True if obj is None else None
+
+        # Check if the mode change is allowed
+        if not self._check_mode_change_allowed():
+            return False if obj is None else None
+
+        # Check User Permissions
+        action_role = UserRoles.ANALYZE
+        check_result = UserProfiles().check(self.parent.controls_window.userrole, action_role)
+
+        if check_result is None:  # User check required, but no user signed in
+            Log.w(
+                f"Not signed in: User with role {action_role.name} is required to perform this action."
+            )
+            Log.i("Please sign in to continue.")
+            self.parent.controls_window.set_user_profile()  # Prompt for sign-in
+            check_result = UserProfiles().check(
+                self.parent.controls_window.userrole, action_role
+            )  # Check again
+
+        if not check_result:  # Explicitly denied
+            Log.w(
+                f"ACTION DENIED: User with role {self.parent.controls_window.userrole.name} does not have permission to {action_role.name}."
+            )
+            Log.e(
+                "Please sign in to access Review mode."
+                if check_result is None
+                else "You are not authorized to access Review mode."
+            )
+            return False if obj is None else None
+
+        self.parent._enable_ui(False)
+        self.parent.visq_window.enable(False)
+        self.animate_mode_highlight(self.mode_review)
+        self.splitter.replaceWidget(0, target_widget)
+
+        # No tutorial pages specified for this mode
 
         return True if obj is None else None
 

@@ -61,7 +61,6 @@ from QATCH.ui.widgets import (
     AdvancedMainWidget,
     ControlsWidget,
     SavedStateDot,
-    UserPreferencesWidget,
     UserProfilesManagerWidget,
     WellPlate,
 )
@@ -725,13 +724,22 @@ class UIControls:
         self.chBox_correctNoise.setObjectName("chBox_correctNoise")
         self.Layout_controls.addWidget(self.chBox_correctNoise, 5, 1, 1, 3)
 
-        self.chBox_AutoStop = LabeledToggle("Auto-stop")
-        self.chBox_AutoStop.setToolTip(
-            "Automatically stop acquisition when the configured run target is reached."
-        )
-        self.chBox_AutoStop.setEnabled(True)
-        self.chBox_AutoStop.setChecked(False)
+        # Auto-Stop toggle
+        self.chBox_AutoStop = QATCHToggle()
+        self.chBox_AutoStop.setToolTip("""
+            <b><u>Auto-Stop Mode:</u></b><br/>
+            <b>Automatic</b> (on): stops the run automatically, after a 3-second countdown,
+            once the fill/dry status reports it can be stopped (early or once the fill is complete).<br/>
+            <b>Manual</b> (off): you decide when to press Stop.
+            """)
+        self.chBox_AutoStop.setChecked(False)  # default: Manual
         self.chBox_AutoStop.setObjectName("chBox_AutoStop")
+
+        self.lbl_autostop_manual = QtWidgets.QLabel("Manual")
+        self.lbl_autostop_auto = QtWidgets.QLabel("Automatic")
+        for _lbl in (self.lbl_autostop_manual, self.lbl_autostop_auto):
+            _lbl.setObjectName("CtrlToggleLabel")
+            _lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         # Cartridge Auto-Lock
         self.l9 = HeaderLabel("Cartridge Auto-Lock")
@@ -990,7 +998,7 @@ class UIControls:
 
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
         self.pButton_PlateConfig = QATCHPushButton(variant="default")
-        self.pButton_PlateConfig.setIcon(QtGui.QIcon(os.path.join(icon_path, "gear.svg")))
+        self.pButton_PlateConfig.setIcon(QtGui.QIcon(os.path.join(icon_path, "plate-config.svg")))
         self.pButton_PlateConfig.setIconSize(QtCore.QSize(18, 18))
         self.pButton_PlateConfig.setToolTip("Plate Configuration...")
         self.pButton_PlateConfig.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
@@ -1685,16 +1693,27 @@ class UIControls:
             action.setIconText("blank")
         self._sync_dot(action)
 
+    def _forget_field(self, action) -> None:
+        """Drop bookkeeping for an action whose underlying QAction was deleted."""
+        self._field_dots.pop(action, None)
+        self._field_widgets.pop(action, None)
+
     def _sync_dot(self, action):
         """Update the glowing status dot paired with `action` to its state."""
         dot = getattr(self, "_field_dots", {}).get(action)
-        if dot is not None:
+        if dot is None:
+            return
+        try:
             dot.set_state(action.iconText() or "blank")
+        except RuntimeError:
+            # The QAction's underlying C++ object was deleted (e.g. its host
+            # widget was torn down) while still tracked by _field_dots.
+            self._forget_field(action)
 
     def _sync_all_dots(self) -> None:
         """Refresh every field dot from its action's current iconText."""
-        for action, dot in getattr(self, "_field_dots", {}).items():
-            dot.set_state(action.iconText() or "blank")
+        for action in list(getattr(self, "_field_dots", {})):
+            self._sync_dot(action)
 
     def _has_unsaved_device_changes(self) -> bool:
         """True if any device field currently holds unsaved input.
@@ -1702,9 +1721,12 @@ class UIControls:
         Returns:
             bool: True if unsaved changes persist, false otherwise.
         """
-        for action in getattr(self, "_field_dots", {}):
-            if action.iconText() == "unsaved":
-                return True
+        for action in list(getattr(self, "_field_dots", {})):
+            try:
+                if action.iconText() == "unsaved":
+                    return True
+            except RuntimeError:
+                self._forget_field(action)
         return False
 
     def _pulse_unsaved_device_fields(self) -> None:
@@ -1716,8 +1738,14 @@ class UIControls:
         called to draw attention to pending edits when a user attempts to
         navigate away.
         """
-        for action, dot in getattr(self, "_field_dots", {}).items():
-            if action.iconText() == "unsaved":
+        for action in list(getattr(self, "_field_dots", {})):
+            dot = self._field_dots.get(action)
+            try:
+                unsaved = action.iconText() == "unsaved"
+            except RuntimeError:
+                self._forget_field(action)
+                continue
+            if unsaved and dot is not None:
                 dot.flash(times=3)
                 widget = getattr(self, "_field_widgets", {}).get(action)
                 if widget is not None:
@@ -2940,7 +2968,7 @@ class UIControls:
             (getattr(self, "pButton_ID", None), "search.svg", text_color),
             (getattr(self, "pButton_Refresh", None), "refresh-cw.svg", text_color),
             (getattr(self, "pButton_Configure", None), "gear.svg", text_color),
-            (getattr(self, "pButton_PlateConfig", None), "gear.svg", text_color),
+            (getattr(self, "pButton_PlateConfig", None), "plate-config.svg", text_color),
             (getattr(self, "pButton_Start", None), "play-filled.svg", text_color),
             (getattr(self, "pButton_Stop", None), "stop-filled.svg", text_color),
             (getattr(self, "pButton_Clear", None), "clear-plot.svg", text_color),
@@ -3505,6 +3533,8 @@ class UIControls:
 
         * Cartridge Auto-Lock (`toggle_Cartridge` with Manual / Automatic labels)
         * Plot Mode (`toggle_PlotMode` with Absolute / Reference labels)
+        * Auto-Stop (`chBox_AutoStop` with Manual / Automatic labels), its own
+          section directly under Plot Mode
         * Control Buttons (Start / Stop / Clear / Reset stacked vertically)
 
         **Status readout** - a borderless `QLabel` (`infobar_readout`) at
@@ -3573,7 +3603,6 @@ class UIControls:
         left_col.addLayout(port_section)
         left_col.addLayout(res_section)
         left_col.addLayout(multi_section)
-        left_col.addWidget(self.chBox_AutoStop)
         left_col.addWidget(self.chBox_correctNoise)
         left_col.addStretch()
 
@@ -3588,6 +3617,14 @@ class UIControls:
             spacing=8,
         )
 
+        # Auto-Stop toggle
+        autostop_row = hrow(
+            self.lbl_autostop_manual,
+            self.chBox_AutoStop,
+            self.lbl_autostop_auto,
+            spacing=8,
+        )
+
         btns = QtWidgets.QVBoxLayout()
         btns.setSpacing(8)
         btns.addWidget(self.pButton_Start)
@@ -3599,6 +3636,7 @@ class UIControls:
         right_col.setSpacing(14)
         right_col.addLayout(section("Cartridge Auto-Lock", lock_row, stretch_last=False))
         right_col.addLayout(section("Plot Mode", plot_mode_row, stretch_last=False))
+        right_col.addLayout(section("Auto-Stop", autostop_row, stretch_last=False))
         right_col.addLayout(section("Control Buttons", btns, stretch_last=False))
         right_col.addStretch()
 
@@ -3919,15 +3957,24 @@ class UIControls:
             Log.e(f"Error signing out user: {exc}")
 
     def _open_user_preferences(self) -> None:
-        """Open the existing User Preferences window from the account popup."""
+        """Open the User Preferences overlay from the account popup.
+
+        Delegates to `ControlsWindow.preferences()` (`self.parent`) instead
+        of constructing a `UserPreferencesWidget` here directly: that
+        constructor's signature is `(controller, parent=None)`, and calling
+        it as `UserPreferencesWidget(self.parent)` - as this method used to -
+        passes the `ControlsWindow` as `controller` while leaving the overlay
+        `parent` at its `None` default. With no Qt parent, the overlay never
+        gets reparented onto the app's central widget, so `_refit_to_parent`
+        falls back to sizing it to the whole primary-screen geometry, and it
+        paints as a top-level window rather than a translucent child overlay
+        - it renders as an opaque black rectangle covering the entire screen
+        instead of a dimmed scrim tinting just the app window. Routing
+        through `preferences()` reuses its `_ensure_preferences_widget()`
+        cache, which supplies the correct app-window parent.
+        """
         try:
-            existing = getattr(self.parent, "ui_preferences", None)
-            if existing is None:
-                existing = UserPreferencesWidget(self.parent)
-                self.parent.ui_preferences = existing
-            existing.showNormal()
-            existing.raise_()
-            existing.activateWindow()
+            self.parent.preferences()
         except Exception as exc:
             Log.e(f"UIControls._open_user_preferences error: {exc}")
 
