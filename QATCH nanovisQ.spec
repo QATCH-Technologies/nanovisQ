@@ -14,6 +14,7 @@ data_files = [
     ( "QATCH\\icons", "QATCH\\icons" ),
     ( "QATCH\\models", "QATCH\\models" ),
     ( "QATCH\\QModel\\assets", "QATCH\\QModel\\assets" ),
+    ( "QATCH\\QModel\\models", "QATCH\\QModel\\models" ),
     ( "QATCH\\resources", "QATCH\\resources" ),
     ( "QATCH\\VisQAI\\assets\\app.db", "QATCH\\VisQAI\\assets" ),
     ( "QATCH\\VisQAI\\assets\\VisQAI-base.visq", "QATCH\\VisQAI\\assets" ),

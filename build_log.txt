@@ -1,10 +1,10 @@
-1602 INFO: PyInstaller: 6.18.0, contrib hooks: 2025.9
-1602 INFO: Python: 3.11.7
-1661 INFO: Platform: Windows-10-10.0.19045-SP0
-1661 INFO: Python environment: C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv
-1940 INFO: UPX is available and will be used if enabled on build targets.
-5016 INFO: Embedded firmware version: 'v2.7b6'
-5022 INFO: Module search paths (PYTHONPATH):
+267 INFO: PyInstaller: 6.18.0, contrib hooks: 2025.9
+267 INFO: Python: 3.11.7
+281 INFO: Platform: Windows-10-10.0.19045-SP0
+281 INFO: Python environment: C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv
+319 INFO: UPX is available and will be used if enabled on build targets.
+538 INFO: Embedded firmware version: 'v2.7r6'
+540 INFO: Module search paths (PYTHONPATH):
 ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x '
 'branch\\trunk\\.venv\\Scripts\\pyinstaller.exe',
 'C:\\Users\\Alexander J. '
@@ -25,196 +25,196 @@
 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x '
 'branch\\trunk\\.venv\\Lib\\site-packages\\Pythonwin',
 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk']
-17276 INFO: Appending 'binaries' from .spec
-17283 INFO: Appending 'datas' from .spec
-17431 INFO: checking Analysis
-17431 INFO: Building Analysis because Analysis-00.toc is non existent
-17431 INFO: Looking for Python shared library...
-17431 INFO: Using Python shared library: C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\python311.dll
-17431 INFO: Running Analysis Analysis-00.toc
-17431 INFO: Target bytecode optimization level: 0
-17431 INFO: Initializing module dependency graph...
-17434 INFO: Initializing module graph hook caches...
-17971 INFO: Analyzing modules for base_library.zip ...
-36575 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-37503 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-54733 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-73879 INFO: Caching module dependency graph...
-74145 INFO: Analyzing C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\app.py
-74326 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-74903 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-76423 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-79397 INFO: Processing standard module hook 'hook-PyQt5.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-84184 INFO: Processing standard module hook 'hook-PyQt5.QtCore.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-88012 INFO: Processing standard module hook 'hook-PyQt5.QtWidgets.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-92814 INFO: Processing standard module hook 'hook-PyQt5.QtGui.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-97236 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-98079 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-103956 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-111713 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-130572 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-131798 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-131808 INFO: SetuptoolsInfo: initializing cached setuptools info...
-148758 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-151549 INFO: Processing pre-find-module-path hook 'hook-pyi_splash.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-151555 INFO: Adding pyi_splash module to application dependencies.
-152883 INFO: Processing standard module hook 'hook-matplotlib.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-160092 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-160997 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-162299 INFO: Processing standard module hook 'hook-matplotlib.backend_bases.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-163308 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-163989 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-170434 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-172253 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-179338 INFO: Processing standard module hook 'hook-jinja2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-183402 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-184083 INFO: Processing standard module hook 'hook-matplotlib.pyplot.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-191494 INFO: Processing standard module hook 'hook-dateutil.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-192325 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-207178 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-207277 INFO: Processing standard module hook 'hook-pandas.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-245283 INFO: Processing standard module hook 'hook-pytz.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-249875 INFO: Processing standard module hook 'hook-scipy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-264833 INFO: Processing standard module hook 'hook-pycparser.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-267337 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-267715 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-267717 INFO: Processing pre-find-module-path hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-271410 INFO: Processing standard module hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-271580 INFO: Processing standard module hook 'hook-distutils.util.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-272275 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-274393 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-274397 INFO: Setuptools: 'jaraco' appears to be a partial setuptools-vendored copy - extending search paths to ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\jaraco', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\setuptools\\_vendor\\jaraco']!
-274399 INFO: Processing pre-safe-import-module hook 'hook-jaraco.text.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-274400 INFO: Setuptools: 'jaraco.text' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco.text'!
-274502 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-274535 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-274539 INFO: Processing pre-safe-import-module hook 'hook-jaraco.context.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-274584 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-274587 INFO: Setuptools: 'backports' appears to be a partial setuptools-vendored copy - extending search paths to ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\backports', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\setuptools\\_vendor\\backports']!
-274609 INFO: Processing pre-safe-import-module hook 'hook-backports.tarfile.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-275124 INFO: Processing standard module hook 'hook-backports.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-275285 INFO: Processing pre-safe-import-module hook 'hook-jaraco.functools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-275457 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-280318 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-280348 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
-284553 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-286808 INFO: Processing standard module hook 'hook-torch.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-16473 WARNING: Failed to collect submodules for 'torch.utils.tensorboard' because importing 'torch.utils.tensorboard' raised: AttributeError: module 'tensorflow' has no attribute 'io'
-W0715 12:35:45.780000 14256 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
+1226 INFO: Appending 'binaries' from .spec
+1230 INFO: Appending 'datas' from .spec
+1262 INFO: checking Analysis
+1262 INFO: Building Analysis because Analysis-00.toc is non existent
+1262 INFO: Looking for Python shared library...
+1262 INFO: Using Python shared library: C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\python311.dll
+1262 INFO: Running Analysis Analysis-00.toc
+1262 INFO: Target bytecode optimization level: 0
+1262 INFO: Initializing module dependency graph...
+1265 INFO: Initializing module graph hook caches...
+1333 INFO: Analyzing modules for base_library.zip ...
+3206 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+3432 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+6559 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11645 INFO: Caching module dependency graph...
+11737 INFO: Analyzing C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\app.py
+11796 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11922 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+12312 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+12993 INFO: Processing standard module hook 'hook-PyQt5.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+13989 INFO: Processing standard module hook 'hook-PyQt5.QtCore.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+15590 INFO: Processing standard module hook 'hook-PyQt5.QtWidgets.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+16771 INFO: Processing standard module hook 'hook-PyQt5.QtGui.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17327 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+17454 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+18686 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+20757 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+24657 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+24872 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+24875 INFO: SetuptoolsInfo: initializing cached setuptools info...
+27444 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+28109 INFO: Processing pre-find-module-path hook 'hook-pyi_splash.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+28112 INFO: Adding pyi_splash module to application dependencies.
+28603 INFO: Processing standard module hook 'hook-matplotlib.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+29069 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+29327 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+29777 INFO: Processing standard module hook 'hook-matplotlib.backend_bases.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+30113 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+30298 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+30971 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+31404 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+33032 INFO: Processing standard module hook 'hook-jinja2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+33968 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+34209 INFO: Processing standard module hook 'hook-matplotlib.pyplot.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+36477 INFO: Processing standard module hook 'hook-dateutil.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+36668 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+39664 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+39708 INFO: Processing standard module hook 'hook-pandas.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+42016 INFO: Processing standard module hook 'hook-pytz.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+42886 INFO: Processing standard module hook 'hook-scipy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+44059 INFO: Processing standard module hook 'hook-pycparser.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+44904 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+44974 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+44976 INFO: Processing pre-find-module-path hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+45457 INFO: Processing standard module hook 'hook-distutils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+45515 INFO: Processing standard module hook 'hook-distutils.util.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+45656 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+46094 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+46095 INFO: Setuptools: 'jaraco' appears to be a partial setuptools-vendored copy - extending search paths to ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\jaraco', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\setuptools\\_vendor\\jaraco']!
+46097 INFO: Processing pre-safe-import-module hook 'hook-jaraco.text.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+46099 INFO: Setuptools: 'jaraco.text' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco.text'!
+46129 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+46131 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+46133 INFO: Processing pre-safe-import-module hook 'hook-jaraco.context.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+46162 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+46164 INFO: Setuptools: 'backports' appears to be a partial setuptools-vendored copy - extending search paths to ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\backports', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\setuptools\\_vendor\\backports']!
+46168 INFO: Processing pre-safe-import-module hook 'hook-backports.tarfile.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+46375 INFO: Processing standard module hook 'hook-backports.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+46393 INFO: Processing pre-safe-import-module hook 'hook-jaraco.functools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+46424 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+47613 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+47614 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+48902 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+50198 INFO: Processing standard module hook 'hook-torch.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+3756 WARNING: Failed to collect submodules for 'torch.utils.tensorboard' because importing 'torch.utils.tensorboard' raised: AttributeError: module 'tensorflow' has no attribute 'io'
+W0715 13:35:07.374000 6356 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._sharding_spec` will be deprecated, use `torch.distributed._shard.sharding_spec` instead
 __import__(name)
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._sharded_tensor` will be deprecated, use `torch.distributed._shard.sharded_tensor` instead
 __import__(name)
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._shard.checkpoint` will be deprecated, use `torch.distributed.checkpoint` instead
 __import__(name)
-379476 INFO: hook-torch: this torch build does not depend on MKL...
-405760 INFO: Processing standard module hook 'hook-scipy.linalg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-406244 INFO: Processing standard module hook 'hook-scipy.special._ufuncs.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-407580 INFO: Processing standard module hook 'hook-scipy.special._ellip_harm_2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-415192 INFO: Processing standard module hook 'hook-scipy.spatial._ckdtree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-417248 INFO: Processing standard module hook 'hook-scipy.spatial.transform.rotation.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-420167 INFO: Processing standard module hook 'hook-scipy.stats._stats.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-422743 INFO: Processing standard module hook 'hook-scipy.sparse.csgraph.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-436529 INFO: Processing pre-safe-import-module hook 'hook-tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
-436535 INFO: Processing standard module hook 'hook-tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-436539 INFO: hook-tensorflow: tensorflow dist name: tensorflow-cpu
-436540 INFO: hook-tensorflow: tensorflow version: 2.18.0
-399 WARNING: Failed to collect submodules for 'keras' because importing 'keras' raised: ModuleNotFoundError: No module named 'tensorflow.python'
-438116 WARNING: collect_dynamic_libs - skipping library collection for module 'tensorflow-plugins' as it is not a package.
-441416 INFO: Processing standard module hook 'hook-fsspec.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-447926 INFO: Processing standard module hook 'hook-pandas.io.formats.style.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-452836 INFO: Processing standard module hook 'hook-pandas.plotting.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-458217 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-458886 INFO: Processing standard module hook 'hook-pandas.io.clipboard.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-470502 INFO: Processing pre-safe-import-module hook 'hook-win32com.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
-470653 INFO: Processing standard module hook 'hook-win32com.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-470669 INFO: Processing standard module hook 'hook-pythoncom.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-470843 INFO: Processing standard module hook 'hook-pywintypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-487892 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-487958 INFO: Processing standard module hook 'hook-importlib_metadata.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-488136 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-488443 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-515123 INFO: Processing standard module hook 'hook-torchvision.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-515454 INFO: Processing standard module hook 'hook-torchvision.io.image.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-521344 INFO: Processing standard module hook 'hook-torchaudio.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-533948 INFO: Processing standard module hook 'hook-scipy.io.matlab.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-536034 INFO: Processing standard module hook 'hook-h5py.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-548205 INFO: Processing standard module hook 'hook-pyqtgraph.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-765 WARNING: Failed to collect submodules for 'pyqtgraph.opengl' because importing 'pyqtgraph.opengl' raised: ModuleNotFoundError: No module named 'OpenGL'
-549940 INFO: hook-pyqtgraph: selected 'PyQt5' as Qt bindings because hook for 'PyQt5' has been run before.
-550092 INFO: Processing standard module hook 'hook-PyQt5.uic.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-550530 INFO: Processing pre-find-module-path hook 'hook-PyQt5.uic.port_v2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-551029 INFO: Processing standard module hook 'hook-PyQt5.QtSvg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-551220 INFO: Processing standard module hook 'hook-PyQt5.QtTest.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-553948 INFO: Processing standard module hook 'hook-matplotlib.backends.backend_qtagg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-553961 INFO: Processing standard module hook 'hook-matplotlib.backends.qt_compat.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-553963 INFO: hook-matplotlib.backends.qt_compat: selected 'PyQt5' as Qt bindings because hook for 'PyQt5' has been run before.
-556895 INFO: Processing standard module hook 'hook-Cryptodome.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-558973 INFO: Processing standard module hook 'hook-cryptography.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-560999 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
-575237 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-577599 INFO: Processing standard module hook 'hook-ultralytics.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-580699 INFO: Processing standard module hook 'hook-shapely.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-582077 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-582080 INFO: TclTkInfo: initializing cached Tcl/Tk info...
-582651 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-590520 INFO: Processing standard module hook 'hook-sklearn.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-591581 INFO: Processing standard module hook 'hook-sklearn.utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-593638 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.numpy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-593766 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.cupy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-593819 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.torch.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-593913 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.dask.array.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-594647 INFO: Processing standard module hook 'hook-sklearn.metrics.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-602039 INFO: Processing standard module hook 'hook-sklearn.metrics.cluster.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-602639 INFO: Processing standard module hook 'hook-sklearn.cluster.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-602816 INFO: Processing standard module hook 'hook-sklearn.metrics.pairwise.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-603877 INFO: Processing standard module hook 'hook-sklearn.neighbors.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-604206 INFO: Processing standard module hook 'hook-sklearn.linear_model.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-618066 INFO: Processing standard module hook 'hook-PyQt5.QtWebEngineWidgets.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-618682 INFO: Processing standard module hook 'hook-PyQt5.QtNetwork.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-619249 INFO: Processing standard module hook 'hook-PyQt5.QtPrintSupport.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-619501 INFO: Processing standard module hook 'hook-PyQt5.QtWebEngineCore.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-619816 INFO: Processing standard module hook 'hook-PyQt5.QtWebChannel.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-621424 INFO: Analyzing hidden import 'charset_normalizer.md__mypyc'
-621425 INFO: Processing module hooks (post-graph stage)...
-623524 INFO: Processing standard module hook 'hook-sklearn.tree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-631351 INFO: Processing standard module hook 'hook-pygments.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-651434 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-651435 INFO: Matplotlib backend selection method: automatic discovery of used backends
-651639 INFO: Discovered Matplotlib backend(s) via `matplotlib.use()` call in module 'sympy.testing.runtests': ['Agg', 'Agg']
-651755 INFO: The following Matplotlib backends were discovered by scanning for `matplotlib.use()` calls: ['Agg']. If your backend of choice is not in this list, either add a `matplotlib.use()` call to your code, or configure the backend collection via hook options (see: https://pyinstaller.org/en/stable/hooks-config.html#matplotlib-hooks).
-651755 INFO: Selected matplotlib backends: ['Agg']
-653616 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-665985 INFO: Processing standard module hook 'hook-PyQt5.QtPositioning.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-666541 INFO: Processing standard module hook 'hook-PyQt5.QtQuick.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-666942 INFO: Processing standard module hook 'hook-PyQt5.QtQml.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-670147 INFO: Processing standard module hook 'hook-PyQt5.QtQuickWidgets.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-670854 WARNING: Hidden import "scipy.special._cdflib" not found!
-672439 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-672618 INFO: Performing binary vs. data reclassification (4037 entries)
-721257 INFO: Looking for ctypes DLLs
-722398 WARNING: Ignoring /usr/lib64/libgomp.so.1 imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\_inductor\codecache.py - only basenames are supported with ctypes imports!
-722541 WARNING: Library nvrtc64_120_0.dll required via ctypes not found
-723067 WARNING: Ignoring /System/Library/Frameworks/IOKit.framework/IOKit imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
-723067 WARNING: Ignoring /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
-723651 INFO: Analyzing run-time hooks ...
-723722 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-723742 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-723758 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-723771 INFO: Including run-time hook 'pyi_rth_mplconfig.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-723787 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-723803 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
-723854 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-723871 INFO: Including run-time hook 'pyi_rth_tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-723891 INFO: Including run-time hook 'pyi_rth_pywintypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-723909 INFO: Including run-time hook 'pyi_rth_pythoncom.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-723913 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-723929 INFO: Including run-time hook 'pyi_rth_pyqtgraph_multiprocess.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
-723948 INFO: Including run-time hook 'pyi_rth_pyqt5.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-723992 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-724456 INFO: Creating base_library.zip...
-724503 INFO: Looking for dynamic libraries
-W0715 12:41:49.717000 30284 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
+72217 INFO: hook-torch: this torch build does not depend on MKL...
+89721 INFO: Processing standard module hook 'hook-scipy.linalg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+89917 INFO: Processing standard module hook 'hook-scipy.special._ufuncs.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+90330 INFO: Processing standard module hook 'hook-scipy.special._ellip_harm_2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+93375 INFO: Processing standard module hook 'hook-scipy.spatial._ckdtree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+94578 INFO: Processing standard module hook 'hook-scipy.spatial.transform.rotation.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+96044 INFO: Processing standard module hook 'hook-scipy.stats._stats.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+97090 INFO: Processing standard module hook 'hook-scipy.sparse.csgraph.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+104178 INFO: Processing pre-safe-import-module hook 'hook-tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
+104183 INFO: Processing standard module hook 'hook-tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+104187 INFO: hook-tensorflow: tensorflow dist name: tensorflow-cpu
+104188 INFO: hook-tensorflow: tensorflow version: 2.18.0
+301 WARNING: Failed to collect submodules for 'keras' because importing 'keras' raised: ModuleNotFoundError: No module named 'tensorflow.python'
+105432 WARNING: collect_dynamic_libs - skipping library collection for module 'tensorflow-plugins' as it is not a package.
+106538 INFO: Processing standard module hook 'hook-fsspec.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+110249 INFO: Processing standard module hook 'hook-pandas.io.formats.style.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+113214 INFO: Processing standard module hook 'hook-pandas.plotting.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+115748 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+116164 INFO: Processing standard module hook 'hook-pandas.io.clipboard.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+122987 INFO: Processing pre-safe-import-module hook 'hook-win32com.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
+123105 INFO: Processing standard module hook 'hook-win32com.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+123108 INFO: Processing standard module hook 'hook-pythoncom.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+123231 INFO: Processing standard module hook 'hook-pywintypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+135507 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+135548 INFO: Processing standard module hook 'hook-importlib_metadata.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+135579 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+135681 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+150180 INFO: Processing standard module hook 'hook-torchvision.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+150306 INFO: Processing standard module hook 'hook-torchvision.io.image.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+153534 INFO: Processing standard module hook 'hook-torchaudio.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+161773 INFO: Processing standard module hook 'hook-scipy.io.matlab.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+162550 INFO: Processing standard module hook 'hook-h5py.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+168521 INFO: Processing standard module hook 'hook-pyqtgraph.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+558 WARNING: Failed to collect submodules for 'pyqtgraph.opengl' because importing 'pyqtgraph.opengl' raised: ModuleNotFoundError: No module named 'OpenGL'
+169859 INFO: hook-pyqtgraph: selected 'PyQt5' as Qt bindings because hook for 'PyQt5' has been run before.
+169913 INFO: Processing standard module hook 'hook-PyQt5.uic.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+170195 INFO: Processing pre-find-module-path hook 'hook-PyQt5.uic.port_v2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+170417 INFO: Processing standard module hook 'hook-PyQt5.QtSvg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+170570 INFO: Processing standard module hook 'hook-PyQt5.QtTest.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+171866 INFO: Processing standard module hook 'hook-matplotlib.backends.backend_qtagg.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+171873 INFO: Processing standard module hook 'hook-matplotlib.backends.qt_compat.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+171874 INFO: hook-matplotlib.backends.qt_compat: selected 'PyQt5' as Qt bindings because hook for 'PyQt5' has been run before.
+173664 INFO: Processing standard module hook 'hook-Cryptodome.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+174640 INFO: Processing standard module hook 'hook-cryptography.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+175798 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
+184460 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+185909 INFO: Processing standard module hook 'hook-ultralytics.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+187668 INFO: Processing standard module hook 'hook-shapely.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+188244 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+188247 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+188581 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+192914 INFO: Processing standard module hook 'hook-sklearn.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+193777 INFO: Processing standard module hook 'hook-sklearn.utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+194843 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.numpy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+194911 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.cupy.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+194933 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.torch.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+194978 INFO: Processing standard module hook 'hook-sklearn.externals.array_api_compat.dask.array.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+195245 INFO: Processing standard module hook 'hook-sklearn.metrics.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+199715 INFO: Processing standard module hook 'hook-sklearn.metrics.cluster.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+200050 INFO: Processing standard module hook 'hook-sklearn.cluster.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+200164 INFO: Processing standard module hook 'hook-sklearn.metrics.pairwise.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+200773 INFO: Processing standard module hook 'hook-sklearn.neighbors.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+200944 INFO: Processing standard module hook 'hook-sklearn.linear_model.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+208778 INFO: Processing standard module hook 'hook-PyQt5.QtWebEngineWidgets.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+209259 INFO: Processing standard module hook 'hook-PyQt5.QtNetwork.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+209591 INFO: Processing standard module hook 'hook-PyQt5.QtPrintSupport.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+209776 INFO: Processing standard module hook 'hook-PyQt5.QtWebEngineCore.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+210014 INFO: Processing standard module hook 'hook-PyQt5.QtWebChannel.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+211259 INFO: Analyzing hidden import 'charset_normalizer.md__mypyc'
+211260 INFO: Processing module hooks (post-graph stage)...
+212284 INFO: Processing standard module hook 'hook-sklearn.tree.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+216780 INFO: Processing standard module hook 'hook-pygments.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+227929 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+227930 INFO: Matplotlib backend selection method: automatic discovery of used backends
+228062 INFO: Discovered Matplotlib backend(s) via `matplotlib.use()` call in module 'sympy.testing.runtests': ['Agg', 'Agg']
+228153 INFO: The following Matplotlib backends were discovered by scanning for `matplotlib.use()` calls: ['Agg']. If your backend of choice is not in this list, either add a `matplotlib.use()` call to your code, or configure the backend collection via hook options (see: https://pyinstaller.org/en/stable/hooks-config.html#matplotlib-hooks).
+228153 INFO: Selected matplotlib backends: ['Agg']
+228946 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+232238 INFO: Processing standard module hook 'hook-PyQt5.QtPositioning.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+232589 INFO: Processing standard module hook 'hook-PyQt5.QtQuick.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+232818 INFO: Processing standard module hook 'hook-PyQt5.QtQml.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+234007 INFO: Processing standard module hook 'hook-PyQt5.QtQuickWidgets.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+234217 WARNING: Hidden import "scipy.special._cdflib" not found!
+234826 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+234980 INFO: Performing binary vs. data reclassification (4056 entries)
+235879 INFO: Looking for ctypes DLLs
+236835 WARNING: Ignoring /usr/lib64/libgomp.so.1 imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\_inductor\codecache.py - only basenames are supported with ctypes imports!
+236927 WARNING: Library nvrtc64_120_0.dll required via ctypes not found
+237411 WARNING: Ignoring /System/Library/Frameworks/IOKit.framework/IOKit imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
+237411 WARNING: Ignoring /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation imported from C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
+237923 INFO: Analyzing run-time hooks ...
+237980 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+237984 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+237988 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+237989 INFO: Including run-time hook 'pyi_rth_mplconfig.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+237990 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+237994 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+238012 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+238014 INFO: Including run-time hook 'pyi_rth_tensorflow.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+238018 INFO: Including run-time hook 'pyi_rth_pywintypes.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+238021 INFO: Including run-time hook 'pyi_rth_pythoncom.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+238023 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+238026 INFO: Including run-time hook 'pyi_rth_pyqtgraph_multiprocess.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+238029 INFO: Including run-time hook 'pyi_rth_pyqt5.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+238036 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+238424 INFO: Creating base_library.zip...
+238465 INFO: Looking for dynamic libraries
+W0715 13:38:05.655000 17740 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\building\build_main.py:227: FutureWarning: The 'optree.integration' module is deprecated and will be removed in version 0.18.0. Please use 'optree.integrations' instead.
 __import__(package)
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\building\build_main.py:227: DeprecationWarning: `torch.distributed._sharding_spec` will be deprecated, use `torch.distributed._shard.sharding_spec` instead
@@ -223,185 +223,185 @@ C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\sit
 __import__(package)
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\building\build_main.py:227: DeprecationWarning: `torch.distributed._shard.checkpoint` will be deprecated, use `torch.distributed.checkpoint` instead
 __import__(package)
-751525 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyQt5\\Qt5\\bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\numpy.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\pandas.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\scipy.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torch\\lib', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\shapely.libs']
-751525 INFO: Extra DLL search directories (PATH): ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyQt5\\Qt5\\bin']
-770927 INFO: Warnings written to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\warn-QATCH nanovisQ.txt
-773057 INFO: Graph cross-reference written to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\xref-QATCH nanovisQ.html
-774080 INFO: checking PYZ
-774080 INFO: Building PYZ because PYZ-00.toc is non existent
-774080 INFO: Building PYZ (ZlibArchive) C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\PYZ-00.pyz
-782887 INFO: Building PYZ (ZlibArchive) C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\PYZ-00.pyz completed successfully.
-783278 INFO: Verifying Tcl/Tk compatibility with splash screen requirements
-783280 INFO: Collect Tcl/Tk data files for the splash screen
-783589 INFO: checking Splash
-783589 INFO: Building Splash because Splash-00.toc is non existent
-783589 INFO: Building Splash C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\Splash-00.res
-783687 INFO: Resized image C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\QATCH\icons\qatch-splash.png from dimensions (1024, 896) to (548, 480)
-783699 INFO: checking PKG
-783699 INFO: Building PKG because PKG-00.toc is non existent
-783699 INFO: Building PKG (CArchive) QATCH nanovisQ.pkg
-783828 INFO: Building PKG (CArchive) QATCH nanovisQ.pkg completed successfully.
-783831 INFO: Bootloader C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
-783831 INFO: checking EXE
-783832 INFO: Building EXE because EXE-00.toc is non existent
-783832 INFO: Building EXE from EXE-00.toc
-783832 INFO: Copying bootloader EXE to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\QATCH nanovisQ.exe
-784006 INFO: Copying icon to EXE
-784118 INFO: Copying version information to EXE
-784235 INFO: Copying 0 resources to EXE
-784235 INFO: Embedding manifest in EXE
-784336 INFO: Appending PKG archive to EXE
-784514 INFO: Fixing EXE headers
-791886 INFO: Building EXE from EXE-00.toc completed successfully.
-791998 INFO: checking COLLECT
-791998 INFO: Building COLLECT because COLLECT-00.toc is non existent
-791998 INFO: Building COLLECT COLLECT-00.toc
-796768 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\Shapely.libs\msvcp140-90bc62d4947a5878f1dc1057312f3be2.dll due to CFG!
-797292 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\lib\torch.dll due to match in exclude pattern: torch.dll
-802561 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\lib\torch_global_deps.dll due to match in exclude pattern: torch_global_deps.dll
-803027 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\lib\c10.dll due to match in exclude pattern: c10.dll
-803034 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\sklearn\.libs\msvcp140.dll due to CFG!
-803040 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\sklearn\.libs\vcomp140.dll due to CFG!
-803044 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\xgboost\lib\xgboost.dll due to match in exclude pattern: xgboost.dll
-803592 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\numpy.libs\msvcp140-23ebcc0b37c8e3d074511f362feac48b.dll due to CFG!
-805477 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtLocation\declarative_location.dll due to it being a Qt plugin!
-805481 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtWebSockets\declarative_qmlwebsockets.dll due to it being a Qt plugin!
-805486 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\PrivateWidgets\widgetsplugin.dll due to it being a Qt plugin!
-805491 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Particles.2\particlesplugin.dll due to it being a Qt plugin!
-805494 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Extras\qtquickextrasplugin.dll due to it being a Qt plugin!
-805499 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\qtquickcontrols2plugin.dll due to it being a Qt plugin!
-805504 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Templates.2\qtquicktemplates2plugin.dll due to it being a Qt plugin!
-805509 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\WorkerScript.2\workerscriptplugin.dll due to it being a Qt plugin!
-805514 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Dialogs\Private\dialogsprivateplugin.dll due to it being a Qt plugin!
-805519 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Window.2\windowplugin.dll due to it being a Qt plugin!
-805523 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtRemoteObjects\qtremoteobjects.dll due to it being a Qt plugin!
-805527 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtBluetooth\declarative_bluetooth.dll due to it being a Qt plugin!
-805531 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtGraphicalEffects\private\qtgraphicaleffectsprivate.dll due to it being a Qt plugin!
-805535 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtGraphicalEffects\qtgraphicaleffectsplugin.dll due to it being a Qt plugin!
-805539 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtTest\qmltestplugin.dll due to it being a Qt plugin!
-805544 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\Fusion\qtquickcontrols2fusionstyleplugin.dll due to it being a Qt plugin!
-805550 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtSensors\declarative_sensors.dll due to it being a Qt plugin!
-805555 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Timeline\qtquicktimelineplugin.dll due to it being a Qt plugin!
-805561 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\Imagine\qtquickcontrols2imaginestyleplugin.dll due to it being a Qt plugin!
-805566 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick.2\qtquick2plugin.dll due to it being a Qt plugin!
-805571 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\animation\labsanimationplugin.dll due to it being a Qt plugin!
-805577 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls\qtquickcontrolsplugin.dll due to it being a Qt plugin!
-805581 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Shapes\qmlshapesplugin.dll due to it being a Qt plugin!
-805585 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtPositioning\declarative_positioning.dll due to it being a Qt plugin!
-805590 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\qmlmodels\labsmodelsplugin.dll due to it being a Qt plugin!
-805594 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtWebEngine\qtwebengineplugin.dll due to it being a Qt plugin!
-805600 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls\Styles\Flat\qtquickextrasflatplugin.dll due to it being a Qt plugin!
-805605 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\folderlistmodel\qmlfolderlistmodelplugin.dll due to it being a Qt plugin!
-805609 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick3D\qquick3dplugin.dll due to it being a Qt plugin!
-805614 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\platform\qtlabsplatformplugin.dll due to it being a Qt plugin!
-805618 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick3D\Materials\qtquick3dmaterialplugin.dll due to it being a Qt plugin!
-805622 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\Universal\qtquickcontrols2universalstyleplugin.dll due to it being a Qt plugin!
-805628 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\StateMachine\qtqmlstatemachine.dll due to it being a Qt plugin!
-805632 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Layouts\qquicklayoutsplugin.dll due to it being a Qt plugin!
-805637 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtWebChannel\declarative_webchannel.dll due to it being a Qt plugin!
-805641 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\LocalStorage\qmllocalstorageplugin.dll due to it being a Qt plugin!
-805647 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\XmlListModel\qmlxmllistmodelplugin.dll due to it being a Qt plugin!
-805653 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\wavefrontmesh\qmlwavefrontmeshplugin.dll due to it being a Qt plugin!
-805659 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtNfc\declarative_nfc.dll due to it being a Qt plugin!
-805665 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick3D\Effects\qtquick3deffectplugin.dll due to it being a Qt plugin!
-805671 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtWebView\declarative_webview.dll due to it being a Qt plugin!
-805678 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\Models.2\modelsplugin.dll due to it being a Qt plugin!
-805682 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\settings\qmlsettingsplugin.dll due to it being a Qt plugin!
-805687 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\location\locationlabsplugin.dll due to it being a Qt plugin!
-805693 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\sharedimage\sharedimageplugin.dll due to it being a Qt plugin!
-805698 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\qmlplugin.dll due to it being a Qt plugin!
-805704 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick3D\Helpers\qtquick3dhelpersplugin.dll due to it being a Qt plugin!
-805711 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\Material\qtquickcontrols2materialstyleplugin.dll due to it being a Qt plugin!
-805716 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\calendar\qtlabscalendarplugin.dll due to it being a Qt plugin!
-805721 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Dialogs\dialogplugin.dll due to it being a Qt plugin!
-805726 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\RemoteObjects\qtqmlremoteobjects.dll due to it being a Qt plugin!
-805882 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\position\qtposition_winrt.dll due to it being a Qt plugin!
-805887 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\position\qtposition_serialnmea.dll due to it being a Qt plugin!
-805891 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\position\qtposition_positionpoll.dll due to it being a Qt plugin!
-805897 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\printsupport\windowsprintersupport.dll due to it being a Qt plugin!
-805900 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\libcrypto-1_1-x64.dll due to match in exclude pattern: libcrypto-*.dll
-805908 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\libssl-1_1-x64.dll due to match in exclude pattern: libssl-*.dll
-805915 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\bearer\qgenericbearer.dll due to it being a Qt plugin!
-808570 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\styles\qwindowsvistastyle.dll due to it being a Qt plugin!
-808574 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qtga.dll due to it being a Qt plugin!
-808579 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qminimal.dll due to it being a Qt plugin!
-808586 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qtiff.dll due to it being a Qt plugin!
-808591 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qico.dll due to it being a Qt plugin!
-808594 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qwbmp.dll due to it being a Qt plugin!
-808598 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\generic\qtuiotouchplugin.dll due to it being a Qt plugin!
-808603 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qwebp.dll due to it being a Qt plugin!
-808609 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qoffscreen.dll due to it being a Qt plugin!
-808614 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qsvg.dll due to it being a Qt plugin!
-808619 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwindows.dll due to it being a Qt plugin!
-808627 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwebgl.dll due to it being a Qt plugin!
-808632 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qicns.dll due to it being a Qt plugin!
-808636 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qgif.dll due to it being a Qt plugin!
-808641 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qjpeg.dll due to it being a Qt plugin!
-808646 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\iconengines\qsvgicon.dll due to it being a Qt plugin!
-808650 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platformthemes\qxdgdesktopportal.dll due to it being a Qt plugin!
-809570 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\vcruntime140.dll due to match in exclude pattern: vcruntime140.dll
-809575 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\msvcp140.dll due to CFG!
-809578 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\vcruntime140_1.dll due to match in exclude pattern: vcruntime140_1.dll
-843856 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-runtime-l1-1-0.dll due to CFG!
-843860 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-stdio-l1-1-0.dll due to CFG!
-843864 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-utility-l1-1-0.dll due to CFG!
-843868 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-time-l1-1-0.dll due to CFG!
-843871 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-environment-l1-1-0.dll due to CFG!
-843876 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-convert-l1-1-0.dll due to CFG!
-843880 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-filesystem-l1-1-0.dll due to CFG!
-843884 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-heap-l1-1-0.dll due to CFG!
-843889 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-string-l1-1-0.dll due to CFG!
-843894 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-math-l1-1-0.dll due to CFG!
-843898 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-locale-l1-1-0.dll due to CFG!
-843903 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\MSVCP140.dll due to CFG!
-843908 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-process-l1-1-0.dll due to CFG!
-843911 INFO: Disabling UPX for C:\windows\system32\VCOMP140.DLL due to CFG!
-843915 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-conio-l1-1-0.dll due to CFG!
-843919 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-private-l1-1-0.dll due to CFG!
-843922 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Quick.dll due to match in exclude pattern: Qt5Quick.dll
-843929 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Qml.dll due to match in exclude pattern: Qt5Qml.dll
-844202 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Core.dll due to match in exclude pattern: Qt5Core.dll
-844211 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Network.dll due to match in exclude pattern: Qt5Network.dll
-844408 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Widgets.dll due to match in exclude pattern: Qt5Widgets.dll
-844417 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Gui.dll due to match in exclude pattern: Qt5Gui.dll
-848373 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\VCRUNTIME140.dll due to match in exclude pattern: vcruntime140.dll
-848456 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5PrintSupport.dll due to match in exclude pattern: Qt5PrintSupport.dll
-848459 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Svg.dll due to match in exclude pattern: Qt5Svg.dll
-848591 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\VCRUNTIME140_1.dll due to match in exclude pattern: vcruntime140_1.dll
-848593 INFO: Disabling UPX for C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\DLLs\libcrypto-3.dll due to match in exclude pattern: libcrypto-*.dll
-848600 INFO: Disabling UPX for C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\DLLs\libssl-3.dll due to match in exclude pattern: libssl-*.dll
-848667 INFO: Disabling UPX for C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\python3.dll due to match in exclude pattern: python3.dll
-848671 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-synch-l1-2-0.dll due to CFG!
-848892 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\pandas.libs\msvcp140-a4c2229bdc2a2a630acdc095b4d86008.dll due to CFG!
-849226 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\Pythonwin\mfc140u.dll due to CFG!
-850297 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\ucrtbase.dll due to CFG!
-850304 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\MSVCP140_1.dll due to CFG!
-850866 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-multibyte-l1-1-0.dll due to CFG!
-850942 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-heap-l1-1-0.dll due to CFG!
-850946 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-processthreads-l1-1-0.dll due to CFG!
-850950 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-localization-l1-2-0.dll due to CFG!
-850954 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-handle-l1-1-0.dll due to CFG!
-850957 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-rtlsupport-l1-1-0.dll due to CFG!
-850961 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-errorhandling-l1-1-0.dll due to CFG!
-850965 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-libraryloader-l1-1-0.dll due to CFG!
-850969 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-profile-l1-1-0.dll due to CFG!
-850972 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-console-l1-1-0.dll due to CFG!
-850976 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-synch-l1-1-0.dll due to CFG!
-850979 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-file-l1-2-0.dll due to CFG!
-850983 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-memory-l1-1-0.dll due to CFG!
-850988 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-util-l1-1-0.dll due to CFG!
-850991 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-interlocked-l1-1-0.dll due to CFG!
-850995 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-processenvironment-l1-1-0.dll due to CFG!
-850999 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-fibers-l1-1-0.dll due to CFG!
-851002 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-sysinfo-l1-1-0.dll due to CFG!
-851006 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-file-l2-1-0.dll due to CFG!
-851009 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-timezone-l1-1-0.dll due to CFG!
-851013 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-processthreads-l1-1-1.dll due to CFG!
-851018 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-debug-l1-1-0.dll due to CFG!
-851022 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-datetime-l1-1-0.dll due to CFG!
-851026 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-file-l1-1-0.dll due to CFG!
-851030 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-string-l1-1-0.dll due to CFG!
-851034 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-namedpipe-l1-1-0.dll due to CFG!
-873335 INFO: Building COLLECT COLLECT-00.toc completed successfully.
-874018 INFO: Build complete! The results are available in: C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\dist
-Total runtime: 874018 ms
+258567 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyQt5\\Qt5\\bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\numpy.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\pandas.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\scipy.libs', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torch\\lib', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\torchvision', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\shapely.libs']
+258567 INFO: Extra DLL search directories (PATH): ['C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\cv2\\../../x64/vc17/bin', 'C:\\Users\\Alexander J. Ross\\Documents\\QATCH Work\\v2.6x branch\\trunk\\.venv\\Lib\\site-packages\\PyQt5\\Qt5\\bin']
+273960 INFO: Warnings written to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\warn-QATCH nanovisQ.txt
+275807 INFO: Graph cross-reference written to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\xref-QATCH nanovisQ.html
+276530 INFO: checking PYZ
+276531 INFO: Building PYZ because PYZ-00.toc is non existent
+276531 INFO: Building PYZ (ZlibArchive) C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\PYZ-00.pyz
+284952 INFO: Building PYZ (ZlibArchive) C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\PYZ-00.pyz completed successfully.
+285300 INFO: Verifying Tcl/Tk compatibility with splash screen requirements
+285301 INFO: Collect Tcl/Tk data files for the splash screen
+285559 INFO: checking Splash
+285559 INFO: Building Splash because Splash-00.toc is non existent
+285559 INFO: Building Splash C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\Splash-00.res
+285645 INFO: Resized image C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\QATCH\icons\qatch-splash.png from dimensions (1024, 896) to (548, 480)
+285667 INFO: checking PKG
+285667 INFO: Building PKG because PKG-00.toc is non existent
+285668 INFO: Building PKG (CArchive) QATCH nanovisQ.pkg
+285769 INFO: Building PKG (CArchive) QATCH nanovisQ.pkg completed successfully.
+285772 INFO: Bootloader C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+285772 INFO: checking EXE
+285772 INFO: Building EXE because EXE-00.toc is non existent
+285772 INFO: Building EXE from EXE-00.toc
+285773 INFO: Copying bootloader EXE to C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\build\QATCH nanovisQ\QATCH nanovisQ.exe
+285851 INFO: Copying icon to EXE
+285930 INFO: Copying version information to EXE
+286006 INFO: Copying 0 resources to EXE
+286006 INFO: Embedding manifest in EXE
+286075 INFO: Appending PKG archive to EXE
+286252 INFO: Fixing EXE headers
+286984 INFO: Building EXE from EXE-00.toc completed successfully.
+287065 INFO: checking COLLECT
+287065 INFO: Building COLLECT because COLLECT-00.toc is non existent
+287066 INFO: Building COLLECT COLLECT-00.toc
+287505 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\Shapely.libs\msvcp140-90bc62d4947a5878f1dc1057312f3be2.dll due to CFG!
+287568 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\lib\torch.dll due to match in exclude pattern: torch.dll
+288725 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\lib\torch_global_deps.dll due to match in exclude pattern: torch_global_deps.dll
+288798 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\torch\lib\c10.dll due to match in exclude pattern: c10.dll
+288803 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\sklearn\.libs\msvcp140.dll due to CFG!
+288807 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\sklearn\.libs\vcomp140.dll due to CFG!
+288810 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\xgboost\lib\xgboost.dll due to match in exclude pattern: xgboost.dll
+288893 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\numpy.libs\msvcp140-23ebcc0b37c8e3d074511f362feac48b.dll due to CFG!
+289293 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtLocation\declarative_location.dll due to it being a Qt plugin!
+289297 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtWebSockets\declarative_qmlwebsockets.dll due to it being a Qt plugin!
+289302 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\PrivateWidgets\widgetsplugin.dll due to it being a Qt plugin!
+289307 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Particles.2\particlesplugin.dll due to it being a Qt plugin!
+289311 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Extras\qtquickextrasplugin.dll due to it being a Qt plugin!
+289314 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\qtquickcontrols2plugin.dll due to it being a Qt plugin!
+289319 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Templates.2\qtquicktemplates2plugin.dll due to it being a Qt plugin!
+289323 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\WorkerScript.2\workerscriptplugin.dll due to it being a Qt plugin!
+289327 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Dialogs\Private\dialogsprivateplugin.dll due to it being a Qt plugin!
+289330 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Window.2\windowplugin.dll due to it being a Qt plugin!
+289334 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtRemoteObjects\qtremoteobjects.dll due to it being a Qt plugin!
+289338 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtBluetooth\declarative_bluetooth.dll due to it being a Qt plugin!
+289343 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtGraphicalEffects\private\qtgraphicaleffectsprivate.dll due to it being a Qt plugin!
+289347 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtGraphicalEffects\qtgraphicaleffectsplugin.dll due to it being a Qt plugin!
+289350 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtTest\qmltestplugin.dll due to it being a Qt plugin!
+289354 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\Fusion\qtquickcontrols2fusionstyleplugin.dll due to it being a Qt plugin!
+289359 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtSensors\declarative_sensors.dll due to it being a Qt plugin!
+289364 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Timeline\qtquicktimelineplugin.dll due to it being a Qt plugin!
+289367 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\Imagine\qtquickcontrols2imaginestyleplugin.dll due to it being a Qt plugin!
+289372 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick.2\qtquick2plugin.dll due to it being a Qt plugin!
+289376 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\animation\labsanimationplugin.dll due to it being a Qt plugin!
+289380 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls\qtquickcontrolsplugin.dll due to it being a Qt plugin!
+289385 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Shapes\qmlshapesplugin.dll due to it being a Qt plugin!
+289388 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtPositioning\declarative_positioning.dll due to it being a Qt plugin!
+289392 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\qmlmodels\labsmodelsplugin.dll due to it being a Qt plugin!
+289396 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtWebEngine\qtwebengineplugin.dll due to it being a Qt plugin!
+289402 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls\Styles\Flat\qtquickextrasflatplugin.dll due to it being a Qt plugin!
+289405 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\folderlistmodel\qmlfolderlistmodelplugin.dll due to it being a Qt plugin!
+289409 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick3D\qquick3dplugin.dll due to it being a Qt plugin!
+289414 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\platform\qtlabsplatformplugin.dll due to it being a Qt plugin!
+289417 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick3D\Materials\qtquick3dmaterialplugin.dll due to it being a Qt plugin!
+289421 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\Universal\qtquickcontrols2universalstyleplugin.dll due to it being a Qt plugin!
+289425 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\StateMachine\qtqmlstatemachine.dll due to it being a Qt plugin!
+289430 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Layouts\qquicklayoutsplugin.dll due to it being a Qt plugin!
+289433 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtWebChannel\declarative_webchannel.dll due to it being a Qt plugin!
+289436 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\LocalStorage\qmllocalstorageplugin.dll due to it being a Qt plugin!
+289439 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\XmlListModel\qmlxmllistmodelplugin.dll due to it being a Qt plugin!
+289444 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\wavefrontmesh\qmlwavefrontmeshplugin.dll due to it being a Qt plugin!
+289448 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtNfc\declarative_nfc.dll due to it being a Qt plugin!
+289451 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick3D\Effects\qtquick3deffectplugin.dll due to it being a Qt plugin!
+289454 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtWebView\declarative_webview.dll due to it being a Qt plugin!
+289457 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\Models.2\modelsplugin.dll due to it being a Qt plugin!
+289462 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\settings\qmlsettingsplugin.dll due to it being a Qt plugin!
+289466 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\location\locationlabsplugin.dll due to it being a Qt plugin!
+289471 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\sharedimage\sharedimageplugin.dll due to it being a Qt plugin!
+289475 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\qmlplugin.dll due to it being a Qt plugin!
+289481 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick3D\Helpers\qtquick3dhelpersplugin.dll due to it being a Qt plugin!
+289486 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Controls.2\Material\qtquickcontrols2materialstyleplugin.dll due to it being a Qt plugin!
+289491 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\calendar\qtlabscalendarplugin.dll due to it being a Qt plugin!
+289495 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQuick\Dialogs\dialogplugin.dll due to it being a Qt plugin!
+289499 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\qml\QtQml\RemoteObjects\qtqmlremoteobjects.dll due to it being a Qt plugin!
+289519 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\position\qtposition_winrt.dll due to it being a Qt plugin!
+289523 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\position\qtposition_serialnmea.dll due to it being a Qt plugin!
+289527 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\position\qtposition_positionpoll.dll due to it being a Qt plugin!
+289531 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\printsupport\windowsprintersupport.dll due to it being a Qt plugin!
+289533 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\libcrypto-1_1-x64.dll due to match in exclude pattern: libcrypto-*.dll
+289537 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\libssl-1_1-x64.dll due to match in exclude pattern: libssl-*.dll
+289542 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\bearer\qgenericbearer.dll due to it being a Qt plugin!
+290050 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\styles\qwindowsvistastyle.dll due to it being a Qt plugin!
+290054 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qtga.dll due to it being a Qt plugin!
+290058 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qminimal.dll due to it being a Qt plugin!
+290064 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qtiff.dll due to it being a Qt plugin!
+290068 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qico.dll due to it being a Qt plugin!
+290072 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qwbmp.dll due to it being a Qt plugin!
+290076 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\generic\qtuiotouchplugin.dll due to it being a Qt plugin!
+290080 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qwebp.dll due to it being a Qt plugin!
+290086 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qoffscreen.dll due to it being a Qt plugin!
+290091 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qsvg.dll due to it being a Qt plugin!
+290096 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwindows.dll due to it being a Qt plugin!
+290102 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwebgl.dll due to it being a Qt plugin!
+290106 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qicns.dll due to it being a Qt plugin!
+290111 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qgif.dll due to it being a Qt plugin!
+290116 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\imageformats\qjpeg.dll due to it being a Qt plugin!
+290122 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\iconengines\qsvgicon.dll due to it being a Qt plugin!
+290127 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\plugins\platformthemes\qxdgdesktopportal.dll due to it being a Qt plugin!
+290300 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\vcruntime140.dll due to match in exclude pattern: vcruntime140.dll
+290303 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\msvcp140.dll due to CFG!
+290306 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\vcruntime140_1.dll due to match in exclude pattern: vcruntime140_1.dll
+294906 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-runtime-l1-1-0.dll due to CFG!
+294909 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-stdio-l1-1-0.dll due to CFG!
+294912 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-utility-l1-1-0.dll due to CFG!
+294915 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-time-l1-1-0.dll due to CFG!
+294918 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-environment-l1-1-0.dll due to CFG!
+294922 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-convert-l1-1-0.dll due to CFG!
+294926 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-filesystem-l1-1-0.dll due to CFG!
+294929 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-heap-l1-1-0.dll due to CFG!
+294933 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-string-l1-1-0.dll due to CFG!
+294936 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-math-l1-1-0.dll due to CFG!
+294939 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-locale-l1-1-0.dll due to CFG!
+294944 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\MSVCP140.dll due to CFG!
+294947 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-process-l1-1-0.dll due to CFG!
+294951 INFO: Disabling UPX for C:\windows\system32\VCOMP140.DLL due to CFG!
+294955 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-conio-l1-1-0.dll due to CFG!
+294958 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-private-l1-1-0.dll due to CFG!
+294961 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Quick.dll due to match in exclude pattern: Qt5Quick.dll
+294965 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Qml.dll due to match in exclude pattern: Qt5Qml.dll
+295010 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Core.dll due to match in exclude pattern: Qt5Core.dll
+295016 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Network.dll due to match in exclude pattern: Qt5Network.dll
+295034 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Widgets.dll due to match in exclude pattern: Qt5Widgets.dll
+295040 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Gui.dll due to match in exclude pattern: Qt5Gui.dll
+295746 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\VCRUNTIME140.dll due to match in exclude pattern: vcruntime140.dll
+295761 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5PrintSupport.dll due to match in exclude pattern: Qt5PrintSupport.dll
+295763 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\Qt5Svg.dll due to match in exclude pattern: Qt5Svg.dll
+295779 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\VCRUNTIME140_1.dll due to match in exclude pattern: vcruntime140_1.dll
+295780 INFO: Disabling UPX for C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\DLLs\libcrypto-3.dll due to match in exclude pattern: libcrypto-*.dll
+295787 INFO: Disabling UPX for C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\DLLs\libssl-3.dll due to match in exclude pattern: libssl-*.dll
+295800 INFO: Disabling UPX for C:\Users\Alexander J. Ross\AppData\Local\Programs\Python\Python311\python3.dll due to match in exclude pattern: python3.dll
+295803 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-synch-l1-2-0.dll due to CFG!
+295828 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\pandas.libs\msvcp140-a4c2229bdc2a2a630acdc095b4d86008.dll due to CFG!
+295869 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\Pythonwin\mfc140u.dll due to CFG!
+295975 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\ucrtbase.dll due to CFG!
+295979 INFO: Disabling UPX for C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyQt5\Qt5\bin\MSVCP140_1.dll due to CFG!
+296047 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-crt-multibyte-l1-1-0.dll due to CFG!
+296060 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-heap-l1-1-0.dll due to CFG!
+296063 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-processthreads-l1-1-0.dll due to CFG!
+296067 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-localization-l1-2-0.dll due to CFG!
+296070 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-handle-l1-1-0.dll due to CFG!
+296074 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-rtlsupport-l1-1-0.dll due to CFG!
+296077 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-errorhandling-l1-1-0.dll due to CFG!
+296081 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-libraryloader-l1-1-0.dll due to CFG!
+296085 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-profile-l1-1-0.dll due to CFG!
+296089 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-console-l1-1-0.dll due to CFG!
+296092 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-synch-l1-1-0.dll due to CFG!
+296094 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-file-l1-2-0.dll due to CFG!
+296098 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-memory-l1-1-0.dll due to CFG!
+296103 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-util-l1-1-0.dll due to CFG!
+296106 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-interlocked-l1-1-0.dll due to CFG!
+296110 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-processenvironment-l1-1-0.dll due to CFG!
+296114 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-fibers-l1-1-0.dll due to CFG!
+296117 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-sysinfo-l1-1-0.dll due to CFG!
+296120 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-file-l2-1-0.dll due to CFG!
+296123 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-timezone-l1-1-0.dll due to CFG!
+296127 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-processthreads-l1-1-1.dll due to CFG!
+296131 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-debug-l1-1-0.dll due to CFG!
+296135 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-datetime-l1-1-0.dll due to CFG!
+296138 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-file-l1-1-0.dll due to CFG!
+296142 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-string-l1-1-0.dll due to CFG!
+296145 INFO: Disabling UPX for C:\Program Files\Eclipse Adoptium\jre-21.0.2.13-hotspot\bin\api-ms-win-core-namedpipe-l1-1-0.dll due to CFG!
+310038 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+310460 INFO: Build complete! The results are available in: C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\dist
+Total runtime: 310460 ms
