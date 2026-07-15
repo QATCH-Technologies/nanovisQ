@@ -576,7 +576,11 @@ QToolBar#CtrlToolBar QToolButton:pressed {
     border: 1px solid transparent;
 }
 QToolBar#CtrlToolBar QToolButton:checked {
-    background: transparent;
+    background: {{MENU_ITEM_HOVER}};
+    border: 1px solid transparent;
+}
+QToolBar#CtrlToolBar QToolButton:checked:hover {
+    background: {{MENU_ITEM_HOVER}};
     border: 1px solid transparent;
 }
 QToolBar#CtrlToolBar QToolButton:disabled {

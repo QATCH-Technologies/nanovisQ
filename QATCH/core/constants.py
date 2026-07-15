@@ -422,6 +422,12 @@ class Constants:
         2: (4, "Almost full"),
         3: (5, "Complete, stop"),
     }
+    # Fill-status display messages that mean "the user should stop now",
+    # either because the run can be stopped early or because the fill is
+    # complete. Watched by MainWindow's Auto-stop feature.
+    _AUTO_STOP_MESSAGES: frozenset[str] = frozenset(
+        {"Data Ready, You Can Stop", "Data Ready, Stop"}
+    )
 
     ######################
     # ANALYZE parameters #

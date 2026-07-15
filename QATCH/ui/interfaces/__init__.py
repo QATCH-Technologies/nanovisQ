@@ -5,6 +5,7 @@ from .ui_logger import UILogger
 from .ui_login import UILogin
 from .ui_mode import UIMode
 from .ui_plots import UIPlots
+from .ui_review import UIReview
 
 __all__ = [
     "UIAnalyze",
@@ -14,4 +15,5 @@ __all__ = [
     "UIMode",
     "UIPlots",
     "UILogin",
+    "UIReview",
 ]
