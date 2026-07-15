@@ -93,7 +93,7 @@ class Constants:
     - Higher: Increases reliability and noise filtering, but delays detection.
     - Lower: Faster detection, but higher risk of false positives from noise.
     """
-    DRYING_WINDOW_SIZE = 100
+    DRYING_WINDOW_SIZE = 120
     """
     The maximum allowed standard deviation (noise floor) for the normalized
     dissipation signal. Range is [0, 1] due to normalization.

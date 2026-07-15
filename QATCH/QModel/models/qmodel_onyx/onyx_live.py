@@ -170,8 +170,12 @@ class QModelOnyxLive(QModelOnyxFillClassifier):
     # Key   : channel count (matches current_prediction after state change)
     # Value : (threshold_seconds, display_message)
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min since Initial Fill confirmed, no ch1 yet
+        0: (
+            80.0,
+            "Data Ready, You Can Stop",
+        ),  # >= 1:20 min since Initial Fill confirmed, no ch1 yet
         1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min since Initial Fill confirmed, no ch2 yet
+        2: (300.0, "Data Ready, You Can Stop"),  # >= 5 min since Initial Fill confirmed, no ch3 yet
         3: (None, "Data Ready, Stop"),  # always on 3-channel confirmation
     }
 
