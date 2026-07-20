@@ -20,9 +20,10 @@ Version:
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.interpolate import PchipInterpolator
 from scipy.optimize import minimize
 from scipy.signal import savgol_filter
-from scipy.interpolate import PchipInterpolator
+
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 
@@ -514,36 +515,15 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             raise
 
 
-##########################################
-# Additive-step drop-effect removal (replaces the earlier bridge-style inserts
-# used in DropEffectCorrection.correct_drop_effects: cosine blend, then
-# slope-matched PCHIP bridge).
-#
-# A drop effect is an ADDITIVE STEP ARTIFACT: the droplet permanently shifts
-# the level of both channels, and everything recorded after the drop rides on
-# the shifted level. Bridging over the region (however smoothly) preserves
-# that shift as a bump in the series instead of removing it. The correct
-# repair is:
-#
-#   1. Locate the drop instant (steepest sample-to-sample change in the core).
-#   2. Estimate the step height `delta` as the gap between quadratic trend
-#      extrapolations fitted to guard-banded flanks on either side of the
-#      core, both evaluated at the drop instant. Evaluating both fits at the
-#      same time point cancels the genuine fill trend, isolating the
-#      artifact.
-#   3. Subtract `delta` from EVERY sample at/after the end of the transient
-#      core (this is the step removal -- the permanent shift is intended).
-#   4. Patch the short transient core with a PCHIP interpolant between the
-#      pre-flank trend and the now-shifted post-flank trend, add
-#      flank-resampled noise texture, and feather the seams.
-##########################################
-
 # Samples excluded on each side of the core before fitting flank trends, so
 # transient leakage (and savgol window bleed) doesn't contaminate the fits.
 GUARD_SAMPLES = 3
 
-# Flank window length (samples) for the quadratic trend fits.
+# Flank window length (samples) for the pre-drop trend fit.
 FLANK_SAMPLES = 30
+
+# Flank window length (samples) for the post-drop (settled-side) trend fit.
+POST_FLANK_SAMPLES = 20
 
 # Knots per flank for the core patch interpolant.
 PATCH_KNOTS = 4
@@ -558,49 +538,171 @@ FEATHER_SAMPLES = 3
 RESIDUAL_SCALE = 0.7
 
 
-def _flank_fits(times, ysm, anchor_idx, post_idx):
-    """Trend fits on guard-banded flanks either side of the core.
+def _onset_end(ysm, left_bound, core_start, settle_frac=0.25, guard=2):
+    """First index at which the fill-onset ramp has settled.
 
-    Quadratic when the flank has enough samples; degrades to linear/constant
-    near the start or end of the signal, where the guard band can leave fewer
-    than 3 points and a degree-2 fit would be poorly conditioned.
+    `left_bound` marks the start-of-fill *search* boundary and generally sits
+    a little BEFORE the onset ramp actually begins, so a fixed sample offset
+    from it is not a reliable way to skip the ramp -- on real runs the ramp
+    can start ~5 samples after left_bound and run for ~5 more, so a fixed
+    guard of a few samples lands squarely on it. A pre-drop trend fit that
+    includes the ramp picks up its steep slope and, extrapolated toward the
+    drop, badly misestimates the pre-drop level.
+
+    This walks out from the steepest point of the ramp until the smoothed
+    first difference falls back to `settle_frac` of its peak, which adapts to
+    however long the ramp actually takes.
     """
-    n = len(ysm)
-    pre_sl = slice(
-        max(0, anchor_idx - GUARD_SAMPLES - FLANK_SAMPLES), max(1, anchor_idx - GUARD_SAMPLES + 1)
-    )
-    post_sl = slice(
-        min(n - 2, post_idx + GUARD_SAMPLES), min(n, post_idx + GUARD_SAMPLES + FLANK_SAMPLES + 1)
-    )
-    pre_deg = min(2, max(0, pre_sl.stop - pre_sl.start - 1))
-    post_deg = min(2, max(0, post_sl.stop - post_sl.start - 1))
-    p_pre = np.polyfit(times[pre_sl], ysm[pre_sl], pre_deg)
-    p_post = np.polyfit(times[post_sl], ysm[post_sl], post_deg)
-    return p_pre, p_post
+    lo = int(left_bound)
+    hi = max(lo + 3, int(core_start) - 1)
+    seg = np.abs(np.diff(ysm[lo:hi]))
+    if seg.size < 3:
+        return lo
+    pk = int(np.argmax(seg))
+    typical = float(np.median(seg))
+    if typical > 0 and seg[pk] < 4.0 * typical:
+        return lo
+    thr = settle_frac * seg[pk]
+    i = pk
+    while i < seg.size - 1 and seg[i] > thr:
+        i += 1
+    return min(lo + i + guard, max(lo, int(core_start) - 1))
 
 
-def _drop_instant(raw, core_start, core_end):
-    """Index of the steepest single-sample change inside the core."""
-    d = np.abs(np.diff(raw[core_start : core_end + 1]))
-    return core_start + int(np.argmax(d)) if d.size else core_start
+def _ols_pred_var(times, fit_vals, resid_vals, t_eval):
+    """Variance of an OLS linear fit's predicted value at `t_eval`.
 
+    Standard prediction variance: resid_var * (1/n + (t_eval - tbar)^2 / Sxx).
+    The second term grows with extrapolation distance, which is exactly what
+    the significance gate needs. A delta built from two fits extrapolated
+    across a gap is far less certain than the raw point noise suggests, so
+    gating on point noise alone lets small spurious steps through on regions
+    that contain no real discontinuity.
 
-def estimate_step_delta(times, raw, ysm, core_start, core_end):
-    """Trend-compensated step height across the transient core.
-
-    Both flank fits are evaluated at the drop instant; their gap is the step.
-    Because both fits extrapolate the *genuine* trend to the same time point,
-    the fill dynamics cancel and only the artifact height remains.
+    The line is fitted to `fit_vals` (the smoothed series, matching the point
+    estimate) but the residual variance is taken against `resid_vals` (the RAW
+    series). Savgol residuals within a window are correlated, so measuring
+    scatter against the smoothed series understates the true uncertainty of
+    the fitted trend by roughly an order of magnitude.
     """
-    anchor_idx = max(0, core_start - 1)
-    post_idx = min(core_end + 1, len(raw) - 1)
-    p_pre, p_post = _flank_fits(times, ysm, anchor_idx, post_idx)
-    td = times[_drop_instant(raw, core_start, core_end)]
-    return float(np.polyval(p_post, td) - np.polyval(p_pre, td))
+    n = len(fit_vals)
+    if n < 3:
+        return float("inf")
+    tbar = float(np.mean(times))
+    sxx = float(np.sum((times - tbar) ** 2))
+    if sxx <= 0:
+        return float("inf")
+    p = np.polyfit(times, fit_vals, 1)
+    resid = np.asarray(resid_vals) - np.polyval(p, times)
+    resid_var = float(np.sum(resid**2)) / max(1, n - 2)
+    return resid_var * (1.0 / n + (float(t_eval) - tbar) ** 2 / sxx)
+
+
+def estimate_step_delta(
+    times, raw, ysm, core_start, core_end, left_bound=0, min_plateau=5, return_se=False
+):
+    """Boundary-aware trend-compensated step height across the transient core.
+
+    Two local LINEAR trend fits -- one on the clean pre-drop flank, one on the
+    settled post-drop flank -- are both evaluated at the midpoint of the gap
+    between those windows. Their difference is the step: because each fit is
+    evaluated at the same instant, the genuine fill trend cancels and only the
+    artifact height remains.
+
+    Three design choices matter, each of which fixes a distinct failure mode
+    observed on real runs:
+
+      1. LINEAR, not quadratic. A degree-2 fit tracks the local curvature of
+         the fill and then amplifies it when extrapolated off the end of its
+         window, over-estimating the step by roughly 2x on both channels. A
+         linear fit is deliberately under-expressive here.
+
+      2. The pre-window starts at the point where the fill-onset ramp has
+         SETTLED (see `_onset_end`), not at a fixed offset from `left_bound`.
+         `left_bound` typically precedes the ramp, so a fixed guard lands on
+         it; a ramp-contaminated fit was the original failure mode, producing
+         an under-estimated or even sign-inverted step on drops that occur
+         soon after start-of-fill.
+
+      3. Both fits are evaluated at the GAP MIDPOINT rather than at the drop
+         instant or at one window's centre. This keeps the extrapolation
+         distance small and symmetric for both sides. Evaluating at a point
+         far from one window (e.g. taking a median level at the pre-window's
+         own centre and projecting the post level back to it) misattributes
+         genuine trend to the artifact -- severely so on Resonance_Frequency,
+         which is in steep, strongly curved descent through this interval and
+         has no plateau to measure against.
+
+    Args:
+        times: full Relative_time array.
+        raw: original (uncorrected) signal.
+        ysm: savgol-smoothed version of the working corrected array.
+        core_start, core_end: tight detected core of the transient.
+        left_bound: index of start-of-fill; the pre-window never reaches
+            below this, preventing onset-ramp contamination.
+        min_plateau: minimum samples required to fit a pre-side trend.
+
+    Returns:
+        float: estimated additive step height (post minus pre).
+    """
+    n = len(raw)
+
+    # pre-drop window: strictly between the settled onset ramp and the drop
+    pre_hi = min(core_start - GUARD_SAMPLES, n - 1)
+    onset_floor = _onset_end(ysm, left_bound, core_start)
+    pre_lo = max(onset_floor, pre_hi - FLANK_SAMPLES)
+    pre_lo = max(0, pre_lo)
+
+    if pre_hi - pre_lo < min_plateau:
+        # Too little clean signal between onset and drop to fit a trend
+        # fall back to a flat level at the last good sample.
+        idx = max(0, min(pre_hi - 1, n - 1))
+        pre_at = lambda _t: float(ysm[idx])
+        t_pre_edge = float(times[idx])
+        prestd = float(np.std(raw[max(0, idx - min_plateau) : idx + 1]))
+    else:
+        p_pre = np.polyfit(times[pre_lo:pre_hi], ysm[pre_lo:pre_hi], 1)
+        pre_at = lambda tt: float(np.polyval(p_pre, tt))
+        t_pre_edge = float(times[pre_hi - 1])
+        prestd = float(np.std(raw[pre_lo:pre_hi]))
+
+    tol = 2.0 * max(prestd, 1e-12)
+
+    # post-settled window: anchored where raw reconverges with smooth
+    si = min(core_end + 1, n - 4)
+    while si < n - 4 and not np.all(np.abs(raw[si : si + 3] - ysm[si : si + 3]) < tol):
+        si += 1
+    post_hi = min(n, si + POST_FLANK_SAMPLES)
+    if post_hi - si < 2:
+        return (0.0, float("inf")) if return_se else 0.0
+    p_post = np.polyfit(times[si:post_hi], ysm[si:post_hi], 1)
+
+    # evaluate both trends at the midpoint of the gap
+    t_mid = 0.5 * (t_pre_edge + float(times[si]))
+    delta = float(np.polyval(p_post, t_mid)) - pre_at(t_mid)
+
+    if not return_se:
+        return delta
+
+    # Uncertainty of the difference of two independent extrapolated fits.
+    var_post = _ols_pred_var(times[si:post_hi], ysm[si:post_hi], raw[si:post_hi], t_mid)
+    if pre_hi - pre_lo < min_plateau:
+        var_pre = float(prestd) ** 2
+    else:
+        var_pre = _ols_pred_var(times[pre_lo:pre_hi], ysm[pre_lo:pre_hi], raw[pre_lo:pre_hi], t_mid)
+    return delta, float(np.sqrt(max(0.0, var_pre + var_post)))
 
 
 def remove_drop_step(
-    times, raw, corrected, ysm, core_start, core_end, rng=None, min_significance=3.0
+    times,
+    raw,
+    corrected,
+    ysm,
+    core_start,
+    core_end,
+    rng=None,
+    min_significance=3.0,
+    left_bound=0,
 ):
     """Remove one drop-effect step from `corrected` in place; returns delta.
 
@@ -620,9 +722,16 @@ def remove_drop_step(
         min_significance: skip correction if |delta| is below this multiple of
             the pre-flank residual noise sigma (guards against "correcting"
             regions that are noise-level, which would inject a spurious step).
+            NOTE: this gate only guards against noise-level deltas. It cannot
+            catch a delta that is large but wrong (e.g. sign-inverted), since
+            such a delta clears the threshold easily. The separate direction
+            gate below covers that failure mode.
+        left_bound: start-of-fill index, forwarded to estimate_step_delta so
+            the pre-drop window never reaches back into the fill-onset ramp.
 
     Returns:
-        float: applied delta (0.0 if skipped as insignificant).
+        float: applied delta (0.0 if skipped as insignificant or as
+        inconsistent with the observed level change across the core).
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -630,21 +739,40 @@ def remove_drop_step(
     anchor_idx = max(0, core_start - 1)
     post_idx = min(core_end + 1, n - 1)
 
-    delta = estimate_step_delta(times, raw, ysm, core_start, core_end)
+    delta, delta_se = estimate_step_delta(
+        times, raw, ysm, core_start, core_end, left_bound=left_bound, return_se=True
+    )
 
-    # Significance gate: don't inject a step where none exists.
+    # Significance gate
     resid_lo = max(0, anchor_idx - 4 * FLANK_SAMPLES)
     flank_resid = (corrected - ysm)[resid_lo:anchor_idx]
     noise_sigma = np.std(flank_resid) if flank_resid.size > 5 else 0.0
-    if noise_sigma > 0 and abs(delta) < min_significance * noise_sigma:
+    gate = min_significance * max(float(noise_sigma), float(delta_se))
+    if gate > 0 and abs(delta) < gate:
         return 0.0
 
-    # 1) Step removal: shift everything at/after the transient's end.
+    # Direction gate
+    obs_lo = max(int(left_bound), core_start - FLANK_SAMPLES)
+    obs_hi = max(obs_lo + 1, anchor_idx)
+    obs_post_hi = min(n, post_idx + FLANK_SAMPLES)
+    if obs_hi > obs_lo and obs_post_hi > post_idx:
+        observed = float(np.median(raw[post_idx:obs_post_hi])) - float(
+            np.median(raw[obs_lo:obs_hi])
+        )
+        if observed != 0.0 and delta * observed < 0:
+            Log.d(
+                CurveOptimizer.TAG,
+                f"Rejected step delta {delta:.4e}: sign disagrees with observed "
+                f"level change {observed:.4e} across core [{core_start}, {core_end}].",
+            )
+            return 0.0
+
+    # Step removal: shift everything at/after the transient's end.
     corrected[post_idx:] -= delta
     sm_shift = ysm.copy()
     sm_shift[post_idx:] -= delta
 
-    # 2) Patch the core: PCHIP between pre-flank trend and shifted post-flank.
+    # Patch the core: PCHIP between pre-flank trend and shifted post-flank.
     li = np.unique(
         np.linspace(max(0, anchor_idx - PATCH_FLANK), anchor_idx, PATCH_KNOTS).astype(int)
     )
@@ -845,15 +973,19 @@ class DropEffectCorrection(CurveOptimizer):
             argidx = np.argmin(values[:min_drop])
         base_slope = (values[argidx] - values[0]) / min_drop
         window_size = 3
+
+        # Floor for the leftward scan.
+        ONSET_FLOOR = 4 + GUARD_SAMPLES + 5
         while True:
             min_drop = min_drop - 1
             current_streak.append(min_drop)
             min_drop = min_drop - 1
             # Pretend this step never happened if it fails to find an acceptable edge before the left bound.
-            if min_drop <= 0:
+            if min_drop <= ONSET_FLOOR:
                 Log.d(
                     self.TAG,
-                    "Drop effect using original bounds, scanning left never reached an acceptable edge.",
+                    "Drop effect using original bounds, scanning left reached the "
+                    "start-of-fill floor without finding an acceptable edge.",
                 )
                 current_streak = current_streak[:min_count]
                 break
@@ -869,14 +1001,6 @@ class DropEffectCorrection(CurveOptimizer):
 
         # Extend the drop region rightward until the raw signal reconverges with the
         # smooth signal.  Applies to both Dissipation and Resonance_Frequency.
-        #
-        # Recovery criterion: |raw - smooth| < tolerance for NUM_PTS consecutive steps,
-        # where tolerance is 2x the pre-drop standard deviation.  This is direction-
-        # agnostic (works for upward spikes in Dissipation and downward drops in RF)
-        # and scales automatically with signal variability.
-        #
-        # Cap: max(35, 2 x initial-streak-length) -- wide enough for complex multi-phase
-        # events while still terminating quickly for narrow spikes.
         NUM_PTS = diff_offset
         max_drop = max(current_streak)
         if max_drop + 1 < len(values) - 1:
@@ -1091,10 +1215,7 @@ class DropEffectCorrection(CurveOptimizer):
 
             # Directionality check: skip regions with no meaningful upward excursion in
             # dissipation.  Compare the peak within the region against the lower of the two
-            # endpoints rather than comparing endpoints directly.  This is robust to the
-            # right expansion having extended the region past the spike peak into recovery
-            # (where the endpoint value can drop below the start value even for a genuine
-            # upward spike, causing the old endpoint comparison to wrongly skip the region).
+            # endpoints rather than comparing endpoints directly.
             region_diss_smooth = smooth_diss_full[region[0] : region[-1] + 1]
             peak_diss = float(np.max(region_diss_smooth))
             baseline_diss = min(float(region_diss_smooth[0]), float(region_diss_smooth[-1]))
@@ -1121,20 +1242,10 @@ class DropEffectCorrection(CurveOptimizer):
 
             # Record the indices where the correction is applied.
             correction_indices.extend(region)
-
-            # Tight detected core of the transient -- NOT padded. The old bridge
-            # approaches widened the region to give a smoothing kernel more room to
-            # work; step removal instead wants the shortest interval containing the
-            # discontinuity, so the flank trend fits used to estimate the step
-            # height stay close to (and representative of) the drop itself.
             core_start, core_end = region[0], region[-1]
             anchor_idx = max(0, core_start - 1)
 
-            # Only if end-of-fill is contained in the core: the drop and the
-            # genuine fill-completion event overlap, so treating this as a
-            # permanent additive step would blur over real fill dynamics. Fall
-            # back to an anchor-aligned super-smooth patch with no trailing
-            # shift, as before.
+            # Only if end-of-fill is contained in the core
             used_smooth_override = (
                 len(self.bounds) > 1
                 and isinstance(self.bounds[1], int)
@@ -1170,16 +1281,6 @@ class DropEffectCorrection(CurveOptimizer):
                     "(no permanent step shift; overlaps end-of-fill).",
                 )
                 continue
-
-            # Additive-step removal: estimate the permanent level shift caused
-            # by the drop and subtract it from every sample at/after the
-            # transient, then patch the short transient core with a
-            # trend-matched, noise-textured interpolant. The smoothed trend is
-            # recomputed from the CORRECTED arrays each iteration (rather than
-            # reused from smooth_diss_full/smooth_rf_full, which reflect only
-            # the original data) so a region's step estimate reflects any
-            # shifts already applied by later (already-processed) regions in
-            # this right-to-left pass.
             win = self._safe_savgol_win(len(corrected_diss), 11, 3)
             ysm_diss = savgol_filter(corrected_diss, win, 3)
             ysm_rf = savgol_filter(corrected_rf, win, 3)
@@ -1193,6 +1294,7 @@ class DropEffectCorrection(CurveOptimizer):
                 core_start,
                 core_end,
                 rng=rng,
+                left_bound=self._left_bound["index"],
             )
             delta_rf = remove_drop_step(
                 relative_time,
@@ -1202,6 +1304,7 @@ class DropEffectCorrection(CurveOptimizer):
                 core_start,
                 core_end,
                 rng=rng,
+                left_bound=self._left_bound["index"],
             )
 
             Log.d(

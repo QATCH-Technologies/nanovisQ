@@ -345,33 +345,48 @@ class Ui_Export(QtWidgets.QWidget):
 
         # use grid layout (it's cleaner)
         exportGridLayout = QtWidgets.QGridLayout()
+        # More breathing room than the style default - this grid packs up
+        # to 7 columns across 5 rows, which reads as cramped without it,
+        # especially at non-maximized window sizes on smaller displays.
+        exportGridLayout.setContentsMargins(10, 14, 10, 10)
+        exportGridLayout.setHorizontalSpacing(16)
+        exportGridLayout.setVerticalSpacing(12)
+        # Rows below are split so no single row needs more than ~4 columns
+        # of width (previously up to 6-7) - the actual fix for crowding at
+        # a fixed, non-maximized window width: a dependent/wide control
+        # (a button, a date-range picker) gets its own indented row under
+        # the option it belongs to, instead of competing for space
+        # alongside 3-5 siblings on one line.
         # row 1: export selection
         exportGridLayout.addWidget(QtWidgets.QLabel("Export:"), 1, 1, 1, 1)
         exportGridLayout.addWidget(self.exportAll, 1, 2, 1, 1)
         exportGridLayout.addWidget(self.selection, 1, 3, 1, 1)
-        exportGridLayout.addWidget(self.selectRun, 1, 4, 1, 3)
-        # row 2: export as
-        exportGridLayout.addWidget(QtWidgets.QLabel("Export as:"), 2, 1, 1, 1)
-        exportGridLayout.addWidget(self.exportAsCSV, 2, 2, 1, 1)
-        exportGridLayout.addWidget(self.exportAsZIP, 2, 3, 1, 1)
-        exportGridLayout.addWidget(self.exportAsFolder, 2, 4, 1, 1)
-        # exportGridLayout.addWidget(self.exportUnnamed, 2, 4, 1, 3)
-        # row 3: export name
-        exportGridLayout.addWidget(self.exportNameChk, 3, 1, 1, 1)
-        exportGridLayout.addWidget(self.exportNameTxt, 3, 2, 1, 2)
-        exportGridLayout.addWidget(self.exportNoName, 3, 4, 1, 3)
-        # row 4: Export by date
-        exportGridLayout.addWidget(self.dateFilter, 4, 1, 1, 1)
-        exportGridLayout.addWidget(self.filterOff, 4, 2, 1, 1)
-        exportGridLayout.addWidget(self.filterToday, 4, 3, 1, 1)
-        exportGridLayout.addWidget(self.filterLastXDays, 4, 4, 1, 1)
-        exportGridLayout.addWidget(self.filterNumDays, 4, 5, 1, 1)
-        exportGridLayout.addWidget(self.filterUnits, 4, 6, 1, 1)
-        # row 5: existing files
-        exportGridLayout.addWidget(self.existingExport, 5, 1, 1, 1)
-        exportGridLayout.addWidget(self.doMerge, 5, 2, 1, 1)
-        exportGridLayout.addWidget(self.doOverwrite, 5, 3, 1, 1)
-        exportGridLayout.addWidget(self.doSkip, 5, 4, 1, 3)
+        # row 2: (indented) which run, only relevant to "Selection:" above
+        exportGridLayout.addWidget(self.selectRun, 2, 2, 1, 3)
+        # row 3: export as
+        exportGridLayout.addWidget(QtWidgets.QLabel("Export as:"), 3, 1, 1, 1)
+        exportGridLayout.addWidget(self.exportAsCSV, 3, 2, 1, 1)
+        exportGridLayout.addWidget(self.exportAsZIP, 3, 3, 1, 1)
+        exportGridLayout.addWidget(self.exportAsFolder, 3, 4, 1, 1)
+        # exportGridLayout.addWidget(self.exportUnnamed, 3, 4, 1, 3)
+        # row 4: export name
+        exportGridLayout.addWidget(self.exportNameChk, 4, 1, 1, 1)
+        exportGridLayout.addWidget(self.exportNameTxt, 4, 2, 1, 2)
+        # row 5: (indented) alternative to naming the export above
+        exportGridLayout.addWidget(self.exportNoName, 5, 2, 1, 3)
+        # row 6: Export by date
+        exportGridLayout.addWidget(self.dateFilter, 6, 1, 1, 1)
+        exportGridLayout.addWidget(self.filterOff, 6, 2, 1, 1)
+        exportGridLayout.addWidget(self.filterToday, 6, 3, 1, 1)
+        # row 7: (indented) the "Last: N units" alternative to the dates above
+        exportGridLayout.addWidget(self.filterLastXDays, 7, 2, 1, 1)
+        exportGridLayout.addWidget(self.filterNumDays, 7, 3, 1, 1)
+        exportGridLayout.addWidget(self.filterUnits, 7, 4, 1, 1)
+        # row 8: existing files
+        exportGridLayout.addWidget(self.existingExport, 8, 1, 1, 1)
+        exportGridLayout.addWidget(self.doMerge, 8, 2, 1, 1)
+        exportGridLayout.addWidget(self.doOverwrite, 8, 3, 1, 1)
+        exportGridLayout.addWidget(self.doSkip, 8, 4, 1, 3)
 
         self.groupbox3 = QtWidgets.QGroupBox("Export Settings")
         self.groupbox3.setCheckable(False)
@@ -422,7 +437,27 @@ class Ui_Export(QtWidgets.QWidget):
         layout_v.addWidget(self.pb)
         layout_v.addLayout(layout_h8)
 
-        self.tab2.setLayout(layout_v)
+        # Let this tab's content (5 stacked groupboxes, including "Export
+        # Settings") lay out at its natural, comfortable size instead of
+        # being squeezed to fit whatever the overall window happens to be
+        # sized to - especially cramped at the window's non-maximized
+        # minimum size (500x500, unchanged - see showNormal()). A scroll
+        # area lets the content keep its full spacing/breathing room while
+        # only part of it is visible at once, instead of trading "same
+        # window size" for "crowded controls" or vice versa.
+        export_tab_content = QtWidgets.QWidget()
+        export_tab_content.setLayout(layout_v)
+
+        export_scroll = QtWidgets.QScrollArea()
+        export_scroll.setWidgetResizable(True)
+        export_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        export_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        export_scroll.setWidget(export_tab_content)
+
+        tab2_layout = QtWidgets.QVBoxLayout()
+        tab2_layout.setContentsMargins(0, 0, 0, 0)
+        tab2_layout.addWidget(export_scroll)
+        self.tab2.setLayout(tab2_layout)
 
         """
         # making widget resizable

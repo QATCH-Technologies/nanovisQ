@@ -2433,17 +2433,29 @@ class QueryRunInfo(QtWidgets.QWidget):
             # self.t0.clear()
 
     def show_hide_gui(self, object):
-        curr_state = None
+        is_visible = self.isVisible()
         is_bioformulation = None
-        if self.isVisible():
-            curr_state = not self.t0.isEnabled()
         if self.b1.isChecked():
             is_bioformulation = True
         if self.b2.isChecked():
             is_bioformulation = False
 
+        # Track the last-applied state explicitly instead of inferring it
+        # from t0.isEnabled() (the old `curr_state`): t0 starts enabled by
+        # default from construction regardless of whether the
+        # bioformulation groups have ever actually been synced, so that
+        # proxy wrongly read as "already False" the very first time a real
+        # choice was applied - most visibly the first time a user picked
+        # "No", which made this guard think nothing had changed and skip
+        # hiding groupProtein/groupBuffer/etc. entirely. Those groups (and
+        # their required fields, e.g. c10 "Protein Type") then stayed
+        # visible/enabled, so validation kept demanding bioformulation-only
+        # info and blocked progress through Run Info even after "No".
+        prev_bioformulation = getattr(self, "_last_bioformulation", "__unset__")
+
         # Always do this on form load, only ignore if after "show" call
-        if is_bioformulation != curr_state:  # only if value actually changed
+        if is_bioformulation != prev_bioformulation:  # only if value actually changed
+            self._last_bioformulation = is_bioformulation
             if is_bioformulation != True:
                 self.t3.clear()
                 self.t4.clear()
@@ -2486,8 +2498,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 is_bioformulation == True
             )  # advanced information
 
-            if curr_state is not None:
-                # resize vertically to fit fields (if visible)
+            if is_visible:
+                # resize vertically to fit fields
                 # NOTE: use timer to add to scheduler after redraw event
                 QtCore.QTimer.singleShot(
                     1, lambda: self.resize(self.width(), self.minimumHeight())
@@ -2500,7 +2512,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                     self.t2.text()) else 0
                 self.auto_dn = float(self.t5.text()) if len(
                     self.t5.text()) else 0
-            elif curr_state == None:
+            elif not is_visible:
                 return  # Run Info not visible, stop here
             elif is_bioformulation != None:
                 if is_bioformulation:
