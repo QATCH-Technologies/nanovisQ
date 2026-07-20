@@ -752,9 +752,15 @@ class MainWindow(QtWidgets.QMainWindow):
             for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
                 self.data_devices = dirs  # show all available devices in logged data
                 break
-            self.analyze_window.ui.scan_for_most_recent_run = True
             self.analyze_window.hide()
-            self.analyze_window.ui.reset()
+            # The run list is kept current automatically by a filesystem
+            # watcher (see UIAnalyze._ensure_watcher_armed/_rearm_watcher) -
+            # a plain mode-switch no longer forces a full device/run
+            # rescan. _ensure_watcher_armed() is a cheap no-op unless the
+            # load-directory preference changed since it was last armed;
+            # clear() still resets graph/session state on every entry.
+            self.analyze_window.ui._ensure_watcher_armed()
+            self.analyze_window.ui.clear()
             self.analyze_window.showMaximized()
             self.analyze_window.ui.check_user_info()
             if len(self.data_devices) > 0:
@@ -1621,6 +1627,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.renameWorker = RenameOutputFilesWorker(self)
             self.renameThread.started.connect(self.renameWorker.run)
             self.renameWorker.finished.connect(self.renameThread.quit)
+            # Let a completed, saved run appear in the Analyze run list
+            # immediately instead of waiting on the filesystem watcher's own
+            # next incidental re-touch of that device's directory.
+            self.renameWorker.run_saved.connect(self.analyze_window.ui.on_run_saved)
             self.renameThread.start()
 
             for i in range(len(self._drop_applied)):

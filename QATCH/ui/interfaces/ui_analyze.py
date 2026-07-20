@@ -29,7 +29,6 @@ import pyzipper
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QCompleter
 from scipy.signal import argrelextrema, savgol_filter
 
 from QATCH.common.architecture import Architecture
@@ -43,6 +42,7 @@ from QATCH.processors.CurveOptimizer import (
     DropEffectCorrection,
 )
 from QATCH.QModel import QModelIndus, QModelOnyx, QModelTweed, QModelVolta
+from QATCH.ui.components import AnimatedComboBox
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,
@@ -107,6 +107,21 @@ class UIAnalyze(QtWidgets.QWidget):
         self.run_timestamps = {}
         self.run_devices = {}
         self.run_names = {}
+        self.run_is_new = {}  # dict_key -> bool, see _scan_run's is_new / the "New" sort filter
+
+        # Filesystem-watcher state that keeps the run list auto-maintained
+        # instead of requiring a manual Rescan button or a full rescan on
+        # every mode switch (see _ensure_watcher_armed/_rearm_watcher).
+        self._run_watcher = QtCore.QFileSystemWatcher(self)
+        self._run_watcher.directoryChanged.connect(self._on_watched_dir_changed)
+        self._watched_load_path: Optional[str] = None
+        self._pending_dirty_paths: set = set()
+        self._watch_debounce_timer = QtCore.QTimer(self)
+        self._watch_debounce_timer.setSingleShot(True)
+        self._watch_debounce_timer.setInterval(750)
+        self._watch_debounce_timer.timeout.connect(self._process_pending_watch_events)
+        self._incremental_workers: list = []
+
         self.step_direction = "forwards"
         self.allow_modify = False
         self.moved_markers = [False, False, False, False, False, False]
@@ -153,19 +168,9 @@ class UIAnalyze(QtWidgets.QWidget):
         self.text_Loaded = QtWidgets.QLabel("Loaded:")
         self.text_Created = QtWidgets.QLabel("[NONE]")
         self.btn_Info = QtWidgets.QPushButton("Run Info")
-        self.cBox_Runs = QtWidgets.QComboBox()
-        self.cBox_Runs.setEditable(True)
-        self.cBox_Runs.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
-        # Configure completer for existing/future items
-        # Configure completer for existing/future items
-        self._runs_completer = QCompleter(self.cBox_Runs.model(), self)
-        self._runs_completer.setCompletionMode(QCompleter.PopupCompletion)
-        self._runs_completer.setFilterMode(Qt.MatchContains)
-        self._runs_completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self.cBox_Runs.setCompleter(self._runs_completer)
-
-        # Enforce selection: clear invalid text on finish
-        self.cBox_Runs.lineEdit().editingFinished.connect(self._validate_run)
+        self.cBox_Runs = AnimatedComboBox(
+            icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg")
+        )
 
         self.graphStack = (
             QtWidgets.QStackedWidget()
@@ -211,10 +216,6 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Create dropdown menu
         menu = QtWidgets.QMenu()
-        menu.addAction(
-            "Load all new runs",
-            lambda: self.load_all_from_folder(Constants.log_prefer_path),
-        )
         menu.addAction("Load runs from...", self.load_all_from_folder)
 
         # Assign menu to button
@@ -239,17 +240,6 @@ class UIAnalyze(QtWidgets.QWidget):
             """)
 
         self.tool_Load.addWidget(self.tBtn_Load)
-
-        icon_reset = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg")
-        icon_reset.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        # icon_reset.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
-        self.tBtn_Rescan = QtWidgets.QToolButton()
-        self.tBtn_Rescan.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tBtn_Rescan.setIcon(icon_reset)  # normal and disabled pixmaps
-        self.tBtn_Rescan.setText("Rescan")
-        self.tBtn_Rescan.clicked.connect(self.rescanRuns)
-        self.tool_Load.addWidget(self.tBtn_Rescan)
 
         self.tool_Load.addSeparator()
 
@@ -290,12 +280,16 @@ class UIAnalyze(QtWidgets.QWidget):
         # self.sort_by_date.setStyleSheet("color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;")
         self.sort_by_date.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.sort_by_date.mousePressEvent = self.action_sort_by_date
+        self.sort_by_new = QtWidgets.QLabel("New")
+        self.sort_by_new.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.sort_by_new.mousePressEvent = self.action_sort_by_new
 
         sort_by_layout = QtWidgets.QHBoxLayout()
         sort_by_layout.setContentsMargins(0, 0, 0, 0)
         sort_by_layout.addWidget(self.sort_by)
         sort_by_layout.addWidget(self.sort_by_name)
         sort_by_layout.addWidget(self.sort_by_date)
+        sort_by_layout.addWidget(self.sort_by_new)
         sort_by_layout.addStretch()
 
         self.sort_by_widget = QtWidgets.QWidget()
@@ -765,10 +759,15 @@ class UIAnalyze(QtWidgets.QWidget):
         # self.cBox_Devices.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
         self.cBox_Runs.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred)
         self.cBox_Runs.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-        self.cBox_Runs.setEditable(True)
+        self.cBox_Runs.addItem("No Runs Found")
         self.cBox_Runs.setEnabled(False)
-        self.cBox_Runs.setEditText("No Runs Found")
         self.cBox_Runs.currentIndexChanged.connect(self.updateDev)
+        # Loads implicitly on genuine user selection (click or keyboard
+        # confirm) - `activated` only fires for real interaction, unlike
+        # `currentIndexChanged` above, which also fires for the programmatic
+        # clear()/addItems()/setCurrentText() calls background refreshes
+        # (the run-list filesystem watcher, force_full_resync, etc.) make.
+        self.cBox_Runs.activated.connect(self._on_run_activated)
         self.cBox_Devices.currentIndexChanged.connect(self.updateRunOnChange)
         self.btn_Load.pressed.connect(self.load_run)
         self.btn_Back.pressed.connect(self.goBack)
@@ -872,6 +871,12 @@ class UIAnalyze(QtWidgets.QWidget):
         self.indus_predict_progress.connect(self._qmodel_indus_progress_update)
         self.volta_predict_progress.connect(self._QModel_volta_progress_update)
         self.onyx_predict_progress.connect(self._QModel_onyx_progress_update)
+
+        # Arm the run-list watcher and do the one full scan now, so the run
+        # list is already warm by the time the user first opens Analyze mode
+        # instead of rescanning on every mode switch (see
+        # _ensure_watcher_armed).
+        self._rearm_watcher()
 
     def _show_analyze_plot_overlay(self) -> None:
         """Creates and displays a progress overlay on the analysis plot.
@@ -1252,17 +1257,6 @@ class UIAnalyze(QtWidgets.QWidget):
         if failed:
             PopUp.warning(self, Constants.app_title, "QModel inference failed.")
 
-    def _validate_run(self):
-        """
-        Validate current text against available items. Clear if not matching.
-        """
-        current = self.cBox_Runs.currentText()
-        # Only accept exact matches
-        if self.cBox_Runs.findText(current, Qt.MatchExactly) == -1:
-            # Invalid entry: reset
-            self.cBox_Runs.setCurrentIndex(-1)
-            self.cBox_Runs.clearEditText()
-
     # def hideSelectTool(self, event):
     #     self.AI_SelectTool_Frame.hide()
 
@@ -1365,45 +1359,46 @@ class UIAnalyze(QtWidgets.QWidget):
             Log.d("User did not authenticate for role to switch users.")
             return None
 
+    def _set_sort_order(self, order: int) -> None:
+        """Shared implementation for the three mutually-exclusive Sort by:
+        labels (Name/Date/New) - sets `self.sort_order`, refreshes the run
+        list, and bolds only the now-active label."""
+        self.sort_order = order
+        self._refresh_cbox_runs()
+        active_qss = "color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;"
+        inactive_qss = "color: #0D4AAF; text-decoration: none; padding-left: 15px;"
+        self.sort_by_name.setStyleSheet(active_qss if order == 0 else inactive_qss)
+        self.sort_by_date.setStyleSheet(active_qss if order == 1 else inactive_qss)
+        self.sort_by_new.setStyleSheet(active_qss if order == 2 else inactive_qss)
+
     def action_sort_by_name(self, obj: Any) -> None:
         """Sets the run sorting order to alphabetical by name and updates the UI.
-
-        Updates the internal sort order state to 0 (name), triggers a refresh
-        of the run selection combobox, and applies bold CSS styling to the
-        'sort by name' label while resetting the 'sort by date' label.
 
         Args:
             obj (Any): The event object passed by the Qt signal (e.g., a
                 QMouseEvent), or None if called programmatically.
         """
-        self.sort_order = 0
-        self._refresh_cbox_runs()
-        self.sort_by_name.setStyleSheet(
-            "color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;"
-        )
-        self.sort_by_date.setStyleSheet(
-            "color: #0D4AAF; text-decoration: none; padding-left: 15px;"
-        )
+        self._set_sort_order(0)
 
     def action_sort_by_date(self, obj: Any) -> None:
         """Sets the run sorting order to chronological by date and updates the UI.
 
-        Updates the internal sort order state to 1 (date), triggers a refresh
-        of the run selection combobox, and applies bold CSS styling to the
-        'sort by date' label while resetting the 'sort by name' label.
+        Args:
+            obj (Any): The event object passed by the Qt signal (e.g., a
+                QMouseEvent), or None if called programmatically.
+        """
+        self._set_sort_order(1)
+
+    def action_sort_by_new(self, obj: Any) -> None:
+        """Filters the run list down to runs with no saved analysis yet
+        (see _scan_run's is_new / self.run_is_new cache), sorted newest
+        first, and updates the UI.
 
         Args:
             obj (Any): The event object passed by the Qt signal (e.g., a
                 QMouseEvent), or None if called programmatically.
         """
-        self.sort_order = 1
-        self._refresh_cbox_runs()
-        self.sort_by_name.setStyleSheet(
-            "color: #0D4AAF; text-decoration: none; padding-left: 15px;"
-        )
-        self.sort_by_date.setStyleSheet(
-            "color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;"
-        )
+        self._set_sort_order(2)
 
     def action_cancel(self, exit_batched_processing_mode=False):
         if self.hasUnsavedChanges():
@@ -1604,7 +1599,6 @@ class UIAnalyze(QtWidgets.QWidget):
             bool(self.cBox_Runs.currentText().strip())
             and self.cBox_Runs.currentText() != "No Runs Found"
         )
-        enable_rescan = enable
         enable_cancel = enable_info = enable_modify = self.xml_path is not None
         enable_back = self.stateStep >= 0
         enable_next = enable_cancel and self.stateStep < 7
@@ -1612,7 +1606,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # If disabled globally (e.g., busy state), disable everything
         if not enable:
-            enable_load = enable_rescan = enable_info = enable_cancel = enable_back = (
+            enable_load = enable_info = enable_cancel = enable_back = (
                 enable_next
             ) = enable_modify = enable_analyze = False
 
@@ -1634,7 +1628,6 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Apply button states
         self.tBtn_Load.setEnabled(enable_load)
-        self.tBtn_Rescan.setEnabled(enable_rescan)
         self.tBtn_Info.setEnabled(enable_info)
         self.tool_Cancel.setEnabled(enable_cancel)
         self.tool_Back.setEnabled(enable_back)
@@ -1901,7 +1894,15 @@ class UIAnalyze(QtWidgets.QWidget):
                 return True
         return False
 
-    def rescanRuns(self):
+    def force_full_resync(self):
+        """Nuclear-option full rescan: wipes all cached run info and re-walks
+        every device from disk. No longer wired to any button (the run list
+        is normally kept current automatically by the filesystem watcher -
+        see _ensure_watcher_armed/_rearm_watcher) - kept as an internal
+        fallback for the watcher's own error-recovery path (e.g. a watched
+        path becomes unreachable, or the incremental diff logic repeatedly
+        fails) and as a hook for a future manual "force refresh" affordance
+        if one is ever needed."""
         if self.hasUnsavedChanges():
             if not PopUp.question(
                 self,
@@ -1932,6 +1933,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.run_timestamps = {}
         self.run_devices = {}
         self.run_names = {}
+        self.run_is_new = {}
 
         # find most recent device run
         if self.scan_for_most_recent_run:
@@ -1947,6 +1949,12 @@ class UIAnalyze(QtWidgets.QWidget):
         self.clear()
 
     def clear(self):
+        # Cheap no-op unless the load-directory preference changed since the
+        # watcher was last armed (see _ensure_watcher_armed) - a second
+        # safety net alongside the call in MainWindow.analyze_data(), in
+        # case something else ever calls clear() directly.
+        self._ensure_watcher_armed()
+
         self.text_Created.clear()
         self.graphWidget.clear()
         self.graphWidget.setTitle(None)
@@ -1985,6 +1993,217 @@ class UIAnalyze(QtWidgets.QWidget):
         self.enable_buttons()
 
         self.parent.viewTutorialPage([5, 6])  # analyze / prior results
+
+    # ------------------------------------------------------------------
+    # Run-list filesystem watcher - auto-maintains cBox_Devices/cBox_Runs
+    # from the on-disk contents of Constants.log_prefer_path instead of
+    # requiring a manual Rescan or a full rescan on every mode switch. See
+    # force_full_resync() for the old/manual full-reset path, kept as an
+    # internal fallback.
+    # ------------------------------------------------------------------
+    def _ensure_watcher_armed(self) -> None:
+        """Cheap, idempotent: re-arms the watcher only if the user's load
+        directory preference changed `Constants.log_prefer_path` since it
+        was last armed. Safe to call on every Analyze-mode entry."""
+        if self._watched_load_path == Constants.log_prefer_path:
+            return
+        self._rearm_watcher()
+
+    def _rearm_watcher(self) -> None:
+        """(Re)points the watcher at the current `Constants.log_prefer_path`
+        and its device subdirectories, then does one full resync - the one
+        case a full rescan is still correct, since the watched root's
+        identity just changed and nothing cached can be trusted."""
+        watched = self._run_watcher.directories()
+        if watched:
+            self._run_watcher.removePaths(watched)
+
+        self._watched_load_path = Constants.log_prefer_path
+
+        device_dirs: List[str] = []
+        for _, dirs, _ in os.walk(Constants.log_prefer_path):
+            device_dirs = [d for d in dirs if d != "_unnamed"]
+            break
+
+        paths_to_watch = [Constants.log_prefer_path] + [
+            os.path.join(Constants.log_prefer_path, d) for d in device_dirs
+        ]
+        existing = [p for p in paths_to_watch if os.path.isdir(p)]
+        if existing:
+            self._run_watcher.addPaths(existing)
+
+        self._full_resync(device_dirs)
+
+    def _full_resync(self, device_dirs: Optional[List[str]] = None) -> None:
+        """Rebuilds the device list and launches a full multi-device scan.
+        Used only when the watched root itself changes (see
+        _rearm_watcher) - everyday updates go through the cheap
+        _diff_devices/_diff_runs_for_device path instead. Mirrors reset()'s
+        device-list rebuild without the state/graph teardown, which is
+        clear()'s separate, per-mode-entry concern."""
+        if device_dirs is None:
+            device_dirs = []
+            for _, dirs, _ in os.walk(Constants.log_prefer_path):
+                device_dirs = [d for d in dirs if d != "_unnamed"]
+                break
+
+        self.cBox_Devices.clear()
+        self.parent.data_devices = device_dirs
+        self.cBox_Devices.addItems(device_dirs)
+
+        self.run_timestamps = {}
+        self.run_devices = {}
+        self.run_names = {}
+        self.run_is_new = {}
+
+        self.find_most_recent_run()
+
+    def _on_watched_dir_changed(self, path: str) -> None:
+        """QFileSystemWatcher only reports that a directory changed, never
+        what changed inside it - every fire re-lists the directory and
+        diffs it (see _process_pending_watch_events), it never trusts the
+        signal payload beyond "this path may be stale now"."""
+        self._pending_dirty_paths.add(path)
+        # Restarts if already running - coalesces bursts (e.g. many rapid
+        # writes while a capture is in progress) into one pass.
+        self._watch_debounce_timer.start()
+
+    def _process_pending_watch_events(self) -> None:
+        dirty = self._pending_dirty_paths
+        self._pending_dirty_paths = set()
+        if not dirty:
+            return
+
+        try:
+            root = os.path.normcase(os.path.normpath(Constants.log_prefer_path))
+
+            if any(os.path.normcase(os.path.normpath(p)) == root for p in dirty):
+                self._diff_devices()
+
+            for device_dir in dirty:
+                if os.path.normcase(os.path.normpath(device_dir)) == root:
+                    continue
+                device_name = os.path.basename(device_dir)
+                self._diff_runs_for_device(device_name)
+        except Exception as e:
+            Log.e(TAG, f"Error processing filesystem watch events: {e}")
+
+    def _diff_devices(self) -> None:
+        """Cheap directory-listing diff for the watched root: adds/removes
+        device entries without touching anything that hasn't changed."""
+        on_disk: set = set()
+        for _, dirs, _ in os.walk(Constants.log_prefer_path):
+            on_disk = {d for d in dirs if d != "_unnamed"}
+            break
+
+        known = {self.cBox_Devices.itemText(i) for i in range(self.cBox_Devices.count())}
+        new_devices = on_disk - known
+        removed_devices = known - on_disk
+
+        for dev in sorted(new_devices):
+            self.cBox_Devices.addItem(dev)
+            device_path = os.path.join(Constants.log_prefer_path, dev)
+            if os.path.isdir(device_path) and device_path not in self._run_watcher.directories():
+                self._run_watcher.addPath(device_path)
+            self._diff_runs_for_device(dev)
+
+        for dev in removed_devices:
+            self._remove_device(dev)
+
+    def _remove_device(self, data_device: str) -> None:
+        """Prunes a device that no longer exists on disk, unless it backs
+        the currently-loaded run - a background watcher event must never
+        silently yank an active session out from under the user."""
+        if self.xml_path is not None:
+            # self.xml_path is built as <log_prefer_path>/<device>/<folder>/<file>.xml
+            # (see MainWindow.analyze_data), so its device is two dirnames up.
+            loaded_device = os.path.basename(os.path.dirname(os.path.dirname(self.xml_path)))
+            if loaded_device == data_device:
+                Log.w(
+                    TAG,
+                    f'Device "{data_device}" was removed from disk, but its run is '
+                    "currently loaded - leaving it in the list.",
+                )
+                return
+
+        device_path = os.path.join(Constants.log_prefer_path, data_device)
+        if device_path in self._run_watcher.directories():
+            self._run_watcher.removePath(device_path)
+
+        for dict_key in [k for k in self.run_timestamps if k.endswith(f":{data_device}")]:
+            self.run_timestamps.pop(dict_key, None)
+            self.run_names.pop(dict_key, None)
+            self.run_is_new.pop(dict_key, None)
+
+        idx = self.cBox_Devices.findText(data_device)
+        if idx != -1:
+            self.cBox_Devices.removeItem(idx)
+
+        self._refresh_cbox_runs()
+
+    def _diff_runs_for_device(self, data_device: str) -> None:
+        """Cheap directory-listing diff for one device: only launches a
+        `RunScanWorker` (which does the real XML/zip parsing) when the set
+        of run folders on disk actually differs from what's cached - the
+        vast majority of watcher fires (e.g. a live capture writing into an
+        already-known run folder) exit here without touching a thread."""
+        on_disk = set(FileStorage.DEV_get_logged_data_folders(data_device))
+        on_disk.discard("_unnamed")
+        known_keys_for_dev = {k for k in self.run_timestamps if k.endswith(f":{data_device}")}
+        known_folders_for_dev = {k.rsplit(":", 1)[0] for k in known_keys_for_dev}
+
+        if on_disk == known_folders_for_dev:
+            return
+
+        known_keys: List[str] = list(self.run_timestamps.keys())
+        worker = RunScanWorker([data_device], known_keys, parent=self)
+        worker.scan_finished.connect(self._on_single_device_scanned)
+        self._incremental_workers.append(worker)
+        worker.finished.connect(lambda w=worker: self._forget_incremental_worker(w))
+        worker.start()
+
+    def _forget_incremental_worker(self, worker: RunScanWorker) -> None:
+        """Keeps self._incremental_workers from growing unbounded once a
+        watcher-triggered scan completes. Tracked as a list rather than a
+        single attribute (like the foreground single_scan_worker) because
+        two devices can legitimately have watcher-triggered scans in
+        flight close together."""
+        if worker in self._incremental_workers:
+            self._incremental_workers.remove(worker)
+
+    def on_run_saved(self, save_root: str, data_device: str, run_directory: str) -> None:
+        """Slot for `RenameOutputFilesWorker.run_saved` - fires once a run's
+        files are fully renamed AND zipped into capture.zip, i.e. genuinely
+        complete on disk. Forces an immediate, targeted re-scan of just this
+        run instead of waiting on the filesystem watcher's own next
+        incidental re-touch of that device's directory (see
+        _diff_runs_for_device, which would otherwise see this run's folder
+        as already-known - from the watcher's earlier "folder created"
+        event - and skip re-scanning it, leaving it "Undated" indefinitely).
+        """
+        if os.path.normcase(os.path.normpath(save_root)) != os.path.normcase(
+            os.path.normpath(Constants.log_prefer_path)
+        ):
+            return  # saved under a tree Analyze mode isn't watching (e.g. write path != load path)
+
+        if data_device not in {
+            self.cBox_Devices.itemText(i) for i in range(self.cBox_Devices.count())
+        }:
+            self.cBox_Devices.addItem(data_device)
+            device_path = os.path.join(Constants.log_prefer_path, data_device)
+            if os.path.isdir(device_path) and device_path not in self._run_watcher.directories():
+                self._run_watcher.addPath(device_path)
+
+        # Exclude just this run's key so RunScanWorker treats it as needing
+        # a fresh parse, while every other already-known run for this
+        # device is still skipped as usual.
+        dict_key = f"{run_directory}:{data_device}"
+        known_keys: List[str] = [k for k in self.run_timestamps if k != dict_key]
+        worker = RunScanWorker([data_device], known_keys, parent=self)
+        worker.scan_finished.connect(self._on_single_device_scanned)
+        self._incremental_workers.append(worker)
+        worker.finished.connect(lambda w=worker: self._forget_incremental_worker(w))
+        worker.start()
 
     def _annotate_welcome_text(self):
         self._text5 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
@@ -2338,18 +2557,19 @@ class UIAnalyze(QtWidgets.QWidget):
         self.enable_buttons(False, False)
         if self.xml_path is not None:
             self.tool_Cancel.setEnabled(True)  # enable Cancel
-        self.tBtn_Rescan.setEnabled(True)  # enable Rescan
         run = self.cBox_Runs.currentText()
-        if len(run.strip()) == 0:
-            self.cBox_Runs.setEditable(True)
-            self.cBox_Runs.setEnabled(False)
-            self.cBox_Runs.setEditText("No Runs Found")
+        if len(run.strip()) == 0 or run == "No Runs Found":
+            # Don't mutate cBox_Runs here (clear()/addItem() would recurse
+            # back into this currentIndexChanged handler) - populating the
+            # "No Runs Found" placeholder is _refresh_cbox_runs's job; this
+            # only needs to detect the transient/settled empty state and
+            # bail without touching the combo itself.
+            self.tBtn_Load.setEnabled(False)
             return
         if self.text_Created.text().endswith(run):
             self.enable_buttons()  # enable ALL buttons
         else:
             self.tBtn_Load.setEnabled(True)  # enable Load
-        self.cBox_Runs.setEditable(False)
         self.cBox_Runs.setEnabled(True)
         run = run[0 : run.rfind("(") - 1]
         dev = self.run_devices.get(run)
@@ -2361,6 +2581,18 @@ class UIAnalyze(QtWidgets.QWidget):
     def updateRunOnChange(self, idx):
         if not self.showRunsFromAllDevices.isChecked():
             self.update_run(idx)
+
+    def _on_run_activated(self, idx: int) -> None:
+        """Loads a run the moment the user actually picks it from cBox_Runs
+        (click or keyboard confirm) - `activated` only fires for genuine
+        user interaction, never for the programmatic clear()/addItems()/
+        setCurrentText() calls _refresh_cbox_runs and friends make."""
+        run = self.cBox_Runs.currentText()
+        if not run or run == "No Runs Found":
+            return
+        if self.text_Created.text().endswith(run):
+            return  # already loaded - reselecting the same run is a no-op
+        self.load_run()
 
     @staticmethod
     def _scan_run(data_device: str, data_folder: str, parse_xml: bool = True) -> Dict[str, Any]:
@@ -2388,6 +2620,8 @@ class UIAnalyze(QtWidgets.QWidget):
                 - "files" (List[str]): A list of data files (may be empty on error).
                 - "timestamp" (Optional[str]): The value of the <metric name="start">.
                 - "run_name" (Optional[str]): The value of the <param name="run_name">.
+                - "is_new" (bool): True if no analyze-N.zip exists yet for this run
+                    (i.e. it has never been analyzed/saved).
                 - "warnings" (List[str]): Warnings to be logged on the UI thread.
                 - "error" (Optional[str]): Error messages to be logged via Log.e.
         """
@@ -2398,6 +2632,7 @@ class UIAnalyze(QtWidgets.QWidget):
             "files": [],
             "timestamp": None,
             "run_name": None,
+            "is_new": False,
             "warnings": [],
             "error": None,
         }
@@ -2405,14 +2640,39 @@ class UIAnalyze(QtWidgets.QWidget):
         try:
             data_files = FileStorage.DEV_get_logged_data_files(data_device, data_folder)
             result["files"] = data_files or []
+            # Cheap - reuses the file listing just fetched above, no extra
+            # I/O - and computed unconditionally (even when parse_xml=False)
+            # since it doesn't depend on XML parsing at all.
+            result["is_new"] = not any(
+                f.startswith("analyze-") and f.endswith(".zip") for f in result["files"]
+            )
 
             if not parse_xml:
                 return result
 
             root = None
 
-            zn = os.path.join(Constants.log_prefer_path, data_device, data_folder, "audit.zip")
-            if FileManager.file_exists(zn):
+            # "audit.zip" is a legacy/back-compat name checked first for any
+            # pre-existing data that might still use it; "capture.zip" is
+            # the actual archive name every current save/export/import path
+            # (RenameOutputFilesWorker, main_window.load_run, data_mode_export,
+            # etc.) uses - without checking it here too, every fully-saved,
+            # zipped run falls through to the loose-XML fallback below, which
+            # also always misses (the loose XML is deleted once it's zipped),
+            # permanently showing the run as "Undated".
+            run_dir = os.path.join(Constants.log_prefer_path, data_device, data_folder)
+            zn = next(
+                (
+                    candidate
+                    for candidate in (
+                        os.path.join(run_dir, "audit.zip"),
+                        os.path.join(run_dir, "capture.zip"),
+                    )
+                    if FileManager.file_exists(candidate)
+                ),
+                None,
+            )
+            if zn is not None:
                 with pyzipper.AESZipFile(
                     zn,
                     "r",
@@ -2507,6 +2767,11 @@ class UIAnalyze(QtWidgets.QWidget):
                     unchecked_runs.remove(dict_key)
                 if self.run_timestamps.get(dict_key) is None:
                     self.run_timestamps[dict_key] = "0 / No Date"
+                # Unconditional (unlike timestamp/run_name above): the file
+                # listing is always freshly fetched by _scan_run regardless
+                # of whether XML re-parsing was skipped, so this cache is
+                # always as current as the run's last scan.
+                self.run_is_new[dict_key] = r.get("is_new", False)
             else:
                 Log.w(f"Removing empty run info ({dict_key})")
 
@@ -2515,6 +2780,7 @@ class UIAnalyze(QtWidgets.QWidget):
         for dict_key in unchecked_runs:
             Log.w(f"Removing missing run info ({dict_key})")
             self.run_timestamps.pop(dict_key, None)
+            self.run_is_new.pop(dict_key, None)
 
     def _refresh_cbox_runs(self) -> None:
         """Sorts the cached run data and repopulates the UI run selection combobox.
@@ -2528,6 +2794,7 @@ class UIAnalyze(QtWidgets.QWidget):
         The sorting logic follows:
             - `self.sort_order = 0`: Sort by Name (Ascending)
             - `self.sort_order = 1`: Sort by Date (Descending)
+            - `self.sort_order = 2`: New (filters to unanalyzed runs, Date Descending)
         """
         # Define sorting configuration for readability: {order_index: (sort_key_index, reverse_bool)}
         # item[0] is the dict_key (name-based), item[1] is the timestamp
@@ -2565,13 +2832,34 @@ class UIAnalyze(QtWidgets.QWidget):
             ):
                 continue
 
+            # Filter: "New" sort mode shows only runs with no saved analysis
+            # yet (see _scan_run's is_new / run_is_new cache) - default to
+            # excluded (False) if a run has never actually been scanned, so
+            # nothing shows up here before a scan has confirmed it's new.
+            if self.sort_order == 2 and not self.run_is_new.get(dict_key, False):
+                continue
+
             # Filter: Check device ownership
             if show_all or selected_device == device_name:
                 display_runs.append(formatted_display_name)
 
-        # Update UI Components
+        # Update UI Components. Preserve the current selection across the
+        # rebuild if it's still present - without this, a background
+        # (watcher-triggered) refresh would visibly deselect the user's
+        # current pick every time, even when its own entry didn't change.
+        previous_selection = self.cBox_Runs.currentText()
         self.cBox_Runs.clear()
-        self.cBox_Runs.addItems(display_runs)
+        if display_runs:
+            self.cBox_Runs.addItems(display_runs)
+            self.cBox_Runs.setEnabled(True)
+            if previous_selection and previous_selection in display_runs:
+                self.cBox_Runs.setCurrentText(previous_selection)
+        else:
+            # Always leave at least one (placeholder) item in place, so
+            # updateDev never sees a transiently/truly empty combo outside
+            # of this method's own clear()/addItems() sequence.
+            self.cBox_Runs.addItem("No Runs Found")
+            self.cBox_Runs.setEnabled(False)
 
         # Reset internal lookup caches if they exist
         if hasattr(self, "_run_to_folder_cache"):

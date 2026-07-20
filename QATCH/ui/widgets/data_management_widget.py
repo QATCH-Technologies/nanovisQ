@@ -2,7 +2,7 @@
 
 Owns the overlay lifecycle (open/close, fade, fullscreen, click-outside
 dismiss) and the shared `DataServices`. Links in the five mode submodules and
-drives switching between them via a horizontal chip bar + QStackedWidget.
+drives switching between them via a vertical sidebar + QStackedWidget.
 
 Replaces `export_widget.Ui_Export` in the controls UI. Compatibility shims
 (`showNormal` / `open_mode`) preserve the existing call sites.
@@ -19,9 +19,11 @@ from QATCH.ui.components.overlay_shell import (
     FULLSCREEN_ANIM_EASING,
     OverlayLifecycleMixin,
     rebuild_fullscreen_icons,
+    run_stack_slide,
     run_variant_animation,
+    teardown_stack_slide,
 )
-from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.theme_manager import ThemeManager, surface_panel_qss
 from QATCH.ui.widgets.data_mode_advanced import AdvancedMode
 from QATCH.ui.widgets.data_mode_export import ExportMode
 from QATCH.ui.widgets.data_mode_history import HistoryMode
@@ -36,7 +38,7 @@ MODE_CLASSES = [ImportMode, ExportMode, RecoverMode, AdvancedMode, HistoryMode]
 # Map the old integer tab indices to mode keys for showNormal() compatibility.
 _LEGACY_TAB_TO_KEY = {0: "import", 1: "export", 2: "recover", 3: "advanced", 4: "history"}
 
-# Position of each mode in the chip bar, used to pick slide direction.
+# Position of each mode in the sidebar, used to pick slide direction.
 _MODE_ORDER = {cls.MODE_KEY: i for i, cls in enumerate(MODE_CLASSES)}
 
 
@@ -141,9 +143,10 @@ class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         self.services = DataServices(self)
 
         # Animation / geometry state not covered by the shared overlay shell.
-        self._current_key = None  # active mode (container-tracked, not segmented)
-        self._slide_group = None  # running slide transition, if any
+        self._current_key = None  # active mode (container-tracked, not nav)
+        self._slide_group = None  # running slide transition, if any (see overlay_shell.run_stack_slide)
         self._slide_clip = None  # proxy clip frame for the running slide, if any
+        self._slide_stack = None  # stack hidden by the running slide, if any
         self._close_fade_proxy = None  # static-pixmap stand-in animated during close
 
         # Overlay scaffolding (scrim/panel state, base_layout + opacity
@@ -159,18 +162,30 @@ class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
             "dmview",
             panel_alpha=235,
             margin_pct=0.175,
-            content_margins=(12, 8, 12, 12),
-            content_spacing=10,
+            # Same outer margins/spacing as UserPreferencesWidget's overlay
+            # shell, so the two panels read as one consistent chrome system.
+            content_margins=(20, 14, 20, 20),
+            content_spacing=14,
             glass_frame=glass_frame,
         )
 
         self._modes = {}  # key -> mode widget
-        self._build_taskbar()
+        self._build_nav()
         self._build_stack()
 
-        # Header + chip bar across the top; content fills the full width below.
-        self.main_layout.addLayout(self.top_section_layout)
-        self.main_layout.addWidget(self.content_stack, 1)
+        # Header across the top; below it, a vertical sidebar of modes next
+        # to the content stack - same shell convention as
+        # UserPreferencesWidget's section nav / content_stack split.
+        self.main_layout.addLayout(self.header_layout)
+        body_row = QtWidgets.QHBoxLayout()
+        # No gap: the nav sits directly against the content well so the
+        # highlighted mode and the content card read as adjacent, related
+        # surfaces instead of two panels floating apart - same convention as
+        # UserPreferencesWidget's nav/section-well split.
+        body_row.setSpacing(0)
+        body_row.addWidget(self.nav)
+        body_row.addWidget(self.content_stack, 1)
+        self.main_layout.addLayout(body_row, 1)
 
         # Start hidden + pre-fitted to avoid the tiny-dialog flash.
         self._finish_overlay_shell()
@@ -178,33 +193,15 @@ class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     # ------------------------------------------------------------------
     #  Build
     # ------------------------------------------------------------------
-    def _build_taskbar(self):
-        # Header row (title only) sits across the top.
-        self.top_section_layout = QtWidgets.QVBoxLayout()
-        self.top_section_layout.setSpacing(10)
-
+    def _build_nav(self):
         self.header_layout = self._build_overlay_header(
             self.ICON_MAIN, "Data Management", fullscreen=True
         )
-        self.top_section_layout.addLayout(self.header_layout)
 
-        # Horizontal chip bar holding the mode selector, spanning the panel
-        # beneath the header (design 1c: drops the vertical sidebar so the
-        # content area below goes full-width and the switcher reads as a
-        # toolbar rather than a settings rail). A filled strip (flat_surface2)
-        # with just a bottom rule - not a rounded, fully-bordered box - sets
-        # it apart from the content stack below, matching the redesign mock
-        # (chipsRowStyle: surface2 fill + 1px bottom border, no radius).
-        self.mode_bar_frame = QtWidgets.QFrame()
-        self.mode_bar_frame.setObjectName("modeBarFrame")
-
-        # Full-width band: the strip's own fill/rule span the panel, so no
-        # side inset here; the mock's ~16px side padding + ~10px vertical
-        # padding come from these margins plus the control's inner margins.
-        mode_bar_layout = QtWidgets.QHBoxLayout(self.mode_bar_frame)
-        mode_bar_layout.setContentsMargins(8, 6, 8, 6)
-        mode_bar_layout.setSpacing(0)
-
+        # Vertical sidebar of modes beside the content stack - same shell
+        # convention as UserPreferencesWidget's section nav (fixed-width
+        # column, top-aligned, one mode highlighted at a time).
+        #
         # Per-mode icon placeholders. These point at expected SVG filenames in
         # the icons folder; drop the assets in to light them up. Until then the
         # buttons fall back to text-only (see SegmentedControl.__init__).
@@ -219,11 +216,8 @@ class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         modes = [
             (cls.MODE_KEY, cls.MODE_LABEL, _mode_icons.get(cls.MODE_KEY)) for cls in MODE_CLASSES
         ]
-        self.segmented = SegmentedControl(modes, orientation=QtCore.Qt.Horizontal, variant="chips")
-        self.segmented.modeChanged.connect(self._on_mode_changed)
-        mode_bar_layout.addWidget(self.segmented)
-        mode_bar_layout.addStretch(1)
-        self.top_section_layout.addWidget(self.mode_bar_frame)
+        self.nav = SegmentedControl(modes, orientation=QtCore.Qt.Vertical)
+        self.nav.modeChanged.connect(self._on_mode_changed)
 
         self._apply_theme()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
@@ -235,17 +229,12 @@ class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         self._apply_theme()
 
     def _apply_theme(self) -> None:
-        tok = ThemeManager.instance().tokens()
         self._refresh_header_theme()
-        # Full-width filled band with just a bottom rule (mock chipsRowStyle:
-        # flat_surface2 fill + 1px bottom border, no radius) - sets the chip
-        # row apart from the content stack below without reading as a boxed
-        # settings rail.
-        self.mode_bar_frame.setStyleSheet(
-            f"QFrame#modeBarFrame {{ background: {tok_css(tok['flat_surface2'])}; "
-            f"border: none; border-bottom: 1px solid {tok_css(tok['flat_border'])}; "
-            f"border-radius: 0px; }}"
-        )
+        # Guarded: the first call happens from _build_nav(), before
+        # _build_stack() has created content_stack.
+        content_stack = getattr(self, "content_stack", None)
+        if content_stack is not None:
+            content_stack.setStyleSheet(surface_panel_qss("contentStack", radius=11))
 
     def _rebuild_fs_icons(self) -> None:
         """Rebuilds the fullscreen button's normal/hover icon pixmaps for the
@@ -256,7 +245,14 @@ class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     def _build_stack(self):
         self.content_stack = QtWidgets.QStackedWidget()
         self.content_stack.setObjectName("contentStack")
-        self.content_stack.setStyleSheet("QStackedWidget#contentStack { background: transparent; }")
+        # QStackedWidget is a QFrame subclass, so the same bordered/rounded
+        # "well" chrome UserPreferencesWidget uses for its section pages
+        # applies here directly - each mode page itself paints transparent
+        # (see DataModeWidget), so this background/border shows through as
+        # the content card behind whichever mode is active. radius=11
+        # matches SegmentedControl's vertical checked-row radius for visual
+        # consistency with the nav beside it.
+        self.content_stack.setStyleSheet(surface_panel_qss("contentStack", radius=11))
         # Let _slide_to truly hide() the stack during a mode transition
         # (cheapest possible "don't paint this") while it still reserves its
         # layout space. Without this, stack.hide()/show() at the start/end of
@@ -296,146 +292,44 @@ class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
                 mode.on_enter()
             return
 
-        # Direction: picking a chip to the RIGHT of the current one slides the
-        # new page in from the right (old exits left); picking one to the
-        # LEFT slides it in from the left - matching the chip bar's
-        # left-to-right ordering instead of the old vertical sidebar's.
-        going_right = _MODE_ORDER.get(key, 0) > _MODE_ORDER.get(prev_key, 0)
-        self._slide_to(prev_mode, mode, key, going_right)
+        # Direction: picking a mode BELOW the current one in the sidebar
+        # slides the new page in from below (old exits up); picking one
+        # ABOVE slides it in from above - matching the vertical sidebar's
+        # top-to-bottom ordering.
+        going_down = _MODE_ORDER.get(key, 0) > _MODE_ORDER.get(prev_key, 0)
+        self._slide_to(prev_mode, mode, key, going_down)
 
-    def _teardown_slide(self):
-        """Stop any running slide and destroy its proxy clip immediately.
+    def _slide_to(self, old_mode, new_mode, key, going_down):
+        """Cross-slide the outgoing/incoming pages vertically over the stack
+        via the shared `overlay_shell.run_stack_slide` helper - matches the
+        sidebar's top-to-bottom ordering (vs. UserPreferencesWidget's
+        section nav, which drives the same helper for its own pages)."""
 
-        QAbstractAnimation.stop() does NOT emit finished(), so the _finish
-        callback never runs on an interrupted slide. Without this, the proxy
-        clip (and its captured page pixmaps) stay parented to the glass frame
-        and keep painting over the live stack for the rest of the session -
-        the persistent "ghost of the previous mode" bug.
-        """
-        group = self._slide_group
-        if group is not None:
-            try:
-                group.stop()
-                group.deleteLater()
-            except RuntimeError:
-                pass
-            self._slide_group = None
-        clip = self._slide_clip
-        if clip is not None:
-            try:
-                clip.hide()
-                clip.setParent(None)
-                clip.deleteLater()
-            except RuntimeError:
-                pass
-            self._slide_clip = None
-        # The live stack must be visible again once the proxies are gone.
-        if self.content_stack is not None:
-            self.content_stack.show()
-
-    def _slide_to(self, old_mode, new_mode, key, going_right):
-        """Cross-slide the outgoing/incoming pages horizontally over the stack.
-
-        Matches the chip bar's left-to-right ordering: selecting a chip to
-        the right of the current one pulls the new page in from the right
-        (old page exits left), and vice versa - the vertical-sidebar version
-        of this slid pages up/down instead.
-        """
-        # Cancel any in-flight slide and fully tear down its proxy clip.
-        self._teardown_slide()
-
-        stack = self.content_stack
-        geo = stack.geometry()  # in glass_frame coords
-        size = geo.size()
-        if size.width() <= 0 or size.height() <= 0:
-            # Layout not settled - fall back to instant.
-            stack.setCurrentWidget(new_mode)
-            self._current_key = key
+        def _enter_new():
             new_mode.on_enter()
-            return
 
-        w = size.width()
-
-        # Grab static pixmaps of both pages at the stack's current size.
-        old_mode.resize(size)
-        old_pix = old_mode.grab()
-        # Make the incoming page current first so it's laid out, then grab it.
-        stack.setCurrentWidget(new_mode)
-        new_mode.resize(size)
-        new_mode.on_enter()
-        new_pix = new_mode.grab()
-
-        # Clip wrapper over the stack region so the moving labels are masked.
-        clip = QtWidgets.QFrame(self.glass_frame)
-        clip.setObjectName("slideClip")
-        clip.setStyleSheet("QFrame#slideClip { background: transparent; border: none; }")
-        clip.setGeometry(geo)
-        clip.show()
-        clip.raise_()
-        self._slide_clip = clip
-
-        rest = QtCore.QPoint(0, 0)
-        if going_right:
-            old_end = QtCore.QPoint(-w, 0)  # old exits left
-            new_start = QtCore.QPoint(w, 0)  # new enters from the right
-        else:
-            old_end = QtCore.QPoint(w, 0)  # old exits right
-            new_start = QtCore.QPoint(-w, 0)  # new enters from the left
-
-        old_lbl = QtWidgets.QLabel(clip)
-        old_lbl.setPixmap(old_pix)
-        old_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        old_lbl.setGeometry(QtCore.QRect(rest, size))
-        old_lbl.show()
-
-        new_lbl = QtWidgets.QLabel(clip)
-        new_lbl.setPixmap(new_pix)
-        new_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        new_lbl.setGeometry(QtCore.QRect(new_start, size))
-        new_lbl.show()
-        new_lbl.raise_()
-
-        # Hide the live stack during the slide so only the proxies show.
-        stack.hide()
-
-        anim_old = QtCore.QPropertyAnimation(old_lbl, b"pos", self)
-        anim_old.setDuration(260)
-        anim_old.setEasingCurve(QtCore.QEasingCurve.OutQuint)
-        anim_old.setStartValue(rest)
-        anim_old.setEndValue(old_end)
-
-        anim_new = QtCore.QPropertyAnimation(new_lbl, b"pos", self)
-        anim_new.setDuration(260)
-        anim_new.setEasingCurve(QtCore.QEasingCurve.OutQuint)
-        anim_new.setStartValue(new_start)
-        anim_new.setEndValue(rest)
-
-        group = QtCore.QParallelAnimationGroup(self)
-        group.addAnimation(anim_old)
-        group.addAnimation(anim_new)
-
-        def _finish():
-            stack.show()
-            stack.raise_()
-            clip.hide()
-            clip.setParent(None)
-            clip.deleteLater()
-            self._slide_clip = None
-            self._slide_group = None
+        def _finished():
             self._current_key = key
             self.btn_close.raise_()
             self.btn_fullscreen.raise_()
 
-        group.finished.connect(_finish)
-        self._slide_group = group
-        group.start()
+        run_stack_slide(
+            self,
+            self.content_stack,
+            old_mode,
+            new_mode,
+            axis="y",
+            forward=going_down,
+            before_show_new=_enter_new,
+            on_finished=_finished,
+        )
 
     # ------------------------------------------------------------------
     #  Public entry points (call surface)
     # ------------------------------------------------------------------
     def open_mode(self, key):
         """Open the overlay on a specific mode key."""
-        self.segmented.set_active(key)
+        self.nav.set_active(key)
         self.setVisible(True)
 
     def showNormal(self, tab_idx=0):
@@ -491,7 +385,7 @@ class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         # Populate the active mode AFTER the fade has started, on a later
         # event-loop turn, so heavy on_enter work (e.g. parsing a long
         # import/export history) doesn't block the open animation.
-        key = self.segmented.active_key()
+        key = self.nav.active_key()
 
         def _populate():
             if key in self._modes:
@@ -596,7 +490,7 @@ class DataManagementWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     def _do_close(self):
         self.services.stop()  # tear down the shared USB loop on close
         self._teardown_close_fade_proxy()
-        self._teardown_slide()
+        teardown_stack_slide(self)
         self._is_fullscreen = False
         # Restore the expand icon for the next open.
         self._rebuild_fs_icons()

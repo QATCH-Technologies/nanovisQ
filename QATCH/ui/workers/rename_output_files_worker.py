@@ -50,6 +50,12 @@ class RenameOutputFilesWorker(QtCore.QObject):
         finished (QtCore.pyqtSignal): Emitted when the worker has completed all tasks.
         update_infobar (QtCore.pyqtSignal): Emitted to safely update the UI infobar (color_hex, message).
         error_occurred (QtCore.pyqtSignal): Emitted when a critical failure requires UI notification (title, message).
+        run_saved (QtCore.pyqtSignal): Emitted once per successfully saved, named run
+            (save_root, device_folder, run_folder) - after its files are renamed AND
+            zipped into capture.zip, so the run is fully complete on disk. Lets a
+            listener (UIAnalyze.on_run_saved) pick it up immediately instead of
+            waiting on the filesystem watcher's own next incidental re-touch of
+            that device's directory.
     """
 
     finished = QtCore.pyqtSignal()
@@ -57,6 +63,7 @@ class RenameOutputFilesWorker(QtCore.QObject):
     # Signals for thread-safe UI updates
     update_infobar = QtCore.pyqtSignal(str, str)
     error_occurred = QtCore.pyqtSignal(str, str)
+    run_saved = QtCore.pyqtSignal(str, str, str)
 
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         """Initializes the RenameOutputFilesWorker.
@@ -217,6 +224,7 @@ class RenameOutputFilesWorker(QtCore.QObject):
 
             zip_batches = {}  # Dict structure: { "zip_path": [("source_file", "archive_file")] }
             runs_to_query = []  # List structure: [(run_dir, new_run_path, is_good)]
+            saved_runs = set()  # {(path_root, run_parent_directory, run_directory)} - see run_saved
 
             # Main File Processing Loop
             for old_path in content:
@@ -380,6 +388,9 @@ class RenameOutputFilesWorker(QtCore.QObject):
                         zip_batches[zn] = []
                     zip_batches[zn].append((new_run_path, archive_file))
 
+                    if run_parent_directory != "_unnamed":
+                        saved_runs.add((path_root, run_parent_directory, run_directory))
+
                 except OSError as e:
                     Log.e(f' ERROR: Failed to rename "{old_path}" to "{new_run_path}": {e}')
                     self.indicate_error()
@@ -431,6 +442,14 @@ class RenameOutputFilesWorker(QtCore.QObject):
 
                         # Clean up file after zipping
                         os.remove(copy_file)
+
+            # Each run is now fully complete on disk (renamed AND zipped into
+            # capture.zip) - notify listeners (UIAnalyze.on_run_saved) so a
+            # run appears in the Analyze run list immediately instead of
+            # waiting on the filesystem watcher's own next incidental
+            # re-touch of that device's directory.
+            for path_root, run_parent_directory, run_directory in saved_runs:
+                self.run_saved.emit(path_root, run_parent_directory, run_directory)
 
             # Finalize UI and Threads
             self.indicate_finalizing()

@@ -554,10 +554,10 @@ class HistoryMode(DataModeWidget):
         reliably, so this is a shortcut to the wizard, not an auto-repeat.
         """
         w = self.parentWidget()
-        while w is not None and not hasattr(w, "segmented"):
+        while w is not None and not hasattr(w, "nav"):
             w = w.parentWidget()
         if w is not None:
-            w.segmented.set_active("export")
+            w.nav.set_active("export")
         else:
             Log.d(f"{TAG} could not locate container to switch to Export mode")
 
