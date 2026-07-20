@@ -2441,16 +2441,6 @@ class QueryRunInfo(QtWidgets.QWidget):
             is_bioformulation = False
 
         # Track the last-applied state explicitly instead of inferring it
-        # from t0.isEnabled() (the old `curr_state`): t0 starts enabled by
-        # default from construction regardless of whether the
-        # bioformulation groups have ever actually been synced, so that
-        # proxy wrongly read as "already False" the very first time a real
-        # choice was applied - most visibly the first time a user picked
-        # "No", which made this guard think nothing had changed and skip
-        # hiding groupProtein/groupBuffer/etc. entirely. Those groups (and
-        # their required fields, e.g. c10 "Protein Type") then stayed
-        # visible/enabled, so validation kept demanding bioformulation-only
-        # info and blocked progress through Run Info even after "No".
         prev_bioformulation = getattr(self, "_last_bioformulation", "__unset__")
 
         # Always do this on form load, only ignore if after "show" call

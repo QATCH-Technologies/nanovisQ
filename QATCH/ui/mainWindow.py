@@ -5063,17 +5063,6 @@ class MainWindow(QtWidgets.QMainWindow):
         now = time()
 
         # Mirror pre-drop dry/drying status to the run-status monitor on
-        # every tick, before any of the rate-limit/queue logic below (which
-        # has its own early `return`s) so this can never get starved by it.
-        # This has nothing to do with the forecaster subprocess's state -
-        # its predictions aren't meaningful pre-drop anyway - but used to
-        # only run as a side effect of draining `_forecaster_out`, which
-        # starves it for as long as that subprocess takes to start up.
-        # Native Python: usually fast enough to be unnoticeable. A frozen/
-        # compiled build's much slower subprocess spawn means this could
-        # starve for the whole calibration window, leaving this monitor
-        # stale while the plot-overlay label (_update_pre_drop_label,
-        # unconditional every tick) updated correctly.
         if not all(self._drop_applied) and hasattr(self.ControlsWin.ui1, "run_controls"):
             status_msg = "Add sample" if self._last_dry_status else self._last_dry_msg
             self.ControlsWin.ui1.run_controls.update_progress(0, 5, status_msg)
