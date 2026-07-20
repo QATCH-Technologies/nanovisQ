@@ -240,11 +240,7 @@ class Constants:
     ######################################
     # FILE parameters for exporting data #
     ######################################
-    # sets the slash depending on the OS types
-    if Architecture.get_os() is (OSType.macosx or OSType.linux):
-        slash = "/"
-    else:
-        slash = "\\"
+    slash = os.sep
 
     txt_device_info_filename = "Device_Info"
     txt_active_device_filename = "Last_Used"
@@ -268,9 +264,22 @@ class Constants:
     csv_calibration_filename = "Calibration_5MHz"
     csv_calibration_filename10 = "Calibration_10MHz"
 
-    local_app_data_path = os.path.expandvars(
-        r"%LOCALAPPDATA%{0}{1}{0}{2}".format(slash, app_publisher, app_name)
-    )
+    # Per-user, non-roaming application-data root - mirrors Windows'
+    # %LOCALAPPDATA% on every platform instead of leaving that env var
+    # unexpanded (and thus a bogus literal "%LOCALAPPDATA%..." path) on
+    # non-Windows, where it doesn't exist:
+    #   Windows -> %LOCALAPPDATA%
+    #   macOS   -> ~/Library/Application Support
+    #   Linux   -> $XDG_DATA_HOME, or ~/.local/share if unset
+    if Architecture.get_os() is OSType.windows:
+        _local_data_base = os.path.expandvars(r"%LOCALAPPDATA%")
+    elif Architecture.get_os() is OSType.macosx:
+        _local_data_base = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    else:
+        _local_data_base = os.environ.get("XDG_DATA_HOME") or os.path.join(
+            os.path.expanduser("~"), ".local", "share"
+        )
+    local_app_data_path = os.path.join(_local_data_base, app_publisher, app_name)
     csv_calibration_export_path = os.path.join(local_app_data_path, "config")
     user_profiles_path = os.path.join(local_app_data_path, "profiles", "users")
     run_profiles_path = os.path.join(local_app_data_path, "profiles", "runs")  # future use
@@ -491,13 +500,20 @@ class Constants:
     @staticmethod
     def windll_is_caps_lock_on() -> bool:
         """
-        WINDOWS ONLY: Checks the state of the Caps Lock key and returns True
-        if Caps Lock is on or False if Caps Lock is off.
+        Checks the state of the Caps Lock key and returns True if Caps Lock
+        is on or False if Caps Lock is off.
+
+        Windows only: queries `user32.GetKeyState` directly, since Qt has no
+        cross-platform API for lock-key state. Always returns False on other
+        platforms (the caps-lock hint just never lights up there, rather than
+        crashing - `ctypes.windll` doesn't exist outside Windows).
 
         Returns:
             bool: The state of the Caps Lock; True if Caps Lock is on, False
-                if Caps Lock is off.
+                if Caps Lock is off (or if not running on Windows).
         """
+        if Architecture.get_os() is not OSType.windows:
+            return False
         VK_CAPITAL = 0x14
         # GetKeyState returns a short, where the low-order bit is 1 if the key is toggled.
         return bool(ctypes.windll.user32.GetKeyState(VK_CAPITAL) & 0x0001)

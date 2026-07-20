@@ -2,6 +2,6 @@ pip-tools
 pipreqs
 pyinstaller
 altgraph
-pefile
+pefile ; sys_platform == "win32"
 pyinstaller-hooks-contrib
-pywin32
+pywin32 ; sys_platform == "win32"

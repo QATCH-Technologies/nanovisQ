@@ -25,6 +25,7 @@ import json
 import os
 import random
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
@@ -81,9 +82,27 @@ except (ModuleNotFoundError, ImportError):
         Surfactant,
     )
 
-DB_PATH = Path(
-    os.path.join(os.path.expandvars(r"%LOCALAPPDATA%"), "QATCH", "nanovisQ", "database", "app.db")
-)
+def _local_app_data_dir() -> str:
+    """Cross-platform per-user application-data root, mirroring Windows'
+    %LOCALAPPDATA% on every platform instead of leaving that env var
+    unexpanded (and thus a bogus literal path) on non-Windows:
+        Windows -> %LOCALAPPDATA%
+        macOS   -> ~/Library/Application Support
+        Linux   -> $XDG_DATA_HOME, or ~/.local/share if unset
+
+    Uses only `sys.platform`/`os` (no QATCH imports) so this module stays
+    importable standalone, matching the HEADLESS fallback above.
+    """
+    if sys.platform == "win32":
+        return os.path.expandvars(r"%LOCALAPPDATA%")
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    return os.environ.get("XDG_DATA_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "share"
+    )
+
+
+DB_PATH = Path(os.path.join(_local_app_data_dir(), "QATCH", "nanovisQ", "database", "app.db"))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 allowed_vals = ",".join(f"'{v}'" for v in ProteinClass.all_strings())
@@ -117,7 +136,8 @@ class Database:
 
         Args:
             path (Union[str, Path]): Filesystem path to the SQLite database file.
-                Defaults to a standard `app.db` location under %LOCALAPPDATA%.
+                Defaults to a standard `app.db` location under the platform's
+                per-user app-data directory (see `_local_app_data_dir`).
             encryption_key (Union[str, None], optional): If provided, uses
                 in-memory Caesar+XOR encryption/decryption. If None, plain SQLite
                 is used. Defaults to None.

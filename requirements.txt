@@ -226,7 +226,7 @@ python-dateutil==2.9.0.post0
     #   pandas
 pytz==2025.2
     # via pandas
-pywin32-ctypes==0.2.3
+pywin32-ctypes==0.2.3 ; sys_platform == "win32"
     # via
     #   keyring
 pyyaml==6.0.3
@@ -294,8 +294,14 @@ tensorflow-cpu==2.18.0
     # via -r requirements.in
 tensorflow-io-gcs-filesystem==0.31.0
     # via tensorflow-intel
-tensorflow-intel==2.18.0
+tensorflow-intel==2.18.0 ; sys_platform == "win32"
     # via -r requirements.in
+    # Windows-only: this is what `tensorflow-cpu` actually resolves to on
+    # Windows (its real implementation wheel there). On Linux, `tensorflow-cpu`
+    # itself is the real wheel and pulls its own deps (e.g.
+    # tensorflow-io-gcs-filesystem above) directly, so the marker just keeps
+    # pip from trying to resolve this line at all on Linux - tensorflow-intel
+    # has no Linux wheel on PyPI.
 termcolor==3.1.0
     # via
     #   tensorflow
