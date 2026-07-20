@@ -740,7 +740,7 @@ class QModelOnyxLiveProcess(multiprocessing.Process):
 
         # Instance placeholder
         self._classifier: Optional[QModelOnyxLive] = None
-        self.enable_visualization: bool = True
+        self.enable_visualization: bool = False
 
     def run(self) -> None:
         """Executes the main inference loop for the live fill classification process."""

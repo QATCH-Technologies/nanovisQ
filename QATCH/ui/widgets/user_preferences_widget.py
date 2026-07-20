@@ -43,7 +43,9 @@ from QATCH.ui.components.overlay_shell import (
     FULLSCREEN_ANIM_EASING,
     OverlayLifecycleMixin,
     rebuild_fullscreen_icons,
+    run_stack_slide,
     run_variant_animation,
+    teardown_stack_slide,
 )
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.styles.theme_manager import (
@@ -111,6 +113,12 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         self._preview_boxes: list[QtWidgets.QFrame] = []
         self._preview_labels: list[QtWidgets.QLabel] = []
 
+        # Slide-transition state for section switches (see
+        # overlay_shell.run_stack_slide).
+        self._slide_group = None
+        self._slide_clip = None
+        self._slide_stack = None
+
         # Overlay scaffolding (scrim/panel state, base_layout + glass_frame +
         # opacity effect + main_layout, parent-resize event filter) - shared
         # with DataManagementWidget/UserProfilesManagerWidget via
@@ -139,13 +147,24 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         self.nav.modeChanged.connect(self.handle_section_change)
 
         self.content_stack = QtWidgets.QStackedWidget()
+        # Let the section slide truly hide() the stack during a transition
+        # while it still reserves its layout space - same technique as
+        # DataManagementWidget's content_stack (see its _build_stack for the
+        # full rationale: without this, hide()/show() collapses the stack to
+        # zero height and forces a repaint of the whole panel around it).
+        stack_policy = self.content_stack.sizePolicy()
+        stack_policy.setRetainSizeWhenHidden(True)
+        self.content_stack.setSizePolicy(stack_policy)
         self.content_stack.addWidget(self._build_datetime_page())
         self.content_stack.addWidget(self._build_filenaming_page())
         self.content_stack.addWidget(self._build_datapaths_page())
         self.content_stack.addWidget(self._build_appearance_page())
 
         body_row = QtWidgets.QHBoxLayout()
-        body_row.setSpacing(14)
+        # No gap: the nav sits directly against the active section well so
+        # the highlighted row and the content card read as adjacent, related
+        # surfaces instead of two panels floating apart.
+        body_row.setSpacing(0)
         body_row.addWidget(self.nav)
         body_row.addWidget(self.content_stack, 1)
         self.main_layout.addLayout(body_row, 1)
@@ -416,7 +435,10 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     def _well(self, object_name: str) -> QtWidgets.QFrame:
         frame = QtWidgets.QFrame()
         frame.setObjectName(object_name)
-        frame.setStyleSheet(surface_panel_qss(object_name))
+        # radius=11 matches SegmentedControl's vertical checked-row radius
+        # (self._radius - 5, with self._radius == 16) for visual consistency
+        # between the nav's highlighted row and the section well beside it.
+        frame.setStyleSheet(surface_panel_qss(object_name, radius=11))
         self._wells.append((frame, object_name))
         return frame
 
@@ -473,7 +495,7 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         self._apply_panel_appearance(self._current_margin_frac())
         self._refresh_header_theme()
         for frame, name in self._wells:
-            frame.setStyleSheet(surface_panel_qss(name))
+            frame.setStyleSheet(surface_panel_qss(name, radius=11))
         for lbl in self._captions:
             lbl.setStyleSheet(caption_label_qss())
         for lbl in self._descs:
@@ -541,6 +563,7 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     def _do_close(self) -> None:
         """Resets to inset state so the next open always starts clean,
         regardless of whether this closed from fullscreen."""
+        teardown_stack_slide(self)
         if getattr(self, "_is_fullscreen", False):
             self._is_fullscreen = False
             self._rebuild_fs_icons()
@@ -585,7 +608,22 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     def handle_section_change(self, key: str) -> None:
         """Handle sidebar-section change and load preferences if needed."""
         if key in self._section_keys:
-            self.content_stack.setCurrentIndex(self._section_keys.index(key))
+            new_index = self._section_keys.index(key)
+            cur_index = self.content_stack.currentIndex()
+            if new_index != cur_index:
+                # Direction matches the sidebar's top-to-bottom ordering -
+                # picking a section below the current one slides the new
+                # page in from below (old exits up), and vice versa. Same
+                # `run_stack_slide` helper DataManagementWidget's mode
+                # switch uses, just driven by this widget's own nav order.
+                run_stack_slide(
+                    self,
+                    self.content_stack,
+                    self.content_stack.widget(cur_index),
+                    self.content_stack.widget(new_index),
+                    axis="y",
+                    forward=new_index > cur_index,
+                )
         if self.global_pref_toggle.isChecked():
             self.load_global_preferences()
         elif hasattr(UserProfiles.user_preferences, "_user_preferences_path"):
