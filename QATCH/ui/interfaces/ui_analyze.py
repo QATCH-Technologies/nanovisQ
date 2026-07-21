@@ -43,13 +43,22 @@ from QATCH.processors.CurveOptimizer import (
 )
 from QATCH.QModel import QModelIndus, QModelOnyx, QModelTweed, QModelVolta
 from QATCH.ui.components import AnimatedComboBox
+from QATCH.ui.components.analyze_action_bar import AnalyzeActionBar
+from QATCH.ui.components.analyze_plot_cards import (
+    SIGNAL_COLORS,
+    DetailPlotCard,
+    SignalOverviewCard,
+)
+from QATCH.ui.components.stepper import Stepper
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,
     auto_sign_matches_session,
     persist_auto_sign_key,
 )
+from QATCH.ui.styles.theme_manager import ThemeManager, desc_label_qss, tok_css
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
+from QATCH.ui.widgets.saved_state_dot import SavedStateDot
 from QATCH.ui.widgets.table_view_widget import TableView
 from QATCH.ui.workers.analyze_worker import AnalyzeWorker
 from QATCH.ui.workers.run_scan_worker import RunScanWorker
@@ -177,22 +186,10 @@ class UIAnalyze(QtWidgets.QWidget):
         )  # must define this here, before connecting "self._update_progress_value" in the next section
 
         # Progressbar -------------------------------------------------------------
-        styleBar = """
-                    QProgressBar
-                    {
-                     border: 0.5px solid #B8B8B8;
-                     border-radius: 1px;
-                     text-align: center;
-                     color: #333333;
-                     font-weight: bold;
-                    }
-                     QProgressBar::chunk
-                    {
-                     background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
-                    }
-                 """  # background:url("openQCM/icons/openqcm-logo.png")
+        # No inline stylesheet here - QProgressBar#progressBar is themed
+        # app-wide (see app_theme.qss), driven by the ctrl_progress_* tokens
+        # so it repaints correctly on light/dark switch.
         self.progressBar = QtWidgets.QProgressBar()
-        self.progressBar.setStyleSheet(styleBar)
         # self.progressBar.setProperty("value", 0)
         self.progressBar.setGeometry(QtCore.QRect(0, 0, 50, 10))
         self.progressBar.setObjectName("progressBar")
@@ -200,245 +197,57 @@ class UIAnalyze(QtWidgets.QWidget):
         self.progressBar.valueChanged.connect(self._update_progress_value)
         self.progressBar.setValue(0)
         self.progressBar.setHidden(True)
-        self.tool_Load = QtWidgets.QToolBar()
-        self.tool_Load.setIconSize(QtCore.QSize(50, 30))
-        self.tool_Load.setStyleSheet("color: #333333;")
+        # Themed action bar: run selector + Load/Auto-Fit/Run Info +
+        # Back/Next/Modify/Analyze + Advanced/User, as one card matching
+        # PlotsUI/ControlsUI's visual language (see AnalyzeActionBar). It
+        # only builds/lays out the widgets - every callback below is wired
+        # here since those methods live on UIAnalyze, not the bar itself.
+        self.actionbar = AnalyzeActionBar()
+        self.text_Runs = self.actionbar.text_Runs
+        self.text_Created = self.actionbar.text_Created
+        self.cBox_Runs = self.actionbar.cBox_Runs
+        self.sort_by = self.actionbar.sort_by
+        self.sort_by_name = self.actionbar.sort_by_name
+        self.sort_by_date = self.actionbar.sort_by_date
+        self.sort_by_new = self.actionbar.sort_by_new
+        self.sort_by_widget = self.actionbar.sort_by_widget
+        self.runGrid = self.actionbar.runGrid
+        self.tBtn_Load = self.actionbar.tBtn_Load
+        self.tBtn_Predict = self.actionbar.tBtn_Predict
+        self.tBtn_Info = self.actionbar.tBtn_Info
+        self.tool_Cancel = self.actionbar.tool_Cancel
+        self.tool_Back = self.actionbar.tool_Back
+        self.tool_Next = self.actionbar.tool_Next
+        self.tool_Modify = self.actionbar.tool_Modify
+        self.tool_Analyze = self.actionbar.tool_Analyze
+        self.tool_Advanced = self.actionbar.tool_Advanced
+        self.tool_User = self.actionbar.tool_User
 
-        icon_load = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "load-circle.svg")
-        icon_load.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        # icon_load.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
-        self.tBtn_Load = QtWidgets.QToolButton()
-        self.tBtn_Load.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tBtn_Load.setIcon(icon_load)  # normal and disabled pixmaps
-        self.tBtn_Load.setText("Load")
-        self.tBtn_Load.clicked.connect(self.load_run)  # main action
-
-        # Create dropdown menu
-        menu = QtWidgets.QMenu()
-        menu.addAction("Load runs from...", self.load_all_from_folder)
-
-        # Assign menu to button
-        self.tBtn_Load.setMenu(menu)
-
-        # Show arrow and make it a dropdown
-        self.tBtn_Load.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
-
-        # Apply style sheet to preserve arrow, but remove its hover effect
-        self.tBtn_Load.setStyleSheet("""
-            /* Keep the arrow visible but remove any hover effect */
-            QToolButton::menu-indicator {
-                background: transparent;
-                border: none;
-            }
-
-            /* Explicitly cancel hover background/border on arrow */
-            QToolButton::menu-indicator:hover {
-                background: transparent;
-                border: none;
-            }
-            """)
-
-        self.tool_Load.addWidget(self.tBtn_Load)
-
-        self.tool_Load.addSeparator()
-
-        icon_predict = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "stars.svg")
-        icon_predict.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        # icon_predict.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
-        self.tBtn_Predict = QtWidgets.QToolButton()
-        self.tBtn_Predict.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tBtn_Predict.setIcon(icon_predict)  # normal and disabled pixmaps
-        self.tBtn_Predict.setText("Auto-Fit")
-        self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
-        self.tool_Load.addWidget(self.tBtn_Predict)
-
-        icon_info = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "info-circle.svg")
-        icon_info.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        # icon_info.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
-        self.tBtn_Info = QtWidgets.QToolButton()
-        self.tBtn_Info.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tBtn_Info.setIcon(icon_info)  # normal and disabled pixmaps
-        self.tBtn_Info.setText("Run Info")
-        self.tBtn_Info.clicked.connect(self.getRunInfo)
-        self.tool_Load.addWidget(self.tBtn_Info)
-
-        self.tool_Load.addSeparator()
-
-        # define simple layout - only add to central widget if requested
-        self.toolLayout = QtWidgets.QVBoxLayout()
-        self.toolBar = QtWidgets.QHBoxLayout()
-
-        self.sort_by = QtWidgets.QLabel("Sort by:")
-        self.sort_by_name = QtWidgets.QLabel("Name")
-        # self.sort_by_name.setStyleSheet("color: #0D4AAF; text-decoration: none; padding-left: 15px;")
-        self.sort_by_name.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.sort_by_name.mousePressEvent = self.action_sort_by_name
-        self.sort_by_date = QtWidgets.QLabel("Date")
-        # self.sort_by_date.setStyleSheet("color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;")
-        self.sort_by_date.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.sort_by_date.mousePressEvent = self.action_sort_by_date
-        self.sort_by_new = QtWidgets.QLabel("New")
-        self.sort_by_new.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.sort_by_new.mousePressEvent = self.action_sort_by_new
 
-        sort_by_layout = QtWidgets.QHBoxLayout()
-        sort_by_layout.setContentsMargins(0, 0, 0, 0)
-        sort_by_layout.addWidget(self.sort_by)
-        sort_by_layout.addWidget(self.sort_by_name)
-        sort_by_layout.addWidget(self.sort_by_date)
-        sort_by_layout.addWidget(self.sort_by_new)
-        sort_by_layout.addStretch()
+        self.tBtn_Load.clicked.connect(self.load_run)  # main action
+        load_menu = QtWidgets.QMenu()
+        load_menu.addAction("Load runs from...", self.load_all_from_folder)
+        self.tBtn_Load.setMenu(load_menu)
+        self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
+        self.tBtn_Info.clicked.connect(self.getRunInfo)
 
-        self.sort_by_widget = QtWidgets.QWidget()
-        self.sort_by_widget.setLayout(sort_by_layout)
-
-        self.runGrid = QtWidgets.QGridLayout()
-        self.runGrid.setContentsMargins(0, 0, 0, 0)
-        # row, col, rowspan, colspan
-        self.runGrid.addWidget(self.sort_by_widget, 1, 2)
-        self.runGrid.addWidget(self.text_Runs, 2, 1)
-        self.runGrid.addWidget(self.cBox_Runs, 2, 2)
-        self.runGrid.addWidget(self.text_Created, 3, 2)
-        # self.toolBar.addWidget(self.text_Runs)
-        # self.toolBar.addWidget(self.cBox_Runs)
-        self.toolBar.addLayout(self.runGrid)
-        self.toolBar.addWidget(self.tool_Load)
-        # self.toolBar.addWidget(self.text_Devices)
-        # self.toolBar.addWidget(self.cBox_Devices)
-
-        self.sort_by_widget.setFixedHeight(14)
-        self.cBox_Runs.setFixedHeight(20)
-        self.text_Created.setFixedHeight(14)
-        self.sort_by.setStyleSheet("padding-left: 1px;")
-        self.text_Created.setStyleSheet("padding-left: 1px;")
-        self.text_Runs.setFixedWidth(50)
-        self.text_Runs.setStyleSheet("padding-left: 10px;")
-        # self.text_Devices.setStyleSheet("padding-left: 0px;")
-        # self.cBox_Devices.setFixedHeight(25)
-        # self.cBox_Devices.setStyleSheet("padding-right: 5px;")
-
-        self.toolBar.addStretch()
-
-        self.tool_bar = QtWidgets.QToolBar()
-        self.tool_bar.setIconSize(QtCore.QSize(50, 30))
-        self.tool_bar.setStyleSheet("color: #333333;")
-
-        self.tool_bar.addSeparator()
-
-        icon_cancel = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "cancel.svg")
-        icon_cancel.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        # icon_cancel.addPixmap(QtGui.QPixmap('QATCH/icons/cancel-disabled.png'), QtGui.QIcon.Disabled)
-        self.tool_Cancel = QtWidgets.QToolButton()
-        self.tool_Cancel.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tool_Cancel.setIcon(icon_cancel)
-        self.tool_Cancel.setText("Close")
         self.tool_Cancel.clicked.connect(
             lambda: self.action_cancel(exit_batched_processing_mode=True)
         )
-        self.tool_bar.addWidget(self.tool_Cancel)
-
-        self.tool_bar.addSeparator()
-
-        # icon_back = QtGui.QIcon()
-        # icon_back.addPixmap(QtGui.QPixmap("QATCH/icons/back.png"), QtGui.QIcon.Normal)
-        # icon_back.addPixmap(QtGui.QPixmap('QATCH/icons/back-disabled.png'), QtGui.QIcon.Disabled)
-        self.tool_Back = QtWidgets.QToolButton()
-        self.tool_Back.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tool_Back.setArrowType(QtCore.Qt.LeftArrow)
-        # self.tool_Back.setIcon(icon_back)
-        self.tool_Back.setText("Back")
         self.tool_Back.clicked.connect(self.action_back)
-        self.tool_bar.addWidget(self.tool_Back)
-
-        # icon_next = QtGui.QIcon()
-        # icon_next.addPixmap(QtGui.QPixmap("QATCH/icons/next.png"), QtGui.QIcon.Normal)
-        # icon_next.addPixmap(QtGui.QPixmap('QATCH/icons/next-disabled.png'), QtGui.QIcon.Disabled) # not provided
-        self.tool_Next = QtWidgets.QToolButton()
-        self.tool_Next.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tool_Next.setArrowType(QtCore.Qt.RightArrow)
-        # self.tool_Next.setIcon(icon_next)
-        self.tool_Next.setText("Next")
         self.tool_Next.clicked.connect(self.action_next)
-        self.tool_bar.addWidget(self.tool_Next)
-
-        self.tool_bar.addSeparator()
-
-        icon_modify = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "modify.svg")
-        icon_modify.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        # icon_modify.addPixmap(QtGui.QPixmap('QATCH/icons/modify-disabled.png'), QtGui.QIcon.Disabled)
-        self.tool_Modify = QtWidgets.QToolButton()
-        self.tool_Modify.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tool_Modify.setIcon(icon_modify)
-        self.tool_Modify.setText("Modify")
-        self.tool_Modify.setCheckable(True)
         self.tool_Modify.clicked.connect(self.action_modify)
-        self.tool_bar.addWidget(self.tool_Modify)
-
-        icon_analyze = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "play-circle.svg")
-        icon_analyze.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        # icon_analyze.addPixmap(QtGui.QPixmap('QATCH/icons/analyze-disabled.png'), QtGui.QIcon.Disabled)
-        self.tool_Analyze = QtWidgets.QToolButton()
-        self.tool_Analyze.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tool_Analyze.setIcon(icon_analyze)  # normal and disabled pixmaps
-        self.tool_Analyze.setText("Analyze")
         self.tool_Analyze.clicked.connect(
             self.action_analyze
         )  # TODO: skip ahead to analyze (if pois are all set)
-        self.tool_bar.addWidget(self.tool_Analyze)
-
-        self.tool_bar.addSeparator()
-
-        self.toolBar.addWidget(self.tool_bar)
-
-        # self.toolBar.addStretch()
-
-        # self.tool_Advanced = QtWidgets.QLabel("Advanced Settings")
-        # self.tool_Advanced.setStyleSheet("color: #0D4AAF; text-decoration: none; padding-left: 50px;")
-        # self.tool_Advanced.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        # self.tool_Advanced.mousePressEvent = self.action_advanced
-        # self.toolBar.addWidget(self.tool_Advanced)
-
-        icon_advanced = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
-        icon_advanced.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        # icon_advanced.addPixmap(QtGui.QPixmap('QATCH/icons/advanced-disabled.png'), QtGui.QIcon.Disabled)
-        self.tool_Advanced = QtWidgets.QToolButton()
-        self.tool_Advanced.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        # normal and disabled pixmaps
-        self.tool_Advanced.setIcon(icon_advanced)
-        self.tool_Advanced.setText("Advanced")
         self.tool_Advanced.clicked.connect(self.action_advanced)
-        self.tool_bar.addWidget(self.tool_Advanced)
-
-        self.tool_bar.addSeparator()
-
-        icon_user = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "user-circle.svg")
-        icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Disabled)
-        self.tool_User = QtWidgets.QToolButton()
-        self.tool_User.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tool_User.setIcon(icon_user)  # normal and disabled pixmaps
-        self.tool_User.setText("Anonymous")
-        self.tool_User.setEnabled(False)
         # self.tool_User.clicked.connect(self.action_user)
-        self.tool_bar.addWidget(self.tool_User)
 
-        # self.toolBar.addWidget(self.tool_bar_2)
-
-        self.toolBar.setContentsMargins(10, 10, 5, 5)
-        self.toolBarWidget = QtWidgets.QWidget()
-        self.toolBarWidget.setObjectName("toolBarWidget")
-        self.toolBarWidget.setLayout(self.toolBar)
-        self.toolBarWidget.setStyleSheet("#toolBarWidget, QToolButton { background: #DDDDDD; }")
-
-        self.toolLayout.addWidget(self.toolBarWidget)
+        self.toolLayout = QtWidgets.QVBoxLayout()
+        self.toolLayout.addWidget(self.actionbar)
         self.toolLayout.addWidget(self.progressBar)
 
         self.gridLayout = QtWidgets.QGridLayout()
@@ -446,7 +255,6 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Devices ------------------------------------------------------
         self.l0 = QtWidgets.QLabel()
-        self.l0.setStyleSheet("background: #008EC0; padding: 1px;")
 
         # Fixing issue #30
         self.l0.setText("<font color=#ffffff >Run Selection</font> </a>")
@@ -470,7 +278,6 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Parameters ------------------------------------------------------
         self.l1 = QtWidgets.QLabel()
-        self.l1.setStyleSheet("background: #008EC0; padding: 1px;")
         self.l1.setText("<font color=#ffffff >Parameters</font> </a>")
         if USE_FULLSCREEN:
             self.l1.setFixedHeight(50)
@@ -512,7 +319,6 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Options ------------------------------------------------------
         self.l2 = QtWidgets.QLabel()
-        self.l2.setStyleSheet("background: #008EC0; padding: 1px;")
         self.l2.setText("<font color=#ffffff >Options</font> </a>")
         if USE_FULLSCREEN:
             self.l2.setFixedHeight(50)
@@ -551,7 +357,6 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Predict Model ------------------------------------------------------
         self.l3 = QtWidgets.QLabel()
-        self.l3.setStyleSheet("background: #008EC0; padding: 1px;")
         self.l3.setText("<font color=#ffffff >Auto-Fit Model</font> </a>")
         if USE_FULLSCREEN:
             self.l3.setFixedHeight(50)
@@ -575,10 +380,9 @@ class UIAnalyze(QtWidgets.QWidget):
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint)
         self.advancedwidget.setWhatsThis("These settings are for Advanced Users ONLY!")
-        warningWidget = QtWidgets.QLabel(f"WARNING: {self.advancedwidget.whatsThis()}")
-        warningWidget.setStyleSheet("background: #FF6600; padding: 1px; font-weight: bold;")
+        self._advanced_warning_label = QtWidgets.QLabel(f"WARNING: {self.advancedwidget.whatsThis()}")
         warningLayout = QtWidgets.QVBoxLayout()
-        warningLayout.addWidget(warningWidget)
+        warningLayout.addWidget(self._advanced_warning_label)
         warningLayout.addLayout(self.gridLayout)
         self.advancedwidget.setLayout(warningLayout)
         icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
@@ -592,20 +396,37 @@ class UIAnalyze(QtWidgets.QWidget):
         layout_v4.setContentsMargins(0, 0, 0, 0)
         layout_h4.setContentsMargins(0, 0, 0, 0)
 
-        self.dot1 = QtWidgets.QLabel("\u2b24")  # load pixmap
-        self.dot2 = QtWidgets.QLabel("\u25ef")  # load pixmap
-        self.dot3 = QtWidgets.QLabel("\u25ef")  # load pixmap
-        self.dot4 = QtWidgets.QLabel("\u25ef")  # load pixmap
-        self.dot5 = QtWidgets.QLabel("\u25ef")  # load pixmap
-        self.dot6 = QtWidgets.QLabel("\u25ef")  # load pixmap
-        self.dot7 = QtWidgets.QLabel("\u25ef")  # load pixmap
-        self.dot8 = QtWidgets.QLabel("\u25ef")  # load pixmap
-        self.dot9 = QtWidgets.QLabel("\u25ef")  # load pixmap
-        self.dot10 = QtWidgets.QLabel("\u2b24")  # ('\u25fb') # load pixmap
-        self.addDotStepHandlers()
+        # Leading "Loaded & saved" status indicator (was dot1) - a persistent
+        # status, not a step cursor, so it lives outside the numbered Stepper.
+        self.saved_state_dot = SavedStateDot()
+        self.saved_state_label = QtWidgets.QLabel("Loaded & saved")
+        self.saved_state_widget = QtWidgets.QWidget()
+        self.saved_state_widget.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.saved_state_widget.mousePressEvent = lambda _evt: self.gotoStepNum(None, 1)
+        saved_state_layout = QtWidgets.QHBoxLayout(self.saved_state_widget)
+        saved_state_layout.setContentsMargins(0, 0, 0, 0)
+        saved_state_layout.setSpacing(6)
+        saved_state_layout.addWidget(self.saved_state_dot)
+        saved_state_layout.addWidget(self.saved_state_label)
+
+        # Numbered step indicator (was dot2..dot7, dot9, dot10 - dot8 was
+        # already permanently hidden, "for POI3 removal"). See _STEP_NUMS for
+        # the mapping between Stepper index and the legacy 1-based step_num
+        # values gotoStepNum/setDotStepMarkers use everywhere else.
+        self.stepper = Stepper(
+            ["Load", "Fill Start", "Fill End", "Post", "Blip 1", "Blip 2", "Blip 3", "Analyze"]
+        )
+        self.stepper.stepClicked.connect(self._on_stepper_clicked)
 
         self.graphWidget = pg.PlotWidget()
-        self.graphWidget.setBackground("w")
+        # Background/axis colors are applied by _apply_pg_theme() (called at
+        # the end of setup_ui and on every themeChanged) rather than a
+        # hardcoded literal, since pyqtgraph doesn't consume QSS.
+        self.overview_card = SignalOverviewCard(self.graphWidget)
+        self.overview_card.btn_zoom_in.clicked.connect(lambda: self.zoomFinderPlots(0.5))
+        self.overview_card.btn_zoom_out.clicked.connect(lambda: self.zoomFinderPlots(2.0))
+        self.overview_card.btn_move_left.clicked.connect(lambda: self.moveCurrentMarker(-1))
+        self.overview_card.btn_move_right.clicked.connect(lambda: self.moveCurrentMarker(+1))
 
         data, rows, cols = [
             {
@@ -639,25 +460,15 @@ class UIAnalyze(QtWidgets.QWidget):
         # self.results_split.setSizes([1, 1])
 
         # self.graphStack = QtWidgets.QStackedWidget()
-        self.graphStack.addWidget(self.graphWidget)
+        self.graphStack.addWidget(self.overview_card)
         self.graphStack.addWidget(self.results_split)
         self.graphStack.setCurrentIndex(0)
 
-        layout_h4.addStretch()
-        layout_h4.addWidget(self.dot1)
-        layout_h4.addWidget(self.dot2)
-        layout_h4.addWidget(self.dot3)
-        layout_h4.addWidget(self.dot4)
-        layout_h4.addWidget(self.dot5)
-        layout_h4.addWidget(self.dot6)
-        layout_h4.addWidget(self.dot7)
-        # layout_h4.addWidget(self.dot8) # hidden for POI3 removal
-        layout_h4.addWidget(self.dot9)
-        layout_h4.addWidget(self.dot10)
-        layout_h4.addStretch()
+        layout_h4.addWidget(self.saved_state_widget)
+        layout_h4.addSpacing(12)
+        layout_h4.addWidget(self.stepper, 1)
         widget_dots = QtWidgets.QWidget()
         widget_dots.setLayout(layout_h4)
-        widget_dots.setStyleSheet("color: #515151;")
         layout_v4.addWidget(widget_dots)
 
         # self.QModel_widget = QtWidgets.QWidget(self)
@@ -679,21 +490,26 @@ class UIAnalyze(QtWidgets.QWidget):
         # # layout_v4.addWidget(floating_widget)
 
         layout_v4.addWidget(self.graphStack)
+        # No background/objectName styling here - the overview plot's own
+        # themed card (SignalOverviewCard, added to graphStack below)
+        # supplies the visible card surface now; widget_h4 is just a plain
+        # grouping container for the stepper row + graphStack.
         widget_h4.setLayout(layout_v4)
-        widget_h4.setObjectName("AnalyzerFrame")
-        widget_h4.setStyleSheet("QWidget#AnalyzerFrame { background-color: #ffffff; }")
 
         self.graphWidget1 = pg.PlotWidget()
-        self.graphWidget1.setBackground("w")
         self.graphWidget2 = pg.PlotWidget()
-        self.graphWidget2.setBackground("w")
         self.graphWidget3 = pg.PlotWidget()
-        self.graphWidget3.setBackground("w")
+        # Background/axis colors for graphWidget1/2/3 are applied by
+        # _apply_pg_theme() alongside graphWidget, above.
+
+        self.resonance_card = DetailPlotCard(self.graphWidget1, "Resonance", "resonance")
+        self.difference_card = DetailPlotCard(self.graphWidget2, "Difference", "difference")
+        self.dissipation_card = DetailPlotCard(self.graphWidget3, "Dissipation", "dissipation")
 
         layout_h2 = QtWidgets.QHBoxLayout()
-        layout_h2.addWidget(self.graphWidget1)
-        layout_h2.addWidget(self.graphWidget2)
-        layout_h2.addWidget(self.graphWidget3)
+        layout_h2.addWidget(self.resonance_card)
+        layout_h2.addWidget(self.difference_card)
+        layout_h2.addWidget(self.dissipation_card)
         layout_h2.setContentsMargins(0, 0, 0, 0)
         self.lowerGraphs = QtWidgets.QWidget()
         self.lowerGraphs.setLayout(layout_h2)
@@ -733,24 +549,31 @@ class UIAnalyze(QtWidgets.QWidget):
         layout_s2.addStretch()
         handle2.setLayout(layout_s2)
 
-        self.footerText_left = QtWidgets.QLabel(
-            "<b><u>Keyboard Shortcuts:</u></b> &nbsp; <b>Up/Down:</b> Zoom In/Out &nbsp; <b>Left/Right:</b> Move Point &nbsp; <b>Escape:</b> Back &nbsp; <b>Enter:</b> Next"
+        # Drag-marker hint (left) + terse keyboard-shortcut hints (right),
+        # matching the target layout - previously reversed (keyboard hints
+        # were on the left, drag hint on the right).
+        self.footerText_hint = QtWidgets.QLabel(
+            "<i>Drag markers for rough placement &nbsp;·&nbsp; "
+            "click the detail plots for precise placement.</i>"
         )
-        self.footerText_right = QtWidgets.QLabel(
-            "<i>Drag markers for rough placement. &nbsp; Click bottom plots for precise placement.</i>"
+        self.footerText_keys = QtWidgets.QLabel(
+            "<b>Esc</b> | Back &nbsp;&nbsp; <b>Enter</b> | Next"
         )
-        self.footerText_left.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
-        self.footerText_right.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        self.footerText_hint.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+        self.footerText_keys.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        self.footerText_hint.setStyleSheet(desc_label_qss())
+        self.footerText_keys.setStyleSheet(desc_label_qss())
 
         layout_h3 = QtWidgets.QHBoxLayout()
-        layout_h3.addWidget(self.footerText_left)
-        layout_h3.addWidget(self.footerText_right)
+        layout_h3.addWidget(self.footerText_hint)
+        layout_h3.addWidget(self.footerText_keys)
 
-        # Add widgets to layout
+        # Add widgets to layout - hint bar sits at the very bottom, under
+        # the detail-plot row, per the target layout.
         self.layout.addLayout(self.toolLayout)
-        self.layout.addLayout(layout_h3)
         # self.layout.addWidget(widget_h4)
         self.layout.addWidget(self.graph_split)
+        self.layout.addLayout(layout_h3)
 
         self.setLayout(self.layout)
         self.setWindowTitle("Analyze Data")
@@ -877,6 +700,51 @@ class UIAnalyze(QtWidgets.QWidget):
         # instead of rescanning on every mode switch (see
         # _ensure_watcher_armed).
         self._rearm_watcher()
+
+        # Apply the current theme once at startup, then keep it live -
+        # unlike PlotsUI/ControlsUI, this panel previously had no
+        # themeChanged subscription at all.
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(self._apply_theme)
+
+    def _apply_theme(self, _mode: Optional[str] = None) -> None:
+        """Re-applies token-driven colors to the chrome this panel still
+        styles with inline QSS (the Advanced Settings banners) and to the
+        pyqtgraph plot widgets, which don't consume QSS at all.
+
+        Args:
+            _mode: Optional theme mode string, provided when connected
+                directly to ThemeManager.themeChanged. Unused - the tokens
+                are always re-read fresh from ThemeManager.instance().
+        """
+        tok = ThemeManager.instance().tokens()
+        section_qss = f"background: {tok_css(tok['flat_accent'])}; padding: 1px;"
+        for label in (self.l0, self.l1, self.l2, self.l3):
+            label.setStyleSheet(section_qss)
+        self._advanced_warning_label.setStyleSheet(
+            f"background: {tok_css(tok['flat_warning'])}; padding: 1px; font-weight: bold;"
+        )
+        for label in (self.footerText_hint, self.footerText_keys):
+            label.setStyleSheet(desc_label_qss())
+        self._apply_pg_theme()
+
+    def _apply_pg_theme(self) -> None:
+        """Applies token-driven background/axis colors to the pyqtgraph plot
+        widgets. pyqtgraph ignores QSS entirely, so this must be called
+        explicitly on init, on every themeChanged, and after ax.clear()
+        (which resets axis pens on some pyqtgraph versions).
+        """
+        tok = ThemeManager.instance().tokens()
+        bg = QtGui.QColor(*tok["surface"][:3])
+        text_pen = pg.mkPen(QtGui.QColor(*tok["plot_text_muted"][:3]))
+
+        for plot_widget in (self.graphWidget, self.graphWidget1, self.graphWidget2, self.graphWidget3):
+            plot_widget.setBackground(bg)
+            plot_item = plot_widget.getPlotItem()
+            for axis_name in ("left", "bottom"):
+                axis = plot_item.getAxis(axis_name)
+                axis.setPen(text_pen)
+                axis.setTextPen(text_pen)
 
     def _show_analyze_plot_overlay(self) -> None:
         """Creates and displays a progress overlay on the analysis plot.
@@ -4707,50 +4575,38 @@ class UIAnalyze(QtWidgets.QWidget):
         # elif self.QModel_widget.isVisible():
         #     self.QModel_widget.hide()
 
-    def addDotStepHandlers(self):
-        dots = [
-            self.dot1,
-            self.dot2,
-            self.dot3,
-            self.dot4,
-            self.dot5,
-            self.dot6,
-            self.dot7,
-            self.dot8,
-            self.dot9,
-            self.dot10,
-        ]
-        for i, d in enumerate(dots):
-            # d.setObjectName(str(i))
-            d.mousePressEvent = self.gotoStepNum
-            # d.mousePressEvent = lambda: event, step_num=i: self.gotoStepNum(step_num)
+    # Maps Stepper index (0..7) -> legacy 1-based step_num used everywhere
+    # else in this class (gotoStepNum, stateStep arithmetic, etc). The old
+    # dots array was [dot1(status), dot2..dot7, dot8(dead), dot9, dot10], so
+    # step_num skips 1 (the status dot) and 8 (permanently hidden, "for POI3
+    # removal") - this table preserves that exact numbering without needing
+    # to touch any of the arithmetic downstream that still speaks step_num.
+    _STEP_NUMS = [2, 3, 4, 5, 6, 7, 9, 10]
+
+    def _on_stepper_clicked(self, index: int) -> None:
+        """Adapter from Stepper.stepClicked(index) to the legacy
+        gotoStepNum(obj, step_num) call every other navigation path uses."""
+        self.gotoStepNum(None, self._STEP_NUMS[index])
 
     def setDotStepMarkers(self, step_num):
-        dots = [
-            self.dot1,
-            self.dot2,
-            self.dot3,
-            self.dot4,
-            self.dot5,
-            self.dot6,
-            self.dot7,
-            self.dot8,
-            self.dot9,
-            self.dot10,
-        ]
-        for i, d in enumerate(dots):
-            if i in [0, 9]:  # first and last dot
-                # uc = '\u00ae' if step_num - 1 != i else '\u2b24' # circled 'R' vs filled circle, respectively
-                # pad = '0' if step_num - 1 != i else '1'
-                # d.setStyleSheet(f"padding-top: {pad}px;")
-                color = "#cccccc" if step_num - 1 != i else "#515151"
-                d.setStyleSheet(f"color: {color};")
-            else:
-                uc = (
-                    "\u25ef" if step_num - 1 != i else "\u2b24"
-                )  # open circle vs filled circle, respectively
-                # d.setStyleSheet(f"padding-top: 1px;")
-                d.setText(uc)
+        if step_num == 0:
+            # No run loaded / reset - clear both the status dot and all
+            # step progress.
+            self.saved_state_dot.set_state("blank")
+            self.stepper.reset()
+            return
+        if step_num == 1:
+            # Run loaded/saved; wizard hasn't stepped into the numbered
+            # steps yet for this load, so clear any prior step progress.
+            self.saved_state_dot.set_state("saved")
+            self.stepper.reset()
+            return
+        try:
+            index = self._STEP_NUMS.index(step_num)
+        except ValueError:
+            Log.w(f"{TAG} setDotStepMarkers: unexpected step_num {step_num}")
+            return
+        self.stepper.set_current(index)
 
     def gotoStepNum(self, obj, step_num=1):
         """
@@ -4759,31 +4615,18 @@ class UIAnalyze(QtWidgets.QWidget):
         This method interprets a clicked step dot (or the provided step_num) and advances or rewinds the AnalyzeProcess workflow accordingly. It enforces modify-mode rules, sets the step direction, handles the special "finished" step (10), validates prerequisites (loaded run and POIs), and triggers the appropriate actions: restoring QModel predictions for step 1, invoking getPoints() to move into the selected step, toggling modify mode via action_modify(), or emitting the next-button when appropriate. Side effects include updating self.stateStep, self.step_direction, progress bar text/value, enabling/disabling controls, showing/hiding graph panes, and calling other UI handlers (setDotStepMarkers, enable_buttons, _restore_qmodel_predictions, action_modify, getPoints).
 
         Parameters:
-            obj: The UI object that triggered the call (unused except for context when called from a widget).
-            step_num (int): Target step dot index (1-based). If a step dot is under the mouse, that dot overrides this value.
+            obj: The UI object that triggered the call (unused - kept for
+                signature compatibility with the direct saved-state-dot
+                click wiring; step navigation from the numbered stepper
+                comes through the _on_stepper_clicked adapter instead).
+            step_num (int): Target step dot index (1-based, legacy numbering
+                - see _STEP_NUMS).
 
         Notes:
         - If modify mode is disabled and the target step is less than 9, the method forces modify mode and returns (action_modify will re-enter this method).
         - Step 10 is treated as "Finished" and moves the UI to the results view.
         - Requires a loaded run (self.xml_path) and at least three POI markers to jump to analysis steps; otherwise it logs a warning and no step change occurs.
         """
-        dots = [
-            self.dot1,
-            self.dot2,
-            self.dot3,
-            self.dot4,
-            self.dot5,
-            self.dot6,
-            self.dot7,
-            self.dot8,
-            self.dot9,
-            self.dot10,
-        ]
-        for i, d in enumerate(dots):
-            if d.underMouse():
-                step_num = i + 1
-                break
-
         # if self.AI_SelectTool_Frame.isVisible():
         #     self.AI_SelectTool_Frame.setVisible(False)
 
@@ -6325,23 +6168,28 @@ class UIAnalyze(QtWidgets.QWidget):
         ax1.clear()
         ax2.clear()
         ax3.clear()
+        # ax.clear() can reset axis pens on some pyqtgraph versions, so
+        # theme colors must be reapplied every time these axes are cleared.
+        self._apply_pg_theme()
 
         self._update_progress_value(1, "Step 1 of 6: Select Begin and End Points")
         self.setDotStepMarkers(1)
 
         ax.setTitle(None)
-        ax.addLegend()
-        ax1.setTitle("Resonance", color="green")
-        ax2.setTitle("Difference", color="blue")
-        ax3.setTitle("Dissipation", color="red")
+        ax1.setTitle("Resonance", color=SIGNAL_COLORS["resonance"])
+        ax2.setTitle("Difference", color=SIGNAL_COLORS["difference"])
+        ax3.setTitle("Dissipation", color=SIGNAL_COLORS["dissipation"])
 
-        style = {"color": "b", "font-size": "12px"}
+        axis_label_color = tok_css(ThemeManager.instance().tokens()["plot_text_normal"])
+        style = {"color": axis_label_color, "font-size": "12px"}
         ax.showAxis("left")
         ax.setLabel("left", "Frequency (Hz)", **style)
         ax.showAxis("bottom")
         ax.setLabel("bottom", "Time (secs)", **style)
 
-        ax.showButtons()
+        # pg's native corner autoscale button is redundant now that the
+        # overview card header has explicit Zoom/Move-point controls.
+        ax.hideButtons()
         ax1.hideButtons()
         ax2.hideButtons()
         ax3.hideButtons()
@@ -6388,38 +6236,78 @@ class UIAnalyze(QtWidgets.QWidget):
         noPen = pg.mkPen(color=(255, 255, 255), width=0, style=QtCore.Qt.DotLine)
 
         # Main graph - fit lines
-        self.fit1 = ax.plot(xs[mask], ys_freq_fit[mask], pen="green", name="Resonance")
-        self.fit2 = ax.plot(xs[mask], ys_diff_fit[mask], pen="blue", name="Difference")
-        self.fit3 = ax.plot(xs[mask], ys_fit[mask], pen="red", name="Dissipation")
+        self.fit1 = ax.plot(
+            xs[mask], ys_freq_fit[mask], pen=SIGNAL_COLORS["resonance"], name="Resonance"
+        )
+        self.fit2 = ax.plot(
+            xs[mask], ys_diff_fit[mask], pen=SIGNAL_COLORS["difference"], name="Difference"
+        )
+        self.fit3 = ax.plot(xs[mask], ys_fit[mask], pen=SIGNAL_COLORS["dissipation"], name="Dissipation")
 
         # Main graph - scatter dots (nearly transparent)
         self.scat1 = ax.plot(
-            xs[mask], ys_freq[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="green"
+            xs[mask],
+            ys_freq[mask],
+            pen=noPen,
+            symbol="o",
+            symbolSize=5,
+            symbolBrush=SIGNAL_COLORS["resonance"],
         )
         self.scat2 = ax.plot(
-            xs[mask], ys_diff[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="blue"
+            xs[mask],
+            ys_diff[mask],
+            pen=noPen,
+            symbol="o",
+            symbolSize=5,
+            symbolBrush=SIGNAL_COLORS["difference"],
         )
         self.scat3 = ax.plot(
-            xs[mask], ys[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="red"
+            xs[mask],
+            ys[mask],
+            pen=noPen,
+            symbol="o",
+            symbolSize=5,
+            symbolBrush=SIGNAL_COLORS["dissipation"],
         )
         self.scat1.setAlpha(0.01, False)
         self.scat2.setAlpha(0.01, False)
         self.scat3.setAlpha(0.01, False)
 
         # Sub-graphs - fit lines
-        self.fit_1 = ax1.plot(xs[mask], ys_freq_fit[mask], pen="green", name="Resonance")
-        self.fit_2 = ax2.plot(xs[mask], ys_diff_fit[mask], pen="blue", name="Difference")
-        self.fit_3 = ax3.plot(xs[mask], ys_fit[mask], pen="red", name="Dissipation")
+        self.fit_1 = ax1.plot(
+            xs[mask], ys_freq_fit[mask], pen=SIGNAL_COLORS["resonance"], name="Resonance"
+        )
+        self.fit_2 = ax2.plot(
+            xs[mask], ys_diff_fit[mask], pen=SIGNAL_COLORS["difference"], name="Difference"
+        )
+        self.fit_3 = ax3.plot(
+            xs[mask], ys_fit[mask], pen=SIGNAL_COLORS["dissipation"], name="Dissipation"
+        )
 
         # Sub-graphs - scatter dots
         self.scat_1 = ax1.plot(
-            xs[mask], ys_freq[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="green"
+            xs[mask],
+            ys_freq[mask],
+            pen=noPen,
+            symbol="o",
+            symbolSize=5,
+            symbolBrush=SIGNAL_COLORS["resonance"],
         )
         self.scat_2 = ax2.plot(
-            xs[mask], ys_diff[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="blue"
+            xs[mask],
+            ys_diff[mask],
+            pen=noPen,
+            symbol="o",
+            symbolSize=5,
+            symbolBrush=SIGNAL_COLORS["difference"],
         )
         self.scat_3 = ax3.plot(
-            xs[mask], ys[mask], pen=noPen, symbol="o", symbolSize=5, symbolBrush="red"
+            xs[mask],
+            ys[mask],
+            pen=noPen,
+            symbol="o",
+            symbolSize=5,
+            symbolBrush=SIGNAL_COLORS["dissipation"],
         )
 
         # Star markers (current-POI highlights)
