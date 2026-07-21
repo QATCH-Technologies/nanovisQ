@@ -22,7 +22,7 @@ import subprocess
 import sys
 import time
 import uuid as _uuid_mod
-from typing import Dict, Union, Optional
+from typing import Dict, Optional, Union
 
 _IS_WINDOWS = sys.platform == "win32"
 
@@ -245,9 +245,7 @@ class DeviceFingerprint:
         on Linux/macOS: `$XDG_CONFIG_HOME/{publisher}/{app}/device_settings.json`,
         falling back to `~/.config/...` when `XDG_CONFIG_HOME` isn't set.
         """
-        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(
-            os.path.expanduser("~"), ".config"
-        )
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
         return os.path.join(
             base, Constants.app_publisher, Constants.app_name, "device_settings.json"
         )
@@ -285,13 +283,7 @@ class DeviceFingerprint:
         except OSError as e:
             Log.e(f"Error writing settings value: {e}")
 
-    # ------------------------------------------------------------------
-    # POSIX (Linux) hardware identifiers
-    # ------------------------------------------------------------------
-    # Counterparts to the WMI/registry-based Windows probes below - read from
-    # sysfs/procfs instead, which need no subprocess/root access for the
-    # common case (a few DMI fields are root-only on some distros/BIOSes and
-    # simply come back empty there, same as an unset WMI field on Windows).
+    # POSIX equivalent to windows
     _DMI_PLACEHOLDERS = frozenset(
         {
             "",
