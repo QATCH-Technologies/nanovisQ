@@ -5062,6 +5062,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         now = time()
 
+        # Mirror pre-drop dry/drying status to the run-status monitor on
+        if not all(self._drop_applied) and hasattr(self.ControlsWin.ui1, "run_controls"):
+            status_msg = "Add sample" if self._last_dry_status else self._last_dry_msg
+            self.ControlsWin.ui1.run_controls.update_progress(0, 5, status_msg)
+
         # Check rate-limit; update timestamp if ready
         if now - getattr(self, "_last_forecaster_push_time", 0.0) > 0.2:
             if self.worker._forecaster_in.empty():
@@ -5094,11 +5099,7 @@ class MainWindow(QtWidgets.QMainWindow):
             pred_int, _, display_msg = self.worker._forecaster_out.get()
             if display_msg is not None:
                 self._fill_display_msg = display_msg
-            if not all(self._drop_applied):
-                # Mirror dry/drop status before the drop is confirmed
-                status_msg = "Add sample" if self._last_dry_status else self._last_dry_msg
-                ui_step = 0
-            else:
+            if all(self._drop_applied):
                 ui_step, status_msg = Constants._FILL_STATE_MAP.get(pred_int, (0, "Unknown"))
 
                 if pred_int == -1 and not self._drop_epoch_sent:
@@ -5112,8 +5113,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 elif pred_int == 3:
                     self._fill_display_msg = "Data Ready, Stop"
 
-            if hasattr(self.ControlsWin.ui1, "run_controls"):
-                self.ControlsWin.ui1.run_controls.update_progress(ui_step, 5, status_msg)
+                if hasattr(self.ControlsWin.ui1, "run_controls"):
+                    self.ControlsWin.ui1.run_controls.update_progress(ui_step, 5, status_msg)
+            # Pre-drop: the mirror above already handled the status update
+            # for this tick: the queued prediction isn't meaningful yet.
 
         except Exception as e:
             Log.e(TAG, f"Error retrieving fill status: {e}")
