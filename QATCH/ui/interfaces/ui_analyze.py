@@ -8,7 +8,7 @@ import time
 import traceback
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
-from io import BytesIO
+from io import BytesIO, StringIO
 from time import monotonic
 from typing import (
     TYPE_CHECKING,
@@ -100,6 +100,14 @@ class UIAnalyze(QtWidgets.QWidget):
     indus_predict_progress = QtCore.pyqtSignal(int, str)
     volta_predict_progress = QtCore.pyqtSignal(int, str)
     onyx_predict_progress = QtCore.pyqtSignal(int, str)
+    # The run-load pipeline (analyze_data) runs its I/O + model-inference +
+    # signal-processing work on a background thread (see _RunLoadThread /
+    # _run_analysis_pipeline) to keep the UI thread responsive. These
+    # signals marshal the handful of Qt widget updates that pipeline used
+    # to perform directly back onto the main thread.
+    _model_status_changed = QtCore.pyqtSignal(str)
+    _model_status_cleared = QtCore.pyqtSignal()
+    _diff_factor_text_changed = QtCore.pyqtSignal(str)
 
     def setup_ui(self, analyze_window: "AnalyzeWindow", parent: "MainWindow"):
         super(UIAnalyze, self).__init__(None)
@@ -694,6 +702,9 @@ class UIAnalyze(QtWidgets.QWidget):
         self.indus_predict_progress.connect(self._qmodel_indus_progress_update)
         self.volta_predict_progress.connect(self._QModel_volta_progress_update)
         self.onyx_predict_progress.connect(self._QModel_onyx_progress_update)
+        self._model_status_changed.connect(self._set_model_status_text)
+        self._model_status_cleared.connect(self._clear_model_status_text)
+        self._diff_factor_text_changed.connect(self.tbox_diff_factor.setText)
 
         # Arm the run-list watcher and do the one full scan now, so the run
         # list is already warm by the time the user first opens Analyze mode
@@ -2548,9 +2559,13 @@ class UIAnalyze(QtWidgets.QWidget):
                     allowZip64=True,
                     encryption=pyzipper.WZ_AES,
                 ) as zf:
-                    try:
-                        zf.testzip()
-                    except Exception:
+                    # Cheap encryption probe: read the general-purpose bit
+                    # flag from the central directory instead of calling
+                    # zf.testzip(), which decompresses and CRC-checks every
+                    # member of the archive (including the large raw
+                    # capture CSV) just to populate the run list.
+                    entries = zf.infolist()
+                    if entries and (entries[0].flag_bits & 0x1):
                         zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
                     files = zf.namelist()
                     xml_filename = next((x for x in files if x.endswith(".xml")), None)
@@ -5121,60 +5136,185 @@ class UIAnalyze(QtWidgets.QWidget):
             auto-advances to the summary step (`stateStep = 6`) and marks the
             dataset as changed.  On any non-fatal failure the method falls back to
             manual POI selection rather than re-raising.
+
+        Threading:
+            The actual file I/O, model inference, and signal-processing
+            (`_run_analysis_pipeline`) run on a background `_RunLoadThread`
+            so this no longer blocks Qt's event loop for the full duration
+            of a load. This method still blocks its own *caller* until the
+            run is fully loaded (callers such as `action_load_run` assume
+            synchronous completion) - it does so via a local `QEventLoop`
+            that keeps the UI thread pumping paint/input events while it
+            waits, instead of freezing outright.
         """
         self._init_analysis_state(data_path)
+
+        # Qt widgets may only be read from the thread that owns them, so
+        # capture the toggle state the background pipeline needs before
+        # dispatching to it.
+        drop_effect_enabled = self.drop_effect_cancelation_checkbox.isChecked()
+        diff_factor_optimizer_enabled = self.difference_factor_optimizer_checkbox.isChecked()
+        partial_fills_enabled = self.partial_fills_checkbox.isChecked()
+
+        worker = _RunLoadThread(
+            self,
+            data_path,
+            drop_effect_enabled,
+            diff_factor_optimizer_enabled,
+            partial_fills_enabled,
+        )
+        loop = QtCore.QEventLoop()
+        worker.finished.connect(loop.quit)
+        worker.start()
+        loop.exec_()
+        worker.wait()
+
+        result = worker.result or {}
+        outcome = result.get("outcome", "error")
+        relative_time = result.get("relative_time")
+        resonance_frequency = result.get("resonance_frequency")
+        dissipation = result.get("dissipation")
+        poi_vals = result.get("poi_vals", [])
+        curves = result.get("curves", {})
+        start_stop = result.get("start_stop", [0, -1])
+
+        if outcome == "success":
+            self._update_analyze_progress(100, "Reading Run Data...")
+
+        curves = self._recover_missing_curves(
+            curves, relative_time, resonance_frequency, dissipation, savgol_filter
+        )
+        self._wait_for_progress_bar()
+
+        if outcome == "short":
+            # Run was under 3 seconds: matches the original early-return -
+            # curves were still recovered/waited-on above, but rendering
+            # and step-advancement are skipped entirely.
+            return
+
+        self._render_analysis_plots(curves, poi_vals, start_stop)
+        self._save_analysis_state(curves, relative_time, resonance_frequency, dissipation)
+        self._advance_analysis_step(poi_vals)
+
+    def _run_analysis_pipeline(
+        self,
+        data_path: str,
+        drop_effect_enabled: bool,
+        diff_factor_optimizer_enabled: bool,
+        partial_fills_enabled: bool,
+    ) -> Dict[str, Any]:
+        """Runs the I/O + inference + signal-processing body of a run load.
+
+        This is the background-thread counterpart of the old, fully
+        synchronous `analyze_data` body: identical logic and identical
+        exception/fallback handling, just invoked from `_RunLoadThread.run()`
+        instead of directly on the UI thread. It must not touch any Qt
+        widget directly - the few status-text updates the original inline
+        code performed are emitted as signals (`_model_status_changed`,
+        `_model_status_cleared`) that are queued onto the main thread by Qt
+        automatically, since `self` still lives there.
+
+        Args:
+            data_path: Path to the run CSV file.
+            drop_effect_enabled: Pre-read state of the drop-effect
+                cancelation checkbox (see `analyze_data`).
+            diff_factor_optimizer_enabled: Pre-read state of the
+                difference-factor optimizer checkbox.
+            partial_fills_enabled: Pre-read state of the partial-fills
+                checkbox (QModel Indus).
+
+        Returns:
+            dict: `outcome` is one of `"success"`, `"short"` (run under 3
+            seconds), or `"error"` (an exception was caught), plus the
+            `relative_time`/`resonance_frequency`/`dissipation`/`poi_vals`/
+            `curves`/`start_stop` values `analyze_data` needs to finish up
+            on the main thread.
+        """
         relative_time = resonance_frequency = dissipation = None
         poi_vals, start_stop, curves = [], [0, -1], {}
+        outcome = "error"
 
         try:
             Log.i(f"Analysis file = {data_path}")
-            relative_time, _, resonance_frequency, dissipation = self._load_run_data(data_path)
+            # Read the run file exactly once. Every downstream consumer
+            # below (QModel predictors, drop-effect correction, the
+            # difference-factor optimizer) used to independently re-open
+            # and re-read this same file from disk/zip; they all accept an
+            # in-memory buffer and seek(0) before use, so a single shared
+            # `bytes` object safely replaces up to six redundant reads.
+            raw_bytes = self._read_run_file_bytes(data_path)
+
+            relative_time, _, resonance_frequency, dissipation = self._load_run_data(raw_bytes)
 
             if relative_time[-1] < 3:
                 Log.e("ERROR: Data run must be at least 3 seconds in total runtime to analyze.")
-                return  # Finally still executes; the plotting section below is skipped
+                outcome = "short"
+            else:
+                poi_vals, fill_type = self._load_xml_pois(data_path)
+                self._apply_poi_state(poi_vals, fill_type)
 
-            poi_vals, fill_type = self._load_xml_pois(data_path)
-            self._apply_poi_state(poi_vals, fill_type)
+                poi_vals = self._run_model_prediction(
+                    poi_vals,
+                    relative_time,
+                    resonance_frequency,
+                    dissipation,
+                    raw_bytes,
+                    partial_fills_enabled,
+                )
 
-            poi_vals = self._run_model_prediction(
-                poi_vals, relative_time, resonance_frequency, dissipation
-            )
+                self._model_status_cleared.emit()
 
-            self.graphWidget.removeItem(self._text2)
-            self._text1.setHtml(
-                "<span style='font-size: 14pt'>Showing data for analysis... </span>"
-            )
+                dissipation, resonance_frequency = self._apply_signal_corrections(
+                    dissipation, resonance_frequency, poi_vals, raw_bytes, drop_effect_enabled
+                )
 
-            dissipation, resonance_frequency = self._apply_signal_corrections(
-                dissipation, resonance_frequency, poi_vals
-            )
+                curves, start_stop = self._compute_signal_curves(
+                    relative_time,
+                    resonance_frequency,
+                    dissipation,
+                    poi_vals,
+                    savgol_filter,
+                    argrelextrema,
+                    raw_bytes,
+                    diff_factor_optimizer_enabled,
+                )
 
-            curves, start_stop = self._compute_signal_curves(
-                relative_time,
-                resonance_frequency,
-                dissipation,
-                poi_vals,
-                savgol_filter,
-                argrelextrema,
-            )
-
-            self._update_analyze_progress(100, "Reading Run Data...")
+                outcome = "success"
 
         except Exception:
             self.progress_value_steps.clear()
             self._log_traceback()
             Log.w("An error occurred loading this run! Please manually select points for Analysis.")
+            outcome = "error"
 
-        finally:
-            curves = self._recover_missing_curves(
-                curves, relative_time, resonance_frequency, dissipation, savgol_filter
-            )
-            self._wait_for_progress_bar()
+        return {
+            "outcome": outcome,
+            "relative_time": relative_time,
+            "resonance_frequency": resonance_frequency,
+            "dissipation": dissipation,
+            "poi_vals": poi_vals,
+            "curves": curves,
+            "start_stop": start_stop,
+        }
 
-        self._render_analysis_plots(curves, poi_vals, start_stop)
-        self._save_analysis_state(curves, relative_time, resonance_frequency, dissipation)
-        self._advance_analysis_step(poi_vals)
+    def _set_model_status_text(self, msg: str) -> None:
+        """Main-thread slot: shows a model auto-fitting status message.
+
+        Connected to `_model_status_changed`, which the (possibly
+        background-thread) model-prediction methods emit instead of
+        touching `self._text1`/`self.graphWidget` directly.
+        """
+        self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
+        self.graphWidget.addItem(self._text2, ignoreBounds=True)
+
+    def _clear_model_status_text(self) -> None:
+        """Main-thread slot: swaps the overlay to the "Showing data..." message.
+
+        Connected to `_model_status_cleared`, emitted once the model
+        auto-fitting phase of the run-load pipeline has finished.
+        """
+        self.graphWidget.removeItem(self._text2)
+        self._text1.setHtml("<span style='font-size: 14pt'>Showing data for analysis... </span>")
 
     def _init_analysis_state(self, data_path):
         """Reset per-run analysis state and configure navigation buttons."""
@@ -5183,19 +5323,40 @@ class UIAnalyze(QtWidgets.QWidget):
         self.btn_Back.setEnabled(False)
         self.btn_Next.setEnabled(True)
 
+    def _read_run_file_bytes(self, data_path: str) -> bytes:
+        """Reads an entire run file exactly once, as raw bytes.
+
+        This is the single I/O read shared by `_load_run_data`, the QModel
+        predictors, drop-effect correction, and the difference-factor
+        optimizer for a given run load - all of which previously performed
+        their own independent `secure_open` read of the same file.
+
+        Args:
+            data_path: Path to the run CSV file, openable via `secure_open`.
+
+        Returns:
+            bytes: The full contents of the file. `secure_open` returns a
+            text-mode handle for loose files still on disk and a binary
+            handle for records read out of an (optionally encrypted) zip
+            archive; the result is normalized to `bytes` either way so
+            every downstream consumer sees a consistent type.
+        """
+        with secure_open(data_path, "r", "capture") as f:
+            content = f.read()
+        return content if isinstance(content, bytes) else content.encode()
+
     def _load_run_data(
-        self, data_path: str
+        self, raw_bytes: bytes
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Read a run CSV and sanitize backward-time rows.
+        """Parse a run CSV and sanitize backward-time rows.
 
         Detects the presence of an "Ambient" temperature column in the header to
         select the correct column indices, then removes any rows where the relative
         timestamp goes backward using a single vectorized pass.
 
         Args:
-            data_path: Path to the run CSV file.  The file must be openable via
-                `secure_open` and must contain at least the standard QATCH columns
-                for time, temperature, resonance frequency, and dissipation.
+            raw_bytes: The full file contents, as returned by
+                `_read_run_file_bytes`.
 
         Returns:
             tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: A four-element
@@ -5203,12 +5364,14 @@ class UIAnalyze(QtWidgets.QWidget):
             dissipation)` as 1-D float arrays, sanitized of time-jump artefacts.
             The original file is never modified.
         """
-        with secure_open(data_path, "r", "capture") as f:
-            header = next(f)
-            if isinstance(header, bytes):
-                header = header.decode()
-            csv_cols = (2, 4, 6, 7) if "Ambient" in header else (2, 3, 5, 6)
-            data = loadtxt(f.readlines(), delimiter=",", usecols=csv_cols)
+        text_stream = StringIO(raw_bytes.decode())
+        header = next(text_stream)
+        csv_cols = (2, 4, 6, 7) if "Ambient" in header else (2, 3, 5, 6)
+        # Streaming the remaining lines directly into loadtxt (instead of
+        # first materializing them into a Python list via .readlines())
+        # avoids an extra full-file pass/allocation on top of removing the
+        # redundant disk/zip read this method used to perform on its own.
+        data = loadtxt(text_stream, delimiter=",", usecols=csv_cols)
 
         relative_time = data[:, 0]
         temperature = data[:, 1]
@@ -5328,6 +5491,8 @@ class UIAnalyze(QtWidgets.QWidget):
         relative_time: np.ndarray,
         resonance_frequency: np.ndarray,
         dissipation: np.ndarray,
+        raw_bytes: bytes,
+        partial_fills_enabled: bool,
     ) -> List[Any]:
         """Orchestrates the POI auto-fitting fallback chain.
 
@@ -5342,6 +5507,11 @@ class UIAnalyze(QtWidgets.QWidget):
             relative_time: Array of time offsets for the dataset.
             resonance_frequency: Array of frequency shifts.
             dissipation: Array of dissipation values.
+            raw_bytes: The full run file contents, shared across every
+                model attempted below instead of each one re-reading the
+                file from disk/zip independently.
+            partial_fills_enabled: Pre-read state of the partial-fills
+                checkbox, forwarded to QModel Indus.
 
         Returns:
             The best available list of POIs. If pre-existing markers exist,
@@ -5356,13 +5526,13 @@ class UIAnalyze(QtWidgets.QWidget):
         self.model_candidates = None
         self.model_engine = "None"
 
-        poi_vals = self._try_qmodel_onyx(poi_vals)
+        poi_vals = self._try_qmodel_onyx(poi_vals, raw_bytes)
 
         if self.model_result == -1:
-            poi_vals = self._try_qmodel_volta(poi_vals)
+            poi_vals = self._try_qmodel_volta(poi_vals, raw_bytes)
 
         if self.model_result == -1:
-            poi_vals = self._try_qmodel_indus(poi_vals)
+            poi_vals = self._try_qmodel_indus(poi_vals, raw_bytes, partial_fills_enabled)
 
         if self.model_result == -1:
             poi_vals = self._try_model_data(
@@ -5375,13 +5545,15 @@ class UIAnalyze(QtWidgets.QWidget):
 
         return poi_vals
 
-    def _try_qmodel_onyx(self, poi_vals: List[int]) -> List[int]:
+    def _try_qmodel_onyx(self, poi_vals: List[int], raw_bytes: bytes) -> List[int]:
         """Attempts POI prediction using the QModel Onyx (onyx) engine.
 
         NOTE: The POST point is not predicted with this model and is simply filled!
 
         Args:
             poi_vals: The current list of POI indices.
+            raw_bytes: The full run file contents (already read once by the
+                caller), wrapped fresh into a `BytesIO` here.
 
         Returns:
             The updated list of POI indices if successful; otherwise, returns
@@ -5398,14 +5570,10 @@ class UIAnalyze(QtWidgets.QWidget):
 
         msg = "Auto-fitting points with QModel Onyx..."
         Log.w(f"{msg} (may take a few seconds)")
-        self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
-        self.graphWidget.addItem(self._text2, ignoreBounds=True)
-        QtCore.QCoreApplication.processEvents()
+        self._model_status_changed.emit(msg)
 
         try:
-            # File access and inference
-            with secure_open(self.loaded_datapath, "r", "capture") as f:
-                fh = BytesIO(f.read())
+            fh = BytesIO(raw_bytes)
 
             predict_result, detected_channels = self.QModel_onyx_predictor.predict(
                 file_buffer=fh, progress_signal=self.onyx_predict_progress
@@ -5449,13 +5617,15 @@ class UIAnalyze(QtWidgets.QWidget):
 
         return poi_vals
 
-    def _try_qmodel_volta(self, poi_vals: List[int]) -> List[int]:
+    def _try_qmodel_volta(self, poi_vals: List[int], raw_bytes: bytes) -> List[int]:
         """Attempts POI prediction using the QModel Volta  engine.
 
         NOTE: The POST point is not predicted with this model and is simply filled!
 
         Args:
             poi_vals: The current list of POI indices.
+            raw_bytes: The full run file contents (already read once by the
+                caller), wrapped fresh into a `BytesIO` here.
 
         Returns:
             The updated list of POI indices if successful; otherwise, returns
@@ -5472,14 +5642,10 @@ class UIAnalyze(QtWidgets.QWidget):
 
         msg = "Auto-fitting points with QModel Volta ..."
         Log.w(f"{msg} (may take a few seconds)")
-        self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
-        self.graphWidget.addItem(self._text2, ignoreBounds=True)
-        QtCore.QCoreApplication.processEvents()
+        self._model_status_changed.emit(msg)
 
         try:
-            # File access and inference
-            with secure_open(self.loaded_datapath, "r", "capture") as f:
-                fh = BytesIO(f.read())
+            fh = BytesIO(raw_bytes)
 
             # self._QModel_create_new_progress_dialog()
             # self.progressBarDiag.setRange(0, 100)
@@ -5527,13 +5693,20 @@ class UIAnalyze(QtWidgets.QWidget):
 
         return poi_vals
 
-    def _try_qmodel_indus(self, poi_vals: List[int]) -> List[int]:
+    def _try_qmodel_indus(
+        self, poi_vals: List[int], raw_bytes: bytes, partial_fills_enabled: bool
+    ) -> List[int]:
         """Attempts POI prediction using the QModel Indus engine.
 
         NOTE: The POST point is not predicted with this model and is simply filled!
 
         Args:
             poi_vals: The current list of POI indices.
+            raw_bytes: The full run file contents (already read once by the
+                caller), wrapped fresh into a `BytesIO` here.
+            partial_fills_enabled: Pre-read state of the partial-fills
+                checkbox (read on the main thread by the caller, since Qt
+                widgets cannot be read from a background thread).
 
         Returns:
             The updated list of POI indices if successful; otherwise, returns
@@ -5544,19 +5717,16 @@ class UIAnalyze(QtWidgets.QWidget):
 
         msg = "Auto-fitting points with QModel Indus..."
         Log.w(f"{msg} (may take a few seconds)")
-        self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
-        self.graphWidget.addItem(self._text2, ignoreBounds=True)
-        QtCore.QCoreApplication.processEvents()
+        self._model_status_changed.emit(msg)
 
         try:
-            with secure_open(self.loaded_datapath, "r", "capture") as f:
-                fh = BytesIO(f.read())
+            fh = BytesIO(raw_bytes)
 
             predict_result = self.qmodel_indus_predictor.predict(
                 file_buffer=fh,
                 visualize=False,
                 progress_signal=self.indus_predict_progress,
-                use_partial_fills=self.partial_fills_checkbox.isChecked(),
+                use_partial_fills=partial_fills_enabled,
             )
 
             predictions = []
@@ -5655,7 +5825,12 @@ class UIAnalyze(QtWidgets.QWidget):
         return poi_vals
 
     def _apply_signal_corrections(
-        self, dissipation: np.ndarray, resonance_frequency: np.ndarray, poi_vals: List[int]
+        self,
+        dissipation: np.ndarray,
+        resonance_frequency: np.ndarray,
+        poi_vals: List[int],
+        raw_bytes: bytes,
+        drop_effect_enabled: bool,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Applies drop-effect correction vectors to signal data.
 
@@ -5667,17 +5842,23 @@ class UIAnalyze(QtWidgets.QWidget):
             dissipation: Array of raw dissipation values.
             resonance_frequency: Array of raw resonance frequency values.
             poi_vals: List of indices identifying key POIs.
+            raw_bytes: The full run file contents, already read once by the
+                caller.
+            drop_effect_enabled: Pre-read state of the drop-effect
+                cancelation checkbox (read on the main thread by the
+                caller, since Qt widgets cannot be read from a background
+                thread).
 
         Returns:
             A tuple of (dissipation, resonance_frequency). Arrays will be the
             corrected versions if the feature is active and valid; otherwise,
             the original input arrays are returned.
         """
-        if not self.drop_effect_cancelation_checkbox.isChecked():
+        if not drop_effect_enabled:
             return dissipation, resonance_frequency
 
         corrected_diss, corrected_rf = self._correct_drop_effect(
-            self.loaded_datapath, poi_vals, "process"
+            self.loaded_datapath, poi_vals, "process", raw_bytes
         )
 
         if corrected_diss is not None:
@@ -5795,6 +5976,8 @@ class UIAnalyze(QtWidgets.QWidget):
         poi_vals: list,
         savgol_filter: Callable,
         argrelextrema: Callable,
+        raw_bytes: Optional[bytes] = None,
+        diff_factor_optimizer_enabled: bool = False,
     ) -> Tuple[dict, list[int, int]]:
         """Compute all smoothed signal curves and derive initial run-boundary candidates.
 
@@ -5816,6 +5999,13 @@ class UIAnalyze(QtWidgets.QWidget):
                 already provided valid points.
             savgol_filter: `scipy.signal.savgol_filter`.
             argrelextrema: `scipy.signal.argrelextrema`.
+            raw_bytes: Pre-read file contents forwarded to `_optimize_curve`
+                (when the difference-factor optimizer is enabled) to avoid
+                re-reading the file from disk/zip.
+            diff_factor_optimizer_enabled: Pre-read state of the
+                difference-factor optimizer checkbox (read on the main
+                thread by the caller, since Qt widgets cannot be read from
+                a background thread).
 
         Returns:
             tuple[dict, list[int, int]]: A two-element tuple `(curves,
@@ -5902,8 +6092,8 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Difference factor and difference curve
         diff_factor = Constants.default_diff_factor
-        if self.difference_factor_optimizer_checkbox.isChecked():
-            self.diff_factor = self._optimize_curve(self.loaded_datapath)
+        if diff_factor_optimizer_enabled:
+            self.diff_factor = self._optimize_curve(self.loaded_datapath, raw_bytes)
         if hasattr(self, "diff_factor"):
             diff_factor = self.diff_factor
 
@@ -5920,7 +6110,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         Log.d(f"Difference factor: {diff_factor:.3f}x")
         Log.d("Setting diff_factor on Advanced Settings menu")
-        self.tbox_diff_factor.setText(f"{diff_factor:.3f}")
+        self._diff_factor_text_changed.emit(f"{diff_factor:.3f}")
 
         # Noise-floor parameters for start/stop thresholding
         eh1 = float(abs(np.amax(ys_diff[t_0p5:t_1p0])))
@@ -6530,7 +6720,7 @@ class UIAnalyze(QtWidgets.QWidget):
         #     )  # require re-click to show popup tool incorrect position
         pass
 
-    def _optimize_curve(self, data_path: str) -> float:
+    def _optimize_curve(self, data_path: str, raw_bytes: Optional[bytes] = None) -> float:
         """
         Optimizes the difference factor for a given data file.
 
@@ -6541,6 +6731,11 @@ class UIAnalyze(QtWidgets.QWidget):
 
         Args:
             data_path (str): Path to the data file to be optimized.
+            raw_bytes (bytes, optional): Pre-read file contents. When
+                provided (the `analyze_data` load path already reads the
+                file once), this skips the redundant `secure_open` read
+                below; when omitted (e.g. the AnalyzeWorker context), the
+                file is read here as before.
 
         Returns:
             float: The optimal difference factor if found; otherwise, the default
@@ -6555,14 +6750,15 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         try:
             optimal_factor = None
-            with secure_open(data_path, "r", "capture") as f:
-                file_header = BytesIO(f.read())
-                optimizer = DifferenceFactorOptimizer(data_path, file_header)
-                optimal_factor, lb, rb = optimizer.optimize()
-                Log.i(
-                    TAG,
-                    f"Using difference factor {optimal_factor} optimized between {lb}s and {rb}s.",
-                )
+            if raw_bytes is None:
+                raw_bytes = self._read_run_file_bytes(data_path)
+            file_header = BytesIO(raw_bytes)
+            optimizer = DifferenceFactorOptimizer(data_path, file_header)
+            optimal_factor, lb, rb = optimizer.optimize()
+            Log.i(
+                TAG,
+                f"Using difference factor {optimal_factor} optimized between {lb}s and {rb}s.",
+            )
 
             if optimal_factor is not None:
                 Log.d(TAG, f"Reporting difference factor of {optimal_factor}.")
@@ -6582,7 +6778,11 @@ class UIAnalyze(QtWidgets.QWidget):
             return Constants.default_diff_factor
 
     def _correct_drop_effect(
-        self, file_path: str, poi_vals: list, context: str = "process"
+        self,
+        file_path: str,
+        poi_vals: list,
+        context: str = "process",
+        raw_bytes: Optional[bytes] = None,
     ) -> tuple:
         """
         Corrects the dissipation and resonance drop effect in the provided file.
@@ -6595,6 +6795,11 @@ class UIAnalyze(QtWidgets.QWidget):
             file_path (str): Path to the file containing the data to be corrected.
             poi_vals (list): List of points-of-interest passed from QModel or user-input.
             context (str): Indicate the context of the call. Values: 'process', 'worker'.
+            raw_bytes (bytes, optional): Pre-read file contents. When provided
+                (the `analyze_data` load path already reads the file once),
+                this skips the redundant `secure_open` read below; when
+                omitted (e.g. the AnalyzeWorker "worker" context, which has
+                no such buffer handy), the file is read here as before.
 
         Returns:
             tuple or None: The corrected data if the correction is successful;
@@ -6611,27 +6816,28 @@ class UIAnalyze(QtWidgets.QWidget):
             Exception: For any unexpected errors during the correction process.
         """
         try:
-            with secure_open(file_path, "r", "capture") as f:
-                file_buffer = BytesIO(f.read())
-                if hasattr(self, "diff_factor"):
-                    diff_factor = self.diff_factor
-                else:
-                    diff_factor = 2.0
+            if raw_bytes is None:
+                raw_bytes = self._read_run_file_bytes(file_path)
+            file_buffer = BytesIO(raw_bytes)
+            if hasattr(self, "diff_factor"):
+                diff_factor = self.diff_factor
+            else:
+                diff_factor = 2.0
 
-                Log.d(
-                    TAG,
-                    f"Performing drop effect cancelation with difference factor {diff_factor}.",
-                )
+            Log.d(
+                TAG,
+                f"Performing drop effect cancelation with difference factor {diff_factor}.",
+            )
 
-                dec = DropEffectCorrection(
-                    file_path=file_path,
-                    file_buffer=file_buffer,
-                    initial_diff_factor=diff_factor,
-                    bounds=poi_vals,
-                )
-                corrected_data = dec.correct_drop_effects(
-                    save_corrections=True if context == "worker" else False
-                )
+            dec = DropEffectCorrection(
+                file_path=file_path,
+                file_buffer=file_buffer,
+                initial_diff_factor=diff_factor,
+                bounds=poi_vals,
+            )
+            corrected_data = dec.correct_drop_effects(
+                save_corrections=True if context == "worker" else False
+            )
 
             if corrected_data is not None:
                 Log.i(TAG, f"Drop effect cancelation successful.")
@@ -6646,6 +6852,46 @@ class UIAnalyze(QtWidgets.QWidget):
             )
             Log.e(TAG, f"Error Details: {str(e)}")
             return [None, None]
+
+
+class _RunLoadThread(QtCore.QThread):
+    """Runs `UIAnalyze._run_analysis_pipeline` off the Qt UI thread.
+
+    `analyze_data` still blocks its caller until the run finishes loading
+    (see the "Threading" note on that method), but the actual file I/O,
+    QModel inference, and signal-processing happen here instead of on the
+    UI thread, so the app stays responsive - repaints, window moves, and
+    other input keep working - while a run loads.
+
+    Intentionally separate from `AnalyzeWorker` (QATCH.ui.workers.analyze_worker):
+    that class drives the later "finalize analysis" step and is left untouched.
+    """
+
+    def __init__(
+        self,
+        ui: "UIAnalyze",
+        data_path: str,
+        drop_effect_enabled: bool,
+        diff_factor_optimizer_enabled: bool,
+        partial_fills_enabled: bool,
+        parent: Optional[QtCore.QObject] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._ui = ui
+        self._data_path = data_path
+        self._drop_effect_enabled = drop_effect_enabled
+        self._diff_factor_optimizer_enabled = diff_factor_optimizer_enabled
+        self._partial_fills_enabled = partial_fills_enabled
+        self.result: Optional[Dict[str, Any]] = None
+
+    def run(self) -> None:
+        self.result = self._ui._run_analysis_pipeline(
+            self._data_path,
+            self._drop_effect_enabled,
+            self._diff_factor_optimizer_enabled,
+            self._partial_fills_enabled,
+        )
+
 
 class ResizeFilter(QtCore.QObject):
     def __init__(self, worker, parent=None):

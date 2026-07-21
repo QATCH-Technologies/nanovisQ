@@ -794,10 +794,13 @@ class MainWindow(QtWidgets.QMainWindow):
                         allowZip64=True,
                         encryption=pyzipper.WZ_AES,
                     ) as zf:
-                        # Add a protected file to the zip archive
-                        try:
-                            zf.testzip()
-                        except:
+                        # Cheap encryption probe via the general-purpose bit
+                        # flag instead of zf.testzip(), which would
+                        # decompress and CRC-check every member of the
+                        # archive (including the large raw capture CSV)
+                        # just to list the file names.
+                        entries = zf.infolist()
+                        if entries and (entries[0].flag_bits & 0x1):
                             zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
                         self.data_files = zf.namelist()
                         self.data_files = [x for x in self.data_files if not x.endswith(".crc")]

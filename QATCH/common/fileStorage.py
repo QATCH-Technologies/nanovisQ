@@ -687,31 +687,25 @@ class secure_open:
                                      allowZip64=True,
                                      encryption=pyzipper.WZ_AES)
             if True:
-                i = 0
+                # NOTE: Previously this probed for encryption by calling
+                # `zf.testzip()`, which decompresses and CRC-checks EVERY
+                # member of the archive (including the large raw capture
+                # CSV) just to determine whether a password is required.
+                # The standard ZIP "general purpose bit flag" bit 0 signals
+                # encryption without touching any file contents, so read
+                # that instead - same detection result, no decompression.
                 password_protected = False
-                while True:
-                    i += 1
-                    if i > 3:
-                        Log.e(
-                            "This ZIP has encrypted files: Try again with a valid password!")
-                        break
-                    try:
-                        zf.testzip()  # will fail if encrypted and no password set
-                        break  # test pass
-                    except RuntimeError as e:
-                        if 'encrypted' in str(e):
-                            Log.d('Accessing secured records...')
-                            zf.setpassword(hashlib.sha256(
-                                zf.comment).hexdigest().encode())
-                            password_protected = True
-                        else:
-                            # RuntimeError for other reasons....
-                            Log.e("ZIP RuntimeError: " + str(e))
-                            break
-                    except Exception as e:
-                        # other Exception for any reason...
-                        Log.e("ZIP Exception: " + str(e))
-                        break
+                try:
+                    entries = zf.infolist()
+                except Exception as e:
+                    Log.e("ZIP Exception: " + str(e))
+                    entries = []
+
+                if entries and (entries[0].flag_bits & 0x1):
+                    Log.d('Accessing secured records...')
+                    zf.setpassword(hashlib.sha256(
+                        zf.comment).hexdigest().encode())
+                    password_protected = True
 
                 from QATCH.common.userProfiles import UserProfiles
                 if UserProfiles.count() > 0 and password_protected == False and UserProfiles.checkDevMode()[0] == False:
