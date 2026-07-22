@@ -30,6 +30,7 @@ import pyzipper
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
+from rlottie_python import LottieAnimation
 from scipy.signal import argrelextrema, savgol_filter
 
 from QATCH.common.architecture import Architecture
@@ -1718,30 +1719,76 @@ class UIAnalyze(QtWidgets.QWidget):
         proxy.setZValue(1000)
         proxy.setOpacity(0.0)
 
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg")
-        spin_anim = QtCore.QVariantAnimation(self)
-        spin_anim.setStartValue(0.0)
-        spin_anim.setEndValue(360.0)
-        spin_anim.setDuration(900)
-        spin_anim.setLoopCount(-1)
+        # The loading glyph is a Lottie/Bodymovin animation (a bouncing
+        # three-dot loader), rendered natively via rlottie rather than
+        # played through Qt's own (unreliable, partial) SMIL support for
+        # animated SVGs. rlottie only exposes discrete integer frames (no
+        # sub-frame interpolation), so every frame is pre-rendered and
+        # tinted once per show/theme-change into a pixmap cache; playback
+        # just swaps cached pixmaps on a QTimer, decoupling *which* frame is
+        # sampled from *how fast* time moves through the loop. The native
+        # timeline loops in 1.2s, which reads as frantic at 28px, so
+        # `_PLAYBACK_MS` stretches one loop to 3x that - each cached frame
+        # is simply dwelled on longer, not skipped.
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "animations", "loading.json"
+        )
+        lottie_anim = LottieAnimation.from_file(icon_path)
+        total_frames = max(1, lottie_anim.lottie_animation_get_totalframe())
+        _RENDER_SIZE = 28
+        _PLAYBACK_MS = lottie_anim.lottie_animation_get_duration() * 1000.0 * 3.0
+        _TICK_MS = 33  # ~30fps repaint cadence
 
-        state = {"pixmap": QtGui.QIcon(icon_path).pixmap(28, 28)}
+        anim_state = {
+            "progress_ms": 0.0,
+            "direction": 1,
+            "color": QtGui.QColor(40, 50, 62),
+            "frames": [],
+        }
 
-        def _paint_rotated(value) -> None:
-            angle = float(value) if value is not None else 0.0
-            base = state["pixmap"]
-            canvas = QtGui.QPixmap(base.size())
-            canvas.fill(QtCore.Qt.GlobalColor.transparent)
-            painter = QtGui.QPainter(canvas)
-            painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform)
-            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-            cx, cy = base.width() / 2.0, base.height() / 2.0
-            painter.translate(cx, cy)
-            painter.rotate(angle)
-            painter.translate(-cx, -cy)
-            painter.drawPixmap(0, 0, base)
-            painter.end()
-            spinner_label.setPixmap(canvas)
+        def _rebuild_frame_cache() -> None:
+            color = anim_state["color"]
+            frames = []
+            for f in range(total_frames):
+                raw = lottie_anim.lottie_animation_render(
+                    frame_num=f, width=_RENDER_SIZE, height=_RENDER_SIZE
+                )
+                image = QtGui.QImage(
+                    raw, _RENDER_SIZE, _RENDER_SIZE, QtGui.QImage.Format_ARGB32_Premultiplied
+                ).copy()
+                base = QtGui.QPixmap.fromImage(image)
+                tinted = QtGui.QPixmap(base.size())
+                tinted.fill(QtCore.Qt.GlobalColor.transparent)
+                painter = QtGui.QPainter(tinted)
+                painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+                painter.drawPixmap(0, 0, base)
+                painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+                painter.fillRect(tinted.rect(), color)
+                painter.end()
+                frames.append(tinted)
+            anim_state["frames"] = frames
+
+        def _render_frame() -> None:
+            fraction = (anim_state["progress_ms"] % _PLAYBACK_MS) / _PLAYBACK_MS
+            frame = min(total_frames - 1, int(fraction * total_frames))
+            frames = anim_state["frames"]
+            if frames:
+                spinner_label.setPixmap(frames[frame])
+
+        anim_timer = QtCore.QTimer(self)
+        anim_timer.setInterval(_TICK_MS)
+
+        def _advance_frame() -> None:
+            if anim_state["direction"] >= 0:
+                anim_state["progress_ms"] = (anim_state["progress_ms"] + _TICK_MS) % _PLAYBACK_MS
+            else:
+                next_progress = anim_state["progress_ms"] - _TICK_MS
+                if next_progress < 0:
+                    anim_timer.stop()
+                    anim_state["progress_ms"] = 0.0
+                else:
+                    anim_state["progress_ms"] = next_progress
+            _render_frame()
 
         def _apply_theme(_mode: str | None = None) -> None:
             tok = ThemeManager.instance().tokens()
@@ -1750,15 +1797,15 @@ class UIAnalyze(QtWidgets.QWidget):
             dim_rect.setBrush(QtGui.QBrush(surface))
 
             text_color = tok_css(tok["flat_text"])
-            accent = QtGui.QColor(*tok["flat_accent"])
             status_label.setStyleSheet(f"font-size: 11pt; font-weight: 600; color: {text_color};")
-            state["pixmap"] = PlotContainer._tinted_icon(icon_path, accent, size=28).pixmap(28, 28)
-            _paint_rotated(spin_anim.currentValue())
+            anim_state["color"] = QtGui.QColor(*tok["flat_accent"])
+            _rebuild_frame_cache()
+            _render_frame()
 
-        spin_anim.valueChanged.connect(_paint_rotated)
+        anim_timer.timeout.connect(_advance_frame)
         _apply_theme()
         ThemeManager.instance().themeChanged.connect(_apply_theme)
-        spin_anim.start()
+        anim_timer.start()
 
         def _center() -> None:
             try:
@@ -1783,7 +1830,9 @@ class UIAnalyze(QtWidgets.QWidget):
             "dim_rect": dim_rect,
             "center": _center,
             "theme": _apply_theme,
-            "spin": spin_anim,
+            "anim_timer": anim_timer,
+            "anim_state": anim_state,
+            "lottie": lottie_anim,
             "status_label": status_label,
             "fade": fade_anim,
         }
@@ -1795,10 +1844,13 @@ class UIAnalyze(QtWidgets.QWidget):
         removed.
 
         Args:
-            animate: If True (default), fades the card out (spinner keeps
-                turning through the fade) before removing it from the
-                scene. Callers just clearing a stale instance before
-                immediately building a fresh one pass False.
+            animate: If True (default), reverses the Lottie loader's frame
+                sequence back toward its start while fading the card out
+                (rather than just cutting the forward loop), before
+                removing it from the scene. Callers just clearing a stale
+                instance before immediately building a fresh one pass
+                False, which skips the reverse-playback and cuts straight
+                to cleanup.
         """
         overlay = getattr(self, "_loading_run_overlay", None)
         if overlay is None:
@@ -1819,10 +1871,13 @@ class UIAnalyze(QtWidgets.QWidget):
             except RuntimeError:
                 pass
 
-        proxy, dim_rect, spin_anim = overlay["proxy"], overlay["dim_rect"], overlay["spin"]
+        proxy, dim_rect = overlay["proxy"], overlay["dim_rect"]
+        anim_timer, anim_state = overlay["anim_timer"], overlay["anim_state"]
+        lottie_anim = overlay["lottie"]
 
         def _cleanup() -> None:
-            spin_anim.stop()
+            anim_timer.stop()
+            lottie_anim.lottie_animation_destroy()
             for item in (proxy, dim_rect):
                 try:
                     item.setParentItem(None)
@@ -1834,6 +1889,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         self._loading_run_overlay = None
         if animate:
+            anim_state["direction"] = -1
             self._fade_overlay_opacity([dim_rect, proxy], 0.0, duration_ms=180, on_finished=_cleanup)
         else:
             _cleanup()

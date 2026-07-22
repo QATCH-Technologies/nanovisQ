@@ -5,7 +5,7 @@ from typing import Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.components.flat_paint import paint_flat_surface
-from QATCH.ui.styles.fonts import FONT_MONO_MEDIUM
+from QATCH.ui.styles.fonts import FONT_SANS_MEDIUM
 from QATCH.ui.styles.theme_manager import ThemeManager
 
 # Chrome (fill/border/radius/hover/focus-ring/error) is painted in Python via
@@ -19,6 +19,15 @@ from QATCH.ui.styles.theme_manager import ThemeManager
 # its internal line-edit sub-control) a transparent backdrop.
 
 _RADIUS = 7.0
+
+# Must mirror flat_paint.paint_flat_surface's own border_width/ring_width
+# defaults - the odometer overlay replicates those bands itself (see
+# _OdometerOverlay._paint_chrome_slice) so it can stay opaque without ever
+# painting a flat white/surface box over the live focus ring or clipping it
+# short and leaving a bare strip of native chrome exposed above/below the
+# digits.
+_BORDER_WIDTH = 1.0
+_RING_WIDTH = 3.0
 
 
 def _tinted_pixmap(source: QtGui.QPixmap, color: QtGui.QColor) -> QtGui.QPixmap:
@@ -229,8 +238,7 @@ class _OdometerOverlay(QtWidgets.QWidget):
         p.setRenderHint(QtGui.QPainter.Antialiasing, True)
         p.setFont(self.font())
 
-        # Opaque background so the static line-edit text never shows through.
-        p.fillRect(self.rect(), self._bg)
+        self._paint_chrome_slice(p)
 
         cols = getattr(self, "_columns", None)
         if not cols:
@@ -256,6 +264,34 @@ class _OdometerOverlay(QtWidgets.QWidget):
 
             p.restore()
         p.end()
+
+    def _paint_chrome_slice(self, p: QtGui.QPainter) -> None:
+        """Fills the overlay with an opaque copy of whatever vertical band of
+        the owner's chrome (fill + border/focus-ring) sits behind this column.
+
+        The overlay spans the owner's full height (see
+        `_OdometerMixin._position_odometer`) but stops short of its left/right
+        edges, so it never reaches the rounded corners - the border/ring is a
+        simple horizontal stripe here, not a rounded rect. Painting a plain
+        surface color instead (the previous approach) either bled over the
+        live ring while focused, or - if inset to avoid that - fell short of
+        it and exposed a strip of the native line edit beneath.
+        """
+        owner = self.parentWidget()
+        chrome_colors = getattr(owner, "_chrome_colors", None)
+        fill, border, ring = chrome_colors() if chrome_colors is not None else (self._bg, None, None)
+
+        w = self.width()
+        h = self.height()
+        p.fillRect(QtCore.QRectF(0, 0, w, h), fill)
+        if ring is not None:
+            rw = _RING_WIDTH
+            p.fillRect(QtCore.QRectF(0, 0, w, rw), ring)
+            p.fillRect(QtCore.QRectF(0, h - rw, w, rw), ring)
+        elif border is not None:
+            bw = _BORDER_WIDTH
+            p.fillRect(QtCore.QRectF(0, 0, w, bw), border)
+            p.fillRect(QtCore.QRectF(0, h - bw, w, bw), border)
 
     def _draw_centered(self, p, x, w, baseline, ch) -> None:
         if ch.strip():
@@ -317,7 +353,7 @@ class _OdometerMixin:
         self._in_error = False
         self.setAttribute(QtCore.Qt.WA_Hover, True)
         self.setStyleSheet("padding-left: 12px;")
-        f = QtGui.QFont(FONT_MONO_MEDIUM)
+        f = QtGui.QFont(FONT_SANS_MEDIUM)
         f.setPixelSize(14)
         self.setFont(f)
         if self.lineEdit() is not None:
@@ -357,10 +393,12 @@ class _OdometerMixin:
         self._apply_text_palette()
         self.update()
 
-    def _paint_chrome(self) -> None:
-        """Paints the flat fill/border/focus-ring behind the native internal
-        line-edit sub-control (a real child widget, painted separately by
-        Qt immediately afterward - no need to delegate to it here)."""
+    def _chrome_colors(self):
+        """Resolves the current (fill, border, ring) triple for this widget's
+        enabled/error/focus/hover state. Shared by `_paint_chrome` (paints the
+        real rounded-rect chrome) and `_OdometerOverlay` (replicates the same
+        bands so its opaque roll-animation overlay never has to paint a plain
+        surface color over - or leave a gap exposing - the live border/ring)."""
         tok = ThemeManager.instance().tokens()
 
         if not self.isEnabled():
@@ -384,6 +422,13 @@ class _OdometerMixin:
             border = QtGui.QColor(*tok["flat_border"])
             ring = None
 
+        return fill, border, ring
+
+    def _paint_chrome(self) -> None:
+        """Paints the flat fill/border/focus-ring behind the native internal
+        line-edit sub-control (a real child widget, painted separately by
+        Qt immediately afterward - no need to delegate to it here)."""
+        fill, border, ring = self._chrome_colors()
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
         paint_flat_surface(self, radius=_RADIUS, fill=fill, border=border, ring=ring, painter=p)
@@ -415,20 +460,17 @@ class _OdometerMixin:
         self.update()
 
     def _init_odometer(self) -> None:
-        # Tabular (monospaced) figures: every digit gets the same advance in the
-        # live line edit too, so the static text and the rolling overlay share
-        # one fixed grid. Without this, the proportional line edit and the
-        # uniform-grid overlay would disagree and you'd see a tiny snap when the
-        # roll ends. This also keeps the decimal point fixed between states.
+        # Tabular figures: every digit gets the same advance in the live line
+        # edit too, so the static text and the rolling overlay share one fixed
+        # grid. Without this, the proportional line edit and the uniform-grid
+        # overlay would disagree and you'd see a tiny snap when the roll ends.
+        # This also keeps the decimal point fixed between states.
+        # FONT_SANS_MEDIUM (IBM Plex Sans Medium, matching the rest of the flat
+        # control system) ships tabular-width digits 0-9 by default - verified
+        # via QFontMetricsF.horizontalAdvance - so no monospace family or extra
+        # OpenType feature request is needed to keep the grid aligned.
         f = self.font()
         f.setStyleStrategy(QtGui.QFont.PreferDefault)
-        try:
-            # Qt 5.11+: request tabular figures via the font feature.
-            f.setStyleName(f.styleName())
-        except Exception:
-            pass
-        # The portable lever is the font's fixed-pitch hint for digits; on most
-        # UI fonts enabling kerning off + tabular numerals is enough.
         f.setKerning(False)
         self.setFont(f)
         if self.lineEdit() is not None:
@@ -494,10 +536,17 @@ class _OdometerMixin:
         cursor_pad = 2  # QLineEdit reserves ~2px before the first glyph
         top_left = le.mapTo(self, cr.topLeft())
         x = top_left.x() + ml + cursor_pad
-        y = top_left.y()
-        self._odometer.setGeometry(
-            int(x), int(y), int(cr.width() - ml - cursor_pad), int(cr.height())
-        )
+        w = cr.width() - ml - cursor_pad
+
+        # Span the widget's FULL height, not just the line edit's own content
+        # rect. The overlay repaints its own copy of the border/focus-ring
+        # bands to match (see _OdometerOverlay._paint_chrome_slice), so
+        # covering the full height lets it fully stand in for the native line
+        # edit - selection highlight included - for the duration of the roll.
+        # A partial-height overlay either bled into that band (painting a
+        # plain surface color over the live ring) or fell short of it
+        # (leaving a sliver of native chrome exposed above/below the digits).
+        self._odometer.setGeometry(int(x), 0, int(max(w, 0)), self.height())
         self._odometer.setFont(le.font())
         # Boxes are left-aligned, so the reel grid grows from the left origin.
         right = bool(self.alignment() & QtCore.Qt.AlignmentFlag.AlignRight)

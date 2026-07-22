@@ -2075,7 +2075,7 @@ class UIControls:
             self.temp_cal_always_input.clear()
             self.temp_cal_always_action.setIcon(self.blankIcon)
             self.temp_cal_always_action.setIconText("querying")
-            QtCore.QTimer.singleShot(1, self.reset_temp_cal_measure_input)
+            QtCore.QTimer.singleShot(1, self.reset_temp_cal_always_input)
 
         # Reset "measure" calibration if not saved
         if self.temp_cal_measure_action.iconText() != "saved":
@@ -2596,6 +2596,46 @@ class UIControls:
             Log.e("Program 'TEMP CAL2' operation was NOT successful!")
 
         return success
+
+    def reset_temp_cal_always_input(self) -> None:
+        """
+        Resets the "always" temperature calibration input field (CAL1)
+        to the current TEC offset. Forces a hardware update if cached
+        data is older than 10 seconds.
+        """
+        assert self.temp_cal_always_action is not None
+
+        main_window = self.parent.parent
+        tec_worker = main_window.tec_worker
+        start_time = monotonic()
+
+        # Determine if we need fresh data from the TEC hardware
+        last_reply = tec_worker.last_reply()
+        tec_update_required = True
+
+        if last_reply and (start_time - last_reply < 10.0):
+            tec_update_required = False
+
+        # Trigger the hardware update if our cached data is stale
+        if tec_update_required:
+            Log.i("Updating TEC parameters for CAL1...")
+            tec_worker.set_port(main_window._selected_port)
+            tec_worker._tec_update()  # Force read to update software cached offsets
+
+        # Update the UI with the cached offset
+        # NOTE: Since there is no delay here, the UI will update with
+        # the current cache immediately.
+        set_cal1 = tec_worker._tec_offset1
+
+        try:
+            parsed_value = self.temp_cal_always_input.valueFromText(str(set_cal1))
+            self.temp_cal_always_input.setValue(parsed_value)
+        except Exception as e:
+            Log.e(f"Failed to parse or set TEC offset '{set_cal1}' to UI. Error: {e}")
+
+        # Update the action button UI to reflect a 'saved' state
+        self.temp_cal_always_action.setIcon(self.savedIcon)
+        self.temp_cal_always_action.setIconText("saved")
 
     def reset_temp_cal_measure_input(self) -> None:
         """
