@@ -57,7 +57,13 @@ from QATCH.QModel import OnyxDropEpochSignal, VoltaDropEpochSignal
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
+from QATCH.ui.components.glass_axis_item import (
+    GlassAxisItem,
+    apply_glass_plot_style,
+    suppress_axis_ticks,
+)
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
+from QATCH.ui.components.themed_grid_item import ThemedGridItem
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets.floating_message_badge_widget import FloatingMessageBadgeWidget
@@ -219,120 +225,6 @@ class RoundedProgressBar(QtWidgets.QWidget):
             painter.drawRoundedRect(r, radius, radius)
 
         painter.end()
-
-
-class _ThemedGridItem(pg.GridItem):
-    """A `pg.GridItem` that draws at the same tick positions as a pair of
-    real AxisItems, with a fixed, caller-specified line alpha per level.
-
-    Two problems with the stock `pg.GridItem` this replaces:
-
-    1. It computes grid-line spacing independently of the axes it sits
-       next to (its own `10**i`-based "nice round number" heuristic), so
-       lines routinely land at different positions than the axis's own
-       tick labels - lines don't reach/align with every labeled tick, and
-       depending on the view range the computed spacing can undershoot the
-       visible span, leaving the grid not fully covering the plot area.
-    2. `generatePicture()` computes its own alpha for each level from
-       on-screen line density and overwrites the pen's color in place -
-       `self.opts['pen']` is mutated directly, not copied - which silently
-       discards whatever alpha was configured on the constructor's pen.
-       Confirmed empirically: a pen built with alpha=155 read back as
-       alpha=50 after a single repaint, and since every level shares that
-       one mutated pen object, major/minor never reliably read as visually
-       distinct either.
-
-    Fix: instead of computing tick spacing itself, this item asks the
-    actual `x_axis`/`y_axis` AxisItems for their current `tickValues()` -
-    the exact values they use to place their own labels - and draws lines
-    at those. "Major" (`include_minor_ticks=False`) draws only at the
-    axis's top-level (labeled) ticks; "Minor" (`include_minor_ticks=True`)
-    draws at the labeled ticks *plus* the axis's next-finer tick level, so
-    minor lines are guaranteed to include every labeled position rather
-    than an independently-computed set that may not line up with them.
-    """
-
-    def __init__(
-        self,
-        pen,
-        alpha: int,
-        x_axis: AxisItem | None = None,
-        y_axis: AxisItem | None = None,
-        include_minor_ticks: bool = False,
-        **kwargs,
-    ) -> None:
-        super().__init__(pen=pen, **kwargs)
-        self._fixed_alpha = alpha
-        self._x_axis = x_axis
-        self._y_axis = y_axis
-        self._include_minor_ticks = include_minor_ticks
-
-    def _axis_tick_positions(self, axis: AxisItem | None, size: float) -> list:
-        """Returns the tick values `axis` is currently placing labels at
-        (plus its next-finer level too, if `_include_minor_ticks`), plus
-        the axis's own range boundaries.
-
-        Tick values are quantized to "nice round numbers" within the
-        range, which are very unlikely to land exactly on the range's own
-        start/end (e.g. a live time axis whose left edge is whatever
-        timestamp the oldest visible sample happens to have, not a round
-        number) - leaving a visible gap between the true edge of the plot
-        and the nearest round-number gridline. Explicitly including the
-        boundary values guarantees the grid always reaches the plot's
-        edges exactly, regardless of where the round-number ticks fall.
-        """
-        if axis is None or size <= 0:
-            return []
-        try:
-            rng = axis.range
-            levels = axis.tickValues(rng[0], rng[1], size)
-        except Exception:
-            return []
-        if not levels:
-            return []
-        n_levels = 2 if self._include_minor_ticks else 1
-        values: set = {rng[0], rng[1]}
-        for _, vals in levels[:n_levels]:
-            values.update(vals)
-        return sorted(values)
-
-    def generatePicture(self) -> None:
-        self.picture = QtGui.QPicture()
-        p = QtGui.QPainter()
-        p.begin(self.picture)
-
-        lvr = self.boundingRect()
-        ul = np.array([lvr.left(), lvr.top()])
-        br = np.array([lvr.right(), lvr.bottom()])
-        if ul[1] > br[1]:
-            ul[1], br[1] = br[1], ul[1]
-        x_lo, x_hi = min(ul[0], br[0]), max(ul[0], br[0])
-        y_lo, y_hi = min(ul[1], br[1]), max(ul[1], br[1])
-
-        base_color = QtGui.QColor(self.opts["pen"].color())
-        base_color.setAlpha(self._fixed_alpha)
-        line_pen = QtGui.QPen(self.opts["pen"])
-        line_pen.setColor(base_color)
-        line_pen.setCosmetic(True)
-        p.setPen(line_pen)
-
-        x_geom = self._x_axis.geometry() if self._x_axis is not None else None
-        x_size = x_geom.width() if x_geom is not None else 0.0
-        for xv in self._axis_tick_positions(self._x_axis, x_size):
-            if xv < x_lo or xv > x_hi:
-                continue
-            p.drawLine(QtCore.QPointF(xv, ul[1]), QtCore.QPointF(xv, br[1]))
-
-        y_geom = self._y_axis.geometry() if self._y_axis is not None else None
-        y_size = y_geom.height() if y_geom is not None else 0.0
-        for yv in self._axis_tick_positions(self._y_axis, y_size):
-            if yv < y_lo or yv > y_hi:
-                continue
-            p.drawLine(QtCore.QPointF(ul[0], yv), QtCore.QPointF(br[0], yv))
-
-        tr = self.deviceTransform()
-        p.setWorldTransform(pg_fn.invertQTransform(tr))
-        p.end()
 
 
 class _PlotDimAnimator(QtCore.QObject):
@@ -3564,22 +3456,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @staticmethod
     def _suppress_axis_ticks(axis) -> None:
-        """Monkey-patches `axis` so it never emits tick-mark line specs.
-
-        `tickLength=0` alone doesn't reliably prevent a stray mark at each
-        tick position: confirmed empirically by inspecting pyqtgraph's own
-        `generateDrawSpecs()` output directly - every tick spec really is
-        zero-length with a fully `NoPen` pen (style 0), which by itself
-        should paint nothing, yet a 1px artifact still showed up at every
-        *major* tick position in an actual rendered frame (most visible in
-        dark mode, since the artifact's fixed light-gray color stands out
-        against a dark background - it isn't theme-derived at all). Rather
-        than depend on pyqtgraph's tick-line geometry/pen happening to be
-        invisible, this removes the tick specs before `drawPicture()` ever
-        sees them, so nothing can be drawn regardless of the exact
-        underlying rendering quirk. This app never wants visible tick
-        marks by design (only text labels, and optionally the separate
-        `_ThemedGridItem` grid overlay), so there's no loss.
+        """Monkey-patches `axis` so it never emits tick-mark line specs (see
+        `QATCH.ui.components.glass_axis_item.suppress_axis_ticks`, which this
+        delegates to - shared with AnalyzeUI so both windows' axes match).
 
         Safe to call on any `AxisItem` (custom `GlassAxisItem`/
         `GlassDateAxis` or a plain auto-created one, e.g. a linked "right"
@@ -3588,38 +3467,14 @@ class MainWindow(QtWidgets.QMainWindow):
         Args:
             axis: The `pg.AxisItem` (or subclass) instance to patch.
         """
-        if axis is None or getattr(axis, "_ticks_suppressed", False):
-            return
-        original = axis.generateDrawSpecs
-
-        def _no_ticks(p, _original=original):
-            specs = _original(p)
-            if specs is None:
-                return specs
-            axis_spec, _tick_specs, text_specs = specs
-            return axis_spec, [], text_specs
-
-        axis.generateDrawSpecs = _no_ticks
-        axis._ticks_suppressed = True
-        axis.picture = None
-        axis.update()
+        suppress_axis_ticks(axis)
 
     def _apply_glass_plot_style(self, plot_item, title: str = "", alpha: float = 0.08) -> None:
-        """Apply minimal glass axis styling - no spines, no ticks, floating labels."""
-        _text_pen = self._plot_axis_text_pen()
-
-        for name in ("bottom", "left", "right", "top"):
-            ax = plot_item.getAxis(name)
-            if ax is not None:
-                ax.setPen(pg.mkPen(None))  # remove spine on every axis
-                ax.setTextPen(_text_pen)
-                ax.setGrid(False)  # grids start off; controlled by settings menu
-                self._suppress_axis_ticks(ax)
-
-        plot_item.getViewBox().setBorder(pg.mkPen(None))
-        plot_item.getViewBox().setDefaultPadding(0.02)
-        plot_item.hideButtons()
-        plot_item.showGrid(x=False, y=False)  # grids start off; controlled by settings menu
+        """Apply minimal glass axis styling - no spines, no ticks, floating
+        labels (see `QATCH.ui.components.glass_axis_item.apply_glass_plot_style`,
+        which this delegates to - shared with AnalyzeUI so both windows'
+        axes match)."""
+        apply_glass_plot_style(plot_item, self._plot_axis_text_pen())
 
     def _configure_plot(self, _show_welcome=True):
         """Initializes and configures the layout for all PyQtGraph plots.
@@ -3671,37 +3526,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     return ""
 
-        class GlassAxisItem(AxisItem):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-                f = QtGui.QFont("Segoe UI")
-                f.setPixelSize(10)
-                self.setTickFont(f)
-                self.setStyle(
-                    tickLength=0,
-                    tickTextOffset=3,
-                    autoExpandTextSpace=False,
-                )
-                self.setPen(pg.mkPen(None))
-                # Disable Pyqtgraph's SI prefix mechanism; we manage the scale factor directly
-                self.enableAutoSIPrefix(False)
-
-            def paint(self, p, opt, widget):
-                p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
-                super().paint(p, opt, widget)
-
-            def tickStrings(self, values, scale, spacing):
-                strs = super().tickStrings(values, scale, spacing)
-                clean_strs = []
-                for s, v in zip(strs, values):
-                    val = v * scale
-                    abs_v = abs(val)
-                    # Suppress scientific notation for small float values like Dissipation (e.g., 0.000193)
-                    if 0 < abs_v < 0.01 or "e" in s.lower():
-                        clean_strs.append(f"{val:.6f}")
-                    else:
-                        clean_strs.append(s)
-                return clean_strs
+        # GlassAxisItem now lives in QATCH.ui.components.glass_axis_item
+        # (imported at module level) - shared with AnalyzeUI so both
+        # windows' axes match.
 
         class GlassDateAxis(DateAxis):
             def __init__(self, *args, **kwargs):
@@ -4243,7 +4070,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     y_axis=pi.getAxis("left"),
                 )
 
-    # Fixed line alpha (0-255) for grid levels, applied via _ThemedGridItem.
+    # Fixed line alpha (0-255) for grid levels, applied via ThemedGridItem.
     # Deliberately below the token's own alpha (plot_text_muted is ~155) -
     # stock pg.GridItem's internal density-based auto-alpha had been
     # silently capping the effective value around 50/255 regardless of
@@ -4264,7 +4091,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """Add or toggle a themed GridItem on a ViewBox for major or minor
         grid lines.
 
-        Uses `_ThemedGridItem` (see its docstring) instead of the stock
+        Uses `ThemedGridItem` (see its docstring) instead of the stock
         `pg.GridItem`: the stock version computes its own tick spacing
         independently of the plot's actual axes (so lines don't reliably
         align with, or fully span the range of, the visible tick labels),
@@ -4301,7 +4128,7 @@ class MainWindow(QtWidgets.QMainWindow):
             alpha = self._GRID_MAJOR_ALPHA if is_major else self._GRID_MINOR_ALPHA
 
             if grid is None:
-                grid = _ThemedGridItem(
+                grid = ThemedGridItem(
                     pen=grid_pen,
                     alpha=alpha,
                     x_axis=x_axis,

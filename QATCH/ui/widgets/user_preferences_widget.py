@@ -12,8 +12,10 @@ don't need to change shape. The overlay lifecycle itself (init scaffolding,
 fade animations, parent-tracking geometry fit, scrim paint, click-outside
 dismiss) is shared with those two widgets via
 `QATCH.ui.components.overlay_shell.OverlayLifecycleMixin` - only this
-widget's own content (a vertical `SegmentedControl` sidebar over section
-pages, no fullscreen toggle) lives here. Every panel is styled from the
+widget's own content (a `TabbedRailPanel` - vertical nav rail whose active
+row's highlight flows into the section pages beside it as one continuous
+surface, see `QATCH.ui.components.connected_tab_rail.ConnectedTabRail` -
+no fullscreen toggle) lives here. Every panel is styled from the
 shared flat control system (QATCH.ui.styles.theme_manager /
 QATCH.ui.components) so it matches the rest of the app and stays correct
 across light/dark theme changes.
@@ -37,15 +39,13 @@ from QATCH.ui.components import (
     QATCHOptionCardGroup,
     QATCHPushButton,
     QATCHToggle,
-    SegmentedControl,
+    TabbedRailPanel,
 )
 from QATCH.ui.components.overlay_shell import (
     FULLSCREEN_ANIM_EASING,
     OverlayLifecycleMixin,
     rebuild_fullscreen_icons,
-    run_stack_slide,
     run_variant_animation,
-    teardown_stack_slide,
 )
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.styles.theme_manager import (
@@ -58,7 +58,6 @@ from QATCH.ui.styles.theme_manager import (
     hairline_qss,
     info_wash_card_qss,
     mono_preview_qss,
-    surface_panel_qss,
     tok_css,
 )
 
@@ -104,20 +103,15 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
 
         # Widgets registered here get their QSS re-applied on theme change
         # (see _on_theme_changed) since each was styled with a one-shot
-        # setStyleSheet() call rather than a live-token paintEvent.
-        self._wells: list[tuple[QtWidgets.QFrame, str]] = []
+        # setStyleSheet() call rather than a live-token paintEvent. (Section
+        # wells aren't tracked here - they're transparent/borderless now, so
+        # there's nothing theme-dependent to re-apply; see _well().)
         self._captions: list[QtWidgets.QLabel] = []
         self._descs: list[QtWidgets.QLabel] = []
         self._field_labels: list[QtWidgets.QLabel] = []
         self._hairlines: list[QtWidgets.QFrame] = []
         self._preview_boxes: list[QtWidgets.QFrame] = []
         self._preview_labels: list[QtWidgets.QLabel] = []
-
-        # Slide-transition state for section switches (see
-        # overlay_shell.run_stack_slide).
-        self._slide_group = None
-        self._slide_clip = None
-        self._slide_stack = None
 
         # Overlay scaffolding (scrim/panel state, base_layout + glass_frame +
         # opacity effect + main_layout, parent-resize event filter) - shared
@@ -143,30 +137,16 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
             ("datapaths", "Data Paths", _ICON_DATAPATHS),
             ("appearance", "Appearance", _ICON_APPEARANCE),
         ]
-        self.nav = SegmentedControl(nav_modes, orientation=QtCore.Qt.Vertical)
-        self.nav.modeChanged.connect(self.handle_section_change)
-
-        self.content_stack = QtWidgets.QStackedWidget()
-        # Let the section slide truly hide() the stack during a transition
-        # while it still reserves its layout space - same technique as
-        # DataManagementWidget's content_stack (see its _build_stack for the
-        # full rationale: without this, hide()/show() collapses the stack to
-        # zero height and forces a repaint of the whole panel around it).
-        stack_policy = self.content_stack.sizePolicy()
-        stack_policy.setRetainSizeWhenHidden(True)
-        self.content_stack.setSizePolicy(stack_policy)
-        self.content_stack.addWidget(self._build_datetime_page())
-        self.content_stack.addWidget(self._build_filenaming_page())
-        self.content_stack.addWidget(self._build_datapaths_page())
-        self.content_stack.addWidget(self._build_appearance_page())
+        self.panel = TabbedRailPanel(nav_modes)
+        self.panel.currentChanged.connect(self.handle_section_change)
+        self.panel.add_page("datetime", self._build_datetime_page())
+        self.panel.add_page("filenaming", self._build_filenaming_page())
+        self.panel.add_page("datapaths", self._build_datapaths_page())
+        self.panel.add_page("appearance", self._build_appearance_page())
 
         body_row = QtWidgets.QHBoxLayout()
-        # No gap: the nav sits directly against the active section well so
-        # the highlighted row and the content card read as adjacent, related
-        # surfaces instead of two panels floating apart.
         body_row.setSpacing(0)
-        body_row.addWidget(self.nav)
-        body_row.addWidget(self.content_stack, 1)
+        body_row.addWidget(self.panel, 1)
         self.main_layout.addLayout(body_row, 1)
 
         self.main_layout.addLayout(self._build_action_bar())
@@ -433,13 +413,14 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     # Themed-widget factories (each registers itself for _on_theme_changed)
     # ------------------------------------------------------------------
     def _well(self, object_name: str) -> QtWidgets.QFrame:
+        """Plain content container for a section page - background/border
+        removed now that ConnectedTabRail paints one shared content-pane
+        surface behind every page (each page previously had its own bordered
+        card here too, which read as a border nested inside the rail's
+        border). Only the object name + padding-via-layout role remain."""
         frame = QtWidgets.QFrame()
         frame.setObjectName(object_name)
-        # radius=11 matches SegmentedControl's vertical checked-row radius
-        # (self._radius - 5, with self._radius == 16) for visual consistency
-        # between the nav's highlighted row and the section well beside it.
-        frame.setStyleSheet(surface_panel_qss(object_name, radius=11))
-        self._wells.append((frame, object_name))
+        frame.setStyleSheet(f"QFrame#{object_name} {{ background: transparent; border: none; }}")
         return frame
 
     def _caption(self, text: str) -> QtWidgets.QLabel:
@@ -494,8 +475,6 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     def _on_theme_changed(self, mode: str) -> None:
         self._apply_panel_appearance(self._current_margin_frac())
         self._refresh_header_theme()
-        for frame, name in self._wells:
-            frame.setStyleSheet(surface_panel_qss(name, radius=11))
         for lbl in self._captions:
             lbl.setStyleSheet(caption_label_qss())
         for lbl in self._descs:
@@ -563,7 +542,6 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
     def _do_close(self) -> None:
         """Resets to inset state so the next open always starts clean,
         regardless of whether this closed from fullscreen."""
-        teardown_stack_slide(self)
         if getattr(self, "_is_fullscreen", False):
             self._is_fullscreen = False
             self._rebuild_fs_icons()
@@ -596,9 +574,9 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
             self.global_pref_toggle.setEnabled(False)
 
         if 0 <= tab_idx < len(self._section_keys):
-            self.nav.set_active(self._section_keys[tab_idx])
+            self.panel.set_active(self._section_keys[tab_idx])
         else:
-            self.nav.set_active(self._section_keys[0])
+            self.panel.set_active(self._section_keys[0])
 
         self.setVisible(True)
 
@@ -606,24 +584,13 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         self._is_admin = UserProfiles.check(self._controller.userrole, UserRoles.ADMIN)
 
     def handle_section_change(self, key: str) -> None:
-        """Handle sidebar-section change and load preferences if needed."""
-        if key in self._section_keys:
-            new_index = self._section_keys.index(key)
-            cur_index = self.content_stack.currentIndex()
-            if new_index != cur_index:
-                # Direction matches the sidebar's top-to-bottom ordering -
-                # picking a section below the current one slides the new
-                # page in from below (old exits up), and vice versa. Same
-                # `run_stack_slide` helper DataManagementWidget's mode
-                # switch uses, just driven by this widget's own nav order.
-                run_stack_slide(
-                    self,
-                    self.content_stack,
-                    self.content_stack.widget(cur_index),
-                    self.content_stack.widget(new_index),
-                    axis="y",
-                    forward=new_index > cur_index,
-                )
+        """Handle sidebar-section change and load preferences if needed.
+
+        Fires once `self.panel` has already switched its stack to `key`'s
+        page (see TabbedRailPanel.currentChanged) - only the rail's own
+        connected highlight animates (see ConnectedTabRail.set_active); the
+        page itself swaps instantly.
+        """
         if self.global_pref_toggle.isChecked():
             self.load_global_preferences()
         elif hasattr(UserProfiles.user_preferences, "_user_preferences_path"):

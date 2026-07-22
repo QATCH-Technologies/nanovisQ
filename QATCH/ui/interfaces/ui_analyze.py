@@ -8,6 +8,7 @@ import time
 import traceback
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from io import BytesIO, StringIO
 from time import monotonic
 from typing import (
@@ -42,15 +43,18 @@ from QATCH.processors.CurveOptimizer import (
     DropEffectCorrection,
 )
 from QATCH.QModel import QModelIndus, QModelOnyx, QModelTweed, QModelVolta
-from QATCH.ui.components import AnimatedComboBox
+from QATCH.ui.components import AnimatedComboBox, QATCHPushButton
 from QATCH.ui.components.analyze_action_bar import AnalyzeActionBar
 from QATCH.ui.components.analyze_plot_cards import (
     SIGNAL_COLORS,
     DetailPlotCard,
     SignalOverviewCard,
 )
+from QATCH.ui.components.glass_axis_item import GlassAxisItem, apply_glass_plot_style
 from QATCH.ui.components.stepper import Stepper
+from QATCH.ui.components.themed_grid_item import ThemedGridItem
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
+from QATCH.ui.interfaces.ui_plots import PlotContainer
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,
     auto_sign_matches_session,
@@ -90,6 +94,20 @@ def _shutdown_executor() -> None:
 atexit.register(_shutdown_executor)
 
 
+def _new_glass_plot_widget() -> pg.PlotWidget:
+    """A `pg.PlotWidget` pre-built with `GlassAxisItem` bottom/left axes -
+    the same no-spine/no-tick-marks look PlotsUI's plots use (see
+    QATCH.ui.main_window._configure_plot), so Analyze's four plot cards
+    read as the same family rather than plain default pyqtgraph axes.
+    """
+    return pg.PlotWidget(
+        axisItems={
+            "bottom": GlassAxisItem(orientation="bottom"),
+            "left": GlassAxisItem(orientation="left"),
+        }
+    )
+
+
 ###############################################################################
 # Elaborate on the raw data gathered from the SerialProcess in parallel timing
 ###############################################################################
@@ -108,6 +126,24 @@ class UIAnalyze(QtWidgets.QWidget):
     _model_status_changed = QtCore.pyqtSignal(str)
     _model_status_cleared = QtCore.pyqtSignal()
     _diff_factor_text_changed = QtCore.pyqtSignal(str)
+
+    # Plot-card gear menu wiring: maps each SIGNAL_COLORS key to the curve
+    # attribute names _plot_signal_curves() assigns on self (main-graph fit
+    # + scatter, then the matching detail sub-graph's fit + scatter), and to
+    # the POI star-marker attributes shown alongside them. Same fixed line
+    # alpha convention as PlotsUI's grid menu (see ThemedGridItem).
+    _SERIES_CURVE_ATTRS = {
+        "resonance": ("fit1", "scat1", "fit_1", "scat_1"),
+        "difference": ("fit2", "scat2", "fit_2", "scat_2"),
+        "dissipation": ("fit3", "scat3", "fit_3", "scat_3"),
+    }
+    _SERIES_STAR_ATTRS = {
+        "resonance": ("star1", "gstars1"),
+        "difference": ("star2", "gstars2"),
+        "dissipation": ("star3", "gstars3"),
+    }
+    _GRID_MAJOR_ALPHA = 45
+    _GRID_MINOR_ALPHA = 18
 
     def setup_ui(self, analyze_window: "AnalyzeWindow", parent: "MainWindow"):
         super(UIAnalyze, self).__init__(None)
@@ -220,7 +256,6 @@ class UIAnalyze(QtWidgets.QWidget):
         self.sort_by_new = self.actionbar.sort_by_new
         self.sort_by_widget = self.actionbar.sort_by_widget
         self.runGrid = self.actionbar.runGrid
-        self.tBtn_Load = self.actionbar.tBtn_Load
         self.tBtn_Predict = self.actionbar.tBtn_Predict
         self.tBtn_Info = self.actionbar.tBtn_Info
         self.tool_Cancel = self.actionbar.tool_Cancel
@@ -235,10 +270,6 @@ class UIAnalyze(QtWidgets.QWidget):
         self.sort_by_date.mousePressEvent = self.action_sort_by_date
         self.sort_by_new.mousePressEvent = self.action_sort_by_new
 
-        self.tBtn_Load.clicked.connect(self.load_run)  # main action
-        load_menu = QtWidgets.QMenu()
-        load_menu.addAction("Load runs from...", self.load_all_from_folder)
-        self.tBtn_Load.setMenu(load_menu)
         self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
         self.tBtn_Info.clicked.connect(self.getRunInfo)
 
@@ -426,7 +457,7 @@ class UIAnalyze(QtWidgets.QWidget):
         )
         self.stepper.stepClicked.connect(self._on_stepper_clicked)
 
-        self.graphWidget = pg.PlotWidget()
+        self.graphWidget = _new_glass_plot_widget()
         # Background/axis colors are applied by _apply_pg_theme() (called at
         # the end of setup_ui and on every themeChanged) rather than a
         # hardcoded literal, since pyqtgraph doesn't consume QSS.
@@ -504,9 +535,9 @@ class UIAnalyze(QtWidgets.QWidget):
         # grouping container for the stepper row + graphStack.
         widget_h4.setLayout(layout_v4)
 
-        self.graphWidget1 = pg.PlotWidget()
-        self.graphWidget2 = pg.PlotWidget()
-        self.graphWidget3 = pg.PlotWidget()
+        self.graphWidget1 = _new_glass_plot_widget()
+        self.graphWidget2 = _new_glass_plot_widget()
+        self.graphWidget3 = _new_glass_plot_widget()
         # Background/axis colors for graphWidget1/2/3 are applied by
         # _apply_pg_theme() alongside graphWidget, above.
 
@@ -514,32 +545,64 @@ class UIAnalyze(QtWidgets.QWidget):
         self.difference_card = DetailPlotCard(self.graphWidget2, "Difference", "difference")
         self.dissipation_card = DetailPlotCard(self.graphWidget3, "Dissipation", "dissipation")
 
-        layout_h2 = QtWidgets.QHBoxLayout()
-        layout_h2.addWidget(self.resonance_card)
-        layout_h2.addWidget(self.difference_card)
-        layout_h2.addWidget(self.dissipation_card)
-        layout_h2.setContentsMargins(0, 0, 0, 0)
-        self.lowerGraphs = QtWidgets.QWidget()
-        self.lowerGraphs.setLayout(layout_h2)
+        # A QSplitter (not a plain QHBoxLayout) so any one detail card can be
+        # expanded to fill the row - see _toggle_analyze_fullscreen, which
+        # animates this splitter's sizes the same way graph_split's are.
+        self.lowerGraphs = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.lowerGraphs.setHandleWidth(6)
+        self.lowerGraphs.addWidget(self.resonance_card)
+        self.lowerGraphs.addWidget(self.difference_card)
+        self.lowerGraphs.addWidget(self.dissipation_card)
+        self.lowerGraphs.setSizes([1, 1, 1])
 
         self.graph_split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self.graph_split.addWidget(widget_h4)
         self.graph_split.addWidget(self.lowerGraphs)
         self.graph_split.setSizes([1, 1])
 
-        # add collapse/expand icon arrows
-        self.graph_split.setHandleWidth(10)
-        handle1 = self.graph_split.handle(1)
-        layout_s1 = QtWidgets.QHBoxLayout()
-        layout_s1.setContentsMargins(0, 0, 0, 0)
-        layout_s1.addStretch()
-        self.btnMovable1 = QtWidgets.QToolButton(handle1)
-        self.btnMovable1.setText("=")
-        self.btnMovable1.setFont(QtGui.QFont("Arial", 8))
-        self.btnMovable1.clicked.connect(lambda: self.graph_split.setSizes([1, 1]))
-        layout_s1.addWidget(self.btnMovable1)
-        layout_s1.addStretch()
-        handle1.setLayout(layout_s1)
+        # Expand/configure parity with PlotsUI: each plot card's fullscreen
+        # toggle animates graph_split/lowerGraphs to give it the whole
+        # plot area, mirroring UIPlots._toggle_fullscreen.
+        self._fullscreen_active_widget: Optional[QtWidgets.QWidget] = None
+        for card in (
+            self.overview_card,
+            self.resonance_card,
+            self.difference_card,
+            self.dissipation_card,
+        ):
+            card.fullscreen_requested.connect(partial(self._toggle_analyze_fullscreen, card))
+
+        # Configure-menu parity with PlotsUI: gear-menu grid toggles drive a
+        # ThemedGridItem overlay per plot widget (see _on_grid_toggle /
+        # _apply_grid_item), and per-series color/visibility toggles recolor
+        # or show/hide the real plotted curves (see
+        # _on_analyze_section_color_changed / _on_analyze_section_visibility_changed).
+        # Keyed by SIGNAL_COLORS key rather than by card, since the overview
+        # card's three sections and each detail card's single section refer
+        # to the same underlying series.
+        self._grid_flags: Dict[QtWidgets.QWidget, Dict[str, bool]] = {}
+        self._series_colors: Dict[str, QtGui.QColor] = dict(SIGNAL_COLORS)
+        self._series_visible: Dict[str, bool] = {
+            "resonance": True,
+            "difference": True,
+            "dissipation": True,
+        }
+        for card, plot_widget in (
+            (self.overview_card, self.graphWidget),
+            (self.resonance_card, self.graphWidget1),
+            (self.difference_card, self.graphWidget2),
+            (self.dissipation_card, self.graphWidget3),
+        ):
+            card.grid_changed.connect(partial(self._on_grid_toggle, plot_widget))
+            card.section_color_changed.connect(self._on_analyze_section_color_changed)
+            card.section_visibility_changed.connect(self._on_analyze_section_visibility_changed)
+
+        # No visible/draggable divider between the overview plot and the
+        # detail-card row - expanding either is now handled by each card's
+        # own fullscreen toggle (see _toggle_analyze_fullscreen), which
+        # still resizes graph_split programmatically via setSizes().
+        self.graph_split.setHandleWidth(0)
+        self.graph_split.handle(1).setEnabled(False)
 
         # add collapse/expand icon arrows
         self.results_split.setHandleWidth(12)
@@ -751,11 +814,244 @@ class UIAnalyze(QtWidgets.QWidget):
 
         for plot_widget in (self.graphWidget, self.graphWidget1, self.graphWidget2, self.graphWidget3):
             plot_widget.setBackground(bg)
-            plot_item = plot_widget.getPlotItem()
-            for axis_name in ("left", "bottom"):
-                axis = plot_item.getAxis(axis_name)
-                axis.setPen(text_pen)
-                axis.setTextPen(text_pen)
+            # Same "glass" axis look PlotsUI uses (no spine, no tick marks,
+            # muted uniform text) - see QATCH.ui.components.glass_axis_item.
+            apply_glass_plot_style(plot_widget.getPlotItem(), text_pen)
+
+    def _toggle_analyze_fullscreen(self, target_widget: QtWidgets.QWidget) -> None:
+        """Toggle one plot card between fullscreen and normal splitter
+        layout, mirroring `UIPlots._toggle_fullscreen` (see ui_plots.py) but
+        adapted to Analyze's two-level splitter (`graph_split` = widget_h4 vs
+        lowerGraphs; `lowerGraphs` itself splits the three detail cards).
+
+        Args:
+            target_widget: The plot card (overview_card/resonance_card/
+                difference_card/dissipation_card) whose fullscreen state
+                should be toggled.
+        """
+        if self._fullscreen_active_widget == target_widget:
+            target_graph_sizes = self._normal_graph_sizes
+            target_lower_sizes = self._normal_lower_sizes
+
+            target_widget._is_fullscreen = False
+            target_widget._apply_icon_theme()
+            target_widget.btn_fs.setToolTip("Toggle Fullscreen")
+
+            self._fullscreen_active_widget = None
+        else:
+            previous_widget = self._fullscreen_active_widget
+
+            if previous_widget is None:
+                self._normal_graph_sizes = self.graph_split.sizes()
+                self._normal_lower_sizes = self.lowerGraphs.sizes()
+            else:
+                previous_widget._is_fullscreen = False
+                previous_widget._apply_icon_theme()
+
+            self._fullscreen_active_widget = target_widget
+
+            target_widget._is_fullscreen = True
+            target_widget._apply_icon_theme()
+            target_widget.btn_fs.setToolTip("Restore Size")
+
+            total_graph = sum(self.graph_split.sizes())
+            total_lower = sum(self.lowerGraphs.sizes())
+
+            fullscreen_sizes = {
+                self.overview_card: (
+                    [total_graph, 0],
+                    self._normal_lower_sizes,
+                ),
+                self.resonance_card: (
+                    [0, total_graph],
+                    [total_lower, 0, 0],
+                ),
+                self.difference_card: (
+                    [0, total_graph],
+                    [0, total_lower, 0],
+                ),
+                self.dissipation_card: (
+                    [0, total_graph],
+                    [0, 0, total_lower],
+                ),
+            }
+
+            if target_widget not in fullscreen_sizes:
+                return
+
+            target_graph_sizes, target_lower_sizes = fullscreen_sizes[target_widget]
+
+        if hasattr(self, "_fs_timer") and self._fs_timer.isActive():
+            self._fs_timer.stop()
+            self._freeze_analyze_plots(False)
+
+        self._freeze_analyze_plots(True)
+
+        duration_ms = 380
+        interval_ms = 16  # ~60 FPS
+        total_steps = max(1, duration_ms // interval_ms)
+
+        start_graph_sizes = list(self.graph_split.sizes())
+        start_lower_sizes = list(self.lowerGraphs.sizes())
+        step_count = [0]
+
+        def _ease_in_out_quart(progress: float) -> float:
+            if progress < 0.5:
+                return 8.0 * progress**4
+            progress -= 1.0
+            return 1.0 - 8.0 * progress**4
+
+        def _tick() -> None:
+            step_count[0] += 1
+
+            progress = min(step_count[0] / total_steps, 1.0)
+            eased_progress = _ease_in_out_quart(progress)
+
+            graph_sizes = [
+                int(start + (end - start) * eased_progress)
+                for start, end in zip(start_graph_sizes, target_graph_sizes)
+            ]
+            lower_sizes = [
+                int(start + (end - start) * eased_progress)
+                for start, end in zip(start_lower_sizes, target_lower_sizes)
+            ]
+
+            self.graph_split.setSizes(graph_sizes)
+            self.lowerGraphs.setSizes(lower_sizes)
+
+            if progress >= 1.0:
+                self._fs_timer.stop()
+                self._freeze_analyze_plots(False)
+
+        self._fs_timer = QtCore.QTimer(self)
+        self._fs_timer.setInterval(interval_ms)
+        self._fs_timer.timeout.connect(_tick)
+        self._fs_timer.start()
+
+    def _freeze_analyze_plots(self, freeze: bool) -> None:
+        """Suppress/restore pyqtgraph viewport redraws during the fullscreen
+        splitter animation (see `_toggle_analyze_fullscreen`), the same
+        technique `UIPlots._freeze_plots` uses.
+
+        Args:
+            freeze: If True, disables viewport updates; if False, restores
+                normal updates and requests a repaint.
+        """
+        update_mode = (
+            QtWidgets.QGraphicsView.NoViewportUpdate
+            if freeze
+            else QtWidgets.QGraphicsView.MinimalViewportUpdate
+        )
+
+        for plot_widget in (self.graphWidget, self.graphWidget1, self.graphWidget2, self.graphWidget3):
+            try:
+                plot_widget.setViewportUpdateMode(update_mode)
+                if not freeze:
+                    plot_widget.viewport().update()
+            except Exception:
+                continue
+
+    def _on_grid_toggle(self, plot_widget: pg.PlotWidget, key: str, visible: bool) -> None:
+        """Handles a gear-menu grid checkbox toggle for one plot widget.
+
+        Args:
+            plot_widget: The graphWidget/graphWidget1/2/3 the toggle applies to.
+            key: "grid_major" or "grid_minor" (see GridMenuRow in ui_plots.py).
+            visible: The new checkbox state.
+        """
+        flags = self._grid_flags.setdefault(plot_widget, {})
+        flags[key] = visible
+        self._apply_grid_item(plot_widget, key, visible)
+
+    def _apply_grid_item(self, plot_widget: pg.PlotWidget, key: str, visible: bool) -> None:
+        """Add or toggle a `ThemedGridItem` on a plot's ViewBox for major or
+        minor grid lines - the same technique `MainWindow._apply_grid_item`
+        uses for the Plots window (see ThemedGridItem's docstring for why a
+        custom GridItem is used instead of pg's native `showGrid()`).
+
+        Args:
+            plot_widget: The graphWidget/graphWidget1/2/3 to add/toggle the
+                grid item on.
+            key: "grid_major" or "grid_minor".
+            visible: Whether the grid should be shown or hidden.
+        """
+        plot_item = plot_widget.getPlotItem()
+        vb = plot_item.getViewBox()
+        is_major = "_major" in key
+        attr = "_grid_major" if is_major else "_grid_minor"
+        grid = getattr(vb, attr, None)
+
+        if visible:
+            tok = ThemeManager.instance().tokens()
+            base_color = QtGui.QColor(*tok["plot_text_muted"][:3])
+            grid_pen = pg.mkPen(base_color)
+            alpha = self._GRID_MAJOR_ALPHA if is_major else self._GRID_MINOR_ALPHA
+
+            if grid is None:
+                grid = ThemedGridItem(
+                    pen=grid_pen,
+                    alpha=alpha,
+                    x_axis=plot_item.getAxis("bottom"),
+                    y_axis=plot_item.getAxis("left"),
+                    include_minor_ticks=not is_major,
+                    textPen=None,
+                )
+                grid.setZValue(-10 if is_major else -9)
+                vb.addItem(grid)
+                setattr(vb, attr, grid)
+            else:
+                grid.setPen(grid_pen)
+                grid._fixed_alpha = alpha
+
+            grid.show()
+        elif grid is not None:
+            grid.hide()
+
+    def _on_analyze_section_color_changed(self, key: str, color: QtGui.QColor) -> None:
+        """Recolors the real fit/scatter curves for one series, and
+        remembers the choice so it survives the next `_plot_signal_curves()`
+        call (e.g. loading a different run).
+
+        Args:
+            key: One of "resonance"/"difference"/"dissipation".
+            color: The newly chosen color.
+        """
+        self._series_colors[key] = QtGui.QColor(color)
+        for attr in self._SERIES_CURVE_ATTRS.get(key, ()):
+            item = getattr(self, attr, None)
+            if item is None:
+                continue
+            if attr.startswith("fit"):
+                item.setPen(color)
+            else:
+                item.setSymbolBrush(color)
+
+        # Keep every card's legend dot in sync, not just whichever card's
+        # gear menu was actually used - the Signal Overview legend and the
+        # matching detail card's title dot both show this same series.
+        for card in (
+            self.overview_card,
+            self.resonance_card,
+            self.difference_card,
+            self.dissipation_card,
+        ):
+            card.set_section_color(key, color)
+
+    def _on_analyze_section_visibility_changed(self, key: str, visible: bool) -> None:
+        """Shows or hides the real curve/marker items for one series, and
+        remembers the choice so it survives the next `_plot_signal_curves()`
+        call (e.g. loading a different run).
+
+        Args:
+            key: One of "resonance"/"difference"/"dissipation".
+            visible: The new visibility state.
+        """
+        self._series_visible[key] = visible
+        attrs = self._SERIES_CURVE_ATTRS.get(key, ()) + self._SERIES_STAR_ATTRS.get(key, ())
+        for attr in attrs:
+            item = getattr(self, attr, None)
+            if item is not None:
+                item.setVisible(visible)
 
     def _show_analyze_plot_overlay(self) -> None:
         """Creates and displays a progress overlay on the analysis plot.
@@ -1136,6 +1432,423 @@ class UIAnalyze(QtWidgets.QWidget):
         if failed:
             PopUp.warning(self, Constants.app_title, "QModel inference failed.")
 
+    def _fade_overlay_opacity(
+        self,
+        items: List[QtWidgets.QGraphicsItem],
+        target_opacity: float,
+        duration_ms: int = 220,
+        on_finished: Optional[Callable[[], None]] = None,
+    ) -> QtCore.QVariantAnimation:
+        """Animates a group of QGraphicsItems' opacity to `target_opacity`,
+        starting from their current opacity - used to fade the plot
+        placeholder cards (no-run / loading-run) in when shown and out when
+        hidden, instead of an abrupt appear/disappear.
+
+        Args:
+            items: The QGraphicsItems (dim rect + card proxy) to fade together.
+            target_opacity: 1.0 to fade in, 0.0 to fade out.
+            duration_ms: Fade duration.
+            on_finished: Optional callback invoked once the fade completes -
+                hide methods use this to defer the actual scene teardown
+                until the fade-out has visually finished.
+
+        Returns:
+            The running QVariantAnimation, so the caller can stop() it if a
+            new fade needs to interrupt/replace it.
+        """
+        start_opacity = items[0].opacity() if items else 0.0
+        anim = QtCore.QVariantAnimation(self)
+        anim.setStartValue(float(start_opacity))
+        anim.setEndValue(float(target_opacity))
+        anim.setDuration(duration_ms)
+        anim.setEasingCurve(QtCore.QEasingCurve.Type.InOutCubic)
+
+        def _tick(value) -> None:
+            for item in items:
+                try:
+                    item.setOpacity(float(value))
+                except RuntimeError:
+                    pass
+
+        anim.valueChanged.connect(_tick)
+        if on_finished is not None:
+            anim.finished.connect(on_finished)
+        anim.start()
+        return anim
+
+    def _show_no_run_overlay(self) -> None:
+        """Shows a placeholder card over the Signal Overview plot while no
+        run is loaded: a dim backdrop plus a centered card (icon, title,
+        subtext, and a "Load from folder..." button) - same dim-rect +
+        QGraphicsProxyWidget technique as `_show_qmodel_plot_overlay`, but
+        this one stays up for as long as `clear()`'s "nothing loaded" state
+        holds rather than for the duration of a single background task, so
+        it also keeps itself centered (and themed) across resizes and
+        light/dark switches. Fades in via `_fade_overlay_opacity` rather
+        than appearing abruptly.
+
+        The dim rect is sized to the whole PlotItem (`plot_item.boundingRect()`),
+        not just the inner ViewBox, so it covers the axis label area too -
+        otherwise stale axis text/ticks would poke out around the card.
+        """
+        self._hide_no_run_overlay(animate=False)
+        self._hide_loading_run_overlay(animate=True)
+
+        plot_item = self.graphWidget.getPlotItem()
+        vb = plot_item.getViewBox()
+
+        dim_rect = QtWidgets.QGraphicsRectItem()
+        dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+        dim_rect.setParentItem(plot_item.graphicsItem())
+        dim_rect.setZValue(999)
+        dim_rect.setOpacity(0.0)
+
+        container = QtWidgets.QWidget()
+        container.setFixedWidth(360)
+        # Transparent by default a plain QWidget hosted in a
+        # QGraphicsProxyWidget still paints an opaque palette background,
+        # which covered dim_rect's themed tint with a flat white patch.
+        container.setAutoFillBackground(False)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        container.setStyleSheet("background: transparent;")
+
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(24, 28, 24, 28)
+        layout.setSpacing(8)
+
+        icon_badge = QtWidgets.QLabel()
+        icon_badge.setFixedSize(56, 56)
+        icon_badge.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "import.svg")
+
+        icon_row = QtWidgets.QHBoxLayout()
+        icon_row.addStretch(1)
+        icon_row.addWidget(icon_badge)
+        icon_row.addStretch(1)
+
+        title_label = QtWidgets.QLabel("Load a run to begin analysis")
+        title_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        subtext_label = QtWidgets.QLabel(
+            "Choose a run from the menu above. Any prior point selections "
+            "will be restored automatically from saved data."
+        )
+        subtext_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        subtext_label.setWordWrap(True)
+
+        folder_btn = QATCHPushButton("Load from folder...", variant="primary")
+        folder_btn.clicked.connect(self.load_all_from_folder)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addStretch(1)
+        btn_row.addWidget(folder_btn)
+        btn_row.addStretch(1)
+
+        layout.addLayout(icon_row)
+        layout.addWidget(title_label)
+        layout.addWidget(subtext_label)
+        layout.addSpacing(6)
+        layout.addLayout(btn_row)
+
+        proxy = QtWidgets.QGraphicsProxyWidget()
+        proxy.setWidget(container)
+        proxy.setParentItem(plot_item.graphicsItem())
+        proxy.setZValue(1000)
+        proxy.setOpacity(0.0)
+
+        def _apply_theme(_mode: str | None = None) -> None:
+            """Re-tints the dim rect + card to match the active theme, so
+            dark mode gets a dark-tinted backdrop with light text instead
+            of a fixed white card (which read as a jarring, out-of-place
+            "all white" patch against a dark-themed plot)."""
+            tok = ThemeManager.instance().tokens()
+            surface = QtGui.QColor(*tok["surface"][:3])
+            surface.setAlpha(235)
+            dim_rect.setBrush(QtGui.QBrush(surface))
+
+            text_color = tok_css(tok["flat_text"])
+            muted_color = tok_css(tok["flat_text_muted"])
+            badge_bg = tok_css(tok["flat_accent_weak"])
+            accent = QtGui.QColor(*tok["flat_accent"])
+
+            icon_badge.setStyleSheet(f"background: {badge_bg}; border-radius: 14px;")
+            icon_badge.setPixmap(
+                PlotContainer._tinted_icon(icon_path, accent, size=24).pixmap(24, 24)
+            )
+            title_label.setStyleSheet(f"font-size: 12pt; font-weight: 600; color: {text_color};")
+            subtext_label.setStyleSheet(f"font-size: 9pt; color: {muted_color};")
+
+        _apply_theme()
+        ThemeManager.instance().themeChanged.connect(_apply_theme)
+
+        def _center() -> None:
+            try:
+                full_rect = plot_item.boundingRect()
+                dim_rect.setRect(full_rect)
+                pw = proxy.boundingRect().width()
+                ph = proxy.boundingRect().height()
+                proxy.setPos(
+                    full_rect.x() + (full_rect.width() - pw) / 2.0,
+                    full_rect.y() + (full_rect.height() - ph) / 2.0,
+                )
+            except RuntimeError:
+                pass
+
+        QtCore.QTimer.singleShot(0, _center)
+        # Unlike the transient QModel/analyze overlays (one-shot centering
+        # is enough for their short lifetime), this one can sit visible
+        # across window resizes, so it needs to keep re-centering itself.
+        vb.sigResized.connect(_center)
+
+        fade_anim = self._fade_overlay_opacity([dim_rect, proxy], 1.0)
+
+        self._no_run_overlay = {
+            "proxy": proxy,
+            "dim_rect": dim_rect,
+            "center": _center,
+            "theme": _apply_theme,
+            "fade": fade_anim,
+        }
+
+    def _hide_no_run_overlay(self, animate: bool = True) -> None:
+        """Removes the "no run loaded" placeholder card, if shown.
+
+        Safe to call even if the overlay was never shown or was already
+        removed.
+
+        Args:
+            animate: If True (default), fades the card out before removing
+                it from the scene. Callers that are just clearing a stale
+                instance before immediately building a fresh one (the
+                defensive call at the top of `_show_no_run_overlay` itself)
+                pass False, since that isn't a user-visible transition.
+        """
+        overlay = getattr(self, "_no_run_overlay", None)
+        if overlay is None:
+            return
+
+        proxy, dim_rect = overlay["proxy"], overlay["dim_rect"]
+        try:
+            self.graphWidget.getPlotItem().getViewBox().sigResized.disconnect(overlay["center"])
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            ThemeManager.instance().themeChanged.disconnect(overlay["theme"])
+        except (RuntimeError, TypeError):
+            pass
+        prev_fade = overlay.get("fade")
+        if prev_fade is not None:
+            try:
+                prev_fade.stop()
+            except RuntimeError:
+                pass
+
+        def _cleanup() -> None:
+            for item in (proxy, dim_rect):
+                try:
+                    item.setParentItem(None)
+                    scene = item.scene()
+                    if scene is not None:
+                        scene.removeItem(item)
+                except RuntimeError:
+                    pass
+
+        self._no_run_overlay = None
+        if animate:
+            self._fade_overlay_opacity([dim_rect, proxy], 0.0, duration_ms=180, on_finished=_cleanup)
+        else:
+            _cleanup()
+
+    def _show_loading_run_overlay(self) -> None:
+        """Shows a spinning-loader card over the Signal Overview plot while
+        a run is being read/processed (see `analyze_data`, which shows this
+        at the top and hides it once the background `_RunLoadThread`
+        result is unpacked), replacing the static "no run loaded" card so
+        the user sees active progress instead of a "load a run" prompt.
+
+        Same dim-rect + QGraphicsProxyWidget technique as
+        `_show_no_run_overlay`, including the fade-in via
+        `_fade_overlay_opacity`. The status label this builds is also what
+        `_set_model_status_text`/`_clear_model_status_text` update with
+        finer-grained progress (e.g. QModel auto-fit status) during the load.
+        """
+        self._hide_no_run_overlay(animate=True)
+        self._hide_loading_run_overlay(animate=False)
+
+        plot_item = self.graphWidget.getPlotItem()
+        vb = plot_item.getViewBox()
+
+        dim_rect = QtWidgets.QGraphicsRectItem()
+        dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+        dim_rect.setParentItem(plot_item.graphicsItem())
+        dim_rect.setZValue(999)
+        dim_rect.setOpacity(0.0)
+
+        container = QtWidgets.QWidget()
+        container.setFixedWidth(280)
+        container.setAutoFillBackground(False)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        container.setStyleSheet("background: transparent;")
+
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(24, 28, 24, 28)
+        layout.setSpacing(10)
+
+        spinner_label = QtWidgets.QLabel()
+        spinner_label.setFixedSize(32, 32)
+        spinner_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        status_label = QtWidgets.QLabel("Loading run...")
+        status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        status_label.setWordWrap(True)
+
+        spinner_row = QtWidgets.QHBoxLayout()
+        spinner_row.addStretch(1)
+        spinner_row.addWidget(spinner_label)
+        spinner_row.addStretch(1)
+
+        layout.addLayout(spinner_row)
+        layout.addWidget(status_label)
+
+        proxy = QtWidgets.QGraphicsProxyWidget()
+        proxy.setWidget(container)
+        proxy.setParentItem(plot_item.graphicsItem())
+        proxy.setZValue(1000)
+        proxy.setOpacity(0.0)
+
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "refresh-cw.svg")
+        spin_anim = QtCore.QVariantAnimation(self)
+        spin_anim.setStartValue(0.0)
+        spin_anim.setEndValue(360.0)
+        spin_anim.setDuration(900)
+        spin_anim.setLoopCount(-1)
+
+        state = {"pixmap": QtGui.QIcon(icon_path).pixmap(28, 28)}
+
+        def _paint_rotated(value) -> None:
+            angle = float(value) if value is not None else 0.0
+            base = state["pixmap"]
+            canvas = QtGui.QPixmap(base.size())
+            canvas.fill(QtCore.Qt.GlobalColor.transparent)
+            painter = QtGui.QPainter(canvas)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            cx, cy = base.width() / 2.0, base.height() / 2.0
+            painter.translate(cx, cy)
+            painter.rotate(angle)
+            painter.translate(-cx, -cy)
+            painter.drawPixmap(0, 0, base)
+            painter.end()
+            spinner_label.setPixmap(canvas)
+
+        def _apply_theme(_mode: str | None = None) -> None:
+            tok = ThemeManager.instance().tokens()
+            surface = QtGui.QColor(*tok["surface"][:3])
+            surface.setAlpha(235)
+            dim_rect.setBrush(QtGui.QBrush(surface))
+
+            text_color = tok_css(tok["flat_text"])
+            accent = QtGui.QColor(*tok["flat_accent"])
+            status_label.setStyleSheet(f"font-size: 11pt; font-weight: 600; color: {text_color};")
+            state["pixmap"] = PlotContainer._tinted_icon(icon_path, accent, size=28).pixmap(28, 28)
+            _paint_rotated(spin_anim.currentValue())
+
+        spin_anim.valueChanged.connect(_paint_rotated)
+        _apply_theme()
+        ThemeManager.instance().themeChanged.connect(_apply_theme)
+        spin_anim.start()
+
+        def _center() -> None:
+            try:
+                full_rect = plot_item.boundingRect()
+                dim_rect.setRect(full_rect)
+                pw = proxy.boundingRect().width()
+                ph = proxy.boundingRect().height()
+                proxy.setPos(
+                    full_rect.x() + (full_rect.width() - pw) / 2.0,
+                    full_rect.y() + (full_rect.height() - ph) / 2.0,
+                )
+            except RuntimeError:
+                pass
+
+        QtCore.QTimer.singleShot(0, _center)
+        vb.sigResized.connect(_center)
+
+        fade_anim = self._fade_overlay_opacity([dim_rect, proxy], 1.0)
+
+        self._loading_run_overlay = {
+            "proxy": proxy,
+            "dim_rect": dim_rect,
+            "center": _center,
+            "theme": _apply_theme,
+            "spin": spin_anim,
+            "status_label": status_label,
+            "fade": fade_anim,
+        }
+
+    def _hide_loading_run_overlay(self, animate: bool = True) -> None:
+        """Removes the "loading run" spinner card, if shown.
+
+        Safe to call even if the overlay was never shown or was already
+        removed.
+
+        Args:
+            animate: If True (default), fades the card out (spinner keeps
+                turning through the fade) before removing it from the
+                scene. Callers just clearing a stale instance before
+                immediately building a fresh one pass False.
+        """
+        overlay = getattr(self, "_loading_run_overlay", None)
+        if overlay is None:
+            return
+
+        try:
+            self.graphWidget.getPlotItem().getViewBox().sigResized.disconnect(overlay["center"])
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            ThemeManager.instance().themeChanged.disconnect(overlay["theme"])
+        except (RuntimeError, TypeError):
+            pass
+        prev_fade = overlay.get("fade")
+        if prev_fade is not None:
+            try:
+                prev_fade.stop()
+            except RuntimeError:
+                pass
+
+        proxy, dim_rect, spin_anim = overlay["proxy"], overlay["dim_rect"], overlay["spin"]
+
+        def _cleanup() -> None:
+            spin_anim.stop()
+            for item in (proxy, dim_rect):
+                try:
+                    item.setParentItem(None)
+                    scene = item.scene()
+                    if scene is not None:
+                        scene.removeItem(item)
+                except RuntimeError:
+                    pass
+
+        self._loading_run_overlay = None
+        if animate:
+            self._fade_overlay_opacity([dim_rect, proxy], 0.0, duration_ms=180, on_finished=_cleanup)
+        else:
+            _cleanup()
+
+    def _set_loading_run_status(self, msg: str) -> None:
+        """Updates the loading spinner card's status text, if shown.
+
+        Safe to call even if the overlay isn't currently visible (e.g. a
+        model-status signal arriving after the run already finished
+        loading) - it's just a no-op in that case.
+        """
+        overlay = getattr(self, "_loading_run_overlay", None)
+        if overlay is not None:
+            overlay["status_label"].setText(msg)
+
     # def hideSelectTool(self, event):
     #     self.AI_SelectTool_Frame.hide()
 
@@ -1474,10 +2187,6 @@ class UIAnalyze(QtWidgets.QWidget):
         - "Advanced" options are only enabled when `enable_cancel` is True.
         """
         # Determine initial button states
-        enable_load = (
-            bool(self.cBox_Runs.currentText().strip())
-            and self.cBox_Runs.currentText() != "No Runs Found"
-        )
         enable_cancel = enable_info = enable_modify = self.xml_path is not None
         enable_back = self.stateStep >= 0
         enable_next = enable_cancel and self.stateStep < 7
@@ -1485,9 +2194,9 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # If disabled globally (e.g., busy state), disable everything
         if not enable:
-            enable_load = enable_info = enable_cancel = enable_back = (
-                enable_next
-            ) = enable_modify = enable_analyze = False
+            enable_info = enable_cancel = enable_back = enable_next = enable_modify = (
+                enable_analyze
+            ) = False
 
         # Handle tool_Modify state
         if enable_cancel and not enable_analyze:
@@ -1506,7 +2215,6 @@ class UIAnalyze(QtWidgets.QWidget):
             enable_back = enable_next = False
 
         # Apply button states
-        self.tBtn_Load.setEnabled(enable_load)
         self.tBtn_Info.setEnabled(enable_info)
         self.tool_Cancel.setEnabled(enable_cancel)
         self.tool_Back.setEnabled(enable_back)
@@ -1859,6 +2567,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.stateStep = -1
         self.poi_markers = []
         self.xml_path = None  # used to indicate whether a run is loaded
+        self._show_no_run_overlay()
         self.unsaved_changes = False
         self.parent.signed_at = "[NEVER]"
         self.parent.signature_required = True  # secure assumption, set on load
@@ -2443,12 +3152,9 @@ class UIAnalyze(QtWidgets.QWidget):
             # "No Runs Found" placeholder is _refresh_cbox_runs's job; this
             # only needs to detect the transient/settled empty state and
             # bail without touching the combo itself.
-            self.tBtn_Load.setEnabled(False)
             return
         if self.text_Created.text().endswith(run):
             self.enable_buttons()  # enable ALL buttons
-        else:
-            self.tBtn_Load.setEnabled(True)  # enable Load
         self.cBox_Runs.setEnabled(True)
         run = run[0 : run.rfind("(") - 1]
         dev = self.run_devices.get(run)
@@ -3359,23 +4065,14 @@ class UIAnalyze(QtWidgets.QWidget):
         self.askForPOIs = True
         self.btn_Next.setText("Next")
 
-        # Build and position Loading Annotations
-        self._text1 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
-        self._text1.setHtml("<span style='font-size: 14pt'>Loading data for analysis... </span>")
-        self._text1.setPos(0.5, 0.50)
-
-        self._text2 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
-        self._text2.setHtml("<span style='font-size: 10pt'>(may take a few seconds) </span>")
-        self._text2.setPos(0.5, 0.40)
-
-        self._text3 = pg.TextItem("", color=(51, 51, 51), anchor=(0.5, 0.5))
-        # self._text3.setHtml("<span style='font-size: 10pt'>Please be more patient with longer runs. </span>")
-        self._text3.setHtml("")
-        self._text3.setPos(0.5, 0.25)
-
-        # Clear plotting canvases and apply Loading text
-        primary_ax = self.graphWidget
-        plot_elements = [primary_ax, self.graphWidget1, self.graphWidget2, self.graphWidget3]
+        # Clear plotting canvases and show the spinning "loading" overlay
+        # over the Signal Overview plot (see _show_loading_run_overlay) -
+        # analyze_data() also shows/hides this so every load path (manual
+        # click here, or a batch auto-advance that calls action_load_run
+        # directly) gets it, but showing it here too means the spinner
+        # appears immediately rather than after the queued
+        # action_load_run -> analyze_data hop.
+        plot_elements = [self.graphWidget, self.graphWidget1, self.graphWidget2, self.graphWidget3]
 
         for plot_item in plot_elements:
             if plot_item is not None:
@@ -3384,11 +4081,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 plot_item.setXRange(min=0, max=1)
                 plot_item.setYRange(min=0, max=1)
 
-                # Inject text onto the main plotting axis
-                if plot_item is primary_ax:
-                    plot_item.addItem(self._text1, ignoreBounds=True)
-                    plot_item.addItem(self._text2, ignoreBounds=True)
-                    plot_item.addItem(self._text3, ignoreBounds=True)
+        self._show_loading_run_overlay()
 
         # Reset Progress Bar and decouple previous signals
         try:
@@ -5148,6 +5841,11 @@ class UIAnalyze(QtWidgets.QWidget):
             waits, instead of freezing outright.
         """
         self._init_analysis_state(data_path)
+        # Every load path (manual Load click, batch auto-advance calling
+        # action_load_run directly, etc.) funnels through here, so this is
+        # the one place that reliably shows the spinner regardless of how
+        # the load was triggered - see _show_loading_run_overlay.
+        self._show_loading_run_overlay()
 
         # Qt widgets may only be read from the thread that owns them, so
         # capture the toggle state the background pipeline needs before
@@ -5185,6 +5883,11 @@ class UIAnalyze(QtWidgets.QWidget):
             curves, relative_time, resonance_frequency, dissipation, savgol_filter
         )
         self._wait_for_progress_bar()
+        # Hidden unconditionally here (not left solely to
+        # _render_analysis_plots's own call) since the "short" branch right
+        # below bypasses that method entirely - leaving the spinner stuck
+        # up otherwise.
+        self._hide_loading_run_overlay()
 
         if outcome == "short":
             # Run was under 3 seconds: matches the original early-return -
@@ -5302,10 +6005,9 @@ class UIAnalyze(QtWidgets.QWidget):
 
         Connected to `_model_status_changed`, which the (possibly
         background-thread) model-prediction methods emit instead of
-        touching `self._text1`/`self.graphWidget` directly.
+        touching the loading overlay/`self.graphWidget` directly.
         """
-        self._text1.setHtml(f"<span style='font-size: 14pt'>{msg}</span>")
-        self.graphWidget.addItem(self._text2, ignoreBounds=True)
+        self._set_loading_run_status(msg)
 
     def _clear_model_status_text(self) -> None:
         """Main-thread slot: swaps the overlay to the "Showing data..." message.
@@ -5313,8 +6015,7 @@ class UIAnalyze(QtWidgets.QWidget):
         Connected to `_model_status_cleared`, emitted once the model
         auto-fitting phase of the run-load pipeline has finished.
         """
-        self.graphWidget.removeItem(self._text2)
-        self._text1.setHtml("<span style='font-size: 14pt'>Showing data for analysis... </span>")
+        self._set_loading_run_status("Showing data for analysis...")
 
     def _init_analysis_state(self, data_path):
         """Reset per-run analysis state and configure navigation buttons."""
@@ -6324,6 +7025,8 @@ class UIAnalyze(QtWidgets.QWidget):
             start_stop: A tuple of (start_index, stop_index) defining the active
                 analysis window.
         """
+        self._hide_no_run_overlay()
+        self._hide_loading_run_overlay()
         self._setup_graph_axes(curves)
         self._plot_signal_curves(curves)
         self._add_poi_markers(curves["xs"], poi_vals, start_stop)
@@ -6365,17 +7068,22 @@ class UIAnalyze(QtWidgets.QWidget):
         self._update_progress_value(1, "Step 1 of 6: Select Begin and End Points")
         self.setDotStepMarkers(1)
 
+        # No in-plot title text on the detail graphs - each one's card
+        # header already shows a colored-dot chip with the same name
+        # (see DetailPlotCard in analyze_plot_cards.py), so a second label
+        # drawn on the plot itself would just be duplicate text.
         ax.setTitle(None)
-        ax1.setTitle("Resonance", color=SIGNAL_COLORS["resonance"])
-        ax2.setTitle("Difference", color=SIGNAL_COLORS["difference"])
-        ax3.setTitle("Dissipation", color=SIGNAL_COLORS["dissipation"])
+        ax1.setTitle(None)
+        ax2.setTitle(None)
+        ax3.setTitle(None)
 
-        axis_label_color = tok_css(ThemeManager.instance().tokens()["plot_text_normal"])
-        style = {"color": axis_label_color, "font-size": "12px"}
+        # No inline color/font-size style here - PlotsUI's own plot labels
+        # don't set one either, letting apply_glass_plot_style's textPen
+        # (see _apply_pg_theme) govern tick + label color uniformly.
         ax.showAxis("left")
-        ax.setLabel("left", "Frequency (Hz)", **style)
+        ax.setLabel("left", "Frequency (Hz)")
         ax.showAxis("bottom")
-        ax.setLabel("bottom", "Time (secs)", **style)
+        ax.setLabel("bottom", "Time (secs)")
 
         # pg's native corner autoscale button is redundant now that the
         # overview card header has explicit Zoom/Move-point controls.
@@ -6384,10 +7092,15 @@ class UIAnalyze(QtWidgets.QWidget):
         ax2.hideButtons()
         ax3.hideButtons()
 
-        ax.showGrid(x=True, y=True)
-        ax1.showGrid(x=True, y=True)
-        ax2.showGrid(x=True, y=True)
-        ax3.showGrid(x=True, y=True)
+        # Native pg grid stays off everywhere; gridlines are drawn by the
+        # ThemedGridItem overlay instead (see _apply_grid_item), toggled by
+        # each card's gear menu and left as-is here - it's added directly to
+        # the ViewBox rather than through the PlotItem, so it already
+        # survives the ax.clear() calls above and needs no re-creation.
+        ax.showGrid(x=False, y=False)
+        ax1.showGrid(x=False, y=False)
+        ax2.showGrid(x=False, y=False)
+        ax3.showGrid(x=False, y=False)
 
         ax.setXRange(0, xs[-1], padding=0.05)
         ax.setYRange(0, max(np.amax(ys_freq), np.amax(ys), np.amax(ys_diff)), padding=0.05)
@@ -6424,15 +7137,17 @@ class UIAnalyze(QtWidgets.QWidget):
 
         mask = np.arange(0, len(xs), 1)
         noPen = pg.mkPen(color=(255, 255, 255), width=0, style=QtCore.Qt.DotLine)
+        # Sourced from self._series_colors (defaults to SIGNAL_COLORS) rather
+        # than the SIGNAL_COLORS constant directly, so a color picked via a
+        # plot card's gear menu survives the next run load / re-plot.
+        res_color = self._series_colors["resonance"]
+        diff_color = self._series_colors["difference"]
+        diss_color = self._series_colors["dissipation"]
 
         # Main graph - fit lines
-        self.fit1 = ax.plot(
-            xs[mask], ys_freq_fit[mask], pen=SIGNAL_COLORS["resonance"], name="Resonance"
-        )
-        self.fit2 = ax.plot(
-            xs[mask], ys_diff_fit[mask], pen=SIGNAL_COLORS["difference"], name="Difference"
-        )
-        self.fit3 = ax.plot(xs[mask], ys_fit[mask], pen=SIGNAL_COLORS["dissipation"], name="Dissipation")
+        self.fit1 = ax.plot(xs[mask], ys_freq_fit[mask], pen=res_color, name="Resonance")
+        self.fit2 = ax.plot(xs[mask], ys_diff_fit[mask], pen=diff_color, name="Difference")
+        self.fit3 = ax.plot(xs[mask], ys_fit[mask], pen=diss_color, name="Dissipation")
 
         # Main graph - scatter dots (nearly transparent)
         self.scat1 = ax.plot(
@@ -6441,7 +7156,7 @@ class UIAnalyze(QtWidgets.QWidget):
             pen=noPen,
             symbol="o",
             symbolSize=5,
-            symbolBrush=SIGNAL_COLORS["resonance"],
+            symbolBrush=res_color,
         )
         self.scat2 = ax.plot(
             xs[mask],
@@ -6449,7 +7164,7 @@ class UIAnalyze(QtWidgets.QWidget):
             pen=noPen,
             symbol="o",
             symbolSize=5,
-            symbolBrush=SIGNAL_COLORS["difference"],
+            symbolBrush=diff_color,
         )
         self.scat3 = ax.plot(
             xs[mask],
@@ -6457,22 +7172,16 @@ class UIAnalyze(QtWidgets.QWidget):
             pen=noPen,
             symbol="o",
             symbolSize=5,
-            symbolBrush=SIGNAL_COLORS["dissipation"],
+            symbolBrush=diss_color,
         )
         self.scat1.setAlpha(0.01, False)
         self.scat2.setAlpha(0.01, False)
         self.scat3.setAlpha(0.01, False)
 
         # Sub-graphs - fit lines
-        self.fit_1 = ax1.plot(
-            xs[mask], ys_freq_fit[mask], pen=SIGNAL_COLORS["resonance"], name="Resonance"
-        )
-        self.fit_2 = ax2.plot(
-            xs[mask], ys_diff_fit[mask], pen=SIGNAL_COLORS["difference"], name="Difference"
-        )
-        self.fit_3 = ax3.plot(
-            xs[mask], ys_fit[mask], pen=SIGNAL_COLORS["dissipation"], name="Dissipation"
-        )
+        self.fit_1 = ax1.plot(xs[mask], ys_freq_fit[mask], pen=res_color, name="Resonance")
+        self.fit_2 = ax2.plot(xs[mask], ys_diff_fit[mask], pen=diff_color, name="Difference")
+        self.fit_3 = ax3.plot(xs[mask], ys_fit[mask], pen=diss_color, name="Dissipation")
 
         # Sub-graphs - scatter dots
         self.scat_1 = ax1.plot(
@@ -6481,7 +7190,7 @@ class UIAnalyze(QtWidgets.QWidget):
             pen=noPen,
             symbol="o",
             symbolSize=5,
-            symbolBrush=SIGNAL_COLORS["resonance"],
+            symbolBrush=res_color,
         )
         self.scat_2 = ax2.plot(
             xs[mask],
@@ -6489,7 +7198,7 @@ class UIAnalyze(QtWidgets.QWidget):
             pen=noPen,
             symbol="o",
             symbolSize=5,
-            symbolBrush=SIGNAL_COLORS["difference"],
+            symbolBrush=diff_color,
         )
         self.scat_3 = ax3.plot(
             xs[mask],
@@ -6497,7 +7206,7 @@ class UIAnalyze(QtWidgets.QWidget):
             pen=noPen,
             symbol="o",
             symbolSize=5,
-            symbolBrush=SIGNAL_COLORS["dissipation"],
+            symbolBrush=diss_color,
         )
 
         # Star markers (current-POI highlights)
@@ -6518,6 +7227,17 @@ class UIAnalyze(QtWidgets.QWidget):
         ax1.addItem(self.gstars1)
         ax2.addItem(self.gstars2)
         ax3.addItem(self.gstars3)
+
+        # Re-apply any per-series visibility the user set via a gear menu
+        # before this run was (re)loaded - _plot_signal_curves() rebuilds
+        # every curve/marker item from scratch, so the previous items'
+        # visibility state doesn't carry over on its own.
+        for series_key, attrs in self._SERIES_CURVE_ATTRS.items():
+            visible = self._series_visible.get(series_key, True)
+            if visible:
+                continue
+            for attr in attrs + self._SERIES_STAR_ATTRS.get(series_key, ()):
+                getattr(self, attr).setVisible(False)
 
     def _add_poi_markers(self, xs: np.ndarray, poi_vals: List[int], start_stop: List[int]) -> None:
         """Places movable InfiniteLine POI markers on the main graph.

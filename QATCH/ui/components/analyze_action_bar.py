@@ -47,7 +47,7 @@ def _tool_button(
 
 
 class AnalyzeActionBar(QtWidgets.QWidget):
-    """Run selector + Load/Auto-Fit/Run Info + Back/Next/Modify/Analyze +
+    """Run selector + Auto-Fit/Run Info + Back/Next/Modify/Analyze +
     Advanced/User, as one themed card.
 
     Public attributes (all plain Qt widgets - the caller wires their
@@ -56,7 +56,7 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         sort_by, sort_by_name, sort_by_date, sort_by_new, sort_by_widget:
             the Name/Date/New sort links.
         runGrid: the QGridLayout the above are arranged in.
-        tBtn_Load, tBtn_Predict, tBtn_Info: Load/Auto-Fit/Run Info buttons.
+        tBtn_Predict, tBtn_Info: Auto-Fit/Run Info buttons.
         tool_Cancel, tool_Back, tool_Next, tool_Modify, tool_Analyze,
         tool_Advanced, tool_User: the navigation/settings buttons.
     """
@@ -118,23 +118,17 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         self.runGrid.addWidget(self.text_Created, 3, 2)
 
     def _build_load_group(self) -> None:
-        self.tBtn_Load = _tool_button("Load", "load-circle.svg")
-        # Keep the dropdown arrow visible but remove its hover effect. The
-        # menu itself is attached by the caller (it needs
-        # UIAnalyze.load_all_from_folder, which doesn't exist here).
-        self.tBtn_Load.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
-        self.tBtn_Load.setStyleSheet("""
-            QToolButton::menu-indicator { background: transparent; border: none; }
-            QToolButton::menu-indicator:hover { background: transparent; border: none; }
-            """)
+        # The Load button was removed - loading now happens by picking a run
+        # from cBox_Runs above (auto-loads on selection) or, when no run is
+        # loaded yet, via the Signal Overview plot's own placeholder card
+        # (see UIAnalyze._show_no_run_overlay), which owns "Load from
+        # folder..." instead.
         self.tBtn_Predict = _tool_button("Auto-Fit", "stars.svg")
         self.tBtn_Info = _tool_button("Run Info", "info-circle.svg")
 
         self.load_bar = QtWidgets.QToolBar()
         self.load_bar.setObjectName("CtrlToolBar")
         self.load_bar.setIconSize(QtCore.QSize(50, 30))
-        self.load_bar.addWidget(self.tBtn_Load)
-        self.load_bar.addSeparator()
         self.load_bar.addWidget(self.tBtn_Predict)
         self.load_bar.addWidget(self.tBtn_Info)
 

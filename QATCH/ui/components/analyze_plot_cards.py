@@ -45,6 +45,10 @@ class _ColorDot(QtWidgets.QWidget):
         painter.drawEllipse(self.rect())
         painter.end()
 
+    def set_color(self, color: QtGui.QColor) -> None:
+        self._color = QtGui.QColor(color)
+        self.update()
+
 
 class LegendChip(QtWidgets.QWidget):
     """A small colored dot + label, e.g. "● Resonance"."""
@@ -64,6 +68,10 @@ class LegendChip(QtWidgets.QWidget):
         self._label = QtWidgets.QLabel(text)
         self._label.setObjectName("PlotGlassTitle")
         layout.addWidget(self._label, 0, QtCore.Qt.AlignVCenter)
+
+    def set_color(self, color: QtGui.QColor) -> None:
+        self._color = QtGui.QColor(color)
+        self._dot.set_color(self._color)
 
 
 class _DualArrowControl(QtWidgets.QWidget):
@@ -125,7 +133,17 @@ class SignalOverviewCard(PlotContainer):
     """
 
     def __init__(self, plot_widget: QtWidgets.QWidget, parent=None) -> None:
-        super().__init__(plot_widget, title="Signal Overview", show_menu=False, parent=parent)
+        super().__init__(
+            plot_widget,
+            title="Signal Overview",
+            show_menu=True,
+            sections=[
+                ("resonance", "Resonance", SIGNAL_COLORS["resonance"]),
+                ("difference", "Difference", SIGNAL_COLORS["difference"]),
+                ("dissipation", "Dissipation", SIGNAL_COLORS["dissipation"]),
+            ],
+            parent=parent,
+        )
         self._add_legend_and_controls()
         self._refresh_control_icons()
 
@@ -134,6 +152,7 @@ class SignalOverviewCard(PlotContainer):
         title_label = header_layout.itemAt(0).widget()
         header_layout.setStretchFactor(title_label, 0)
 
+        self._legend_chips: dict[str, LegendChip] = {}
         header_layout.addSpacing(12)
         for key, label in (
             ("resonance", "Resonance"),
@@ -141,6 +160,7 @@ class SignalOverviewCard(PlotContainer):
             ("dissipation", "Dissipation"),
         ):
             chip = LegendChip(label, SIGNAL_COLORS[key])
+            self._legend_chips[key] = chip
             header_layout.addWidget(chip)
             header_layout.addSpacing(10)
 
@@ -160,6 +180,27 @@ class SignalOverviewCard(PlotContainer):
         header_layout.addWidget(self.zoom_control)
         header_layout.addSpacing(6)
         header_layout.addWidget(self.move_control)
+
+        # PlotContainer._create_header() (show_menu=True) already placed
+        # btn_fs/gear right after the title, before any of the legend/zoom/
+        # move content just added above - re-append them so fullscreen+gear
+        # end up rightmost, matching PlotContainer's own header order.
+        for ctrl in (getattr(self, "btn_fs", None), getattr(self, "_menu_btn", None)):
+            if ctrl is not None:
+                header_layout.removeWidget(ctrl)
+                header_layout.addWidget(ctrl)
+
+    def set_section_color(self, key: str, color: QtGui.QColor) -> None:
+        """Recolors this card's legend chip dot for `key`, if it has one.
+
+        Called for every plot card whenever any card's gear menu changes a
+        series color, so the Signal Overview legend and the matching detail
+        card's title dot (see DetailPlotCard.set_section_color) stay in sync
+        regardless of which card's menu was actually used.
+        """
+        chip = self._legend_chips.get(key)
+        if chip is not None:
+            chip.set_color(color)
 
     def _refresh_control_icons(self, _mode: str | None = None) -> None:
         if not hasattr(self, "zoom_control"):
@@ -183,7 +224,15 @@ class DetailPlotCard(PlotContainer):
     """
 
     def __init__(self, plot_widget: QtWidgets.QWidget, label: str, color_key: str, parent=None) -> None:
-        super().__init__(plot_widget, title=label, show_menu=False, parent=parent)
+        super().__init__(
+            plot_widget,
+            title=label,
+            show_menu=True,
+            sections=[(color_key, label, SIGNAL_COLORS[color_key])],
+            parent=parent,
+        )
+        self._color_key = color_key
+        self._title_chip: LegendChip | None = None
         self._replace_title_with_chip(label, SIGNAL_COLORS[color_key])
 
     def _replace_title_with_chip(self, label: str, color: QtGui.QColor) -> None:
@@ -192,4 +241,13 @@ class DetailPlotCard(PlotContainer):
         header_layout.removeWidget(old_label)
         old_label.deleteLater()
         chip = LegendChip(label, color)
+        self._title_chip = chip
         header_layout.insertWidget(0, chip, 1)
+
+    def set_section_color(self, key: str, color: QtGui.QColor) -> None:
+        """Recolors this card's title chip dot if `key` matches its own
+        series - see SignalOverviewCard.set_section_color for why every
+        card gets called regardless of which one's menu changed the color.
+        """
+        if key == self._color_key and self._title_chip is not None:
+            self._title_chip.set_color(color)
