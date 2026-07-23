@@ -196,12 +196,14 @@ byte NvMem::update(void)
     mem.POGO_PosClosed2 = DEFAULT.POGO_PosClosed2;
     mem.POGO_MoveDelay = DEFAULT.POGO_MoveDelay;
 
-    mem.POGO_PosCurrent1 = DEFAULT.POGO_PosCurrent1;
+    // Assume the midpoint of OPENED and CLOSED positions is a good start
+    mem.POGO_PosCurrent1 = (mem.POGO_PosOpened1 / 2) + (mem.POGO_PosClosed1 / 2);
     modified_entries++;
   }
   if (mem.POGO_PosCurrent2 == 0xFF && DEFAULT.POGO_PosCurrent2 != 0xFF)
   {
-    mem.POGO_PosCurrent2 = DEFAULT.POGO_PosCurrent2;
+    // Assume the midpoint of OPENED and CLOSED positions is a good start
+    mem.POGO_PosCurrent2 = (mem.POGO_PosOpened2 / 2) + (mem.POGO_PosClosed2 / 2);
     modified_entries++;
   }
   // if (mem.NewValue == 0xFF && DEFAULT.NewValue != 0xFF)

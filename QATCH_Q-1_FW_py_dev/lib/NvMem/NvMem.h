@@ -44,8 +44,8 @@
 #define DEFAULT_POS_OPENED_2 0
 #define DEFAULT_POS_CLOSED_2 0
 #define DEFAULT_MOVE_DELAY 45
-#define DEFAULT_POS_CURRENT_1 0
-#define DEFAULT_POS_CURRENT_2 0
+#define DEFAULT_POS_CURRENT_1 15  // better default calculated on update to NVMEM_VERSION 4
+#define DEFAULT_POS_CURRENT_2 15  // better default calculated on update to NVMEM_VERSION 4
 
 // Compile-time guards to preserve 0xFF sentinel semantics
 #if (DEFAULT_POS_OPENED_1 == 0xFF) || (DEFAULT_POS_CLOSED_1 == 0xFF) \
