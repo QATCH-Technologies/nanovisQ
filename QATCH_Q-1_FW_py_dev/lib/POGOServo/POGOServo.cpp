@@ -30,10 +30,10 @@ uint8_t POGOServo::attach(int pin, int minPulseUs, int maxPulseUs) {
     // Configure high-precision hardware PWM
     analogWriteFrequency(_pin, 50);    // 50Hz standard servo refresh rate
     
+    _attached = true;
+
     // Initialize at last known position
     write(_currentAngle); 
-
-    _attached = true;    
 
     return 1;
 }
