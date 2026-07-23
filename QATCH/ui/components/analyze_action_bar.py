@@ -52,10 +52,9 @@ class AnalyzeActionBar(QtWidgets.QWidget):
 
     Public attributes (all plain Qt widgets - the caller wires their
     signals and owns their behavior):
-        text_Runs, text_Created, cBox_Runs: the run selector.
-        sort_by, sort_by_name, sort_by_date, sort_by_new, sort_by_widget:
-            the Name/Date/New sort links.
-        runGrid: the QGridLayout the above are arranged in.
+        active_run_header, cBox_Runs: the run selector.
+        text_Created: hidden internal-state label, not shown in the bar -
+            see `_build_run_selector`.
         tBtn_Predict, tBtn_Info: Auto-Fit/Run Info buttons.
         tool_Cancel, tool_Back, tool_Next, tool_Modify, tool_Analyze,
         tool_Advanced, tool_User: the navigation/settings buttons.
@@ -76,46 +75,24 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         ThemeManager.instance().themeChanged.connect(self.update)
 
     def _build_run_selector(self) -> None:
-        self.text_Runs = QtWidgets.QLabel("Run:")
-        self.text_Runs.setFixedWidth(50)
-        self.text_Runs.setStyleSheet("padding-left: 10px;")
-        self.text_Created = QtWidgets.QLabel("[NONE]")
-        self.text_Created.setFixedHeight(14)
-        self.text_Created.setStyleSheet("padding-left: 1px;")
+        self.active_run_header = SectionHeader("Active Run")
         self.cBox_Runs = AnimatedComboBox(
             icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg")
         )
         self.cBox_Runs.setFixedHeight(20)
 
-        self.sort_by = QtWidgets.QLabel("Sort by:")
-        self.sort_by.setStyleSheet("padding-left: 1px;")
-        self.sort_by_name = QtWidgets.QLabel("Name")
-        self.sort_by_name.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.sort_by_date = QtWidgets.QLabel("Date")
-        self.sort_by_date.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.sort_by_new = QtWidgets.QLabel("New")
-        self.sort_by_new.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.run_row = QtWidgets.QHBoxLayout()
+        self.run_row.setContentsMargins(0, 0, 0, 0)
+        self.run_row.setSpacing(8)
+        self.run_row.addWidget(self.active_run_header)
+        self.run_row.addWidget(self.cBox_Runs)
 
-        sort_by_layout = QtWidgets.QHBoxLayout()
-        sort_by_layout.setContentsMargins(0, 0, 0, 0)
-        sort_by_layout.addWidget(self.sort_by)
-        sort_by_layout.addWidget(self.sort_by_name)
-        sort_by_layout.addWidget(self.sort_by_date)
-        sort_by_layout.addWidget(self.sort_by_new)
-        sort_by_layout.addStretch()
-        self.sort_by_widget = QtWidgets.QWidget()
-        self.sort_by_widget.setLayout(sort_by_layout)
-        self.sort_by_widget.setFixedHeight(14)
-
-        self.active_run_header = SectionHeader("Active Run")
-
-        self.runGrid = QtWidgets.QGridLayout()
-        self.runGrid.setContentsMargins(0, 0, 0, 0)
-        self.runGrid.addWidget(self.active_run_header, 0, 1, 1, 2)
-        self.runGrid.addWidget(self.sort_by_widget, 1, 2)
-        self.runGrid.addWidget(self.text_Runs, 2, 1)
-        self.runGrid.addWidget(self.cBox_Runs, 2, 2)
-        self.runGrid.addWidget(self.text_Created, 3, 2)
+        # UIAnalyze/MainWindow track the current run's identity via this
+        # label's text (see e.g. MainWindow.set_captured_data and
+        # UIAnalyze._current_run) instead of a plain attribute, so it has to
+        # keep existing even though the task bar no longer displays it.
+        self.text_Created = QtWidgets.QLabel("[NONE]", self)
+        self.text_Created.hide()
 
     def _build_load_group(self) -> None:
         # The Load button was removed - loading now happens by picking a run
@@ -141,7 +118,9 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         self.tool_Modify = _tool_button("Modify", "modify.svg", checkable=True)
         self.tool_Analyze = _tool_button("Analyze", "play-circle.svg")
         self.tool_Advanced = _tool_button("Advanced", "gear.svg")
-        self.tool_User = _tool_button("Anonymous", "user-circle.svg")
+        self.tool_User = _tool_button("Anonymous", "user-circle.svg", checkable=True)
+        # Starts disabled; UIAnalyze.setup_ui/check_user_info refresh this to
+        # the real signed-in state (mirrors UIControls.refresh_user_button_state).
         self.tool_User.setEnabled(False)
 
         self.nav_bar = QtWidgets.QToolBar()
@@ -161,9 +140,12 @@ class AnalyzeActionBar(QtWidgets.QWidget):
 
     def _assemble(self) -> None:
         layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
+        # Same margins as ControlsUI's own toolbar row (see
+        # UIControls.setup_ui's `self.toolBar.setContentsMargins(8, 4, 8, 4)`)
+        # so the two task bars render at the same height/placement.
+        layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(8)
-        layout.addLayout(self.runGrid)
+        layout.addLayout(self.run_row)
         layout.addWidget(self.load_bar)
         layout.addStretch(1)
         layout.addWidget(self.nav_bar)

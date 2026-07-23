@@ -30,7 +30,6 @@ import pyzipper
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
-from rlottie_python import LottieAnimation
 from scipy.signal import argrelextrema, savgol_filter
 
 from QATCH.common.architecture import Architecture
@@ -62,6 +61,8 @@ from QATCH.ui.dialogs.signature_dialog import (
     persist_auto_sign_key,
 )
 from QATCH.ui.styles.theme_manager import ThemeManager, desc_label_qss, tok_css
+from QATCH.ui.widgets.account_popup import AccountPopup
+from QATCH.ui.widgets.controls_widget import ControlsWidget
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 from QATCH.ui.widgets.saved_state_dot import SavedStateDot
 from QATCH.ui.widgets.table_view_widget import TableView
@@ -101,12 +102,33 @@ def _new_glass_plot_widget() -> pg.PlotWidget:
     QATCH.ui.main_window._configure_plot), so Analyze's four plot cards
     read as the same family rather than plain default pyqtgraph axes.
     """
-    return pg.PlotWidget(
+    w = pg.PlotWidget(
         axisItems={
             "bottom": GlassAxisItem(orientation="bottom"),
             "left": GlassAxisItem(orientation="left"),
         }
     )
+
+    # Same transparency setup as PlotsUI's own plot widgets (see
+    # ui_plots._make_plot_widget). setBackground(None) (see _apply_pg_theme)
+    # plus these widget attributes still aren't enough on their own -
+    # QAbstractScrollArea/GraphicsView's viewport keeps auto-filling an
+    # opaque widget-level background underneath the scene regardless, which
+    # rendered as a flat white/grey patch instead of letting PlotContainer's
+    # own card paint show through. The objectName + matching
+    # "#analyzeGlassPlot { background: transparent; }" rule in
+    # app_theme.qss is the piece that actually fixes it: once any
+    # stylesheet applies to a QAbstractScrollArea subclass, Qt propagates
+    # its background to the viewport too (the same mechanism PlotsUI's own
+    # "#plt, #pltB, #plt_temp" rule relies on).
+    w.setObjectName("analyzeGlassPlot")
+    w.setAutoFillBackground(False)
+    w.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+    w.setFrameShape(QtWidgets.QFrame.NoFrame)
+    w.setFrameShadow(QtWidgets.QFrame.Plain)
+    w.setLineWidth(0)
+
+    return w
 
 
 ###############################################################################
@@ -210,16 +232,20 @@ class UIAnalyze(QtWidgets.QWidget):
         )
 
         self.layout = QtWidgets.QVBoxLayout(self)
+        # Flush against the window edges, same as UIControls' toolLayout
+        # (`self.toolLayout.setContentsMargins(0, 0, 0, 0)`) and PlotsUI's
+        # root_layout (`(0, 8, 0, 0)`) - otherwise this QVBoxLayout's default
+        # margins push the action bar down/inward and wrap the plot area in
+        # an unwanted border of empty space that Controls/Plots don't have.
+        self.layout.setContentsMargins(0, 0, 0, 0)
 
         # Fixes #30
         self.text_Devices = QtWidgets.QLabel("Show Only:")
         self.cBox_Devices = QtWidgets.QComboBox()
-        self.text_Runs = QtWidgets.QLabel("Run:")
 
         self.btn_Load = QtWidgets.QPushButton("Load")
         self.btn_Back = QtWidgets.QPushButton("Back")
         self.btn_Next = QtWidgets.QPushButton("Next")
-        self.text_Loaded = QtWidgets.QLabel("Loaded:")
         self.text_Created = QtWidgets.QLabel("[NONE]")
         self.btn_Info = QtWidgets.QPushButton("Run Info")
         self.cBox_Runs = AnimatedComboBox(
@@ -248,15 +274,8 @@ class UIAnalyze(QtWidgets.QWidget):
         # only builds/lays out the widgets - every callback below is wired
         # here since those methods live on UIAnalyze, not the bar itself.
         self.actionbar = AnalyzeActionBar()
-        self.text_Runs = self.actionbar.text_Runs
         self.text_Created = self.actionbar.text_Created
         self.cBox_Runs = self.actionbar.cBox_Runs
-        self.sort_by = self.actionbar.sort_by
-        self.sort_by_name = self.actionbar.sort_by_name
-        self.sort_by_date = self.actionbar.sort_by_date
-        self.sort_by_new = self.actionbar.sort_by_new
-        self.sort_by_widget = self.actionbar.sort_by_widget
-        self.runGrid = self.actionbar.runGrid
         self.tBtn_Predict = self.actionbar.tBtn_Predict
         self.tBtn_Info = self.actionbar.tBtn_Info
         self.tool_Cancel = self.actionbar.tool_Cancel
@@ -266,10 +285,6 @@ class UIAnalyze(QtWidgets.QWidget):
         self.tool_Analyze = self.actionbar.tool_Analyze
         self.tool_Advanced = self.actionbar.tool_Advanced
         self.tool_User = self.actionbar.tool_User
-
-        self.sort_by_name.mousePressEvent = self.action_sort_by_name
-        self.sort_by_date.mousePressEvent = self.action_sort_by_date
-        self.sort_by_new.mousePressEvent = self.action_sort_by_new
 
         self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
         self.tBtn_Info.clicked.connect(self.getRunInfo)
@@ -284,7 +299,11 @@ class UIAnalyze(QtWidgets.QWidget):
             self.action_analyze
         )  # TODO: skip ahead to analyze (if pois are all set)
         self.tool_Advanced.clicked.connect(self.action_advanced)
-        # self.tool_User.clicked.connect(self.action_user)
+        self.tool_User.clicked.connect(self._toggle_account_popup)
+        self.tool_User.toggled.connect(
+            lambda _: self.parent.controls_window.ui._refresh_checkable_style(self.tool_User)
+        )
+        self._refresh_account_button_state()
 
         self.toolLayout = QtWidgets.QVBoxLayout()
         self.toolLayout.addWidget(self.actionbar)
@@ -430,11 +449,12 @@ class UIAnalyze(QtWidgets.QWidget):
         self.advancedwidget.setWindowTitle("Advanced Settings")
 
         # Create dot buttons to skip directly to a particular step
-        widget_h4 = QtWidgets.QWidget()
-        layout_v4 = QtWidgets.QVBoxLayout()
         layout_h4 = QtWidgets.QHBoxLayout()
-        layout_v4.setContentsMargins(0, 0, 0, 0)
-        layout_h4.setContentsMargins(0, 0, 0, 0)
+        # Same margins as AnalyzeActionBar's own card (see
+        # AnalyzeActionBar._assemble/UIControls.setup_ui's toolBar) so the
+        # workflow tile reads as the same compact card family instead of
+        # the stepper floating with no padding/boundary of its own.
+        layout_h4.setContentsMargins(12, 6, 12, 6)
 
         # Leading "Loaded & saved" status indicator (was dot1) - a persistent
         # status, not a step cursor, so it lives outside the numbered Stepper.
@@ -507,9 +527,15 @@ class UIAnalyze(QtWidgets.QWidget):
         layout_h4.addWidget(self.saved_state_widget)
         layout_h4.addSpacing(12)
         layout_h4.addWidget(self.stepper, 1)
-        widget_dots = QtWidgets.QWidget()
-        widget_dots.setLayout(layout_h4)
-        layout_v4.addWidget(widget_dots)
+        # Its own tile (same ControlsWidget card class ControlsUI's toolbar
+        # uses - see UIControls.setup_ui's self.toolBarWidget) rather than a
+        # plain, unbounded QWidget floating directly above the overview
+        # plot with no card/edges of its own. Added directly to self.layout
+        # below (not into graph_split) so it sizes to its own compact
+        # content instead of sharing the splitter's 50/50 height split with
+        # the much taller overview plot.
+        self.workflow_bar = ControlsWidget()
+        self.workflow_bar.setLayout(layout_h4)
 
         # self.QModel_widget = QtWidgets.QWidget(self)
         # self.QModel_widget.setWindowFlags(
@@ -528,13 +554,6 @@ class UIAnalyze(QtWidgets.QWidget):
         # # floating_widget.move(100, 100)  # Position relative to main window
         # # floating_widget.show()
         # # layout_v4.addWidget(floating_widget)
-
-        layout_v4.addWidget(self.graphStack)
-        # No background/objectName styling here - the overview plot's own
-        # themed card (SignalOverviewCard, added to graphStack below)
-        # supplies the visible card surface now; widget_h4 is just a plain
-        # grouping container for the stepper row + graphStack.
-        widget_h4.setLayout(layout_v4)
 
         self.graphWidget1 = _new_glass_plot_widget()
         self.graphWidget2 = _new_glass_plot_widget()
@@ -557,7 +576,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.lowerGraphs.setSizes([1, 1, 1])
 
         self.graph_split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        self.graph_split.addWidget(widget_h4)
+        self.graph_split.addWidget(self.graphStack)
         self.graph_split.addWidget(self.lowerGraphs)
         self.graph_split.setSizes([1, 1])
 
@@ -598,12 +617,11 @@ class UIAnalyze(QtWidgets.QWidget):
             card.section_color_changed.connect(self._on_analyze_section_color_changed)
             card.section_visibility_changed.connect(self._on_analyze_section_visibility_changed)
 
-        # No visible/draggable divider between the overview plot and the
-        # detail-card row - expanding either is now handled by each card's
-        # own fullscreen toggle (see _toggle_analyze_fullscreen), which
-        # still resizes graph_split programmatically via setSizes().
-        self.graph_split.setHandleWidth(0)
-        self.graph_split.handle(1).setEnabled(False)
+        # Same visible/draggable gap as lowerGraphs and PlotsUI's own
+        # splitters (main_splitter/right_splitter in ui_plots.py), so the
+        # overview card and the detail-card row read as separate panels
+        # instead of touching with no seam.
+        self.graph_split.setHandleWidth(6)
 
         # add collapse/expand icon arrows
         self.results_split.setHandleWidth(12)
@@ -641,9 +659,12 @@ class UIAnalyze(QtWidgets.QWidget):
         layout_h3.addWidget(self.footerText_keys)
 
         # Add widgets to layout - hint bar sits at the very bottom, under
-        # the detail-plot row, per the target layout.
+        # the detail-plot row, per the target layout. The workflow bar is
+        # its own tile between the action bar and the plot area (see
+        # self.workflow_bar above), matching how the action bar and plots
+        # are each their own separate panel.
         self.layout.addLayout(self.toolLayout)
-        # self.layout.addWidget(widget_h4)
+        self.layout.addWidget(self.workflow_bar)
         self.layout.addWidget(self.graph_split)
         self.layout.addLayout(layout_h3)
 
@@ -810,11 +831,18 @@ class UIAnalyze(QtWidgets.QWidget):
         (which resets axis pens on some pyqtgraph versions).
         """
         tok = ThemeManager.instance().tokens()
-        bg = QtGui.QColor(*tok["surface"][:3])
         text_pen = pg.mkPen(QtGui.QColor(*tok["plot_text_muted"][:3]))
 
         for plot_widget in (self.graphWidget, self.graphWidget1, self.graphWidget2, self.graphWidget3):
-            plot_widget.setBackground(bg)
+            # Transparent, matching PlotsUI's own plt/pltB/plt_temp (see
+            # MainWindow._configure_plot's `setBackground(None)`) - "surface"
+            # is a translucent RGBA token meant to be alpha-blended by
+            # PlotContainer's own paintEvent, not filled in opaquely here.
+            # Dropping the alpha (the old `QColor(*tok["surface"][:3])`) drew
+            # a flat, fully-opaque patch that didn't match the actual
+            # (blended) card color behind it - this lets the same card
+            # background painted by PlotContainer show straight through.
+            plot_widget.setBackground(None)
             # Same "glass" axis look PlotsUI uses (no spine, no tick marks,
             # muted uniform text) - see QATCH.ui.components.glass_axis_item.
             apply_glass_plot_style(plot_widget.getPlotItem(), text_pen)
@@ -822,7 +850,7 @@ class UIAnalyze(QtWidgets.QWidget):
     def _toggle_analyze_fullscreen(self, target_widget: QtWidgets.QWidget) -> None:
         """Toggle one plot card between fullscreen and normal splitter
         layout, mirroring `UIPlots._toggle_fullscreen` (see ui_plots.py) but
-        adapted to Analyze's two-level splitter (`graph_split` = widget_h4 vs
+        adapted to Analyze's two-level splitter (`graph_split` = graphStack vs
         lowerGraphs; `lowerGraphs` itself splits the three detail cards).
 
         Args:
@@ -1479,8 +1507,8 @@ class UIAnalyze(QtWidgets.QWidget):
 
     def _show_no_run_overlay(self) -> None:
         """Shows a placeholder card over the Signal Overview plot while no
-        run is loaded: a dim backdrop plus a centered card (icon, title,
-        subtext, and a "Load from folder..." button) - same dim-rect +
+        run is loaded: a blurred backdrop plus a centered card (icon,
+        title, subtext, and a "Load from folder..." button) - same
         QGraphicsProxyWidget technique as `_show_qmodel_plot_overlay`, but
         this one stays up for as long as `clear()`'s "nothing loaded" state
         holds rather than for the duration of a single background task, so
@@ -1488,27 +1516,53 @@ class UIAnalyze(QtWidgets.QWidget):
         light/dark switches. Fades in via `_fade_overlay_opacity` rather
         than appearing abruptly.
 
-        The dim rect is sized to the whole PlotItem (`plot_item.boundingRect()`),
-        not just the inner ViewBox, so it covers the axis label area too -
-        otherwise stale axis text/ticks would poke out around the card.
+        `clear()` (and therefore this) reruns every time Analyze mode is
+        (re-)entered even when no run was ever loaded, e.g. tabbing away and
+        back - a no-op in that case since the card is still showing, so skip
+        the teardown/rebuild/fade-in rather than flashing it out and back in
+        for no visible change.
         """
+        if getattr(self, "_no_run_overlay", None) is not None:
+            return
+
         self._hide_no_run_overlay(animate=False)
         self._hide_loading_run_overlay(animate=True)
 
         plot_item = self.graphWidget.getPlotItem()
         vb = plot_item.getViewBox()
 
-        dim_rect = QtWidgets.QGraphicsRectItem()
-        dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
-        dim_rect.setParentItem(plot_item.graphicsItem())
-        dim_rect.setZValue(999)
-        dim_rect.setOpacity(0.0)
+        # Same frosted-glass technique as PlotsUI's own plot-dimming (see
+        # MainWindow._apply_plot_dim): just a real QGraphicsBlurEffect on
+        # the ViewBox/axes, its radius animated in lockstep with the card
+        # fade below - no separate colored overlay, which read as a tint
+        # darkening/brightening the canvas rather than a plain blur.
+        frost_targets = [vb, plot_item.getAxis("bottom"), plot_item.getAxis("left")]
+
+        def _set_frost(progress: float) -> None:
+            for target in frost_targets:
+                if target is None:
+                    continue
+                try:
+                    if progress > 0.01:
+                        effect = target.graphicsEffect()
+                        if not isinstance(effect, QtWidgets.QGraphicsBlurEffect):
+                            effect = QtWidgets.QGraphicsBlurEffect()
+                            effect.setBlurHints(
+                                QtWidgets.QGraphicsBlurEffect.BlurHint.PerformanceHint
+                            )
+                            target.setGraphicsEffect(effect)
+                        effect.setBlurRadius(progress * 10.0)
+                    else:
+                        target.setGraphicsEffect(None)
+                except RuntimeError:
+                    pass
 
         container = QtWidgets.QWidget()
         container.setFixedWidth(360)
         # Transparent by default a plain QWidget hosted in a
         # QGraphicsProxyWidget still paints an opaque palette background,
-        # which covered dim_rect's themed tint with a flat white patch.
+        # which would otherwise show as a flat white patch over the
+        # blurred plot behind it.
         container.setAutoFillBackground(False)
         container.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         container.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -1559,15 +1613,10 @@ class UIAnalyze(QtWidgets.QWidget):
         proxy.setOpacity(0.0)
 
         def _apply_theme(_mode: str | None = None) -> None:
-            """Re-tints the dim rect + card to match the active theme, so
-            dark mode gets a dark-tinted backdrop with light text instead
-            of a fixed white card (which read as a jarring, out-of-place
-            "all white" patch against a dark-themed plot)."""
+            """Re-tints the card's own text/icon colors to match the active
+            theme, so dark mode gets light text instead of a fixed dark
+            palette (which read as illegible against a dark-themed plot)."""
             tok = ThemeManager.instance().tokens()
-            surface = QtGui.QColor(*tok["surface"][:3])
-            surface.setAlpha(235)
-            dim_rect.setBrush(QtGui.QBrush(surface))
-
             text_color = tok_css(tok["flat_text"])
             muted_color = tok_css(tok["flat_text_muted"])
             badge_bg = tok_css(tok["flat_accent_weak"])
@@ -1586,7 +1635,6 @@ class UIAnalyze(QtWidgets.QWidget):
         def _center() -> None:
             try:
                 full_rect = plot_item.boundingRect()
-                dim_rect.setRect(full_rect)
                 pw = proxy.boundingRect().width()
                 ph = proxy.boundingRect().height()
                 proxy.setPos(
@@ -1602,13 +1650,14 @@ class UIAnalyze(QtWidgets.QWidget):
         # across window resizes, so it needs to keep re-centering itself.
         vb.sigResized.connect(_center)
 
-        fade_anim = self._fade_overlay_opacity([dim_rect, proxy], 1.0)
+        fade_anim = self._fade_overlay_opacity([proxy], 1.0)
+        fade_anim.valueChanged.connect(_set_frost)
 
         self._no_run_overlay = {
             "proxy": proxy,
-            "dim_rect": dim_rect,
             "center": _center,
             "theme": _apply_theme,
+            "frost": _set_frost,
             "fade": fade_anim,
         }
 
@@ -1629,7 +1678,7 @@ class UIAnalyze(QtWidgets.QWidget):
         if overlay is None:
             return
 
-        proxy, dim_rect = overlay["proxy"], overlay["dim_rect"]
+        proxy = overlay["proxy"]
         try:
             self.graphWidget.getPlotItem().getViewBox().sigResized.disconnect(overlay["center"])
         except (RuntimeError, TypeError):
@@ -1645,19 +1694,26 @@ class UIAnalyze(QtWidgets.QWidget):
             except RuntimeError:
                 pass
 
+        frost = overlay.get("frost")
+
         def _cleanup() -> None:
-            for item in (proxy, dim_rect):
-                try:
-                    item.setParentItem(None)
-                    scene = item.scene()
-                    if scene is not None:
-                        scene.removeItem(item)
-                except RuntimeError:
-                    pass
+            if frost is not None:
+                frost(0.0)
+            try:
+                proxy.setParentItem(None)
+                scene = proxy.scene()
+                if scene is not None:
+                    scene.removeItem(proxy)
+            except RuntimeError:
+                pass
 
         self._no_run_overlay = None
         if animate:
-            self._fade_overlay_opacity([dim_rect, proxy], 0.0, duration_ms=180, on_finished=_cleanup)
+            unfade_anim = self._fade_overlay_opacity(
+                [proxy], 0.0, duration_ms=180, on_finished=_cleanup
+            )
+            if frost is not None:
+                unfade_anim.valueChanged.connect(frost)
         else:
             _cleanup()
 
@@ -1668,11 +1724,11 @@ class UIAnalyze(QtWidgets.QWidget):
         result is unpacked), replacing the static "no run loaded" card so
         the user sees active progress instead of a "load a run" prompt.
 
-        Same dim-rect + QGraphicsProxyWidget technique as
-        `_show_no_run_overlay`, including the fade-in via
-        `_fade_overlay_opacity`. The status label this builds is also what
-        `_set_model_status_text`/`_clear_model_status_text` update with
-        finer-grained progress (e.g. QModel auto-fit status) during the load.
+        Same QGraphicsProxyWidget technique as `_show_no_run_overlay`,
+        including the fade-in via `_fade_overlay_opacity`. The status label
+        this builds is also what `_set_model_status_text`/
+        `_clear_model_status_text` update with finer-grained progress (e.g.
+        QModel auto-fit status) during the load.
         """
         self._hide_no_run_overlay(animate=True)
         self._hide_loading_run_overlay(animate=False)
@@ -1680,11 +1736,30 @@ class UIAnalyze(QtWidgets.QWidget):
         plot_item = self.graphWidget.getPlotItem()
         vb = plot_item.getViewBox()
 
-        dim_rect = QtWidgets.QGraphicsRectItem()
-        dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
-        dim_rect.setParentItem(plot_item.graphicsItem())
-        dim_rect.setZValue(999)
-        dim_rect.setOpacity(0.0)
+        # Same frosted-glass technique as PlotsUI's own plot-dimming (see
+        # MainWindow._apply_plot_dim/_show_no_run_overlay above) - just a
+        # real QGraphicsBlurEffect on the ViewBox/axes, no separate colored
+        # overlay.
+        frost_targets = [vb, plot_item.getAxis("bottom"), plot_item.getAxis("left")]
+
+        def _set_frost(progress: float) -> None:
+            for target in frost_targets:
+                if target is None:
+                    continue
+                try:
+                    if progress > 0.01:
+                        effect = target.graphicsEffect()
+                        if not isinstance(effect, QtWidgets.QGraphicsBlurEffect):
+                            effect = QtWidgets.QGraphicsBlurEffect()
+                            effect.setBlurHints(
+                                QtWidgets.QGraphicsBlurEffect.BlurHint.PerformanceHint
+                            )
+                            target.setGraphicsEffect(effect)
+                        effect.setBlurRadius(progress * 10.0)
+                    else:
+                        target.setGraphicsEffect(None)
+                except RuntimeError:
+                    pass
 
         container = QtWidgets.QWidget()
         container.setFixedWidth(280)
@@ -1698,7 +1773,7 @@ class UIAnalyze(QtWidgets.QWidget):
         layout.setSpacing(10)
 
         spinner_label = QtWidgets.QLabel()
-        spinner_label.setFixedSize(32, 32)
+        spinner_label.setFixedSize(56, 56)
         spinner_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         status_label = QtWidgets.QLabel("Loading run...")
@@ -1719,29 +1794,25 @@ class UIAnalyze(QtWidgets.QWidget):
         proxy.setZValue(1000)
         proxy.setOpacity(0.0)
 
-        # The loading glyph is a Lottie/Bodymovin animation (a bouncing
-        # three-dot loader), rendered natively via rlottie rather than
-        # played through Qt's own (unreliable, partial) SMIL support for
-        # animated SVGs. rlottie only exposes discrete integer frames (no
-        # sub-frame interpolation), so every frame is pre-rendered and
-        # tinted once per show/theme-change into a pixmap cache; playback
-        # just swaps cached pixmaps on a QTimer, decoupling *which* frame is
-        # sampled from *how fast* time moves through the loop. The native
-        # timeline loops in 1.2s, which reads as frantic at 28px, so
-        # `_PLAYBACK_MS` stretches one loop to 3x that - each cached frame
-        # is simply dwelled on longer, not skipped.
+        # The loading glyph is an animated GIF (a bouncing three-dot
+        # loader) played via QMovie, rather than the old Lottie/rlottie
+        # pipeline - QMovie natively decodes and times GIF frames, so
+        # playback no longer needs a hand-rolled QTimer/progress tracker.
+        # The raw GIF frames are still pre-tinted into a pixmap cache per
+        # theme (same SourceAtop recolor trick as before): the source GIF
+        # is a single flat color, which would look wrong (or invisible)
+        # against one of the two card backgrounds without being retinted
+        # to the active theme's accent color on every show/theme-change.
         icon_path = os.path.join(
-            Architecture.get_path(), "QATCH", "icons", "animations", "loading.json"
+            Architecture.get_path(), "QATCH", "icons", "animations", "loading.gif"
         )
-        lottie_anim = LottieAnimation.from_file(icon_path)
-        total_frames = max(1, lottie_anim.lottie_animation_get_totalframe())
-        _RENDER_SIZE = 28
-        _PLAYBACK_MS = lottie_anim.lottie_animation_get_duration() * 1000.0 * 3.0
-        _TICK_MS = 33  # ~30fps repaint cadence
+        movie = QtGui.QMovie(icon_path, QtCore.QByteArray(), self)
+        movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
+        movie.jumpToFrame(0)
+        total_frames = max(1, movie.frameCount())
+        _RENDER_SIZE = 48
 
         anim_state = {
-            "progress_ms": 0.0,
-            "direction": 1,
             "color": QtGui.QColor(40, 50, 62),
             "frames": [],
         }
@@ -1750,13 +1821,13 @@ class UIAnalyze(QtWidgets.QWidget):
             color = anim_state["color"]
             frames = []
             for f in range(total_frames):
-                raw = lottie_anim.lottie_animation_render(
-                    frame_num=f, width=_RENDER_SIZE, height=_RENDER_SIZE
+                movie.jumpToFrame(f)
+                base = QtGui.QPixmap.fromImage(movie.currentImage()).scaled(
+                    _RENDER_SIZE,
+                    _RENDER_SIZE,
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                    QtCore.Qt.TransformationMode.SmoothTransformation,
                 )
-                image = QtGui.QImage(
-                    raw, _RENDER_SIZE, _RENDER_SIZE, QtGui.QImage.Format_ARGB32_Premultiplied
-                ).copy()
-                base = QtGui.QPixmap.fromImage(image)
                 tinted = QtGui.QPixmap(base.size())
                 tinted.fill(QtCore.Qt.GlobalColor.transparent)
                 painter = QtGui.QPainter(tinted)
@@ -1768,49 +1839,28 @@ class UIAnalyze(QtWidgets.QWidget):
                 frames.append(tinted)
             anim_state["frames"] = frames
 
-        def _render_frame() -> None:
-            fraction = (anim_state["progress_ms"] % _PLAYBACK_MS) / _PLAYBACK_MS
-            frame = min(total_frames - 1, int(fraction * total_frames))
+        def _show_frame(index: int) -> None:
             frames = anim_state["frames"]
             if frames:
-                spinner_label.setPixmap(frames[frame])
+                spinner_label.setPixmap(frames[max(0, min(index, len(frames) - 1))])
 
-        anim_timer = QtCore.QTimer(self)
-        anim_timer.setInterval(_TICK_MS)
-
-        def _advance_frame() -> None:
-            if anim_state["direction"] >= 0:
-                anim_state["progress_ms"] = (anim_state["progress_ms"] + _TICK_MS) % _PLAYBACK_MS
-            else:
-                next_progress = anim_state["progress_ms"] - _TICK_MS
-                if next_progress < 0:
-                    anim_timer.stop()
-                    anim_state["progress_ms"] = 0.0
-                else:
-                    anim_state["progress_ms"] = next_progress
-            _render_frame()
+        movie.frameChanged.connect(_show_frame)
 
         def _apply_theme(_mode: str | None = None) -> None:
             tok = ThemeManager.instance().tokens()
-            surface = QtGui.QColor(*tok["surface"][:3])
-            surface.setAlpha(235)
-            dim_rect.setBrush(QtGui.QBrush(surface))
-
             text_color = tok_css(tok["flat_text"])
             status_label.setStyleSheet(f"font-size: 11pt; font-weight: 600; color: {text_color};")
             anim_state["color"] = QtGui.QColor(*tok["flat_accent"])
             _rebuild_frame_cache()
-            _render_frame()
+            _show_frame(movie.currentFrameNumber())
 
-        anim_timer.timeout.connect(_advance_frame)
         _apply_theme()
         ThemeManager.instance().themeChanged.connect(_apply_theme)
-        anim_timer.start()
+        movie.start()
 
         def _center() -> None:
             try:
                 full_rect = plot_item.boundingRect()
-                dim_rect.setRect(full_rect)
                 pw = proxy.boundingRect().width()
                 ph = proxy.boundingRect().height()
                 proxy.setPos(
@@ -1823,17 +1873,17 @@ class UIAnalyze(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(0, _center)
         vb.sigResized.connect(_center)
 
-        fade_anim = self._fade_overlay_opacity([dim_rect, proxy], 1.0)
+        fade_anim = self._fade_overlay_opacity([proxy], 1.0)
+        fade_anim.valueChanged.connect(_set_frost)
 
         self._loading_run_overlay = {
             "proxy": proxy,
-            "dim_rect": dim_rect,
             "center": _center,
             "theme": _apply_theme,
-            "anim_timer": anim_timer,
-            "anim_state": anim_state,
-            "lottie": lottie_anim,
+            "movie": movie,
+            "show_frame": _show_frame,
             "status_label": status_label,
+            "frost": _set_frost,
             "fade": fade_anim,
         }
 
@@ -1844,13 +1894,12 @@ class UIAnalyze(QtWidgets.QWidget):
         removed.
 
         Args:
-            animate: If True (default), reverses the Lottie loader's frame
-                sequence back toward its start while fading the card out
-                (rather than just cutting the forward loop), before
-                removing it from the scene. Callers just clearing a stale
-                instance before immediately building a fresh one pass
-                False, which skips the reverse-playback and cuts straight
-                to cleanup.
+            animate: If True (default), winds the loader's frames back
+                toward its start while fading the card out (rather than
+                just cutting the forward loop), before removing it from
+                the scene. Callers just clearing a stale instance before
+                immediately building a fresh one pass False, which skips
+                the wind-down and cuts straight to cleanup.
         """
         overlay = getattr(self, "_loading_run_overlay", None)
         if overlay is None:
@@ -1871,26 +1920,52 @@ class UIAnalyze(QtWidgets.QWidget):
             except RuntimeError:
                 pass
 
-        proxy, dim_rect = overlay["proxy"], overlay["dim_rect"]
-        anim_timer, anim_state = overlay["anim_timer"], overlay["anim_state"]
-        lottie_anim = overlay["lottie"]
+        proxy = overlay["proxy"]
+        movie, show_frame = overlay["movie"], overlay["show_frame"]
+        frost = overlay.get("frost")
+        movie.stop()
 
         def _cleanup() -> None:
-            anim_timer.stop()
-            lottie_anim.lottie_animation_destroy()
-            for item in (proxy, dim_rect):
-                try:
-                    item.setParentItem(None)
-                    scene = item.scene()
-                    if scene is not None:
-                        scene.removeItem(item)
-                except RuntimeError:
-                    pass
+            if frost is not None:
+                frost(0.0)
+            movie.deleteLater()
+            try:
+                proxy.setParentItem(None)
+                scene = proxy.scene()
+                if scene is not None:
+                    scene.removeItem(proxy)
+            except RuntimeError:
+                pass
 
         self._loading_run_overlay = None
         if animate:
-            anim_state["direction"] = -1
-            self._fade_overlay_opacity([dim_rect, proxy], 0.0, duration_ms=180, on_finished=_cleanup)
+            # Step the cached frame index back toward 0 directly (bypassing
+            # the movie, which PyQt5's QMovie can't play in reverse) while
+            # the card fades out, so the loader winds down instead of just
+            # freezing mid-loop.
+            reverse_timer = QtCore.QTimer(self)
+            reverse_timer.setInterval(33)
+            reverse_state = {"frame": movie.currentFrameNumber()}
+
+            def _reverse_tick() -> None:
+                reverse_state["frame"] -= 1
+                if reverse_state["frame"] < 0:
+                    reverse_timer.stop()
+                    return
+                show_frame(reverse_state["frame"])
+
+            reverse_timer.timeout.connect(_reverse_tick)
+            reverse_timer.start()
+
+            def _on_faded() -> None:
+                reverse_timer.stop()
+                _cleanup()
+
+            unfade_anim = self._fade_overlay_opacity(
+                [proxy], 0.0, duration_ms=180, on_finished=_on_faded
+            )
+            if frost is not None:
+                unfade_anim.valueChanged.connect(frost)
         else:
             _cleanup()
 
@@ -2006,47 +2081,6 @@ class UIAnalyze(QtWidgets.QWidget):
 
             Log.d("User did not authenticate for role to switch users.")
             return None
-
-    def _set_sort_order(self, order: int) -> None:
-        """Shared implementation for the three mutually-exclusive Sort by:
-        labels (Name/Date/New) - sets `self.sort_order`, refreshes the run
-        list, and bolds only the now-active label."""
-        self.sort_order = order
-        self._refresh_cbox_runs()
-        active_qss = "color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;"
-        inactive_qss = "color: #0D4AAF; text-decoration: none; padding-left: 15px;"
-        self.sort_by_name.setStyleSheet(active_qss if order == 0 else inactive_qss)
-        self.sort_by_date.setStyleSheet(active_qss if order == 1 else inactive_qss)
-        self.sort_by_new.setStyleSheet(active_qss if order == 2 else inactive_qss)
-
-    def action_sort_by_name(self, obj: Any) -> None:
-        """Sets the run sorting order to alphabetical by name and updates the UI.
-
-        Args:
-            obj (Any): The event object passed by the Qt signal (e.g., a
-                QMouseEvent), or None if called programmatically.
-        """
-        self._set_sort_order(0)
-
-    def action_sort_by_date(self, obj: Any) -> None:
-        """Sets the run sorting order to chronological by date and updates the UI.
-
-        Args:
-            obj (Any): The event object passed by the Qt signal (e.g., a
-                QMouseEvent), or None if called programmatically.
-        """
-        self._set_sort_order(1)
-
-    def action_sort_by_new(self, obj: Any) -> None:
-        """Filters the run list down to runs with no saved analysis yet
-        (see _scan_run's is_new / self.run_is_new cache), sorted newest
-        first, and updates the UI.
-
-        Args:
-            obj (Any): The event object passed by the Qt signal (e.g., a
-                QMouseEvent), or None if called programmatically.
-        """
-        self._set_sort_order(2)
 
     def action_cancel(self, exit_batched_processing_mode=False):
         if self.hasUnsavedChanges():
@@ -2198,6 +2232,77 @@ class UIAnalyze(QtWidgets.QWidget):
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
+
+    def _refresh_account_button_state(self) -> None:
+        """Enable/disable the Account button based on session state.
+
+        Mirrors `UIControls.refresh_user_button_state()`; called once at
+        setup and again from `check_user_info()` (run every time Analyze
+        mode is opened), which is the only point the sign-in state can have
+        changed since Controls/Analyze are never shown side-by-side.
+        """
+        signed_in = self.parent.controls_window.ui._is_user_signed_in()
+        self.tool_User.setEnabled(signed_in)
+        self.tool_User.setChecked(False)
+
+        if signed_in:
+            return
+
+        popup = getattr(self, "_account_popup", None)
+        if popup is not None:
+            try:
+                popup.close()
+            except Exception:
+                pass
+
+    def _toggle_account_popup(self) -> None:
+        """Toggle the account popup anchored under Analyze's Account button.
+
+        Delegates Manage Users/Preferences/Sign Out to UIControls' existing
+        implementations (`self.parent.controls_window.ui`) instead of
+        reimplementing session management here - those methods only depend
+        on the current UserProfiles session, not on which window's button
+        was clicked. See `UIControls._toggle_account_popup` for the
+        counterpart this mirrors.
+        """
+        anchor = self.tool_User
+        controls_ui = self.parent.controls_window.ui
+
+        prev = getattr(self, "_account_popup", None)
+        if prev is not None:
+            if prev.isVisible():
+                anchor.setChecked(False)
+                prev.close()
+                return
+            closed_at = getattr(self, "_account_popup_closed_at", 0.0)
+            if monotonic() - closed_at < 0.25:
+                anchor.setChecked(False)
+                prev.deleteLater()
+                self._account_popup = None
+                return
+            try:
+                prev._enter_slide.stop()
+                prev._enter_fade.stop()
+            except Exception:
+                pass
+            prev.deleteLater()
+            self._account_popup = None
+
+        self._account_popup = AccountPopup(
+            open_manager_cb=controls_ui._open_user_manager,
+            open_preferences_cb=controls_ui._open_user_preferences,
+            sign_out_cb=controls_ui._sign_out_current_user,
+        )
+
+        def _account_popup_closed():
+            self._account_popup_closed_at = monotonic()
+            anchor.setChecked(False)
+
+        self._account_popup.closed.connect(_account_popup_closed)
+        self._account_popup.destroyed.connect(lambda _=None: anchor.setChecked(False))
+
+        anchor.setChecked(True)
+        self._account_popup.show_anchored_to(anchor, main_window=self.parent)
 
     def action_advanced(self, obj):
         if self.advancedwidget.isVisible():
@@ -2584,7 +2689,7 @@ class UIAnalyze(QtWidgets.QWidget):
             # call as timer to allow repaint of Analyze view mode
             QtCore.QTimer.singleShot(500, self.find_most_recent_run)
 
-        self.action_sort_by_date(None)  # dummy 'obj' passed
+        self._refresh_cbox_runs()
 
         self.username = None
         self.initials = None
@@ -2611,6 +2716,11 @@ class UIAnalyze(QtWidgets.QWidget):
         self.graphWidget3.clear()
         self.graphWidget3.setTitle(None)
         self.graphWidget3.showGrid(x=False, y=False)
+        # .clear() can reset axis pens/background on some pyqtgraph versions
+        # (see _apply_pg_theme), so without this the four plots would fall
+        # back to pyqtgraph's plain white default every time Analyze mode is
+        # (re-)entered, instead of the themed PlotsUI-matching background.
+        self._apply_pg_theme()
         self.graphStack.setCurrentIndex(0)
         self.lowerGraphs.setVisible(False)
         self.btn_Back.setEnabled(False)
@@ -2632,7 +2742,6 @@ class UIAnalyze(QtWidgets.QWidget):
         self.model_candidates = None
         self.model_engine = "None"
 
-        self._annotate_welcome_text()
         self.check_user_info()
         self.enable_buttons()
 
@@ -2849,22 +2958,6 @@ class UIAnalyze(QtWidgets.QWidget):
         worker.finished.connect(lambda w=worker: self._forget_incremental_worker(w))
         worker.start()
 
-    def _annotate_welcome_text(self):
-        self._text5 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        self._text5.setHtml(
-            "<span style='font-size: 10pt'>Please \"Load\" a run from the menu above to perform data analysis. </span>"
-        )
-        self._text6 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
-        self._text6.setHtml(
-            "<span style='font-size: 10pt'>Prior point selections (if any) will be loaded from saved data. </span>"
-        )
-        self._text5.setPos(0.5, 0.55)
-        self._text6.setPos(0.5, 0.45)
-        self.graphWidget.addItem(self._text5, ignoreBounds=True)
-        self.graphWidget.addItem(self._text6, ignoreBounds=True)
-        self.graphWidget.setXRange(min=0, max=1)
-        self.graphWidget.setYRange(min=0, max=1)
-
     def closeEvent(self, event):
         if self.unsaved_changes:
             if not PopUp.question(
@@ -2884,6 +2977,7 @@ class UIAnalyze(QtWidgets.QWidget):
             self.username, self.initials = info[0], info[1]
         else:
             self.parent.signature_required = False
+        self._refresh_account_button_state()
 
     def detect_change(self):
         if not self.unsaved_changes:
@@ -3510,10 +3604,9 @@ class UIAnalyze(QtWidgets.QWidget):
         if hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache = {}
 
-        # Dynamically resize the combobox and associated widgets
+        # Dynamically resize the combobox
         new_width = max(self.cBox_Runs.sizeHint().width(), 200)
         self.cBox_Runs.setFixedWidth(new_width)
-        self.sort_by_widget.setFixedWidth(new_width)
 
     def find_most_recent_run(self) -> None:
         """Initiates an asynchronous background scan to find the most recent run across all devices.
@@ -3588,7 +3681,7 @@ class UIAnalyze(QtWidgets.QWidget):
             )
 
             self.cBox_Devices.setCurrentIndex(self._async_best_dev_idx)
-            self.action_sort_by_date(None)
+            self._refresh_cbox_runs()
             self.enable_buttons()
 
     def update_run(self, idx: int) -> None:

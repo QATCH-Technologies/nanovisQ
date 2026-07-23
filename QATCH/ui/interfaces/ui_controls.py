@@ -4026,9 +4026,14 @@ class UIControls:
             self.parent.ui.tool_User.setText("Anonymous")
             self.parent.ui.tool_User.setChecked(False)
 
-            analyze_proc = getattr(self.parent.parent, "analyze_process", None)
-            if analyze_proc:
-                analyze_proc.tool_User.setText("Anonymous")
+            # NOTE: was `getattr(self.parent.parent, "analyze_process", None)` -
+            # that attribute doesn't exist on MainWindow (always silently
+            # None'd out via getattr), so this never actually reached
+            # Analyze's own Account button. Fixed to the real attribute name.
+            analyze_window = getattr(self.parent.parent, "analyze_window", None)
+            if analyze_window is not None:
+                analyze_window.ui.tool_User.setText("Anonymous")
+                analyze_window.ui._refresh_account_button_state()
 
             self.refresh_user_button_state()
 

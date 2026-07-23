@@ -39,6 +39,11 @@
     border: none;
     border-radius: 0px;
 }
+#analyze {
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+}
 #logview {
     background: transparent;
     border: none;
@@ -539,7 +544,7 @@ QWidget#PlotMenuRow:hover {
 }
 
 /* ---- Plot viewport widgets ---- */
-#pltB, #plt, #plt_temp {
+#pltB, #plt, #plt_temp, #analyzeGlassPlot {
     border: 0px;
     background: transparent;
 }
