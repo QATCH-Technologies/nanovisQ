@@ -30,7 +30,7 @@
 /// @note Add new HW revisions here...
 
 /// @note Increment NVMEM_VERSION each time you change NvMem_RAM structure!
-#define NVMEM_VERSION 3
+#define NVMEM_VERSION 4
 
 // POGO lid servo positions and move delay are configurable via NVMEM
 // Default values (used if NVMEM not initialized)
@@ -39,11 +39,13 @@
 // - Move delay (ms of step delay): 0–254; 0xFF reserved
 // NOTE: Servo 1 is used for Solo and Quad devices (Servo 2 not used here).
 //       Servo 1 & Servo 2 are used for Flux devices to move the 4x6 POGOs.
-#define DEFAULT_POS_OPENED_1 30
-#define DEFAULT_POS_CLOSED_1 50
+#define DEFAULT_POS_OPENED_1 100
+#define DEFAULT_POS_CLOSED_1 115
 #define DEFAULT_POS_OPENED_2 0
 #define DEFAULT_POS_CLOSED_2 0
-#define DEFAULT_MOVE_DELAY 25
+#define DEFAULT_MOVE_DELAY 45
+#define DEFAULT_POS_CURRENT_1 0
+#define DEFAULT_POS_CURRENT_2 0
 
 // Compile-time guards to preserve 0xFF sentinel semantics
 #if (DEFAULT_POS_OPENED_1 == 0xFF) || (DEFAULT_POS_CLOSED_1 == 0xFF) \
@@ -65,6 +67,8 @@ struct NvMem_RAM
   byte POGO_PosOpened2; // 7: POGO lid open position (servo 2)
   byte POGO_PosClosed2; // 8: POGO lid closed position (servo 2)
   byte POGO_MoveDelay; // 9: POGO lid move delay (ms)
+  byte POGO_PosCurrent1; // 10: POGO current angle position (servo 1)
+  byte POGO_PosCurrent2; // 11: POGO current angle position (servo 2)
   // byte NewValue;
   /// @note Add new entries here, even if inverted!
   /// @note Also increment NVMEM_VERSION, add a value in defaults(), and add logic in update()
