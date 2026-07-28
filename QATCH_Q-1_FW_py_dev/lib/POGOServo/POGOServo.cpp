@@ -40,8 +40,13 @@ uint8_t POGOServo::attach(int pin, int minPulseUs, int maxPulseUs) {
 
 void POGOServo::detach() {
     if (_attached && _pin >= 0) {
-        analogWrite(_pin, 0);          // Stop sending PWM pulses
-        pinMode(_pin, INPUT);          // Revert pin to high-impedance state
+
+        // FIX: Force the pin to remain a hard OUTPUT clamped to 0V (LOW).
+        // This instantly drains your 470pF filtering capacitor to ground,
+        // preventing it from generating a trailing "phantom 0-deg pulse".
+        pinMode(_pin, OUTPUT);          
+        digitalWrite(_pin, LOW);  // Stop sending PWM pulses
+
         _attached = false;
         _pin = -1;
     }
