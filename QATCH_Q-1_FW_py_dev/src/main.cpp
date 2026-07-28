@@ -55,7 +55,7 @@
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
 #define CODE_VERSION "v2.7r7"
-#define RELEASE_DATE "2026-07-23"
+#define RELEASE_DATE "2026-07-27"
 
 /************************** LIBRARIES **************************/
 
@@ -144,6 +144,7 @@
 #define POGO_BTN_LED_PIN 35
 #define POGO_BUTTON_PIN_N 36 // active low
 #define POGO_LID_SW_PIN_N 37 // active low
+#define POGO_TYP_UNSET 255 // not yet set
 
 /*********************** DEFINE CONSTANTS **********************/
 
@@ -424,6 +425,8 @@ const unsigned long debounceDelay = 100; // debounce delay in ms
 // Create variables for POGO lid servo, button, LED and switch
 bool pogo_lid_opened = false; // true if POGO lid is opened
 bool pogo_sw_exists = false;  // flag for switch hw existence
+uint8_t pogo_typ_min_1 = POGO_TYP_UNSET; // typical minimum degree angle
+uint8_t pogo_typ_max_1 = POGO_TYP_UNSET; // typical maximum degree angle
 
 // HW-agnostic interface pointer:
 // For TEENSY36: always the Serial port
@@ -2313,6 +2316,11 @@ void QATCH_loop()
         client->printf("LID SWITCH: %sPRESSED (%u)\n",
                        lid_limit ? "NOT " : "",
                        lid_limit);
+      }
+      else if (message_str.endsWith("CACHE"))
+      {
+        int pogo_current = pogoServo1.read();
+        client->printf("MIN/NOW/MAX: %i/%i/%i\n", pogo_typ_min_1, pogo_current, pogo_typ_max_1); 
       }
       return;
     }
@@ -4362,8 +4370,10 @@ void pogo_button_pressed(bool init)
           // either way, we wait 5x for debounce.
           if (i == 0) { 
             if (pressed) done1 = done2 = true;
-            pogo_sw_exists = pressed = true; 
-            dir1 = 1;
+            if (dir1 == -1)  // only on downward movement
+              pogo_sw_exists = pressed = true; 
+            dir1 = 1;  // change servo direction
+            loop_counter = 135;  // 45 more steps, max
             break;
           }
           delayMicroseconds(100);
@@ -4391,6 +4401,10 @@ void pogo_button_pressed(bool init)
           pos2 += dir2;
       }
     }
+    if (init && !pressed)
+    {
+      client->println("WARN: LID state switch not found. Using fixed LID CAL for open/close positions.");
+    }
   };
 
   // Move pogo servos to target(s)
@@ -4412,6 +4426,50 @@ void pogo_button_pressed(bool init)
 
   // only save current position if external power is applied
   if (L298NHB_VOLTAGE_VALID(ext_5v_volts)) {
+    if (pogo_sw_exists) {
+      bool report_pogo_anomaly = false;
+      byte pogo_current = pogoServo1.read();
+      if (pogo_typ_min_1 != POGO_TYP_UNSET && pogo_typ_min_1 != pogo_typ_max_1) {
+        uint8_t distance = abs(POS_CLOSED_1 - POS_OPENED_1);
+        if (pogo_current <= pogo_typ_min_1 - distance) {
+          pogo_current = pogo_typ_min_1;
+          report_pogo_anomaly = true;
+        }
+        if (pogo_current >= pogo_typ_max_1 + distance) {
+          pogo_current = pogo_typ_max_1;
+          report_pogo_anomaly = true;
+        }
+        if (POS_OPENED_1 == POS_OPENED_2 || POS_OPENED_1 == DEFAULT_POS_OPENED_1) {
+          // Update ROUGH stored calibration with ACTUAL min/max servo positions
+          client->println("NOTE: LID CAL fine-tuned with typical positions.");
+          if (POS_OPENED_1 < POS_CLOSED_1) {
+            NVMEM.POGO_PosOpened1 = pogo_typ_min_1;  // open is most accurate
+            NVMEM.POGO_PosClosed1 = pogo_typ_min_1 + distance;
+          } else {
+            NVMEM.POGO_PosOpened1 = pogo_typ_max_1;  // open is most accurate
+            NVMEM.POGO_PosClosed1 = pogo_typ_max_1 - distance;
+          }
+        }
+        if (abs(pogo_current - pogo_typ_min_1) < abs(pogo_current - pogo_typ_max_1)) {
+          pogo_typ_min_1 = (pogo_typ_min_1 / 2) + (pogo_current / 2);
+          pogoServo1.write(pogo_typ_min_1); 
+        } else {
+          pogo_typ_max_1 = (pogo_typ_max_1 / 2) + (pogo_current / 2);
+          pogoServo1.write(pogo_typ_max_1);
+        }
+      } else {
+      if (pogo_typ_min_1 == POGO_TYP_UNSET || pogo_typ_min_1 > pogo_current)
+        pogo_typ_min_1 = pogo_current;
+      if (pogo_typ_max_1 == POGO_TYP_UNSET || pogo_typ_max_1 < pogo_current)
+        pogo_typ_max_1 = pogo_current;
+      }
+      if (report_pogo_anomaly) {
+        // NOTE: Command `LID CACHE` will return these MIN/NOW/MAX values as well...
+        client->println("WARN: Anomalous POGO movement detected. Not storing new POGO position.");  
+        client->printf("MIN/NOW/MAX: %i/%i/%i\n", pogo_typ_min_1, pogo_current, pogo_typ_max_1);
+      }
+    }
+
     // Save current POGO positions in persistent memory
     NVMEM.POGO_PosCurrent1 = pogoServo1.read();
     NVMEM.POGO_PosCurrent2 = pogoServo2.read();

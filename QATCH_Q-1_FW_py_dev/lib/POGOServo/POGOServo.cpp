@@ -56,13 +56,9 @@ void POGOServo::write(int value) {
         return;
     }
     
-    // Constrain input to valid degree bounds
-    if (value < 0) value = 0;
-    if (value > 180) value = 180;
-    _currentAngle = value;
-    
     // Map degrees directly to target microsecond timings
-    _targetUs = map(value, 0, 180, _minUs, _maxUs);
+    setCurrentAngle(value);
+    _targetUs = map(_currentAngle, 0, 180, _minUs, _maxUs);
     writeMicroseconds(_targetUs);
 }
 
@@ -76,17 +72,12 @@ void POGOServo::writeMicroseconds(int value) {
     // Convert time duration to hardware timer register ticks and write
     uint32_t ticks = usToTicks(value);
     
-    // FIX: Prevent 8-bit dropout. 
-    // If ticks drop to 7 or lower, the hardware turns the signal OFF (0V),
-    // which causes the servo to whip around. Capping at 8 ticks (~625us) keeps it stable.
-    if (ticks < 8) {
-        ticks = 8; 
-    }
-    
     // Write out the 12-bit value safely (restore prior resolution)
+    __disable_irq();  // disable interrupts
     const uint32_t restoreResolution = analogWriteResolution(12);
     analogWrite(_pin, ticks);
     analogWriteResolution(restoreResolution);
+    __enable_irq();  // enable interrupts
 }
 
 int POGOServo::readMicroseconds() {

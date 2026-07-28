@@ -40,7 +40,7 @@
 // NOTE: Servo 1 is used for Solo and Quad devices (Servo 2 not used here).
 //       Servo 1 & Servo 2 are used for Flux devices to move the 4x6 POGOs.
 #define DEFAULT_POS_OPENED_1 100
-#define DEFAULT_POS_CLOSED_1 115
+#define DEFAULT_POS_CLOSED_1 120
 #define DEFAULT_POS_OPENED_2 0
 #define DEFAULT_POS_CLOSED_2 0
 #define DEFAULT_MOVE_DELAY 45
