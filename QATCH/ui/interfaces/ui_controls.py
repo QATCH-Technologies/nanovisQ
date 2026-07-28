@@ -2896,7 +2896,9 @@ class UIControls:
         MainWindow.setWindowTitle(_translate("MainWindow", title))
 
         # Update Window Icon
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-icon.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "high-res-qatch-logo-no-bg.png"
+        )
         MainWindow.setWindowIcon(QtGui.QIcon(icon_path))
 
         # Update UI Elements

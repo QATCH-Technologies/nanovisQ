@@ -96,13 +96,109 @@ def _shutdown_executor() -> None:
 atexit.register(_shutdown_executor)
 
 
+class ResistantViewBox(pg.ViewBox):
+    """A `pg.ViewBox` whose wheel-zoom grows progressively more resistant
+    once the view is zoomed out past its plot's soft "resting" bounds (see
+    `UIAnalyze._apply_plot_limits`, which stashes those bounds on this
+    ViewBox as `_pan_zoom_limits`) - each further wheel-out tick moves the
+    view less than the last, rather than scaling at a constant rate
+    forever.
+
+    This is also what keeps a long, continuous zoom-out scroll (one that
+    never pauses long enough to trigger `UIAnalyze`'s debounced
+    bounce-back) from compounding pyqtgraph's own `1.02 ** delta`
+    per-tick scale factor toward float overflow - which otherwise reaches
+    `scaleBy()`/`setRange()` as a literal "Cannot set range [nan, nan]"
+    exception. `wheelEvent` below also catches that exception directly as
+    a last resort, since resistance alone is a mitigation, not a hard
+    guarantee, against every possible float edge case.
+
+    Panning is untouched here - only wheel-zoom gets resisted. Pan
+    overscroll is instead handled after the fact by `UIAnalyze`'s
+    debounced bounce-back, which already covers both pan and zoom.
+    """
+
+    # How aggressively resistance ramps up per multiple of "overshoot"
+    # past the resting max span (see _resist_zoom_scale) - higher pulls
+    # harder.
+    _RESISTANCE_STRENGTH = 3.0
+
+    def wheelEvent(self, ev, axis=None) -> None:
+        limits = getattr(self, "_pan_zoom_limits", None)
+        if limits is None:
+            # No run loaded yet (_apply_plot_limits hasn't run) - defer to
+            # pyqtgraph's own zoom, still guarded against the same "Cannot
+            # set range [nan, nan]" crash the resisted path below handles.
+            try:
+                super().wheelEvent(ev, axis=axis)
+            except Exception as exc:
+                Log.w(TAG, f"Ignored a degenerate wheel-zoom (view already at a numeric extreme): {exc}")
+                ev.accept()
+            return
+
+        if axis in (0, 1):
+            mask = [False, False]
+            mask[axis] = self.state["mouseEnabled"][axis]
+        else:
+            mask = self.state["mouseEnabled"][:]
+
+        raw_s = 1.02 ** (ev.delta() * self.state["wheelScaleFactor"])
+        s = self._resist_zoom_scale(raw_s, limits)
+        s = [(None if m is False else s) for m in mask]
+        center = pg.Point(pg.invertQTransform(self.childGroup.transform()).map(ev.pos()))
+
+        self._resetTarget()
+        try:
+            self.scaleBy(s, center)
+        except Exception as exc:
+            # pyqtgraph raises a bare Exception here (ViewBox.setRange,
+            # "Cannot set range [nan, nan]") - no narrower type to catch.
+            # Resistance below should make this unreachable in practice,
+            # but this is the actual reported crash, so it's still worth
+            # a hard backstop: drop this one tick rather than let a stray
+            # numeric edge case propagate into an uncaught exception.
+            Log.w(TAG, f"Ignored a degenerate wheel-zoom (view already at a numeric extreme): {exc}")
+            ev.accept()
+            return
+        ev.accept()
+        self.sigRangeChangedManually.emit(mask)
+
+    def _resist_zoom_scale(self, raw_s: float, limits: dict) -> float:
+        """Dampens `raw_s` (pyqtgraph's raw per-tick scale factor - >1
+        zooms out, <1 zooms in) the further the *current* view already
+        exceeds its resting max span. Zooming back in (`raw_s <= 1.0`) is
+        never resisted, so recovering from an over-zoomed state always
+        feels normal.
+        """
+        if raw_s <= 1.0:
+            return raw_s
+        try:
+            (x0, x1), (y0, y1) = self.viewRange()
+        except Exception:
+            return raw_s
+        max_x = max(limits.get("maxXRange") or 0.0, 1e-9)
+        max_y = max(limits.get("maxYRange") or 0.0, 1e-9)
+        overshoot = max(0.0, (x1 - x0) / max_x - 1.0, (y1 - y0) / max_y - 1.0)
+        if overshoot <= 0.0:
+            return raw_s
+        resistance = 1.0 / (1.0 + overshoot * self._RESISTANCE_STRENGTH)
+        return 1.0 + (raw_s - 1.0) * resistance
+
+
 def _new_glass_plot_widget() -> pg.PlotWidget:
     """A `pg.PlotWidget` pre-built with `GlassAxisItem` bottom/left axes -
     the same no-spine/no-tick-marks look PlotsUI's plots use (see
     QATCH.ui.main_window._configure_plot), so Analyze's four plot cards
     read as the same family rather than plain default pyqtgraph axes.
+
+    Uses a `ResistantViewBox` instead of a plain `pg.ViewBox` so wheel-zoom
+    on every one of these four plots (main overview + the three POI detail
+    graphs) gets progressively more resistant past `UIAnalyze._apply_plot_
+    limits`'s soft bounds, in step with that method's debounced pan/zoom
+    bounce-back - see `ResistantViewBox` for why.
     """
     w = pg.PlotWidget(
+        viewBox=ResistantViewBox(),
         axisItems={
             "bottom": GlassAxisItem(orientation="bottom"),
             "left": GlassAxisItem(orientation="left"),
@@ -162,6 +258,120 @@ def _enable_adaptive_resolution(item: pg.PlotDataItem) -> pg.PlotDataItem:
     return item
 
 
+class POIMarker(pg.InfiniteLine):
+    """A vertical POI marker with a finite extent and a circular handle.
+
+    `pg.InfiniteLine` always spans the plot's full visible height. This
+    instead draws only a short segment around the run's actual
+    plotted-data y-range (set via `setDataRange`, padded a little past the
+    data rather than stopping exactly at it) with a themed circular handle
+    centered on that segment, so the marker reads as scoped to the data
+    instead of stretching edge-to-edge.
+
+    `setAngle` is pinned to 90 (vertical) and skips `InfiniteLine`'s own
+    `setRotation` call - staying unrotated is what makes the item's local
+    y-axis line up directly with data-space y, which is what lets
+    `setDataRange` treat `_y0`/`_y1` as literal data coordinates in
+    `_computeBoundingRect`/`paint` below. (`InfiniteLine`'s rotate-then-
+    remap-to-the-current-view math exists specifically so an *infinite*
+    line can always reach the view's edges; a fixed-extent marker doesn't
+    need any of that.)
+
+    Movement is constrained to strictly horizontal via the `setPos`
+    override: every caller elsewhere in ui_analyze.py already treats a POI
+    marker's position as a single x (time) scalar via `.value()`/
+    `.setValue()`. `InfiniteLine` itself never actually zeroes the y
+    component of a drag - it just never showed, since an infinite line
+    looks identical regardless of exactly where its (off-screen) origin
+    sits. A fixed-extent line would visibly drift vertically on every drag
+    without this.
+    """
+
+    _HANDLE_RADIUS = 6.0  # device pixels - constant on screen at any zoom
+
+    def __init__(self, *args, **kwargs):
+        self._y0 = 0.0
+        self._y1 = 1.0
+        self._handle_outline = QtGui.QColor(255, 255, 255)
+        # Set by UIAnalyze._style_poi_marker - whether this marker is
+        # currently drawn in its full accent color vs a muted tone. Read
+        # back by UIAnalyze._apply_pg_theme to preserve that look across a
+        # theme switch (see _style_poi_marker's docstring for why this
+        # can't just be re-derived from setMovable()).
+        self._active_style = True
+        super().__init__(*args, **kwargs)
+
+    def setAngle(self, angle: float) -> None:
+        self.angle = 90
+        self.update()
+
+    def setDataRange(self, y0: float, y1: float, pad_frac: float = 0.08) -> None:
+        """Sets the line segment's finite vertical extent from the plotted
+        data's [y0, y1], padded by `pad_frac` of that span on each side so
+        it pokes out slightly past the data instead of terminating exactly
+        at it.
+        """
+        if y1 < y0:
+            y0, y1 = y1, y0
+        span = y1 - y0
+        pad = span * pad_frac if span > 0 else max(abs(y1), 1.0) * pad_frac
+        self._y0 = y0 - pad
+        self._y1 = y1 + pad
+        self._boundingRect = None
+        self.update()
+
+    def setHandleOutlineColor(self, color: QtGui.QColor) -> None:
+        self._handle_outline = color
+        self.update()
+
+    def setPos(self, pos) -> None:
+        # Horizontal-only - see class docstring.
+        if isinstance(pos, (list, tuple, np.ndarray)) and not np.ndim(pos) == 0:
+            pos = [pos[0], 0]
+        elif isinstance(pos, QtCore.QPointF):
+            pos = [pos.x(), 0]
+        super().setPos(pos)
+
+    def _computeBoundingRect(self) -> QtCore.QRectF:
+        px = self.pixelWidth() or 0.0
+        py = self.pixelHeight() or 0.0
+        half_w = max(self.pen.width() / 2, self.hoverPen.width() / 2, self._HANDLE_RADIUS) * px
+        # Symmetric padding top/bottom for the handle, which now sits at
+        # the segment's vertical midpoint rather than bulging past one end.
+        v_pad = self._HANDLE_RADIUS * py
+        br = QtCore.QRectF(
+            -half_w, self._y0 - v_pad, 2 * half_w, (self._y1 - self._y0) + 2 * v_pad
+        ).normalized()
+
+        if self._bounds != br:
+            self._bounds = br
+            self.prepareGeometryChange()
+
+        return br
+
+    def paint(self, p, *args) -> None:
+        pen = self.currentPen
+        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.MiterJoin)
+        p.setPen(pen)
+        p.drawLine(QtCore.QPointF(0, self._y0), QtCore.QPointF(0, self._y1))
+
+        # Handle drawn in device pixels (reset transform, same trick
+        # InfiniteLine's own addMarker() glyphs use) so its radius stays
+        # constant on screen regardless of the current zoom level.
+        mid_device = p.transform().map(QtCore.QPointF(0, (self._y0 + self._y1) / 2.0))
+        tr = p.transform()
+        p.resetTransform()
+        p.setPen(pg.mkPen(self._handle_outline, width=1.5))
+        p.setBrush(pg.mkBrush(pen.color()))
+        p.drawEllipse(mid_device, self._HANDLE_RADIUS, self._HANDLE_RADIUS)
+        p.setTransform(tr)
+
+    def dataBounds(self, axis, frac=1.0, orthoRange=None):
+        if axis == 0:
+            return None  # x axis should never be auto-scaled
+        return (self._y0, self._y1)
+
+
 ###############################################################################
 # Elaborate on the raw data gathered from the SerialProcess in parallel timing
 ###############################################################################
@@ -202,7 +412,15 @@ class UIAnalyze(QtWidgets.QWidget):
     # when a run's curves first appear (see _animate_curve_reveal). Linear
     # rather than eased, so it reads as a steady draw sweeping across the
     # plot rather than a fast-start/slow-end fade.
-    _CURVE_REVEAL_MS = 700
+    _CURVE_REVEAL_MS = 450
+    # Size of the looping GIF spinner shared by every "work is happening"
+    # overlay (loading a run, QModel auto-fitting - see _build_gif_spinner).
+    # LABEL_SIZE is the QLabel's on-screen box; RENDER_SIZE is the pixmap
+    # resolution rendered into it (kept equal-ish, RENDER_SIZE a hair
+    # smaller so SmoothTransformation upscaling isn't stretching a
+    # perfectly-sized source).
+    _SPINNER_LABEL_SIZE = 72
+    _SPINNER_RENDER_SIZE = 64
 
     def setup_ui(self, analyze_window: "AnalyzeWindow", parent: "MainWindow"):
         super(UIAnalyze, self).__init__(None)
@@ -874,6 +1092,14 @@ class UIAnalyze(QtWidgets.QWidget):
             # muted uniform text) - see QATCH.ui.components.glass_axis_item.
             apply_glass_plot_style(plot_widget.getPlotItem(), text_pen)
 
+        # POI markers persist across a theme switch (they're only rebuilt on
+        # the next run load) - re-theme whichever ones currently exist,
+        # preserving each one's current active/muted look (see
+        # _style_poi_marker's docstring for why that's its own flag rather
+        # than derived from setMovable()).
+        for marker in getattr(self, "poi_markers", []):
+            self._style_poi_marker(marker, active=getattr(marker, "_active_style", True))
+
     def _toggle_analyze_fullscreen(self, target_widget: QtWidgets.QWidget) -> None:
         """Toggle one plot card between fullscreen and normal splitter
         layout, mirroring `UIPlots._toggle_fullscreen` (see ui_plots.py) but
@@ -1275,17 +1501,107 @@ class UIAnalyze(QtWidgets.QWidget):
 
         self._analyze_overlay = None
 
+    def _build_gif_spinner(self) -> Dict[str, Any]:
+        """Builds a themed, looping GIF spinner label shared by every
+        "work is happening" overlay (loading a run, QModel auto-fitting -
+        see `_show_loading_run_overlay`/`_show_qmodel_plot_overlay`).
+
+        The glyph is an animated GIF (a bouncing three-dot loader) played
+        via QMovie rather than a hand-rolled QTimer/progress tracker -
+        QMovie natively decodes and times GIF frames. Its raw frames are
+        pre-tinted into a pixmap cache per theme (a SourceAtop recolor):
+        the source GIF is a single flat color, which would look wrong (or
+        invisible) against one of the two card backgrounds without being
+        retinted to the active theme's accent color on every show/
+        theme-change.
+
+        Sized via `_SPINNER_LABEL_SIZE`/`_SPINNER_RENDER_SIZE` so every
+        caller renders an identical spinner.
+
+        Returns:
+            dict: `label` (the QLabel to place in a layout), `movie` (the
+            QMovie - caller starts/stops and `deleteLater()`s it), `apply_theme`
+            (call once up front and connect to `ThemeManager.instance().
+            themeChanged`), and `show_frame` (steps the cached frames
+            directly - used for a manual reverse wind-down since PyQt5's
+            QMovie can't play in reverse).
+        """
+        spinner_label = QtWidgets.QLabel()
+        spinner_label.setFixedSize(self._SPINNER_LABEL_SIZE, self._SPINNER_LABEL_SIZE)
+        spinner_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "animations", "loading.gif"
+        )
+        movie = QtGui.QMovie(icon_path, QtCore.QByteArray(), self)
+        movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
+        movie.jumpToFrame(0)
+        total_frames = max(1, movie.frameCount())
+        render_size = self._SPINNER_RENDER_SIZE
+
+        anim_state = {
+            "color": QtGui.QColor(40, 50, 62),
+            "frames": [],
+        }
+
+        def _rebuild_frame_cache() -> None:
+            color = anim_state["color"]
+            frames = []
+            for f in range(total_frames):
+                movie.jumpToFrame(f)
+                base = QtGui.QPixmap.fromImage(movie.currentImage()).scaled(
+                    render_size,
+                    render_size,
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                    QtCore.Qt.TransformationMode.SmoothTransformation,
+                )
+                tinted = QtGui.QPixmap(base.size())
+                tinted.fill(QtCore.Qt.GlobalColor.transparent)
+                painter = QtGui.QPainter(tinted)
+                painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+                painter.drawPixmap(0, 0, base)
+                painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
+                painter.fillRect(tinted.rect(), color)
+                painter.end()
+                frames.append(tinted)
+            anim_state["frames"] = frames
+
+        def _show_frame(index: int) -> None:
+            frames = anim_state["frames"]
+            if frames:
+                spinner_label.setPixmap(frames[max(0, min(index, len(frames) - 1))])
+
+        movie.frameChanged.connect(_show_frame)
+
+        def _apply_theme(_mode: str | None = None) -> None:
+            tok = ThemeManager.instance().tokens()
+            anim_state["color"] = QtGui.QColor(*tok["flat_accent"])
+            _rebuild_frame_cache()
+            _show_frame(movie.currentFrameNumber())
+
+        return {
+            "label": spinner_label,
+            "movie": movie,
+            "apply_theme": _apply_theme,
+            "show_frame": _show_frame,
+        }
+
     def _show_qmodel_plot_overlay(self) -> None:
-        """Embeds a dimming layer and progress overlay into the main graph widget.
+        """Embeds a dimming layer and spinner overlay into the main graph widget.
 
         This method initializes a visual overlay for QModel inference. Unlike the
         analysis plot, this does not replace the widget; instead, it layers a
         semi-transparent `QGraphicsRectItem` over the existing plot to "dim" it,
-        then places a progress bar and label on top.
+        then places the shared GIF spinner (see `_build_gif_spinner`) and a
+        status label on top - same look as `_show_loading_run_overlay`'s
+        "Loading run..." card, since both represent the same kind of
+        "work is happening" state.
 
-        The dimming rectangle and the progress widget are both parented to the
-        `PlotItem`'s graphics item and managed via a tracking tuple for
-        dynamic resizing and eventual removal.
+        Only shown when QModel auto-fitting is triggered with no run-load
+        overlay already active (e.g. the "Run QModel Again" button, after a
+        run is already displayed) - see `_handle_qmodel_progress`, which
+        routes progress into the existing `_loading_run_overlay` instead of
+        calling this during the initial load.
 
         Note:
             Uses a single-shot timer to execute centering logic (`_center`)
@@ -1304,49 +1620,48 @@ class UIAnalyze(QtWidgets.QWidget):
         dim_rect.setParentItem(plot_item.graphicsItem())
         dim_rect.setZValue(999)
 
-        # Progress container
+        # Spinner container
         container = QtWidgets.QWidget()
-        container.setFixedSize(320, 62)
-        container.setStyleSheet(
-            "QWidget {"
-            "  background: rgba(255, 255, 255, 0);"
-            "}"
-            "QLabel {"
-            "  background: transparent;"
-            "  border: none;"
-            "  font-size: 10pt;"
-            "  color: #333333;"
-            "}"
-            "QProgressBar {"
-            "  border: none;"
-            "  border-radius: 3px;"
-            "  background: #e8f4fb;"
-            "}"
-            "QProgressBar::chunk {"
-            "  background: #2E9BDA;"
-            "  border-radius: 3px;"
-            "}"
-        )
+        container.setFixedWidth(280)
+        container.setAutoFillBackground(False)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        container.setStyleSheet("background: transparent;")
 
         layout = QtWidgets.QVBoxLayout(container)
-        layout.setContentsMargins(14, 8, 14, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(24, 28, 24, 28)
+        layout.setSpacing(10)
+
+        spinner = self._build_gif_spinner()
+        spinner_label = spinner["label"]
+        movie = spinner["movie"]
 
         status_label = QtWidgets.QLabel("Auto-fitting points\u2026")
         status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        status_label.setWordWrap(True)
 
-        progress_bar = QtWidgets.QProgressBar()
-        progress_bar.setRange(0, 0)
-        progress_bar.setTextVisible(False)
-        progress_bar.setFixedHeight(6)
+        spinner_row = QtWidgets.QHBoxLayout()
+        spinner_row.addStretch(1)
+        spinner_row.addWidget(spinner_label)
+        spinner_row.addStretch(1)
 
+        layout.addLayout(spinner_row)
         layout.addWidget(status_label)
-        layout.addWidget(progress_bar)
 
         proxy = QtWidgets.QGraphicsProxyWidget()
         proxy.setWidget(container)
         proxy.setParentItem(plot_item.graphicsItem())
         proxy.setZValue(1000)
+
+        def _apply_theme(_mode: str | None = None) -> None:
+            tok = ThemeManager.instance().tokens()
+            text_color = tok_css(tok["flat_text"])
+            status_label.setStyleSheet(f"font-size: 10pt; font-weight: 600; color: {text_color};")
+            spinner["apply_theme"](_mode)
+
+        _apply_theme()
+        ThemeManager.instance().themeChanged.connect(_apply_theme)
+        movie.start()
 
         def _center() -> None:
             try:
@@ -1363,64 +1678,42 @@ class UIAnalyze(QtWidgets.QWidget):
 
         QtCore.QTimer.singleShot(0, _center)
 
-        self._qmodel_overlay = (proxy, dim_rect, progress_bar, status_label)
+        self._qmodel_overlay = {
+            "proxy": proxy,
+            "dim_rect": dim_rect,
+            "movie": movie,
+            "status_label": status_label,
+            "apply_theme": _apply_theme,
+        }
 
     def _update_qmodel_plot_overlay(self, pct: int, status: str, is_error: bool = False) -> None:
-        """Updates the QModel overlay with smoothed progress and status text.
+        """Updates the shared QModel overlay's status text and, once
+        finished, fades the whole card out.
 
-        This method implements a animation pattern to decouple
-        the UI refresh rate from the worker signal frequency. It uses a
-        high-precision range (0-10,000) and a 60 FPS timer to animate the
-        progress bar toward the target value using a liquid ease-out effect
-        (interpolating 10% of the remaining distance per frame).
-
-        The animation protects the UI from 'jitter' caused by rapid, successive
-        progress updates from the inference worker.
+        There's no numeric progress dial anymore (the GIF spinner just
+        loops continuously - see `_build_gif_spinner`), so `pct` is only
+        used to detect completion.
 
         Args:
-            pct: The current progress percentage (0-100). The visual target
-                is capped at 99 internally until the hide method is called.
+            pct: The current progress percentage (0-100). >=100 (or an
+                error) triggers the fade-out.
             status: A human-readable string describing the current inference
                 step.
-            is_error: If True, forces the overlay to treat the state as a failure,
+            is_error: If True, forces the overlay to treat the state as a failure.
         """
         overlay = getattr(self, "_qmodel_overlay", None)
         if overlay is None:
             return
 
-        proxy, dim_rect, progress_bar, status_label = overlay
+        proxy, dim_rect = overlay["proxy"], overlay["dim_rect"]
+        status_label = overlay["status_label"]
         error_detected = is_error or "error" in status.lower() or "failed" in status.lower()
         is_finished = pct >= 100 or error_detected
 
-        if pct > 0 and progress_bar.maximum() == 0:
-            progress_bar.setRange(0, 10000)
-        target_value = 10000 if is_finished else int(min(pct, 99) * 100)
-
-        if not hasattr(progress_bar, "_chase_timer"):
-            progress_bar._target_value = 0
-            progress_bar._current_float = float(progress_bar.value())
-            progress_bar._chase_timer = QtCore.QTimer()
-            progress_bar._chase_timer.setInterval(16)
-
-            def chase_target():
-                diff = progress_bar._target_value - progress_bar._current_float
-
-                if abs(diff) < 5.0:
-                    progress_bar._current_float = float(progress_bar._target_value)
-                    progress_bar.setValue(int(progress_bar._current_float))
-                    progress_bar._chase_timer.stop()
-                else:
-                    progress_bar._current_float += diff * 0.10
-                    progress_bar.setValue(int(progress_bar._current_float))
-
-            progress_bar._chase_timer.timeout.connect(chase_target)
-
-        progress_bar._target_value = target_value
-        if not progress_bar._chase_timer.isActive():
-            progress_bar._chase_timer.start()
-
-        if status and len(status):
+        if status:
             status_label.setText(status)
+            if error_detected:
+                status_label.setStyleSheet("font-size: 10pt; font-weight: 600; color: #DA2E2E;")
 
         QtCore.QCoreApplication.processEvents()
         if is_finished:
@@ -1428,13 +1721,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 return
             self._qmodel_is_fading = True
 
-            if error_detected:
-                progress_bar.setStyleSheet(
-                    "QProgressBar { border: none; border-radius: 3px; background: #ffe6e6; }"
-                    "QProgressBar::chunk { background: #DA2E2E; border-radius: 3px; }"
-                )
-
-            anim = QtCore.QVariantAnimation()
+            anim = QtCore.QVariantAnimation(self)
             anim.setDuration(400)
             anim.setStartValue(1.0)
             anim.setEndValue(0.0)
@@ -1452,27 +1739,26 @@ class UIAnalyze(QtWidgets.QWidget):
             QtCore.QTimer.singleShot(800, anim.start)
 
     def _hide_qmodel_plot_overlay(self, failed: bool = False) -> None:
-        """Removes the QModel dimming layer and progress overlay.
+        """Removes the QModel dimming layer and spinner overlay.
 
-        This method performs a comprehensive cleanup of the QModel UI state. It
-        stops the internal animation timer (Target Chaser), optionally snaps
-        the progress bar to 100% on success, and removes both the
+        Stops/tears down the spinner's `QMovie` and removes both the
         `QGraphicsProxyWidget` and the `QGraphicsRectItem` from the scene.
 
         Args:
-            failed: If True, skips the 100% progress snap and displays a
-                warning popup. Defaults to False.
+            failed: If True, shows a warning popup. Defaults to False.
         """
         overlay = getattr(self, "_qmodel_overlay", None)
         if overlay is None:
             return
 
-        proxy, dim_rect, progress_bar, _status_label = overlay
-        if hasattr(progress_bar, "_chase_timer"):
-            progress_bar._chase_timer.stop()
-        if not failed and progress_bar.maximum() > 0:
-            progress_bar.setValue(10000)
-            QtCore.QCoreApplication.processEvents()
+        proxy, dim_rect = overlay["proxy"], overlay["dim_rect"]
+        movie = overlay["movie"]
+        try:
+            ThemeManager.instance().themeChanged.disconnect(overlay["apply_theme"])
+        except (RuntimeError, TypeError):
+            pass
+        movie.stop()
+        movie.deleteLater()
 
         for item in (proxy, dim_rect):
             try:
@@ -1872,9 +2158,10 @@ class UIAnalyze(QtWidgets.QWidget):
         layout.setContentsMargins(24, 28, 24, 28)
         layout.setSpacing(10)
 
-        spinner_label = QtWidgets.QLabel()
-        spinner_label.setFixedSize(56, 56)
-        spinner_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        spinner = self._build_gif_spinner()
+        spinner_label = spinner["label"]
+        movie = spinner["movie"]
+        show_frame = spinner["show_frame"]
 
         status_label = QtWidgets.QLabel("Loading run...")
         status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -1894,65 +2181,11 @@ class UIAnalyze(QtWidgets.QWidget):
         proxy.setZValue(1000)
         proxy.setOpacity(0.0)
 
-        # The loading glyph is an animated GIF (a bouncing three-dot
-        # loader) played via QMovie, rather than the old Lottie/rlottie
-        # pipeline - QMovie natively decodes and times GIF frames, so
-        # playback no longer needs a hand-rolled QTimer/progress tracker.
-        # The raw GIF frames are still pre-tinted into a pixmap cache per
-        # theme (same SourceAtop recolor trick as before): the source GIF
-        # is a single flat color, which would look wrong (or invisible)
-        # against one of the two card backgrounds without being retinted
-        # to the active theme's accent color on every show/theme-change.
-        icon_path = os.path.join(
-            Architecture.get_path(), "QATCH", "icons", "animations", "loading.gif"
-        )
-        movie = QtGui.QMovie(icon_path, QtCore.QByteArray(), self)
-        movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
-        movie.jumpToFrame(0)
-        total_frames = max(1, movie.frameCount())
-        _RENDER_SIZE = 48
-
-        anim_state = {
-            "color": QtGui.QColor(40, 50, 62),
-            "frames": [],
-        }
-
-        def _rebuild_frame_cache() -> None:
-            color = anim_state["color"]
-            frames = []
-            for f in range(total_frames):
-                movie.jumpToFrame(f)
-                base = QtGui.QPixmap.fromImage(movie.currentImage()).scaled(
-                    _RENDER_SIZE,
-                    _RENDER_SIZE,
-                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                    QtCore.Qt.TransformationMode.SmoothTransformation,
-                )
-                tinted = QtGui.QPixmap(base.size())
-                tinted.fill(QtCore.Qt.GlobalColor.transparent)
-                painter = QtGui.QPainter(tinted)
-                painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-                painter.drawPixmap(0, 0, base)
-                painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
-                painter.fillRect(tinted.rect(), color)
-                painter.end()
-                frames.append(tinted)
-            anim_state["frames"] = frames
-
-        def _show_frame(index: int) -> None:
-            frames = anim_state["frames"]
-            if frames:
-                spinner_label.setPixmap(frames[max(0, min(index, len(frames) - 1))])
-
-        movie.frameChanged.connect(_show_frame)
-
         def _apply_theme(_mode: str | None = None) -> None:
             tok = ThemeManager.instance().tokens()
             text_color = tok_css(tok["flat_text"])
             status_label.setStyleSheet(f"font-size: 11pt; font-weight: 600; color: {text_color};")
-            anim_state["color"] = QtGui.QColor(*tok["flat_accent"])
-            _rebuild_frame_cache()
-            _show_frame(movie.currentFrameNumber())
+            spinner["apply_theme"](_mode)
 
         _apply_theme()
         ThemeManager.instance().themeChanged.connect(_apply_theme)
@@ -1981,7 +2214,7 @@ class UIAnalyze(QtWidgets.QWidget):
             "center": _center,
             "theme": _apply_theme,
             "movie": movie,
-            "show_frame": _show_frame,
+            "show_frame": show_frame,
             "status_label": status_label,
             "frost": _set_frost,
             "fade": fade_anim,
@@ -4607,20 +4840,34 @@ class UIAnalyze(QtWidgets.QWidget):
             ws = 10
         return [ws, clipped]
 
-    def _qmodel_indus_progress_update(self, pct: int, status: Optional[str]):
+    def _handle_qmodel_progress(self, pct: int, status: Optional[str]) -> None:
+        """Routes a QModel predictor's progress-signal tick to the right UI.
+
+        During the initial run load, `_show_loading_run_overlay` is already
+        showing (see `analyze_data`) for the whole background-thread
+        pipeline, including the QModel auto-fit step inside it - so this
+        just forwards the status text onto that existing overlay instead of
+        layering a second "Auto-fitting..." card + dim rect on top of it.
+        Only when auto-fit runs with no run-load overlay active (e.g. the
+        "Run QModel Again" button, after a run is already displayed) does it
+        fall back to showing/updating its own overlay.
+        """
+        if getattr(self, "_loading_run_overlay", None) is not None:
+            if status:
+                self._set_loading_run_status(status)
+            return
         if getattr(self, "_qmodel_overlay", None) is None:
             self._show_qmodel_plot_overlay()
         self._update_qmodel_plot_overlay(pct, status or "")
+
+    def _qmodel_indus_progress_update(self, pct: int, status: Optional[str]):
+        self._handle_qmodel_progress(pct, status)
 
     def _QModel_volta_progress_update(self, pct: int, status: Optional[str]):
-        if getattr(self, "_qmodel_overlay", None) is None:
-            self._show_qmodel_plot_overlay()
-        self._update_qmodel_plot_overlay(pct, status or "")
+        self._handle_qmodel_progress(pct, status)
 
     def _QModel_onyx_progress_update(self, pct: int, status: Optional[str]):
-        if getattr(self, "_qmodel_overlay", None) is None:
-            self._show_qmodel_plot_overlay()
-        self._update_qmodel_plot_overlay(pct, status or "")
+        self._handle_qmodel_progress(pct, status)
 
     def _restore_qmodel_predictions(self):
         try:
@@ -5267,21 +5514,15 @@ class UIAnalyze(QtWidgets.QWidget):
             if len(self.poi_markers) != 6:
                 self.detect_change()
 
+                y0, y1 = self._data_y_range(self.ys, self.ys_freq, self.ys_diff)
                 for pt in [poi2_time, poi3_time, poi4_time, poi5_time]:
-                    poi_marker = pg.InfiniteLine(
-                        pos=pt,
-                        angle=90,
-                        pen="b",
-                        bounds=[self.xs[0], self.xs[-1]],
-                        movable=True,
-                    )
+                    poi_marker = self._make_poi_marker(pt, self.xs, y0, y1)
                     ax.addItem(poi_marker)
                     poi_marker.sigPositionChangeFinished.connect(self.markerMoveFinished)
                     self.poi_markers.insert(-1, poi_marker)
             for idx, marker in enumerate(self.poi_markers):
                 marker.setMovable(True)
-                marker.setPen(color="blue")
-                marker.addMarker("<|>")
+                self._style_poi_marker(marker, active=True)
                 if idx == 2:
                     marker.setVisible(False)
             # self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
@@ -5554,8 +5795,7 @@ class UIAnalyze(QtWidgets.QWidget):
                     t_idx = next(x for x, y in enumerate(self.xs) if y >= marker.value())
                     gstar_idxs.append(t_idx)
                 marker.setMovable(idx == px)  # only current marker is movable
-                marker.setPen(color=("blue" if idx == px else "blue"))
-                marker.addMarker("<|>") if idx == px else marker.clearMarkers()
+                self._style_poi_marker(marker, active=(idx == px))
             if self.stateStep >= 3:
                 pos1 = np.column_stack((self.xs[gstar_idxs], self.ys_freq_fit[gstar_idxs]))
                 pos2 = np.column_stack((self.xs[gstar_idxs], self.ys_diff_fit[gstar_idxs]))
@@ -5585,8 +5825,7 @@ class UIAnalyze(QtWidgets.QWidget):
             self.scat3.setAlpha(0.01, False)
             for marker in self.poi_markers:
                 marker.setMovable(False)
-                marker.setPen(color="blue")
-                marker.clearMarkers()
+                self._style_poi_marker(marker, active=True)
             tt0 = self.poi_markers[0].value()
             tx0 = next(x for x, y in enumerate(self.xs) if y >= tt0)
             tt2 = self.poi_markers[-1].value()
@@ -7472,7 +7711,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self._hide_loading_run_overlay()
         self._setup_graph_axes(curves)
         self._plot_signal_curves(curves)
-        self._add_poi_markers(curves["xs"], poi_vals, start_stop)
+        self._add_poi_markers(curves, poi_vals, start_stop)
 
     def _setup_graph_axes(self, curves: Dict[str, Any]) -> None:
         """Configures titles, labels, ranges, grids, and legends for all four axes.
@@ -7714,15 +7953,17 @@ class UIAnalyze(QtWidgets.QWidget):
         # plot visible the instant a run's data appears (the three detail
         # sub-graphs below start hidden via self.lowerGraphs.setVisible(False)
         # in _setup_graph_axes, so they'd have nothing to reveal yet anyway).
+        # Only the fit lines are animated - the scatter dot layers above are
+        # set to alpha 0.01 (essentially invisible), so collapsing/restoring
+        # their data in lockstep bought no visible payoff while still paying
+        # a full downsample+repaint pass for each of them on every tick. They
+        # keep the full data they were created with instead.
         self._animate_curve_reveal(
             xs,
             [
                 (self.fit1, xs[mask], ys_freq_fit[mask]),
                 (self.fit2, xs[mask], ys_diff_fit[mask]),
                 (self.fit3, xs[mask], ys_fit[mask]),
-                (self.scat1, xs[mask], ys_freq[mask]),
-                (self.scat2, xs[mask], ys_diff[mask]),
-                (self.scat3, xs[mask], ys[mask]),
             ],
         )
 
@@ -7803,8 +8044,238 @@ class UIAnalyze(QtWidgets.QWidget):
             for attr in attrs + self._SERIES_STAR_ATTRS.get(series_key, ()):
                 getattr(self, attr).setVisible(False)
 
-    def _add_poi_markers(self, xs: np.ndarray, poi_vals: List[int], start_stop: List[int]) -> None:
-        """Places movable InfiniteLine POI markers on the main graph.
+        # Clamp pan/zoom on every graph (main overview + the three POI
+        # detail graphs) to this run's own data - see _apply_plot_limits.
+        # Each detail graph only shows one signal family, so its limits are
+        # sized to that family alone rather than the combined range below.
+        self._apply_plot_limits(ax, xs, ys, ys_freq, ys_diff, ys_fit, ys_freq_fit, ys_diff_fit)
+        self._apply_plot_limits(ax1, xs, ys_freq, ys_freq_fit)
+        self._apply_plot_limits(ax2, xs, ys_diff, ys_diff_fit)
+        self._apply_plot_limits(ax3, xs, ys, ys_fit)
+
+    # Debounce window after the last manual pan/zoom tick before checking
+    # whether the view needs to bounce back (see _schedule_view_bounce) -
+    # short enough to feel responsive, long enough that a continuous drag
+    # or scroll (which re-fires sigRangeChangedManually on every tick)
+    # never lets the timer actually elapse mid-gesture. Bounce-back
+    # animation duration/easing is separate - see _bounce_view_into_bounds.
+    _BOUNCE_DEBOUNCE_MS = 220
+    _BOUNCE_DURATION_MS = 420
+
+    def _apply_plot_limits(
+        self,
+        ax: pg.PlotWidget,
+        xs: np.ndarray,
+        *y_arrays: np.ndarray,
+        x_pad_frac: float = 0.05,
+        y_pad_frac: float = 0.08,
+        max_zoom_out: float = 1.6,
+    ) -> None:
+        """Lets the user pan/zoom `ax` as far as they like, but softly
+        bounces it back to a sane resting frame shortly after they stop -
+        rather than a hard `ViewBox.setLimits()` wall, which stops a drag/
+        scroll dead the instant it crosses the boundary and reads as
+        hitting a wall rather than reaching an edge.
+
+        The resting frame: `x_pad_frac`/`y_pad_frac` give it a small
+        margin past the run's actual data on every side (a snap-back to
+        *exactly* the data edge would still feel abrupt); `max_zoom_out`
+        caps how wide that resting frame's span can be, as a multiple of
+        the already-padded data span, so "zoomed out" always settles
+        somewhere the curve still reads as more than a sliver.
+
+        Wires `ax`'s ViewBox up to `_schedule_view_bounce` via
+        `sigRangeChangedManually` (fired only by actual mouse/wheel
+        interaction, never by this file's own programmatic `setXRange`/
+        `setYRange` calls - e.g. `getPoints()`'s per-step POI-focus
+        zooming - so those never get bounced). Re-applying this (a fresh
+        run load) disconnects the previous handler first, since the
+        ViewBox itself persists across `ax.clear()`.
+
+        Deliberately doesn't cap zooming *in* - that's exactly what the
+        detail graphs are for when placing a POI precisely.
+        """
+        if xs is None or len(xs) < 2:
+            return
+        x0, x1 = float(xs[0]), float(xs[-1])
+        y0, y1 = self._data_y_range(*y_arrays)
+
+        x_span = max(x1 - x0, 1e-9)
+        y_span = max(y1 - y0, 1e-9)
+        x_pad = x_span * x_pad_frac
+        y_pad = y_span * y_pad_frac
+
+        vb = ax.getViewBox()
+        vb._pan_zoom_limits = {
+            "xMin": x0 - x_pad,
+            "xMax": x1 + x_pad,
+            "yMin": y0 - y_pad,
+            "yMax": y1 + y_pad,
+            "maxXRange": (x_span + 2 * x_pad) * max_zoom_out,
+            "maxYRange": (y_span + 2 * y_pad) * max_zoom_out,
+        }
+
+        prev_handler = getattr(vb, "_bounce_handler", None)
+        if prev_handler is not None:
+            try:
+                vb.sigRangeChangedManually.disconnect(prev_handler)
+            except (TypeError, RuntimeError):
+                pass
+
+        def _handler(_mask, vb=vb):
+            self._schedule_view_bounce(vb)
+
+        vb.sigRangeChangedManually.connect(_handler)
+        vb._bounce_handler = _handler
+
+    def _schedule_view_bounce(self, vb: pg.ViewBox) -> None:
+        """(Re)starts the debounce timer that checks `vb` against its soft
+        pan/zoom bounds shortly after the user stops interacting with it.
+
+        `sigRangeChangedManually` fires on every tick of a drag/scroll, not
+        just once it ends - restarting a short single-shot timer on every
+        call, and only acting once it actually elapses, is what makes the
+        correction land after the gesture settles instead of fighting it
+        mid-drag. If a bounce-back animation is already in flight, this
+        manual change means the user grabbed the view again - stop
+        correcting and let them.
+        """
+        anim = getattr(vb, "_bounce_anim", None)
+        if anim is not None:
+            try:
+                anim.stop()
+            except RuntimeError:
+                pass
+            vb._bounce_anim = None
+
+        timer = getattr(vb, "_bounce_timer", None)
+        if timer is None:
+            timer = QtCore.QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda vb=vb: self._bounce_view_into_bounds(vb))
+            vb._bounce_timer = timer
+        timer.start(self._BOUNCE_DEBOUNCE_MS)
+
+    def _bounce_view_into_bounds(self, vb: pg.ViewBox) -> None:
+        """Eases `vb`'s current view range back within its soft pan/zoom
+        bounds (see `_apply_plot_limits`) if it's currently outside them -
+        a no-op otherwise. `OutBack` easing gives the settle a slight
+        overshoot past the target before it comes to rest, reading as an
+        actual bounce rather than a plain slide-back.
+        """
+        limits = getattr(vb, "_pan_zoom_limits", None)
+        if limits is None:
+            return
+        try:
+            (x0, x1), (y0, y1) = vb.viewRange()
+        except RuntimeError:
+            return
+
+        tx0, tx1 = self._clamp_axis_range(x0, x1, limits["xMin"], limits["xMax"], limits["maxXRange"])
+        ty0, ty1 = self._clamp_axis_range(y0, y1, limits["yMin"], limits["yMax"], limits["maxYRange"])
+
+        if (tx0, tx1) == (x0, x1) and (ty0, ty1) == (y0, y1):
+            return
+
+        anim = QtCore.QVariantAnimation(self)
+        anim.setDuration(self._BOUNCE_DURATION_MS)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QtCore.QEasingCurve.Type.OutBack)
+
+        def _apply(t: float) -> None:
+            try:
+                vb.setRange(
+                    xRange=(x0 + (tx0 - x0) * t, x1 + (tx1 - x1) * t),
+                    yRange=(y0 + (ty0 - y0) * t, y1 + (ty1 - y1) * t),
+                    padding=0,
+                )
+            except RuntimeError:
+                pass
+
+        anim.valueChanged.connect(_apply)
+
+        def _on_finished(vb=vb) -> None:
+            if getattr(vb, "_bounce_anim", None) is anim:
+                vb._bounce_anim = None
+
+        anim.finished.connect(_on_finished)
+        vb._bounce_anim = anim
+        anim.start()
+
+    @staticmethod
+    def _clamp_axis_range(
+        lo: float, hi: float, min_bound: float, max_bound: float, max_span: float
+    ) -> Tuple[float, float]:
+        """Nearest in-bounds `[lo, hi]` to the given range: first shrinks
+        it (around its own center) to fit within `max_span`, then slides
+        it to fit within `[min_bound, max_bound]`.
+        """
+        span = hi - lo
+        if span > max_span:
+            center = (lo + hi) / 2.0
+            lo, hi = center - max_span / 2.0, center + max_span / 2.0
+        if lo < min_bound:
+            hi += min_bound - lo
+            lo = min_bound
+        if hi > max_bound:
+            lo -= hi - max_bound
+            hi = max_bound
+        return max(lo, min_bound), min(hi, max_bound)
+
+    @staticmethod
+    def _data_y_range(*y_arrays: np.ndarray) -> Tuple[float, float]:
+        """Real min/max across the given plotted-data arrays (ignoring
+        NaN/inf). Used both to size POI markers' finite vertical extent
+        (see `POIMarker.setDataRange`) and to compute each plot's pan/zoom
+        limits (see `_apply_plot_limits`) - both want the run's actual data
+        extent, not the current (zoomable) view. Falls back to (0.0, 1.0)
+        if nothing usable is given.
+        """
+        parts = [np.asarray(a).ravel() for a in y_arrays if a is not None and len(a)]
+        if not parts:
+            return 0.0, 1.0
+        finite = np.concatenate(parts)
+        finite = finite[np.isfinite(finite)]
+        if finite.size == 0:
+            return 0.0, 1.0
+        return float(finite.min()), float(finite.max())
+
+    def _style_poi_marker(self, marker: "POIMarker", active: bool = True) -> None:
+        """Applies theme-driven colors to a POI marker.
+
+        `active=False` renders a muted tone - used by `getPoints()` to
+        distinguish the single currently-draggable marker (per wizard
+        step) from the rest. `POIMarker` always shows its handle (see
+        `POIMarker.paint`), unlike the old `InfiniteLine` arrow glyph that
+        `getPoints()` used to add/clear per-step as the sole "this one's
+        active" cue - color now carries that distinction instead.
+
+        `active` is stored on the marker itself (rather than re-derived
+        from `setMovable`) so `_apply_pg_theme` can restore the same look
+        on a theme switch - the two don't always agree: every marker is
+        `setMovable(False)` at the step-7 summary, but all of them should
+        still read as fully "active"/confirmed there, not muted.
+        """
+        marker._active_style = active
+        tok = ThemeManager.instance().tokens()
+        line_color = QtGui.QColor(*(tok["accent"] if active else tok["plot_text_dim"]))
+        marker.setPen(pg.mkPen(line_color, width=2))
+        marker.setHoverPen(pg.mkPen(QtGui.QColor(*tok["flat_accent_hover"]), width=2.5))
+        marker.setHandleOutlineColor(QtGui.QColor(*tok["plot_glass_rim"]))
+
+    def _make_poi_marker(self, x: float, xs: np.ndarray, y0: float, y1: float) -> "POIMarker":
+        """Builds one themed, finite-extent `POIMarker` at data-x `x`,
+        bounded to `[xs[0], xs[-1]]` and vertically sized to `[y0, y1]`
+        (see `POIMarker.setDataRange`/`_data_y_range`).
+        """
+        marker = POIMarker(pos=x, angle=90, movable=True, bounds=[xs[0], xs[-1]])
+        marker.setDataRange(y0, y1)
+        self._style_poi_marker(marker, active=True)
+        return marker
+
+    def _add_poi_markers(self, curves: Dict[str, Any], poi_vals: List[int], start_stop: List[int]) -> None:
+        """Places movable POIMarker markers on the main graph.
 
         This method initializes vertical markers (POI) on the
         graphWidget. If `poi_vals` is provided, it undergoes validation to ensure
@@ -7812,13 +8283,19 @@ class UIAnalyze(QtWidgets.QWidget):
         will take precedence over the `start_stop` values.
 
         Args:
-            xs: The x-axis data array used to determine marker coordinate bounds.
+            curves: The signal-data dict produced by the run-load pipeline
+                (see `_render_analysis_plots`). Only `xs`/`ys`/`ys_freq`/
+                `ys_diff` are read here - the latter three purely to size
+                each marker's finite vertical extent via
+                `_data_y_range`.
             poi_vals: A list of integer indices representing predefined POIs.
                 Indices that are out of bounds (except -1) are reset to -1 and logged.
             start_stop: A fallback list of integer indices used if `poi_vals`
                 is not provided or to define the initial marker set.
         """
         ax = self.graphWidget
+        xs = curves["xs"]
+        y0, y1 = self._data_y_range(curves["ys"], curves["ys_freq"], curves["ys_diff"])
 
         if poi_vals:
             for i, pt in enumerate(poi_vals):
@@ -7829,15 +8306,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         self.poi_markers = []
         for idx, pt in enumerate(start_stop):
-            marker = pg.InfiniteLine(
-                pos=xs[pt],
-                angle=90,
-                pen="b",
-                bounds=[xs[0], xs[-1]],
-                movable=True,
-            )
-            marker.setPen(color="blue")
-            marker.addMarker("<|>")
+            marker = self._make_poi_marker(xs[pt], xs, y0, y1)
             if idx == 2:
                 marker.setVisible(False)
             ax.addItem(marker)

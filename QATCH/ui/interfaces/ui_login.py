@@ -176,7 +176,9 @@ class UILogin:
         logoLabel.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         logoLabel.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
-        logo_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-icon.png")
+        logo_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "high-res-qatch-logo-no-bg.png"
+        )
         logo_pm = QtGui.QPixmap(logo_path)
 
         if not logo_pm.isNull():
@@ -731,7 +733,9 @@ class UILogin:
             login_window (QtWidgets.QMainWindow): The window instance to update.
         """
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-icon.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "high-res-qatch-logo-no-bg.png"
+        )
         login_window.setWindowIcon(QtGui.QIcon(icon_path))
         title_text = f"{Constants.app_title} {Constants.app_version} - Login"
         login_window.setWindowTitle(_translate("loginWindow", title_text))

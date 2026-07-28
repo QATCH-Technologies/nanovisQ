@@ -69,7 +69,9 @@ class UIReview:
                 to be translated.
         """
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-icon.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "high-res-qatch-logo-no-bg.png"
+        )
         review_window.setWindowIcon(QtGui.QIcon(icon_path))
         review_window.setWindowTitle(_translate("review_window", "Review"))
 

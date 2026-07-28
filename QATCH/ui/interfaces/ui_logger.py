@@ -67,7 +67,9 @@ class UILogger:
             logger_window (QtWidgets.QMainWindow): The target window.
         """
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-icon.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "high-res-qatch-logo-no-bg.png"
+        )
         logger_window.setWindowIcon(QtGui.QIcon(icon_path))
         logger_window.setWindowTitle(
             _translate(

@@ -20,6 +20,7 @@ import math
 import os
 import time
 from functools import partial
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph import GraphicsLayoutWidget
 
@@ -27,9 +28,9 @@ from QATCH.common.architecture import Architecture
 from QATCH.common.fwUpdater import FW_UPDATE
 from QATCH.core.constants import Constants
 from QATCH.ui.components.flat_paint import paint_flat_surface
-from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode, tok_css
 from QATCH.ui.styles.tokens import PALETTES
+from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 
 
 class PlotMenuRow(QtWidgets.QWidget):
@@ -648,11 +649,7 @@ class PlotContainer(QtWidgets.QWidget):
         """
         mode = ThemeManager.instance().mode()
         size = self.size()
-        if (
-            self._bg_cache is None
-            or self._bg_cache.size() != size
-            or self._bg_cache_mode != mode
-        ):
+        if self._bg_cache is None or self._bg_cache.size() != size or self._bg_cache_mode != mode:
             self._bg_cache = self._render_background(size)
             self._bg_cache_mode = mode
 
@@ -1343,7 +1340,7 @@ class UIPlots:
             Architecture.get_path(),
             "QATCH",
             "icons",
-            "qatch-icon.png",
+            "high-res-qatch-logo-no-bg.png",
         )
 
         plots_window.setWindowIcon(QtGui.QIcon(icon_path))

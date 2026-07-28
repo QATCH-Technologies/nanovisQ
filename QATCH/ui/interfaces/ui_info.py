@@ -144,7 +144,9 @@ class UIInfo:
         _translate = QtCore.QCoreApplication.translate
         self.pButton_Download.setText(_translate("info_window", " Check Again"))
 
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "qatch-icon.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "high-res-qatch-logo-no-bg.png"
+        )
         info_window.setWindowIcon(QtGui.QIcon(icon_path))
         info_window.setWindowTitle(_translate("info_window", "Information"))
 
