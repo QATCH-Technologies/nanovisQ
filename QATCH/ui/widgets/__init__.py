@@ -18,6 +18,7 @@ from .login_central_widget import LoginCentralWidget
 from .query_run_info_widget import QueryRunInfoWidget
 from .recovery_filter_widget import RecoveryFilterWidget
 from .reset_password_widget import ResetPasswordWidget
+from .run_filter_popover import RunFilterPopover
 from .run_info_widget import RunInfoWindow
 from .saved_state_dot import SavedStateDot
 from .sliding_panel import SlidingPanel
@@ -59,5 +60,6 @@ __all__ = [
     "ControlsWidget",
     "SavedStateDot",
     "AccountPopup",
+    "RunFilterPopover",
     "UpdateStatusIcon",
 ]

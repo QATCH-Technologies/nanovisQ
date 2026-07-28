@@ -3,6 +3,7 @@ import atexit
 import datetime as dt
 import hashlib
 import os
+import re
 import sys
 import time
 import traceback
@@ -63,6 +64,7 @@ from QATCH.ui.dialogs.signature_dialog import (
 from QATCH.ui.styles.theme_manager import ThemeManager, desc_label_qss, tok_css
 from QATCH.ui.widgets.account_popup import AccountPopup
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
+from QATCH.ui.widgets.run_filter_popover import RunFilterPopover
 from QATCH.ui.widgets.table_view_widget import TableView
 from QATCH.ui.workers.analyze_worker import AnalyzeWorker
 from QATCH.ui.workers.run_scan_worker import RunScanWorker
@@ -219,6 +221,15 @@ class UIAnalyze(QtWidgets.QWidget):
         self.run_names = {}
         self.run_is_new = {}  # dict_key -> bool, see _scan_run's is_new / the "New" sort filter
 
+        # Run-filter popover state (independent of sort_order's Name/Date
+        # choice - see _refresh_cbox_runs). date bounds are "YYYY-MM-DD"
+        # strings or None ("Any"), matching the captured_date format
+        # _refresh_cbox_runs already derives from run_timestamps.
+        self._filter_new_only = False
+        self._filter_date_from = None
+        self._filter_date_to = None
+        self._run_filter_popover = None
+
         # Filesystem-watcher state that keeps the run list auto-maintained
         # instead of requiring a manual Rescan button or a full rescan on
         # every mode switch (see _ensure_watcher_armed/_rearm_watcher).
@@ -318,6 +329,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.tool_Cancel = self.actionbar.tool_Cancel
         self.tool_Back = self.actionbar.tool_Back
         self.tool_Next = self.actionbar.tool_Next
+        self.position_stepper = self.actionbar.position_stepper
         self.tool_Modify = self.actionbar.tool_Modify
         self.tool_Analyze = self.actionbar.tool_Analyze
         self.tool_Advanced = self.actionbar.tool_Advanced
@@ -326,6 +338,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
         self.tBtn_Info.clicked.connect(self.getRunInfo)
         self.saved_state_widget.mousePressEvent = lambda _evt: self.gotoStepNum(None, 1)
+        self.actionbar.filter_action.triggered.connect(self._open_run_filter_popover)
 
         self.tool_Cancel.clicked.connect(
             lambda: self.action_cancel(exit_batched_processing_mode=True)
@@ -2105,6 +2118,67 @@ class UIAnalyze(QtWidgets.QWidget):
         self.cBox_Devices.setEnabled(not self.showRunsFromAllDevices.isChecked())
         self.update_run(self.cBox_Devices.currentIndex())
 
+    def _open_run_filter_popover(self) -> None:
+        """Opens the "▾ filters" popover anchored to the run search field.
+
+        Reuses the existing cBox_Devices/showRunsFromAllDevices state (owned
+        by the Advanced panel's device picker) as the single source of
+        truth for device filtering rather than duplicating it - the
+        popover's device chip is a thin front-end onto that same state.
+        """
+        devices = [self.cBox_Devices.itemText(i) for i in range(self.cBox_Devices.count())]
+        current_device = self.cBox_Devices.currentText()
+        show_all = self.showRunsFromAllDevices.isChecked()
+
+        popover = RunFilterPopover(
+            devices=devices,
+            current_device=current_device,
+            show_all=show_all,
+            date_from=self._filter_date_from,
+            date_to=self._filter_date_to,
+            new_only=self._filter_new_only,
+            sort_order=self.sort_order,
+            on_device_changed=self._on_filter_device_changed,
+            on_date_range_changed=self._on_filter_date_range_changed,
+            on_new_only_changed=self._on_filter_new_only_changed,
+            on_sort_changed=self._on_filter_sort_changed,
+            on_clear=self._on_filter_clear,
+        )
+        self._run_filter_popover = popover
+        popover.closed.connect(lambda: setattr(self, "_run_filter_popover", None))
+        popover.show_anchored_to(self.cBox_Runs, main_window=self.parent)
+
+    def _on_filter_device_changed(self, device: Optional[str]) -> None:
+        if device is None:
+            self.showRunsFromAllDevices.setChecked(True)
+        else:
+            self.showRunsFromAllDevices.setChecked(False)
+            self.cBox_Devices.setCurrentText(device)
+        self.showRunsFromAllDevices_clicked()
+
+    def _on_filter_date_range_changed(
+        self, date_from: Optional[str], date_to: Optional[str]
+    ) -> None:
+        self._filter_date_from = date_from
+        self._filter_date_to = date_to
+        self._refresh_cbox_runs()
+
+    def _on_filter_new_only_changed(self, new_only: bool) -> None:
+        self._filter_new_only = new_only
+        self._refresh_cbox_runs()
+
+    def _on_filter_sort_changed(self, sort_order: int) -> None:
+        self.sort_order = sort_order
+        self._refresh_cbox_runs()
+
+    def _on_filter_clear(self) -> None:
+        self.showRunsFromAllDevices.setChecked(True)
+        self._filter_date_from = None
+        self._filter_date_to = None
+        self._filter_new_only = False
+        self.sort_order = 1
+        self.showRunsFromAllDevices_clicked()
+
     def _switch_user_for_signature(self) -> Optional[Tuple[str, str]]:
         """Callback passed to `SignatureDialog(on_switch_user=...)`. Performs
         the actual profile switch and pushes the result into the toolbar/
@@ -2622,7 +2696,25 @@ class UIAnalyze(QtWidgets.QWidget):
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
+    _STEP_TEXT_RE = re.compile(r"^Step (\d+) of (\d+)")
+
+    def _sync_position_chip(self, status: Optional[str]) -> None:
+        """Mirrors the action bar's "pos N/total" chip off the same "Step N
+        of total: ..." / "Summary: ..." text getPoints()/goBack() already
+        pass to `_update_progress_value` - rather than re-deriving the
+        position independently at every one of stateStep's own mutation
+        sites, which would drift the moment that state machine changes.
+        """
+        if not status:
+            return
+        match = self._STEP_TEXT_RE.match(status)
+        if match:
+            self.position_stepper.set_position(int(match.group(1)), int(match.group(2)))
+        elif status.startswith("Summary"):
+            self.position_stepper.set_position(6, 6)
+
     def _update_progress_value(self, value=0, status=None):
+        self._sync_position_chip(status)
         pct = self.progressBar.value()
         if status != None:
             self.progressBar.setValue(value)
@@ -3672,11 +3764,25 @@ class UIAnalyze(QtWidgets.QWidget):
             ):
                 continue
 
-            # Filter: "New" sort mode shows only runs with no saved analysis
-            # yet (see _scan_run's is_new / run_is_new cache) - default to
-            # excluded (False) if a run has never actually been scanned, so
-            # nothing shows up here before a scan has confirmed it's new.
-            if self.sort_order == 2 and not self.run_is_new.get(dict_key, False):
+            # Filter: "New" sort mode (legacy) or the filter popover's
+            # New/unanalyzed toggle - either shows only runs with no saved
+            # analysis yet (see _scan_run's is_new / run_is_new cache).
+            # Default to excluded (False) if a run has never actually been
+            # scanned, so nothing shows up here before a scan confirms it.
+            if (self.sort_order == 2 or self._filter_new_only) and not self.run_is_new.get(
+                dict_key, False
+            ):
+                continue
+
+            # Filter: date range from the filter popover ("Any" bound = no
+            # constraint on that side). Undated runs never match a bounded
+            # range - there's nothing to compare - but still show up when
+            # no range is set.
+            if (self._filter_date_from or self._filter_date_to) and captured_date == "Undated":
+                continue
+            if self._filter_date_from and captured_date < self._filter_date_from:
+                continue
+            if self._filter_date_to and captured_date > self._filter_date_to:
                 continue
 
             # Filter: Check device ownership
