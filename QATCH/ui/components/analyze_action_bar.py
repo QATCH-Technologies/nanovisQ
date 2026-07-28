@@ -25,6 +25,7 @@ from QATCH.ui.components import AnimatedComboBox
 from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.labels.section_label import SectionHeader
 from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.widgets.saved_state_dot import SavedStateDot
 
 
 def _icon(icon_name: str) -> QtGui.QIcon:
@@ -52,7 +53,11 @@ class AnalyzeActionBar(QtWidgets.QWidget):
 
     Public attributes (all plain Qt widgets - the caller wires their
     signals and owns their behavior):
-        active_run_header, cBox_Runs: the run selector.
+        active_run_header, cBox_Runs: the run selector (header above the
+            combo box).
+        saved_state_dot, saved_state_label, saved_state_widget: the
+            "Loaded & saved" status pill, shown beneath cBox_Runs since it
+            reports that combo's current selection's state.
         text_Created: hidden internal-state label, not shown in the bar -
             see `_build_run_selector`.
         tBtn_Predict, tBtn_Info: Auto-Fit/Run Info buttons.
@@ -81,11 +86,31 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         )
         self.cBox_Runs.setFixedHeight(20)
 
-        self.run_row = QtWidgets.QHBoxLayout()
-        self.run_row.setContentsMargins(0, 0, 0, 0)
-        self.run_row.setSpacing(8)
-        self.run_row.addWidget(self.active_run_header)
-        self.run_row.addWidget(self.cBox_Runs)
+        # "Loaded & saved" status pill - a persistent status for the run
+        # currently selected in cBox_Runs above, not a step cursor, so it
+        # lives here (under the selector it describes) rather than in the
+        # numbered Stepper. UIAnalyze drives its actual color (blank/
+        # unsaved/saved/error) and wires its click behavior (jump to step 1);
+        # this class only builds/positions it.
+        self.saved_state_dot = SavedStateDot()
+        self.saved_state_label = QtWidgets.QLabel("Loaded & saved")
+        self.saved_state_widget = QtWidgets.QWidget()
+        self.saved_state_widget.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        saved_state_layout = QtWidgets.QHBoxLayout(self.saved_state_widget)
+        saved_state_layout.setContentsMargins(0, 0, 0, 0)
+        saved_state_layout.setSpacing(6)
+        saved_state_layout.addWidget(self.saved_state_dot)
+        saved_state_layout.addWidget(self.saved_state_label)
+
+        # Stacked vertically - header on top, selector, status pill below -
+        # rather than side-by-side, so all three read as one "Active Run"
+        # column instead of a single wide row.
+        self.run_column = QtWidgets.QVBoxLayout()
+        self.run_column.setContentsMargins(0, 0, 0, 0)
+        self.run_column.setSpacing(2)
+        self.run_column.addWidget(self.active_run_header)
+        self.run_column.addWidget(self.cBox_Runs)
+        self.run_column.addWidget(self.saved_state_widget)
 
         # UIAnalyze/MainWindow track the current run's identity via this
         # label's text (see e.g. MainWindow.set_captured_data and
@@ -145,7 +170,7 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         # so the two task bars render at the same height/placement.
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(8)
-        layout.addLayout(self.run_row)
+        layout.addLayout(self.run_column)
         layout.addWidget(self.load_bar)
         layout.addStretch(1)
         layout.addWidget(self.nav_bar)

@@ -785,7 +785,6 @@ class RunRecoveryDialog(QWidget):
         plot_card_layout.setContentsMargins(6, 6, 6, 4)
         plot_card_layout.setSpacing(2)
 
-        pg.setConfigOptions(antialias=True)
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.plot_widget.setBackground("#fafafa")
@@ -805,7 +804,15 @@ class RunRecoveryDialog(QWidget):
         pen_freq = pg.mkPen(color=(*self._FREQ_COLOR, 170), width=1.4)
         pen_diss = pg.mkPen(color=(*self._DISS_COLOR, 170), width=1.4)
 
-        self.curve_freq = self.plot_widget.plot(pen=pen_freq)
+        # antialias scoped to just these two curves (rather than the old
+        # global pg.setConfigOptions(antialias=True)) - this dialog's own
+        # preview plot is small/static enough that it's worth the extra
+        # paint cost, but the global toggle had no "off" switch anywhere in
+        # the codebase, so it silently stayed on application-wide (slowing
+        # down every other pyqtgraph plot, including Analyze's) for the rest
+        # of the process once this dialog was ever built even once - and it
+        # always is, since RecoverMode constructs it eagerly at startup.
+        self.curve_freq = self.plot_widget.plot(pen=pen_freq, antialias=True)
 
         self.view_box_diss = pg.ViewBox()
         scene = self.plot_widget.scene()
@@ -817,7 +824,7 @@ class RunRecoveryDialog(QWidget):
         self.view_box_diss.setMouseEnabled(x=False, y=False)
         self.view_box_diss.setMenuEnabled(False)
 
-        self.curve_diss = pg.PlotCurveItem(pen=pen_diss)
+        self.curve_diss = pg.PlotCurveItem(pen=pen_diss, antialias=True)
         self.view_box_diss.addItem(self.curve_diss)
 
         plot_item = self.plot_widget.getPlotItem()

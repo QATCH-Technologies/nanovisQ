@@ -8,12 +8,17 @@ from QATCH.ui.styles.theme_manager import ThemeManager
 class SavedStateDot(QtWidgets.QWidget):
     """A small glowing status dot that reflects a field's save state.
 
-    This widget uses property animations to provide visual feedback for four
+    This widget uses property animations to provide visual feedback for five
     distinct states:
         * `querying`: Red, pulsing (awaiting device response).
         * `blank`: Quiet gray (no pending changes/initial state).
         * `unsaved`: Amber, gently pulsing (changes waiting to be saved).
         * `saved`: Green, steady (confirmed state).
+        * `error`: Red, steady with a halo (a load/save attempt failed).
+            Same hue as `querying` (red = needs attention) but steady rather
+            than pulsing, since it's a settled failure state rather than an
+            active wait - callers can also call `flash()` once when the
+            error first occurs to draw immediate attention to it.
 
     Attributes:
         _COLORS (Dict[str, Dict[str, QtGui.QColor]]): Color mapping for each
@@ -30,15 +35,18 @@ class SavedStateDot(QtWidgets.QWidget):
             "unsaved": QtGui.QColor(240, 170, 50),
             "saved": QtGui.QColor(60, 190, 120),
             "querying": QtGui.QColor(228, 70, 70),
+            "error": QtGui.QColor(228, 70, 70),
         },
         "dark": {
             "blank": QtGui.QColor(170, 180, 195),
             "unsaved": QtGui.QColor(255, 185, 60),
             "saved": QtGui.QColor(80, 210, 140),
             "querying": QtGui.QColor(240, 90, 90),
+            "error": QtGui.QColor(240, 90, 90),
         },
     }
     _PULSING: tuple = ("unsaved", "querying")
+    _STEADY_GLOW: tuple = ("saved", "error")
     _SIZE: int = 14
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
@@ -92,7 +100,7 @@ class SavedStateDot(QtWidgets.QWidget):
             self._pulse.start()
         else:
             self._pulse.stop()
-            self._glow = 1.0 if state == "saved" else 0.0
+            self._glow = 1.0 if state in self._STEADY_GLOW else 0.0
         self.update()
 
     def flash(self, times: int = 3) -> None:

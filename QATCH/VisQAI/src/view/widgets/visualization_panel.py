@@ -127,10 +127,9 @@ class VisualizationPanel(QtWidgets.QWidget):
     def __init__(self, parent=None):
         """Initialise the panel, configure pyqtgraph, and build the full UI.
 
-        Sets up all instance state lists and dicts to empty/`None`, enables
-        pyqtgraph antialiasing globally, initialises the 50 ms debounce timer
-        wired to `update_internal_axes`, then delegates full construction to
-        `init_ui`.
+        Sets up all instance state lists and dicts to empty/`None`,
+        initialises the 50 ms debounce timer wired to `update_internal_axes`,
+        then delegates full construction to `init_ui`.
 
         Args:
             parent (QtWidgets.QWidget | None): Optional Qt parent widget.
@@ -149,7 +148,11 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.hovered_scatter = None
 
         self.setStyleSheet(load_stylesheet())
-        pg.setConfigOptions(antialias=True)
+        # antialias is set per-item (see each pg.plot()/ScatterPlotItem/
+        # PlotDataItem call below) rather than globally here - pg's global
+        # setConfigOptions(antialias=True) has no matching "off" switch
+        # anywhere, so it used to silently stay on for every pyqtgraph plot
+        # in the whole app for the rest of the process, not just this panel's.
 
         self.axis_debounce = QtCore.QTimer()
         self.axis_debounce.setSingleShot(True)
@@ -1065,6 +1068,7 @@ class VisualizationPanel(QtWidgets.QWidget):
             [val_min, val_max],
             pen=pg.mkPen("#9ca3af", width=2, style=Qt.DashLine),
             name="y = x",
+            antialias=True,
         )
 
         self.series_plot_items.append(
@@ -1113,6 +1117,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                     hoverSize=20,
                     hoverBrush=pg.mkBrush(series["color"]),
                     hoverPen=pg.mkPen(series["color"], width=2),
+                    antialias=True,
                 )
 
                 # Connect click event
@@ -1265,8 +1270,8 @@ class VisualizationPanel(QtWidgets.QWidget):
             ci_color = QtGui.QColor(main_color)
             ci_color.setAlpha(20 if len(self.data_series) > 1 else 40)
             fill = pg.FillBetweenItem(
-                pg.PlotDataItem(x_ci, lower_ci),
-                pg.PlotDataItem(x_ci, upper_ci),
+                pg.PlotDataItem(x_ci, lower_ci, antialias=True),
+                pg.PlotDataItem(x_ci, upper_ci, antialias=True),
                 brush=pg.mkBrush(ci_color),
             )
             self.plot_widget.addItem(fill)
@@ -1306,6 +1311,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                     meas_x,
                     meas_y,
                     pen=pg.mkPen(main_color, width=2, style=Qt.DashLine),
+                    antialias=True,
                 )
                 series_items["lines"].append(meas_line)
 
@@ -1327,7 +1333,9 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         is_measured_only = data.get("measured", False) and not has_ci
         if not is_measured_only:
-            pred_line = self.plot_widget.plot(x, y, pen=pg.mkPen(main_color, width=3))
+            pred_line = self.plot_widget.plot(
+                x, y, pen=pg.mkPen(main_color, width=3), antialias=True
+            )
             series_items["lines"].append(pred_line)
 
             sc, tx = self._generate_scatter_points(
@@ -1434,6 +1442,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                 pen=pg.mkPen(color, width=2),
                 hoverable=True,
                 tip=None,
+                antialias=True,
             )
 
             scatter._point_data = {
@@ -1537,10 +1546,12 @@ class VisualizationPanel(QtWidgets.QWidget):
         solely by colour on the plot itself.
         """
         self.legend.clear()
-        pred_item = pg.PlotDataItem(pen=pg.mkPen("#555555", width=3))
+        pred_item = pg.PlotDataItem(pen=pg.mkPen("#555555", width=3), antialias=True)
         self.legend.addItem(pred_item, "Predicted")
         if self.act_measured.isChecked() and self.act_measured.isEnabled():
-            meas_item = pg.PlotDataItem(pen=pg.mkPen("#555555", width=2, style=Qt.DashLine))
+            meas_item = pg.PlotDataItem(
+                pen=pg.mkPen("#555555", width=2, style=Qt.DashLine), antialias=True
+            )
             self.legend.addItem(meas_item, "Measured")
 
     def toggle_card_series(self, card_name: str) -> bool:

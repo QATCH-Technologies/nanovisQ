@@ -33,10 +33,18 @@ except:
 
 if not USE_PYI_SPLASH:
     if len(sys.argv) > 1 and sys.argv[1] == "--splash":
-        # This block only executes inside the subprocess
-        app = QApplication(sys.argv)
-        splash = QatchSplashScreen()
-        sys.exit(app.exec_())
+        # This block only executes inside the subprocess. It has no
+        # console attached when launched from a frozen/windowed build, so
+        # without this try/except a construction failure here would just
+        # silently kill the subprocess with no visible trace at all -
+        # log it so a future regression is actually diagnosable.
+        try:
+            app = QApplication(sys.argv)
+            splash = QatchSplashScreen()
+            sys.exit(app.exec_())
+        except Exception as splash_exc:
+            Log.e("Splash screen subprocess failed to start:", splash_exc)
+            sys.exit(1)
 
 TAG = ""  # "[Application]"
 

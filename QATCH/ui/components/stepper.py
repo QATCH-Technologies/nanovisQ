@@ -20,16 +20,22 @@ class Stepper(QtWidgets.QWidget):
 
     stepClicked = QtCore.pyqtSignal(int)
 
-    def __init__(self, labels, parent=None):
+    def __init__(self, labels, parent=None, compact=False):
         super().__init__(parent)
         self._current = 0
         self._max_reached = 0
         self._circles = []
         self._captions = []
         self._lines = []
+        # Compact mode: smaller circles/margins for contexts where the
+        # Stepper sits in a thin toolbar-like card (e.g. AnalyzeUI's workflow
+        # bar) rather than as a wizard's own prominent header (the Export
+        # wizard uses the default, full-size geometry).
+        self._compact = compact
+        circle_size = 20 if compact else 26
 
         outer = QtWidgets.QVBoxLayout(self)
-        outer.setContentsMargins(4, 4, 4, 8)
+        outer.setContentsMargins(*((2, 2, 2, 4) if compact else (4, 4, 4, 8)))
         outer.setSpacing(0)
 
         # Circles and connecting lines live in their OWN grid row (row 0),
@@ -40,7 +46,7 @@ class Stepper(QtWidgets.QWidget):
         grid = QtWidgets.QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(0)
-        grid.setVerticalSpacing(4)
+        grid.setVerticalSpacing(2 if compact else 4)
 
         col = 0
         for i, label in enumerate(labels):
@@ -55,7 +61,7 @@ class Stepper(QtWidgets.QWidget):
 
             circle = QtWidgets.QToolButton()
             circle.setText(str(i + 1))
-            circle.setFixedSize(26, 26)
+            circle.setFixedSize(circle_size, circle_size)
             circle.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
             circle.clicked.connect(lambda _=False, idx=i: self._on_clicked(idx))
             grid.addWidget(circle, 0, col, QtCore.Qt.AlignCenter)
@@ -102,7 +108,7 @@ class Stepper(QtWidgets.QWidget):
                 state = "done"
             else:
                 state = "future"
-            circle.setStyleSheet(self._circle_qss(state))
+            circle.setStyleSheet(self._circle_qss(state, self._compact))
             circle.style().unpolish(circle)
             circle.style().polish(circle)
             circle.update()
@@ -119,7 +125,7 @@ class Stepper(QtWidgets.QWidget):
             line.update()
 
     @staticmethod
-    def _circle_qss(state):
+    def _circle_qss(state, compact=False):
         tok = ThemeManager.instance().tokens()
         if state == "current":
             body = (
@@ -138,7 +144,12 @@ class Stepper(QtWidgets.QWidget):
                 f"color: {tok_css(tok['flat_text_muted'])}; "
                 f"border: 1px solid {tok_css(tok['flat_border'])};"
             )
-        return f"QToolButton {{ {body} border-radius: 13px; font-weight: 700; font-size: 12px; }}"
+        radius = 10 if compact else 13
+        font_size = 10 if compact else 12
+        return (
+            f"QToolButton {{ {body} border-radius: {radius}px; "
+            f"font-weight: 700; font-size: {font_size}px; }}"
+        )
 
     @staticmethod
     def _caption_qss(active):

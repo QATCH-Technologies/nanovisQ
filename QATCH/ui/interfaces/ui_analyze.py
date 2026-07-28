@@ -51,7 +51,7 @@ from QATCH.ui.components.analyze_plot_cards import (
     SignalOverviewCard,
 )
 from QATCH.ui.components.glass_axis_item import GlassAxisItem, apply_glass_plot_style
-from QATCH.ui.components.stepper import Stepper
+from QATCH.ui.components.pill_stepper import PillStepper
 from QATCH.ui.components.themed_grid_item import ThemedGridItem
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.interfaces.ui_plots import PlotContainer
@@ -62,9 +62,7 @@ from QATCH.ui.dialogs.signature_dialog import (
 )
 from QATCH.ui.styles.theme_manager import ThemeManager, desc_label_qss, tok_css
 from QATCH.ui.widgets.account_popup import AccountPopup
-from QATCH.ui.widgets.controls_widget import ControlsWidget
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
-from QATCH.ui.widgets.saved_state_dot import SavedStateDot
 from QATCH.ui.widgets.table_view_widget import TableView
 from QATCH.ui.workers.analyze_worker import AnalyzeWorker
 from QATCH.ui.workers.run_scan_worker import RunScanWorker
@@ -131,6 +129,37 @@ def _new_glass_plot_widget() -> pg.PlotWidget:
     return w
 
 
+def _enable_adaptive_resolution(item: pg.PlotDataItem) -> pg.PlotDataItem:
+    """Downsamples what's actually *rendered* based on the current zoom/
+    pixel width, instead of always drawing every raw sample - a run's curves
+    can have many thousands of points, most of which land on the same
+    screen pixel column at the overview graph's fully-zoomed-out range, so
+    plotting all of them costs paint time for no visible benefit.
+
+    `clipToView` skips samples outside the visible x-range entirely; `auto`
+    downsampling then picks a stride so roughly one sample gets drawn per
+    pixel of the item's current width. `method='peak'` (rather than the
+    faster 'subsample'/'mean') keeps each pixel-bucket's min/max envelope
+    instead of smoothing it away, since the spikes/blips right at a channel
+    fill point are exactly what the model and the user both rely on to
+    place POIs - flattening them here would be counterproductive.
+
+    Both settings only affect painting: the item's own `.xData`/`.yData`
+    attributes still hold every original point untouched (it's specifically
+    `.getData()` - "the displayed data... after mapping and data reduction",
+    per its own docstring - that returns the reduced view; nothing in this
+    file calls it). POI marker positions and everything else here read from
+    `self.xs`/`self.ys_*` directly, never from the plotted items, so none of
+    that is affected. Adapts automatically on zoom - it's a no-op once the
+    visible point count already drops below roughly one per pixel, so it's
+    safe to apply uniformly rather than only at the overview's default
+    zoomed-out range.
+    """
+    item.setClipToView(True)
+    item.setDownsampling(auto=True, method="peak")
+    return item
+
+
 ###############################################################################
 # Elaborate on the raw data gathered from the SerialProcess in parallel timing
 ###############################################################################
@@ -167,6 +196,11 @@ class UIAnalyze(QtWidgets.QWidget):
     }
     _GRID_MAJOR_ALPHA = 45
     _GRID_MINOR_ALPHA = 18
+    # Duration of the main overview graph's left-to-right "draw-in" reveal
+    # when a run's curves first appear (see _animate_curve_reveal). Linear
+    # rather than eased, so it reads as a steady draw sweeping across the
+    # plot rather than a fast-start/slow-end fade.
+    _CURVE_REVEAL_MS = 700
 
     def setup_ui(self, analyze_window: "AnalyzeWindow", parent: "MainWindow"):
         super(UIAnalyze, self).__init__(None)
@@ -276,6 +310,9 @@ class UIAnalyze(QtWidgets.QWidget):
         self.actionbar = AnalyzeActionBar()
         self.text_Created = self.actionbar.text_Created
         self.cBox_Runs = self.actionbar.cBox_Runs
+        self.saved_state_dot = self.actionbar.saved_state_dot
+        self.saved_state_label = self.actionbar.saved_state_label
+        self.saved_state_widget = self.actionbar.saved_state_widget
         self.tBtn_Predict = self.actionbar.tBtn_Predict
         self.tBtn_Info = self.actionbar.tBtn_Info
         self.tool_Cancel = self.actionbar.tool_Cancel
@@ -288,6 +325,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
         self.tBtn_Info.clicked.connect(self.getRunInfo)
+        self.saved_state_widget.mousePressEvent = lambda _evt: self.gotoStepNum(None, 1)
 
         self.tool_Cancel.clicked.connect(
             lambda: self.action_cancel(exit_batched_processing_mode=True)
@@ -448,33 +486,16 @@ class UIAnalyze(QtWidgets.QWidget):
         self.advancedwidget.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.advancedwidget.setWindowTitle("Advanced Settings")
 
-        # Create dot buttons to skip directly to a particular step
-        layout_h4 = QtWidgets.QHBoxLayout()
-        # Same margins as AnalyzeActionBar's own card (see
-        # AnalyzeActionBar._assemble/UIControls.setup_ui's toolBar) so the
-        # workflow tile reads as the same compact card family instead of
-        # the stepper floating with no padding/boundary of its own.
-        layout_h4.setContentsMargins(12, 6, 12, 6)
-
-        # Leading "Loaded & saved" status indicator (was dot1) - a persistent
-        # status, not a step cursor, so it lives outside the numbered Stepper.
-        self.saved_state_dot = SavedStateDot()
-        self.saved_state_label = QtWidgets.QLabel("Loaded & saved")
-        self.saved_state_widget = QtWidgets.QWidget()
-        self.saved_state_widget.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.saved_state_widget.mousePressEvent = lambda _evt: self.gotoStepNum(None, 1)
-        saved_state_layout = QtWidgets.QHBoxLayout(self.saved_state_widget)
-        saved_state_layout.setContentsMargins(0, 0, 0, 0)
-        saved_state_layout.setSpacing(6)
-        saved_state_layout.addWidget(self.saved_state_dot)
-        saved_state_layout.addWidget(self.saved_state_label)
-
         # Numbered step indicator (was dot2..dot7, dot9, dot10 - dot8 was
-        # already permanently hidden, "for POI3 removal"). See _STEP_NUMS for
-        # the mapping between Stepper index and the legacy 1-based step_num
-        # values gotoStepNum/setDotStepMarkers use everywhere else.
-        self.stepper = Stepper(
-            ["Load", "Fill Start", "Fill End", "Post", "Blip 1", "Blip 2", "Blip 3", "Analyze"]
+        # already permanently hidden, "for POI3 removal"; dot1, the "Loaded &
+        # saved" status, now lives on AnalyzeActionBar beneath cBox_Runs
+        # instead of here). See _STEP_NUMS for the mapping between Stepper
+        # index and the legacy 1-based step_num values gotoStepNum/
+        # setDotStepMarkers use everywhere else. No longer a docked toolbar
+        # row - PillStepper floats over the Signal Overview plot instead
+        # (see _embed_stepper_overlay, called once graphWidget exists below).
+        self.stepper = PillStepper(
+            ["Load", "Fill Start", "Fill End", "Channel 1", "Channel 2", "Channel 3", "Analyze"]
         )
         self.stepper.stepClicked.connect(self._on_stepper_clicked)
 
@@ -523,19 +544,6 @@ class UIAnalyze(QtWidgets.QWidget):
         self.graphStack.addWidget(self.overview_card)
         self.graphStack.addWidget(self.results_split)
         self.graphStack.setCurrentIndex(0)
-
-        layout_h4.addWidget(self.saved_state_widget)
-        layout_h4.addSpacing(12)
-        layout_h4.addWidget(self.stepper, 1)
-        # Its own tile (same ControlsWidget card class ControlsUI's toolbar
-        # uses - see UIControls.setup_ui's self.toolBarWidget) rather than a
-        # plain, unbounded QWidget floating directly above the overview
-        # plot with no card/edges of its own. Added directly to self.layout
-        # below (not into graph_split) so it sizes to its own compact
-        # content instead of sharing the splitter's 50/50 height split with
-        # the much taller overview plot.
-        self.workflow_bar = ControlsWidget()
-        self.workflow_bar.setLayout(layout_h4)
 
         # self.QModel_widget = QtWidgets.QWidget(self)
         # self.QModel_widget.setWindowFlags(
@@ -659,17 +667,22 @@ class UIAnalyze(QtWidgets.QWidget):
         layout_h3.addWidget(self.footerText_keys)
 
         # Add widgets to layout - hint bar sits at the very bottom, under
-        # the detail-plot row, per the target layout. The workflow bar is
-        # its own tile between the action bar and the plot area (see
-        # self.workflow_bar above), matching how the action bar and plots
-        # are each their own separate panel.
+        # the detail-plot row, per the target layout. The workflow stepper is
+        # no longer a docked row here - it floats over the plot itself (see
+        # _embed_stepper_overlay), so the action bar sits directly above the
+        # plot area now.
         self.layout.addLayout(self.toolLayout)
-        self.layout.addWidget(self.workflow_bar)
         self.layout.addWidget(self.graph_split)
         self.layout.addLayout(layout_h3)
 
         self.setLayout(self.layout)
         self.setWindowTitle("Analyze Data")
+        # Embedding is deferred to the first showEvent (see below) rather
+        # than done here - a QGraphicsProxyWidget created before this window
+        # has ever actually been shown on screen doesn't reliably route
+        # mouse clicks to its embedded widget until some time after the
+        # window is first shown, which read as "the stepper's clicks don't
+        # do anything, but only on the very first run load."
 
         # self.cBox_Devices.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred)
         # self.cBox_Devices.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
@@ -1505,6 +1518,72 @@ class UIAnalyze(QtWidgets.QWidget):
         anim.start()
         return anim
 
+    def _embed_stepper_overlay(self) -> None:
+        """Embeds self.stepper (a PillStepper) as a persistent overlay
+        floating at the top-center of the Signal Overview plot, using the
+        same QGraphicsProxyWidget-on-a-PlotItem technique as
+        `_show_no_run_overlay`/`_show_loading_run_overlay` below - just
+        built once here (it's always present once the plots exist, not
+        shown/hidden per transient state) and top-anchored instead of
+        centered. Sits at a lower zValue than those two transient overlays
+        and fades out while either is showing (see
+        `_update_stepper_overlay_visibility`), since they already occupy the
+        same top-of-plot real estate with their own card + blur treatment.
+        """
+        plot_item = self.graphWidget.getPlotItem()
+        vb = plot_item.getViewBox()
+
+        self.stepper.show()
+        proxy = QtWidgets.QGraphicsProxyWidget()
+        proxy.setWidget(self.stepper)
+        proxy.setParentItem(plot_item.graphicsItem())
+        proxy.setZValue(900)
+
+        def _position() -> None:
+            try:
+                full_rect = plot_item.boundingRect()
+                pw = proxy.boundingRect().width()
+                proxy.setPos(
+                    full_rect.x() + (full_rect.width() - pw) / 2.0,
+                    full_rect.y() + 10.0,
+                )
+            except RuntimeError:
+                pass
+
+        QtCore.QTimer.singleShot(0, _position)
+        vb.sigResized.connect(_position)
+        # A step expanding/collapsing changes the stepper's own width, which
+        # would otherwise leave it off-center until the next plot resize.
+        self.stepper.sizeChanged.connect(_position)
+
+        self._stepper_overlay_proxy = proxy
+        self._update_stepper_overlay_visibility(animate=False)
+
+    def _update_stepper_overlay_visibility(self, animate: bool = True) -> None:
+        """Fades the floating stepper out while the "no run loaded" or
+        "loading run" placeholder card is showing over the same plot region,
+        and back in once neither is. Called from those overlays' own
+        show/hide methods rather than the other way around, so this stays a
+        pure follower of their state."""
+        proxy = getattr(self, "_stepper_overlay_proxy", None)
+        if proxy is None:
+            return
+        hide = (
+            getattr(self, "_no_run_overlay", None) is not None
+            or getattr(self, "_loading_run_overlay", None) is not None
+        )
+        target = 0.0 if hide else 1.0
+        if not animate:
+            proxy.setOpacity(target)
+            return
+        prev_fade = getattr(self, "_stepper_overlay_fade", None)
+        if prev_fade is not None:
+            try:
+                prev_fade.stop()
+            except RuntimeError:
+                pass
+        self._stepper_overlay_fade = self._fade_overlay_opacity([proxy], target, duration_ms=160)
+
     def _show_no_run_overlay(self) -> None:
         """Shows a placeholder card over the Signal Overview plot while no
         run is loaded: a blurred backdrop plus a centered card (icon,
@@ -1660,6 +1739,7 @@ class UIAnalyze(QtWidgets.QWidget):
             "frost": _set_frost,
             "fade": fade_anim,
         }
+        self._update_stepper_overlay_visibility()
 
     def _hide_no_run_overlay(self, animate: bool = True) -> None:
         """Removes the "no run loaded" placeholder card, if shown.
@@ -1708,6 +1788,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 pass
 
         self._no_run_overlay = None
+        self._update_stepper_overlay_visibility()
         if animate:
             unfade_anim = self._fade_overlay_opacity(
                 [proxy], 0.0, duration_ms=180, on_finished=_cleanup
@@ -1886,6 +1967,7 @@ class UIAnalyze(QtWidgets.QWidget):
             "frost": _set_frost,
             "fade": fade_anim,
         }
+        self._update_stepper_overlay_visibility()
 
     def _hide_loading_run_overlay(self, animate: bool = True) -> None:
         """Removes the "loading run" spinner card, if shown.
@@ -1938,6 +2020,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 pass
 
         self._loading_run_overlay = None
+        self._update_stepper_overlay_visibility()
         if animate:
             # Step the cached frame index back toward 0 directly (bypassing
             # the movie, which PyQt5's QMovie can't play in reverse) while
@@ -2958,6 +3041,16 @@ class UIAnalyze(QtWidgets.QWidget):
         worker.finished.connect(lambda w=worker: self._forget_incremental_worker(w))
         worker.start()
 
+    def showEvent(self, event):
+        # First-show hook for _embed_stepper_overlay: see the comment at its
+        # call site removal in setup_ui for why this can't just run there
+        # directly. Guarded so re-entering Analyze mode later (this widget
+        # gets shown/hidden repeatedly, not recreated) doesn't re-embed.
+        if not getattr(self, "_stepper_overlay_embedded", False):
+            self._stepper_overlay_embedded = True
+            self._embed_stepper_overlay()
+        super().showEvent(event)
+
     def closeEvent(self, event):
         if self.unsaved_changes:
             if not PopUp.question(
@@ -2979,12 +3072,20 @@ class UIAnalyze(QtWidgets.QWidget):
             self.parent.signature_required = False
         self._refresh_account_button_state()
 
+    def _set_saved_state(self, state: str, text: str) -> None:
+        """Updates the "Loaded & saved" status pill's dot color and its text
+        readout together, so the label always matches what the dot means
+        instead of staying frozen on "Loaded & saved" regardless of state."""
+        self.saved_state_dot.set_state(state)
+        self.saved_state_label.setText(text)
+
     def detect_change(self):
         if not self.unsaved_changes:
             Log.d("There are unsaved changes detected.")
         if self.parent.signature_received:
             self.parent.signature_received = False
         self.unsaved_changes = True
+        self._set_saved_state("unsaved", "Changes pending")
 
     """
     def AI_Prev_Guess(self):
@@ -5386,6 +5487,10 @@ class UIAnalyze(QtWidgets.QWidget):
             if self.unsaved_changes:
                 Log.d("Storing new <points> in XML file")
                 self.unsaved_changes = False
+                # Optimistic - appendAuditToXml/appendPointsToXml flip this
+                # back to "error" (and re-flag unsaved_changes via
+                # detect_change()) if the actual XML write fails below.
+                self._set_saved_state("saved", "Loaded & saved")
                 if self.parent.signature_required:
                     self.appendAuditToXml()
                 self.appendPointsToXml(poi_vals)
@@ -5432,13 +5537,31 @@ class UIAnalyze(QtWidgets.QWidget):
         # elif self.QModel_widget.isVisible():
         #     self.QModel_widget.hide()
 
-    # Maps Stepper index (0..7) -> legacy 1-based step_num used everywhere
-    # else in this class (gotoStepNum, stateStep arithmetic, etc). The old
-    # dots array was [dot1(status), dot2..dot7, dot8(dead), dot9, dot10], so
-    # step_num skips 1 (the status dot) and 8 (permanently hidden, "for POI3
-    # removal") - this table preserves that exact numbering without needing
-    # to touch any of the arithmetic downstream that still speaks step_num.
-    _STEP_NUMS = [2, 3, 4, 5, 6, 7, 9, 10]
+    # Maps Stepper index (0..6) -> legacy 1-based step_num used everywhere
+    # else in this class (gotoStepNum, stateStep arithmetic, etc).
+    #
+    # step_num 1 is the status dot (now AnalyzeActionBar's saved-state pill,
+    # not a Stepper entry at all) and 8 is permanently hidden ("for POI3
+    # removal"), so neither appears here.
+    #
+    # 5/6/7 used to be captioned "Post"/"Blip 1"/"Blip 2", which was wrong:
+    # gotoStepNum(step_num) -> stateStep = step_num - 3, then getPoints()
+    # increments it once more and hands the movable marker to
+    # _current_visible_poi_index() - working that through for 5/6/7 lands on
+    # POI4/POI5/POI6, i.e. the 1st/2nd/3rd channel fill points (confirmed
+    # against QATCH.common.tutorials.TutorialPages[7.4/7.5/7.6]), not "Post"
+    # (POI3, which is hidden everywhere and never user-editable) or a
+    # generic "Blip". Renamed to Channel 1/2/3 to match what they actually
+    # jump to.
+    #
+    # step_num 9 ("Blip 3" in the old 8-dot layout) is intentionally absent
+    # too, but unlike 1/8 it's still a value getPoints() hands to
+    # setDotStepMarkers() in the ordinary course of reaching the Summary
+    # view - see the step_num == 9 special case in setDotStepMarkers, which
+    # handles it directly rather than through this table (it was never a
+    # sensible *dot* - clicking it as "Blip 3" landed on Summary, not a
+    # channel point - but the numeric signal itself is real and needed).
+    _STEP_NUMS = [2, 3, 4, 5, 6, 7, 10]
 
     def _on_stepper_clicked(self, index: int) -> None:
         """Adapter from Stepper.stepClicked(index) to the legacy
@@ -5449,14 +5572,28 @@ class UIAnalyze(QtWidgets.QWidget):
         if step_num == 0:
             # No run loaded / reset - clear both the status dot and all
             # step progress.
-            self.saved_state_dot.set_state("blank")
+            self._set_saved_state("blank", "No run loaded")
             self.stepper.reset()
             return
         if step_num == 1:
             # Run loaded/saved; wizard hasn't stepped into the numbered
             # steps yet for this load, so clear any prior step progress.
-            self.saved_state_dot.set_state("saved")
+            self._set_saved_state("saved", "Loaded & saved")
             self.stepper.reset()
+            return
+        if step_num == 9:
+            # getPoints() reaches the Summary view (stateStep 7) this way on
+            # *every* path that gets there - not just organically stepping
+            # through Channel 1/2/3 one at a time, but also the "model found
+            # all six POIs on load" shortcut in _advance_analysis_step, which
+            # jumps stateStep straight to 6 and calls getPoints() once,
+            # skipping 0-5 (and their set_current calls) entirely. Every POI
+            # already has a value once you're at Summary, so treat the last
+            # dot (Analyze) as reached here too - otherwise, on that
+            # auto-advance path, _max_reached never leaves 0 and the pill is
+            # unclickable until the user clicks Next once (which reaches
+            # step_num 10 and finally bumps it).
+            self.stepper.set_current(len(self._STEP_NUMS) - 1)
             return
         try:
             index = self._STEP_NUMS.index(step_num)
@@ -5628,10 +5765,14 @@ class UIAnalyze(QtWidgets.QWidget):
                 Log.e(f"Filesystem error writing XML: {xml_path}")
                 Log.e("Error Details:", ose.strerror)
                 self.detect_change()
+                self._set_saved_state("error", "Error saving")
+                self.saved_state_dot.flash()
             except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
                 Log.e(f"Unicode error writing XML: {xml_path}")
                 Log.e("Error Details:", ue.reason)
                 self.detect_change()
+                self._set_saved_state("error", "Error saving")
+                self.saved_state_dot.flash()
 
     def appendPointsToXml(self, poi_vals):
         data_path = self.loaded_datapath
@@ -5679,10 +5820,14 @@ class UIAnalyze(QtWidgets.QWidget):
                 Log.e(f"Filesystem error writing XML: {xml_path}")
                 Log.e("Error Details:", ose.strerror)
                 self.detect_change()
+                self._set_saved_state("error", "Error saving")
+                self.saved_state_dot.flash()
             except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
                 Log.e(f"Unicode error writing XML: {xml_path}")
                 Log.e("Error Details:", ue.reason)
                 self.detect_change()
+                self._set_saved_state("error", "Error saving")
+                self.saved_state_dot.flash()
 
     def markerMoveFinished(self, marker):
         ax = self.graphWidget
@@ -6042,11 +6187,20 @@ class UIAnalyze(QtWidgets.QWidget):
             # Run was under 3 seconds: matches the original early-return -
             # curves were still recovered/waited-on above, but rendering
             # and step-advancement are skipped entirely.
+            self._set_saved_state("error", "Error loading")
+            self.saved_state_dot.flash()
             return
 
         self._render_analysis_plots(curves, poi_vals, start_stop)
         self._save_analysis_state(curves, relative_time, resonance_frequency, dissipation)
         self._advance_analysis_step(poi_vals)
+        if outcome == "error":
+            # _render_analysis_plots (via _setup_graph_axes) already called
+            # setDotStepMarkers(1), which sets "saved" - override that here
+            # so a genuinely failed load (an exception in
+            # _run_analysis_pipeline) still ends up red, not green.
+            self._set_saved_state("error", "Error loading")
+            self.saved_state_dot.flash()
 
     def _run_analysis_pipeline(
         self,
@@ -7256,6 +7410,79 @@ class UIAnalyze(QtWidgets.QWidget):
 
         self.lowerGraphs.setVisible(False)
 
+    def _animate_curve_reveal(
+        self,
+        xs: np.ndarray,
+        series: List[Tuple[Any, np.ndarray, np.ndarray]],
+    ) -> None:
+        """Reveals a set of pyqtgraph curves left-to-right instead of
+        popping in fully drawn, by animating how much of each curve's data
+        `setData()` is given on every tick (same `QVariantAnimation` +
+        callback convention as `SavedStateDot`/`_fade_overlay_opacity`,
+        rather than `QPropertyAnimation`).
+
+        The revealed slice is chosen by *time* (searching `xs` for the index
+        nearest a target x-value that itself advances linearly), not by a
+        fixed fraction of the sample *count* - this run's sample rate isn't
+        constant (e.g. 20 Hz for the first ~90s of a capture, 10 Hz after),
+        so advancing by a constant number-of-samples-per-tick would sweep
+        across x (time) at a different apparent speed on each side of that
+        boundary, reading as a stutter/kink right where the rate changes.
+        Advancing by x instead keeps the wavefront moving across the plot at
+        one constant speed regardless of how sample density varies along it.
+
+        Args:
+            xs: The shared x-axis (time) array, ascending - both its length
+                and its values are used here.
+            series: `(curve_item, full_x, full_y)` triples to reveal in
+                lockstep; each must share `xs`'s values.
+        """
+        n = len(xs)
+        if n < 2:
+            return
+
+        prev = getattr(self, "_curve_reveal_anim", None)
+        if prev is not None:
+            try:
+                prev.stop()
+            except RuntimeError:
+                pass
+
+        x0, x1 = xs[0], xs[-1]
+
+        def _apply(fraction: float) -> None:
+            target_x = x0 + fraction * (x1 - x0)
+            idx = max(2, min(n, int(np.searchsorted(xs, target_x, side="right"))))
+            for curve, x, y in series:
+                try:
+                    curve.setData(x[:idx], y[:idx])
+                except RuntimeError:
+                    pass
+
+        _apply(0.0)  # collapse to the first couple points before the first paint
+
+        anim = QtCore.QVariantAnimation(self)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setDuration(self._CURVE_REVEAL_MS)
+        # Linear, not eased - see the _CURVE_REVEAL_MS comment: this should
+        # read as a steady sweep across the plot, not a fast/slow fade.
+        anim.setEasingCurve(QtCore.QEasingCurve.Linear)
+        anim.valueChanged.connect(_apply)
+
+        def _finish() -> None:
+            # Guarantee the exact full curve is shown, regardless of any
+            # rounding in the last tick's revealed index.
+            for curve, x, y in series:
+                try:
+                    curve.setData(x, y)
+                except RuntimeError:
+                    pass
+
+        anim.finished.connect(_finish)
+        self._curve_reveal_anim = anim
+        anim.start()
+
     def _plot_signal_curves(self, curves: Dict[str, np.ndarray]) -> None:
         """Adds fit lines, scatter dots, and star highlights to all graph widgets.
 
@@ -7293,69 +7520,117 @@ class UIAnalyze(QtWidgets.QWidget):
         diff_color = self._series_colors["difference"]
         diss_color = self._series_colors["dissipation"]
 
-        # Main graph - fit lines
-        self.fit1 = ax.plot(xs[mask], ys_freq_fit[mask], pen=res_color, name="Resonance")
-        self.fit2 = ax.plot(xs[mask], ys_diff_fit[mask], pen=diff_color, name="Difference")
-        self.fit3 = ax.plot(xs[mask], ys_fit[mask], pen=diss_color, name="Dissipation")
+        # Main graph - fit lines. This is the overview graph shown at the
+        # run's full time range - by far the worst case for raw point count
+        # vs. actual screen pixels, so _enable_adaptive_resolution matters
+        # most here (see its docstring for why clipToView+auto-downsampling
+        # rather than pre-decimating self.xs/ys_* directly).
+        self.fit1 = _enable_adaptive_resolution(
+            ax.plot(xs[mask], ys_freq_fit[mask], pen=res_color, name="Resonance")
+        )
+        self.fit2 = _enable_adaptive_resolution(
+            ax.plot(xs[mask], ys_diff_fit[mask], pen=diff_color, name="Difference")
+        )
+        self.fit3 = _enable_adaptive_resolution(
+            ax.plot(xs[mask], ys_fit[mask], pen=diss_color, name="Dissipation")
+        )
 
         # Main graph - scatter dots (nearly transparent)
-        self.scat1 = ax.plot(
-            xs[mask],
-            ys_freq[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=res_color,
+        self.scat1 = _enable_adaptive_resolution(
+            ax.plot(
+                xs[mask],
+                ys_freq[mask],
+                pen=noPen,
+                symbol="o",
+                symbolSize=5,
+                symbolBrush=res_color,
+            )
         )
-        self.scat2 = ax.plot(
-            xs[mask],
-            ys_diff[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=diff_color,
+        self.scat2 = _enable_adaptive_resolution(
+            ax.plot(
+                xs[mask],
+                ys_diff[mask],
+                pen=noPen,
+                symbol="o",
+                symbolSize=5,
+                symbolBrush=diff_color,
+            )
         )
-        self.scat3 = ax.plot(
-            xs[mask],
-            ys[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=diss_color,
+        self.scat3 = _enable_adaptive_resolution(
+            ax.plot(
+                xs[mask],
+                ys[mask],
+                pen=noPen,
+                symbol="o",
+                symbolSize=5,
+                symbolBrush=diss_color,
+            )
         )
         self.scat1.setAlpha(0.01, False)
         self.scat2.setAlpha(0.01, False)
         self.scat3.setAlpha(0.01, False)
 
-        # Sub-graphs - fit lines
-        self.fit_1 = ax1.plot(xs[mask], ys_freq_fit[mask], pen=res_color, name="Resonance")
-        self.fit_2 = ax2.plot(xs[mask], ys_diff_fit[mask], pen=diff_color, name="Difference")
-        self.fit_3 = ax3.plot(xs[mask], ys_fit[mask], pen=diss_color, name="Dissipation")
+        # Left-to-right draw-in reveal for the main overview graph - the one
+        # plot visible the instant a run's data appears (the three detail
+        # sub-graphs below start hidden via self.lowerGraphs.setVisible(False)
+        # in _setup_graph_axes, so they'd have nothing to reveal yet anyway).
+        self._animate_curve_reveal(
+            xs,
+            [
+                (self.fit1, xs[mask], ys_freq_fit[mask]),
+                (self.fit2, xs[mask], ys_diff_fit[mask]),
+                (self.fit3, xs[mask], ys_fit[mask]),
+                (self.scat1, xs[mask], ys_freq[mask]),
+                (self.scat2, xs[mask], ys_diff[mask]),
+                (self.scat3, xs[mask], ys[mask]),
+            ],
+        )
+
+        # Sub-graphs - fit lines. These zoom to a narrow window around the
+        # current POI (see getPoints()'s ax1/ax2/ax3.setXRange calls), so
+        # clipToView+auto-downsampling is usually a no-op here - applied
+        # anyway for consistency and for high-sample-rate runs where even a
+        # narrow window still holds more points than screen pixels.
+        self.fit_1 = _enable_adaptive_resolution(
+            ax1.plot(xs[mask], ys_freq_fit[mask], pen=res_color, name="Resonance")
+        )
+        self.fit_2 = _enable_adaptive_resolution(
+            ax2.plot(xs[mask], ys_diff_fit[mask], pen=diff_color, name="Difference")
+        )
+        self.fit_3 = _enable_adaptive_resolution(
+            ax3.plot(xs[mask], ys_fit[mask], pen=diss_color, name="Dissipation")
+        )
 
         # Sub-graphs - scatter dots
-        self.scat_1 = ax1.plot(
-            xs[mask],
-            ys_freq[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=res_color,
+        self.scat_1 = _enable_adaptive_resolution(
+            ax1.plot(
+                xs[mask],
+                ys_freq[mask],
+                pen=noPen,
+                symbol="o",
+                symbolSize=5,
+                symbolBrush=res_color,
+            )
         )
-        self.scat_2 = ax2.plot(
-            xs[mask],
-            ys_diff[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=diff_color,
+        self.scat_2 = _enable_adaptive_resolution(
+            ax2.plot(
+                xs[mask],
+                ys_diff[mask],
+                pen=noPen,
+                symbol="o",
+                symbolSize=5,
+                symbolBrush=diff_color,
+            )
         )
-        self.scat_3 = ax3.plot(
-            xs[mask],
-            ys[mask],
-            pen=noPen,
-            symbol="o",
-            symbolSize=5,
-            symbolBrush=diss_color,
+        self.scat_3 = _enable_adaptive_resolution(
+            ax3.plot(
+                xs[mask],
+                ys[mask],
+                pen=noPen,
+                symbol="o",
+                symbolSize=5,
+                symbolBrush=diss_color,
+            )
         )
 
         # Star markers (current-POI highlights)
