@@ -44,7 +44,7 @@ FONT_SANS_SEMIBOLD = "IBM Plex Sans SmBld"
 FONT_MONO_MEDIUM = "IBM Plex Mono Medm"
 
 _FONT_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "resources", "fonts"
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "fonts"
 )
 
 _FONT_FILES = [
