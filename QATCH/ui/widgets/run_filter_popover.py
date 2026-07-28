@@ -17,10 +17,13 @@ UIAnalyze) decides what to do with it and owns the actual run-list state.
 
 from __future__ import annotations
 
+import os
 from typing import Callable, List, Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.common.architecture import Architecture
+from QATCH.ui.components import AnimatedComboBox
 from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.components.qatch_push_button import QATCHPushButton
 from QATCH.ui.components.segmented_control import SegmentedControl
@@ -31,37 +34,18 @@ _ANY_DEVICE = "All devices"
 _SORT_ITEMS = (("Date (newest)", 1), ("Name (A–Z)", 0))  # label -> sort_order
 
 
-def _flat_combo() -> QtWidgets.QComboBox:
-    """A lightweight flat-themed combo box for this popover's small pickers.
-
-    Not `AnimatedComboBox` - that widget owns a full custom rounded-popup
-    animation stack meant for the app's primary selectors; these are small,
-    secondary pickers inside an already-popped-over panel, so a themed
-    stock `QComboBox` keeps this file self-contained.
+def _animated_combo(items: List[str]) -> AnimatedComboBox:
+    """The same rounded/animated combo box used everywhere else in the app
+    (cBox_Runs, cBox_Speed, cBox_Port, ...) - kept consistent here rather
+    than a bespoke stock QComboBox, per the "filter dropdowns should be the
+    animated dropdown menus" note on this popover's first pass.
     """
-    combo = QtWidgets.QComboBox()
-    combo.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-    tok = ThemeManager.instance().tokens()
-    combo.setStyleSheet(
-        f"""
-        QComboBox {{
-            background: {tok_css(tok["flat_surface2"])};
-            border: 1px solid {tok_css(tok["flat_border"])};
-            border-radius: 13px;
-            padding: 4px 10px;
-            color: {tok_css(tok["flat_text"])};
-            font-family: '{FONT_SANS}';
-            font-size: 11.5px;
-        }}
-        QComboBox::drop-down {{ border: none; width: 18px; }}
-        QComboBox QAbstractItemView {{
-            background: {tok_css(tok["flat_surface"])};
-            border: 1px solid {tok_css(tok["flat_border"])};
-            selection-background-color: {tok_css(tok["flat_accent_weak"])};
-            selection-color: {tok_css(tok["flat_accent"])};
-        }}
-        """
+    combo = AnimatedComboBox(
+        icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg")
     )
+    combo.addItems(items)
+    combo.setFixedHeight(30)
+    combo.setMinimumWidth(112)
     return combo
 
 
@@ -185,16 +169,15 @@ class RunFilterPopover(QtWidgets.QWidget):
         self._panel.setGraphicsEffect(shadow)
 
         self._title = QtWidgets.QLabel("FILTER RUNS")
+        self._field_labels: List[QtWidgets.QLabel] = []
 
         row = QtWidgets.QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(14)
 
-        self._device_combo = _flat_combo()
-        self._device_combo.addItem(_ANY_DEVICE)
-        self._device_combo.addItems(devices)
+        self._device_combo = _animated_combo([_ANY_DEVICE, *devices])
         self._device_combo.setCurrentText(_ANY_DEVICE if show_all else (current_device or _ANY_DEVICE))
         self._device_combo.currentTextChanged.connect(self._device_selected)
-        row.addWidget(self._device_combo)
+        row.addLayout(self._field("Device", self._device_combo))
 
         self._from_edit = _flat_date_edit()
         if date_from:
@@ -202,7 +185,7 @@ class RunFilterPopover(QtWidgets.QWidget):
             if qd.isValid():
                 self._from_edit.setDate(qd)
         self._from_edit.dateChanged.connect(self._date_range_edited)
-        row.addWidget(self._from_edit)
+        row.addLayout(self._field("From", self._from_edit))
 
         self._to_edit = _flat_date_edit()
         if date_to:
@@ -210,7 +193,7 @@ class RunFilterPopover(QtWidgets.QWidget):
             if qd.isValid():
                 self._to_edit.setDate(qd)
         self._to_edit.dateChanged.connect(self._date_range_edited)
-        row.addWidget(self._to_edit)
+        row.addLayout(self._field("To", self._to_edit))
 
         self._new_toggle = SegmentedControl(
             [("all", "All"), ("new", "New / unanalyzed")],
@@ -219,22 +202,24 @@ class RunFilterPopover(QtWidgets.QWidget):
         )
         self._new_toggle.set_active("new" if new_only else "all")
         self._new_toggle.modeChanged.connect(lambda key: self._on_new_only_changed(key == "new"))
-        row.addWidget(self._new_toggle)
+        row.addLayout(self._field("Show", self._new_toggle))
 
-        self._sort_combo = _flat_combo()
-        for label, _order in _SORT_ITEMS:
-            self._sort_combo.addItem(label)
+        self._sort_combo = _animated_combo([label for label, _order in _SORT_ITEMS])
         start_index = next(
             (i for i, (_label, order) in enumerate(_SORT_ITEMS) if order == sort_order), 0
         )
         self._sort_combo.setCurrentIndex(start_index)
         self._sort_combo.currentIndexChanged.connect(self._sort_selected)
-        row.addWidget(self._sort_combo)
+        row.addLayout(self._field("Sort By", self._sort_combo))
 
-        self._clear_btn = QATCHPushButton("Clear", variant="ghost")
+        row.addStretch(1)
+
+        self._clear_btn = QATCHPushButton("Clear filter", variant="ghost")
         self._clear_btn.setFixedHeight(26)
         self._clear_btn.clicked.connect(self._clear_clicked)
-        row.addWidget(self._clear_btn)
+        # Bottom-aligned so it sits level with the controls, not their
+        # labels, despite not having a label column of its own.
+        row.addWidget(self._clear_btn, 0, QtCore.Qt.AlignmentFlag.AlignBottom)
 
         layout = QtWidgets.QVBoxLayout(self._panel)
         layout.setContentsMargins(14, 12, 14, 12)
@@ -257,6 +242,26 @@ class RunFilterPopover(QtWidgets.QWidget):
             f"color: {tok_css(tok['flat_text_muted'])}; font-family: '{FONT_SANS_SEMIBOLD}'; "
             "font-size: 10px; letter-spacing: 1px; background: transparent; border: none;"
         )
+        field_label_qss = (
+            f"color: {tok_css(tok['flat_text_muted'])}; font-family: '{FONT_SANS_SEMIBOLD}'; "
+            "font-size: 10px; background: transparent; border: none;"
+        )
+        for label in self._field_labels:
+            label.setStyleSheet(field_label_qss)
+
+    def _field(self, label_text: str, control: QtWidgets.QWidget) -> QtWidgets.QVBoxLayout:
+        """A small muted caption stacked above `control` - e.g. "Device"
+        over the device combo - so every filter is self-explanatory at a
+        glance instead of relying on the control's own placeholder/value to
+        convey what it filters by.
+        """
+        label = QtWidgets.QLabel(label_text.upper())
+        self._field_labels.append(label)
+        group = QtWidgets.QVBoxLayout()
+        group.setSpacing(4)
+        group.addWidget(label)
+        group.addWidget(control)
+        return group
 
     # -- change handlers ----------------------------------------------------
 

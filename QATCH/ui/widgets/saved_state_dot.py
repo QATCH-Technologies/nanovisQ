@@ -8,17 +8,24 @@ from QATCH.ui.styles.theme_manager import ThemeManager
 class SavedStateDot(QtWidgets.QWidget):
     """A small glowing status dot that reflects a field's save state.
 
-    This widget uses property animations to provide visual feedback for five
-    distinct states:
+    This widget uses property animations to provide visual feedback for
+    seven distinct states:
+        * `loading`: Green, pulsing (a run is actively being read/loaded).
         * `querying`: Red, pulsing (awaiting device response).
         * `blank`: Quiet gray (no pending changes/initial state).
         * `unsaved`: Amber, gently pulsing (changes waiting to be saved).
-        * `saved`: Green, steady (confirmed state).
+        * `saved`: Green, steady (confirmed loaded/saved state).
         * `error`: Red, steady with a halo (a load/save attempt failed).
             Same hue as `querying` (red = needs attention) but steady rather
             than pulsing, since it's a settled failure state rather than an
             active wait - callers can also call `flash()` once when the
             error first occurs to draw immediate attention to it.
+
+    `loading` and `saved` deliberately share a hue (green = "this is
+    working/succeeded") - pulsing vs. steady is what distinguishes "in
+    progress" from "settled", the same way `unsaved` (amber, pulsing) and
+    `error` (red, steady) share their own hues with no pulsing counterpart
+    of their own in this table.
 
     Attributes:
         _COLORS (Dict[str, Dict[str, QtGui.QColor]]): Color mapping for each
@@ -33,6 +40,7 @@ class SavedStateDot(QtWidgets.QWidget):
         "light": {
             "blank": QtGui.QColor(150, 165, 180),
             "unsaved": QtGui.QColor(240, 170, 50),
+            "loading": QtGui.QColor(60, 190, 120),
             "saved": QtGui.QColor(60, 190, 120),
             "querying": QtGui.QColor(228, 70, 70),
             "error": QtGui.QColor(228, 70, 70),
@@ -40,12 +48,13 @@ class SavedStateDot(QtWidgets.QWidget):
         "dark": {
             "blank": QtGui.QColor(170, 180, 195),
             "unsaved": QtGui.QColor(255, 185, 60),
+            "loading": QtGui.QColor(80, 210, 140),
             "saved": QtGui.QColor(80, 210, 140),
             "querying": QtGui.QColor(240, 90, 90),
             "error": QtGui.QColor(240, 90, 90),
         },
     }
-    _PULSING: tuple = ("unsaved", "querying")
+    _PULSING: tuple = ("unsaved", "querying", "loading")
     _STEADY_GLOW: tuple = ("saved", "error")
     _SIZE: int = 14
 

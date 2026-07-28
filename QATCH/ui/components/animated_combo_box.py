@@ -94,6 +94,70 @@ class _FlatItemDelegate(QtWidgets.QStyledItemDelegate):
         painter.restore()
 
 
+class _CompleterRowDelegate(QtWidgets.QStyledItemDelegate):
+    """Paints a QCompleter suggestion row with the same hover/selected wash
+    and typography as `_FlatItemDelegate`'s combo-popup rows (no checkmark
+    - a completer's rows are live suggestions, not "the current value").
+
+    A paint() override, not QSS `::item`/`::item:selected`, for the same
+    reason `_FlatItemDelegate` uses one: Windows' native style silently
+    ignores stylesheet item-selection pseudo-states for item views (the
+    row still highlights, just with the native OS color, never the
+    flat-token one) - painting directly sidesteps that platform quirk
+    entirely rather than fighting it.
+    """
+
+    _ROW_HEIGHT = 30
+    _ROW_RADIUS = 6.0
+
+    def sizeHint(
+        self, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex
+    ) -> QtCore.QSize:
+        size = super().sizeHint(option, index)
+        size.setHeight(self._ROW_HEIGHT)
+        return size
+
+    def paint(
+        self,
+        painter: QtGui.QPainter,
+        option: QtWidgets.QStyleOptionViewItem,
+        index: QtCore.QModelIndex,
+    ) -> None:
+        tok = ThemeManager.instance().tokens()
+        rect = QtCore.QRectF(option.rect)
+        is_selected = bool(option.state & QtWidgets.QStyle.State_Selected)
+        is_hover = bool(option.state & QtWidgets.QStyle.State_MouseOver)
+
+        painter.save()
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setPen(QtCore.Qt.NoPen)
+
+        row_rect = rect.adjusted(2.0, 1.0, -2.0, -1.0)
+        if is_selected:
+            painter.setBrush(QtGui.QColor(*tok["flat_accent_weak"]))
+            painter.drawRoundedRect(row_rect, self._ROW_RADIUS, self._ROW_RADIUS)
+            text_color = QtGui.QColor(*tok["flat_accent"])
+            font = QtGui.QFont(FONT_SANS_SEMIBOLD)
+        elif is_hover:
+            painter.setBrush(QtGui.QColor(*tok["flat_surface2"]))
+            painter.drawRoundedRect(row_rect, self._ROW_RADIUS, self._ROW_RADIUS)
+            text_color = QtGui.QColor(*tok["flat_text"])
+            font = QtGui.QFont(FONT_SANS)
+        else:
+            text_color = QtGui.QColor(*tok["flat_text"])
+            font = QtGui.QFont(FONT_SANS)
+        font.setPixelSize(13)
+        painter.setFont(font)
+
+        text_rect = rect.adjusted(10.0, 0.0, -10.0, 0.0)
+        painter.setPen(text_color)
+        painter.drawText(
+            text_rect, QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft,
+            index.data(),
+        )
+        painter.restore()
+
+
 class _RoundedPopup(QtWidgets.QFrame):
     """A frameless, translucent, rounded popup that hosts the combo's list view.
 
@@ -319,9 +383,17 @@ class AnimatedComboBox(QtWidgets.QComboBox):
 
         # --- Arrow Icon Setup ---
         self.arrow_lbl = QtWidgets.QLabel(self)
-        self.arrow_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.arrow_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.arrow_lbl.setStyleSheet("background: transparent; border: none;")
+        # Not transparent-for-mouse-events, and explicitly wired to toggle
+        # the popup itself: once `setEditable(True)` is on, Qt's internal
+        # QLineEdit child covers nearly the whole box and swallows clicks
+        # before they ever reach QComboBox's own arrow-subcontrol hit test,
+        # so the native "click anywhere opens the popup" behavior silently
+        # stops working. Handling it here instead makes the arrow a
+        # reliable, editable-or-not click target for showPopup/hidePopup.
+        self.arrow_lbl.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.arrow_lbl.mousePressEvent = self._on_arrow_clicked
 
         self._icon_source = QtGui.QPixmap(icon_path).scaled(
             15,
@@ -369,11 +441,49 @@ class AnimatedComboBox(QtWidgets.QComboBox):
                 padding-left: 12px;
             }}
         """)
+        # When editable, the displayed/entered text is drawn by the internal
+        # QLineEdit - a real child widget with its own stylesheet (set once
+        # in AnalyzeActionBar for background/border), not by this combo's
+        # own CE_ComboBoxLabel paint path. A child widget with its own
+        # stylesheet resolves `color` from its own (unstyled, default-black)
+        # palette rather than inheriting the parent QComboBox's QSS `color`
+        # above - invisible in dark mode the instant real text replaces the
+        # placeholder. Setting it explicitly here, on every theme/enabled
+        # change, is what keeps entered text (not just the placeholder)
+        # dark-mode readable.
+        if self.isEditable():
+            line_edit = self.lineEdit()
+            if line_edit is not None:
+                line_edit.setStyleSheet(f"""
+                    QLineEdit {{
+                        background: transparent;
+                        border: none;
+                        color: rgba({r}, {g}, {b}, {a});
+                        selection-background-color: {tok_css(tok["flat_accent_weak"])};
+                        selection-color: {tok_css(tok["flat_accent"])};
+                    }}
+                """)
+                # QLineEdit's placeholder isn't reliably stylable via the
+                # `::placeholder` QSS pseudo-element across Qt5 versions -
+                # the PlaceholderText palette role is the documented,
+                # version-stable way to recolor it.
+                pr, pg, pb, pa = tok["flat_text_muted"]
+                palette = line_edit.palette()
+                palette.setColor(QtGui.QPalette.PlaceholderText, QtGui.QColor(pr, pg, pb, pa))
+                line_edit.setPalette(palette)
 
     def setEnabled(self, enabled: bool) -> None:  # noqa: N802
         super().setEnabled(enabled)
         self._apply_text_qss()
         self.update()
+
+    def setEditable(self, editable: bool) -> None:  # noqa: N802
+        super().setEditable(editable)
+        # Becoming editable creates the internal QLineEdit for the first
+        # time (or discards the old one) - (re)theme it immediately rather
+        # than waiting for the next unrelated theme/enabled change to
+        # happen to trigger _apply_text_qss.
+        self._apply_text_qss()
 
     # ---- arrow tinting ------------------------------------------------------
 
@@ -403,7 +513,52 @@ class AnimatedComboBox(QtWidgets.QComboBox):
         self._apply_text_qss()
         self._retint_arrow()
         self._popup.apply_theme(self.font(), self._ROW_HEIGHT)
+        self._apply_completer_popup_theme()
         self.update()
+
+    # ---- completer popup theming ---------------------------------------------
+    # A QCompleter manages its own popup's show/hide directly, independent of
+    # this combo's showPopup/hidePopup - it can't reuse _RoundedPopup (whose
+    # slide-reveal is driven from here), so an editable combo's type-to-filter
+    # suggestions would otherwise fall back to Qt's bare default QListView
+    # chrome (white background, system font, native blue selection) instead
+    # of matching this combo's own rounded/flat-token-driven dropdown.
+
+    def style_completer_popup(self, completer: QtWidgets.QCompleter) -> None:
+        """Gives `completer`'s suggestion popup the same flat-token colors,
+        font, and row hover/selection treatment as this combo's own
+        dropdown, so the two don't read as different design systems. Call
+        once, right after `setCompleter(completer)`."""
+        view = QtWidgets.QListView()
+        view.setObjectName("animatedComboCompleterPopup")
+        view.setUniformItemSizes(True)
+        view.setMouseTracking(True)  # required for the delegate's hover wash
+        # QCompleter.setPopup() installs its own default QItemDelegate on
+        # whatever view you give it, so setting ours before this call gets
+        # silently clobbered - it has to happen after. ::item/::item:selected
+        # QSS is unreliable here regardless (see _CompleterRowDelegate); the
+        # frame-level QSS below (background/border/radius) does apply fine,
+        # that part isn't a per-item pseudo-state.
+        completer.setPopup(view)
+        view.setItemDelegate(_CompleterRowDelegate(view))
+        self._completer_popup_view = view
+        self._apply_completer_popup_theme()
+
+    def _apply_completer_popup_theme(self) -> None:
+        view = getattr(self, "_completer_popup_view", None)
+        if view is None:
+            return
+        view.viewport().setMouseTracking(True)
+        tok = ThemeManager.instance().tokens()
+        view.setStyleSheet(f"""
+            QListView#animatedComboCompleterPopup {{
+                background: {tok_css(tok["flat_surface"])};
+                border: 1px solid {tok_css(tok["popup_border"])};
+                border-radius: 8px;
+                padding: 5px;
+                outline: none;
+            }}
+        """)
 
     # ---- geometry helpers ---------------------------------------------------
 
@@ -495,6 +650,17 @@ class AnimatedComboBox(QtWidgets.QComboBox):
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         self.arrow_lbl.setGeometry(self.width() - 28, 0, 24, self.height())
+        # setEditable(True) creates its internal QLineEdit lazily, which can
+        # end up stacked above arrow_lbl regardless of construction order -
+        # re-raise on every relayout so the arrow stays clickable rather
+        # than becoming a dead pixel region under the line edit.
+        self.arrow_lbl.raise_()
+
+    def _on_arrow_clicked(self, _event: QtGui.QMouseEvent) -> None:
+        if self._popup_open:
+            self.hidePopup()
+        else:
+            self.showPopup()
 
     def _spin_to(self, target_angle: float) -> None:
         self._anim.stop()

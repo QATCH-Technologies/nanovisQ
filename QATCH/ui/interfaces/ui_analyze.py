@@ -329,7 +329,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.tool_Cancel = self.actionbar.tool_Cancel
         self.tool_Back = self.actionbar.tool_Back
         self.tool_Next = self.actionbar.tool_Next
-        self.position_stepper = self.actionbar.position_stepper
+        self.position_label = self.actionbar.position_label
         self.tool_Modify = self.actionbar.tool_Modify
         self.tool_Analyze = self.actionbar.tool_Analyze
         self.tool_Advanced = self.actionbar.tool_Advanced
@@ -339,6 +339,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.tBtn_Info.clicked.connect(self.getRunInfo)
         self.saved_state_widget.mousePressEvent = lambda _evt: self.gotoStepNum(None, 1)
         self.actionbar.filter_action.triggered.connect(self._open_run_filter_popover)
+        self.actionbar.clear_filter_action.triggered.connect(self._on_filter_clear)
 
         self.tool_Cancel.clicked.connect(
             lambda: self.action_cancel(exit_batched_processing_mode=True)
@@ -1826,6 +1827,11 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         self._hide_no_run_overlay(animate=True)
         self._hide_loading_run_overlay(animate=False)
+        # Single choke point (per this method's own docstring, every load
+        # path routes through here) for the "actively loading" indicator -
+        # settles to "saved"/"error" once the load actually finishes, at
+        # the existing _set_saved_state call sites.
+        self._set_saved_state("loading", "Loading run…")
 
         plot_item = self.graphWidget.getPlotItem()
         vb = plot_item.getViewBox()
@@ -2148,6 +2154,21 @@ class UIAnalyze(QtWidgets.QWidget):
         popover.closed.connect(lambda: setattr(self, "_run_filter_popover", None))
         popover.show_anchored_to(self.cBox_Runs, main_window=self.parent)
 
+    def _is_filter_active(self) -> bool:
+        """True if any run filter (not sort - that reorders, it doesn't
+        narrow the list) is currently narrowing cBox_Runs."""
+        return (
+            not self.showRunsFromAllDevices.isChecked()
+            or bool(self._filter_date_from)
+            or bool(self._filter_date_to)
+            or self._filter_new_only
+        )
+
+    def _update_filter_active_indicator(self) -> None:
+        """Reflects `_is_filter_active()` onto the action bar's filter
+        icon/quick-clear affordance."""
+        self.actionbar.set_filter_active(self._is_filter_active())
+
     def _on_filter_device_changed(self, device: Optional[str]) -> None:
         if device is None:
             self.showRunsFromAllDevices.setChecked(True)
@@ -2155,6 +2176,7 @@ class UIAnalyze(QtWidgets.QWidget):
             self.showRunsFromAllDevices.setChecked(False)
             self.cBox_Devices.setCurrentText(device)
         self.showRunsFromAllDevices_clicked()
+        self._update_filter_active_indicator()
 
     def _on_filter_date_range_changed(
         self, date_from: Optional[str], date_to: Optional[str]
@@ -2162,10 +2184,12 @@ class UIAnalyze(QtWidgets.QWidget):
         self._filter_date_from = date_from
         self._filter_date_to = date_to
         self._refresh_cbox_runs()
+        self._update_filter_active_indicator()
 
     def _on_filter_new_only_changed(self, new_only: bool) -> None:
         self._filter_new_only = new_only
         self._refresh_cbox_runs()
+        self._update_filter_active_indicator()
 
     def _on_filter_sort_changed(self, sort_order: int) -> None:
         self.sort_order = sort_order
@@ -2178,6 +2202,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self._filter_new_only = False
         self.sort_order = 1
         self.showRunsFromAllDevices_clicked()
+        self._update_filter_active_indicator()
 
     def _switch_user_for_signature(self) -> Optional[Tuple[str, str]]:
         """Callback passed to `SignatureDialog(on_switch_user=...)`. Performs
@@ -2709,9 +2734,9 @@ class UIAnalyze(QtWidgets.QWidget):
             return
         match = self._STEP_TEXT_RE.match(status)
         if match:
-            self.position_stepper.set_position(int(match.group(1)), int(match.group(2)))
+            self.position_label.setText(f"{match.group(1)} / {match.group(2)}")
         elif status.startswith("Summary"):
-            self.position_stepper.set_position(6, 6)
+            self.position_label.setText("6 / 6")
 
     def _update_progress_value(self, value=0, status=None):
         self._sync_position_chip(status)
@@ -3720,8 +3745,8 @@ class UIAnalyze(QtWidgets.QWidget):
         This method takes the current state of `run_timestamps`, sorts them based on
         the user's selected preference (alphabetical by name or chronological by date),
         and filters them according to the selected device or active batch subsets.
-        It then updates the `cBox_Runs` widget and adjusts the UI layout width
-        to fit the new content.
+        It then updates the `cBox_Runs` widget's contents (its width is fixed -
+        see AnalyzeActionBar - and does not change with the run list).
 
         The sorting logic follows:
             - `self.sort_order = 0`: Sort by Name (Ascending)
@@ -3805,15 +3830,24 @@ class UIAnalyze(QtWidgets.QWidget):
             # updateDev never sees a transiently/truly empty combo outside
             # of this method's own clear()/addItems() sequence.
             self.cBox_Runs.addItem("No Runs Found")
-            self.cBox_Runs.setEnabled(False)
+            # Only disable when there's genuinely nothing loaded. Disabling
+            # cBox_Runs also disables its embedded search/filter icons (they
+            # live inside its QLineEdit, a child widget - Qt's enabled state
+            # cascades down regardless of each action's own setEnabled) - if
+            # an active filter is what emptied the list, the field must stay
+            # enabled or the user is stranded with no way to reach the
+            # filter that's hiding everything, for the rest of the session.
+            keep_reachable_for_filter = self._is_filter_active()
+            self.cBox_Runs.setEnabled(keep_reachable_for_filter)
 
         # Reset internal lookup caches if they exist
         if hasattr(self, "_run_to_folder_cache"):
             self._run_to_folder_cache = {}
 
-        # Dynamically resize the combobox
-        new_width = max(self.cBox_Runs.sizeHint().width(), 200)
-        self.cBox_Runs.setFixedWidth(new_width)
+        # cBox_Runs has a permanent fixed width (see AnalyzeActionBar) - it
+        # used to be resized here to fit its widest current item, which made
+        # the whole task bar visibly jump/reflow every refresh depending on
+        # which run happened to be first/selected.
 
     def find_most_recent_run(self) -> None:
         """Initiates an asynchronous background scan to find the most recent run across all devices.
