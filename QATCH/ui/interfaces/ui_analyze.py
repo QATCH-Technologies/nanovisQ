@@ -289,6 +289,13 @@ class POIMarker(pg.InfiniteLine):
 
     _HANDLE_RADIUS = 6.0  # device pixels - constant on screen at any zoom
 
+    # Fraction of a marker's own entrance animation (see setRevealProgress)
+    # spent popping in the handle before the vertical line starts expanding
+    # out from it - handle-then-line rather than both at once, so the
+    # sequence reads as "the grip lands, then the marker unfurls" instead of
+    # everything growing in a single undifferentiated blob.
+    _HANDLE_REVEAL_FRAC = 0.35
+
     def __init__(self, *args, **kwargs):
         self._y0 = 0.0
         self._y1 = 1.0
@@ -299,6 +306,11 @@ class POIMarker(pg.InfiniteLine):
         # theme switch (see _style_poi_marker's docstring for why this
         # can't just be re-derived from setMovable()).
         self._active_style = True
+        # Entrance-animation progress (see setRevealProgress) - 1.0 (fully
+        # revealed) by default so a marker never driven through the reveal
+        # animation (e.g. one added outside _reveal_poi_markers) still just
+        # paints normally, at full size, immediately.
+        self._reveal_frac = 1.0
         super().__init__(*args, **kwargs)
 
     def setAngle(self, angle: float) -> None:
@@ -322,6 +334,18 @@ class POIMarker(pg.InfiniteLine):
 
     def setHandleOutlineColor(self, color: QtGui.QColor) -> None:
         self._handle_outline = color
+        self.update()
+
+    def setRevealProgress(self, frac: float) -> None:
+        """Drives this marker's entrance effect (see `_reveal_poi_markers`):
+        `frac` 0.0 draws nothing at all, 1.0 draws the marker at its full,
+        normal size. In between, the handle scales in first (over the
+        first `_HANDLE_REVEAL_FRAC` of `frac`'s range), then - once it's
+        fully sized - the vertical line expands outward from the handle's
+        position (the marker's vertical midpoint) to its full `_y0`/`_y1`
+        extent over the remainder.
+        """
+        self._reveal_frac = max(0.0, min(1.0, frac))
         self.update()
 
     def setPos(self, pos) -> None:
@@ -352,19 +376,38 @@ class POIMarker(pg.InfiniteLine):
     def paint(self, p, *args) -> None:
         pen = self.currentPen
         pen.setJoinStyle(QtCore.Qt.PenJoinStyle.MiterJoin)
-        p.setPen(pen)
-        p.drawLine(QtCore.QPointF(0, self._y0), QtCore.QPointF(0, self._y1))
 
-        # Handle drawn in device pixels (reset transform, same trick
-        # InfiniteLine's own addMarker() glyphs use) so its radius stays
-        # constant on screen regardless of the current zoom level.
-        mid_device = p.transform().map(QtCore.QPointF(0, (self._y0 + self._y1) / 2.0))
-        tr = p.transform()
-        p.resetTransform()
-        p.setPen(pg.mkPen(self._handle_outline, width=1.5))
-        p.setBrush(pg.mkBrush(pen.color()))
-        p.drawEllipse(mid_device, self._HANDLE_RADIUS, self._HANDLE_RADIUS)
-        p.setTransform(tr)
+        mid_y = (self._y0 + self._y1) / 2.0
+        if self._reveal_frac >= 1.0:
+            handle_frac, expand_frac = 1.0, 1.0
+        else:
+            handle_frac = min(1.0, self._reveal_frac / self._HANDLE_REVEAL_FRAC)
+            expand_frac = max(
+                0.0,
+                (self._reveal_frac - self._HANDLE_REVEAL_FRAC) / (1.0 - self._HANDLE_REVEAL_FRAC),
+            )
+
+        if expand_frac > 0:
+            # Grows from the handle's own position (the vertical midpoint)
+            # outward toward _y0/_y1 symmetrically, rather than e.g. only
+            # downward - the handle stays put as the anchor the line
+            # unfurls from in both directions.
+            y0 = mid_y - expand_frac * (mid_y - self._y0)
+            y1 = mid_y + expand_frac * (self._y1 - mid_y)
+            p.setPen(pen)
+            p.drawLine(QtCore.QPointF(0, y0), QtCore.QPointF(0, y1))
+
+        if handle_frac > 0:
+            # Handle drawn in device pixels (reset transform, same trick
+            # InfiniteLine's own addMarker() glyphs use) so its radius stays
+            # constant on screen regardless of the current zoom level.
+            mid_device = p.transform().map(QtCore.QPointF(0, mid_y))
+            tr = p.transform()
+            p.resetTransform()
+            p.setPen(pg.mkPen(self._handle_outline, width=1.5))
+            p.setBrush(pg.mkBrush(pen.color()))
+            p.drawEllipse(mid_device, self._HANDLE_RADIUS * handle_frac, self._HANDLE_RADIUS * handle_frac)
+            p.setTransform(tr)
 
     def dataBounds(self, axis, frac=1.0, orthoRange=None):
         if axis == 0:
@@ -408,11 +451,15 @@ class UIAnalyze(QtWidgets.QWidget):
     }
     _GRID_MAJOR_ALPHA = 45
     _GRID_MINOR_ALPHA = 18
-    # Duration of the main overview graph's left-to-right "draw-in" reveal
+    # Duration of the main overview graph's left-to-right curve draw-in
     # when a run's curves first appear (see _animate_curve_reveal). Linear
     # rather than eased, so it reads as a steady draw sweeping across the
-    # plot rather than a fast-start/slow-end fade.
-    _CURVE_REVEAL_MS = 450
+    # plot rather than a fast-start/slow-end fade. Each POI marker grows
+    # into place within this same window, triggered exactly when the
+    # drawing front reaches that marker's x (see _reveal_poi_markers) -
+    # slow enough here that each marker's own entrance reads clearly
+    # rather than the whole thing rushing by.
+    _CURVE_REVEAL_MS = 1400
     # Size of the looping GIF spinner shared by every "work is happening"
     # overlay (loading a run, QModel auto-fitting - see _build_gif_spinner).
     # LABEL_SIZE is the QLabel's on-screen box; RENDER_SIZE is the pixmap
@@ -7810,6 +7857,12 @@ class UIAnalyze(QtWidgets.QWidget):
         Advancing by x instead keeps the wavefront moving across the plot at
         one constant speed regardless of how sample density varies along it.
 
+        `_add_poi_markers`'s `_reveal_poi_markers` (called right after
+        this, from `_render_analysis_plots`) rides this same
+        `self._curve_reveal_anim` instance to grow each POI marker into
+        place as the drawing front reaches that marker's x - see that
+        method's docstring.
+
         Args:
             xs: The shared x-axis (time) array, ascending - both its length
                 and its values are used here.
@@ -7818,6 +7871,14 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         n = len(xs)
         if n < 2:
+            # No reveal for a degenerate run - and no stale animation left
+            # behind either, since _reveal_poi_markers (called right after
+            # this, from _add_poi_markers) treats a live self._curve_reveal_
+            # anim as its cue to ride it; a leftover finished/stale one from
+            # a previous, non-degenerate run would otherwise never fire its
+            # valueChanged/finished again, stranding this run's markers
+            # invisible forever.
+            self._curve_reveal_anim = None
             return
 
         prev = getattr(self, "_curve_reveal_anim", None)
@@ -7901,9 +7962,18 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Main graph - fit lines. This is the overview graph shown at the
         # run's full time range - by far the worst case for raw point count
-        # vs. actual screen pixels, so _enable_adaptive_resolution matters
-        # most here (see its docstring for why clipToView+auto-downsampling
-        # rather than pre-decimating self.xs/ys_* directly).
+        # vs. actual screen pixels. Temporarily wrapped in
+        # _enable_adaptive_resolution (clipToView + pg's own auto-downsample)
+        # purely so the reveal animation below stays smooth: measured cost of
+        # a single full-resolution setData()+repaint on a ~150k-point curve
+        # runs ~15ms, and the reveal fires ~90 of those across its six items
+        # in well under 1.4s - without downsampling, painting can't keep up
+        # with the animation's ticks and the "sweep" degenerates into the
+        # curve just popping in. _settle_to_full_resolution (below) switches
+        # every one of these six items back off of it the moment the reveal
+        # finishes, so actually panning/zooming the settled plot is still
+        # genuinely full-resolution, undownsampled data - only the one-time
+        # entrance animation itself borrows this.
         self.fit1 = _enable_adaptive_resolution(
             ax.plot(xs[mask], ys_freq_fit[mask], pen=res_color, name="Resonance")
         )
@@ -7957,7 +8027,10 @@ class UIAnalyze(QtWidgets.QWidget):
         # set to alpha 0.01 (essentially invisible), so collapsing/restoring
         # their data in lockstep bought no visible payoff while still paying
         # a full downsample+repaint pass for each of them on every tick. They
-        # keep the full data they were created with instead.
+        # keep the full data they were created with instead. _add_poi_markers
+        # (called right after this, from _render_analysis_plots) rides this
+        # same reveal animation to grow each POI marker into place as the
+        # drawing front reaches it - see _reveal_poi_markers.
         self._animate_curve_reveal(
             xs,
             [
@@ -7966,6 +8039,27 @@ class UIAnalyze(QtWidgets.QWidget):
                 (self.fit3, xs[mask], ys_fit[mask]),
             ],
         )
+
+        def _settle_to_full_resolution(
+            items=(self.fit1, self.fit2, self.fit3, self.scat1, self.scat2, self.scat3)
+        ) -> None:
+            """Switches every main-graph curve off of _enable_adaptive_
+            resolution's clipToView/auto-downsampling, once the reveal
+            animation above no longer needs it for smooth painting - from
+            here on these render every raw sample, full resolution, exactly
+            as plotted.
+            """
+            for item in items:
+                try:
+                    item.setClipToView(False)
+                    item.setDownsampling(auto=False)
+                except RuntimeError:
+                    pass
+
+        if self._curve_reveal_anim is not None:
+            self._curve_reveal_anim.finished.connect(_settle_to_full_resolution)
+        else:
+            _settle_to_full_resolution()
 
         # Sub-graphs - fit lines. These zoom to a narrow window around the
         # current POI (see getPoints()'s ax1/ax2/ax3.setXRange calls), so
@@ -8052,6 +8146,22 @@ class UIAnalyze(QtWidgets.QWidget):
         self._apply_plot_limits(ax1, xs, ys_freq, ys_freq_fit)
         self._apply_plot_limits(ax2, xs, ys_diff, ys_diff_fit)
         self._apply_plot_limits(ax3, xs, ys, ys_fit)
+
+        # Guards against a freshly loaded plot occasionally settling into a
+        # too-wide/off-center initial view instead of the resting frame just
+        # computed above - see _snap_view_into_bounds. A single manual pan/
+        # zoom already self-corrects this (via _bounce_view_into_bounds,
+        # whose clamp math this reuses), so this just performs that same
+        # correction automatically rather than leaving the plot wrong until
+        # the user happens to interact with it. Checked a few times over
+        # the first ~400ms rather than once - the exact timing of whatever
+        # transient condition causes the initial view to drift wasn't
+        # pinned down, so this re-checks instead of guessing the one moment
+        # it happens; each check is a cheap no-op once the view is already
+        # correct.
+        for vb in (ax.getViewBox(), ax1.getViewBox(), ax2.getViewBox(), ax3.getViewBox()):
+            for delay_ms in (0, 50, 150, 400):
+                QtCore.QTimer.singleShot(delay_ms, lambda vb=vb: self._snap_view_into_bounds(vb))
 
     # Debounce window after the last manual pan/zoom tick before checking
     # whether the view needs to bounce back (see _schedule_view_bounce) -
@@ -8203,6 +8313,33 @@ class UIAnalyze(QtWidgets.QWidget):
         vb._bounce_anim = anim
         anim.start()
 
+    def _snap_view_into_bounds(self, vb: pg.ViewBox) -> None:
+        """Instantly clamps `vb`'s current view range back within its soft
+        pan/zoom bounds (see `_apply_plot_limits`) if it's outside them -
+        the same `_clamp_axis_range` math `_bounce_view_into_bounds` uses,
+        without that method's animation. Called a few times shortly after
+        a fresh plot loads (see `_plot_signal_curves`) to silently correct
+        an occasionally-too-wide initial view before the user ever sees it.
+        """
+        limits = getattr(vb, "_pan_zoom_limits", None)
+        if limits is None:
+            return
+        try:
+            (x0, x1), (y0, y1) = vb.viewRange()
+        except RuntimeError:
+            return
+
+        tx0, tx1 = self._clamp_axis_range(x0, x1, limits["xMin"], limits["xMax"], limits["maxXRange"])
+        ty0, ty1 = self._clamp_axis_range(y0, y1, limits["yMin"], limits["yMax"], limits["maxYRange"])
+
+        if (tx0, tx1) == (x0, x1) and (ty0, ty1) == (y0, y1):
+            return
+
+        try:
+            vb.setRange(xRange=(tx0, tx1), yRange=(ty0, ty1), padding=0)
+        except RuntimeError:
+            pass
+
     @staticmethod
     def _clamp_axis_range(
         lo: float, hi: float, min_bound: float, max_bound: float, max_span: float
@@ -8305,6 +8442,7 @@ class UIAnalyze(QtWidgets.QWidget):
             start_stop = poi_vals
 
         self.poi_markers = []
+        marker_targets: List[Tuple["POIMarker", float]] = []
         for idx, pt in enumerate(start_stop):
             marker = self._make_poi_marker(xs[pt], xs, y0, y1)
             if idx == 2:
@@ -8312,6 +8450,88 @@ class UIAnalyze(QtWidgets.QWidget):
             ax.addItem(marker)
             marker.sigPositionChangeFinished.connect(self.markerMoveFinished)
             self.poi_markers.append(marker)
+            marker_targets.append((marker, xs[pt]))
+
+        self._reveal_poi_markers(xs[0], xs[-1], marker_targets)
+
+    # Duration (as a fraction of _animate_curve_reveal's own total duration)
+    # of one POI marker's own entrance effect - short relative to the whole
+    # reveal, so it plays as a brief "pop, then unfurl" right as the drawing
+    # front passes, not something that visibly lags behind it.
+    _MARKER_REVEAL_FRAC = 0.16
+
+    def _reveal_poi_markers(
+        self, x0: float, x1: float, marker_targets: List[Tuple["POIMarker", float]]
+    ) -> None:
+        """Grows each freshly created POI marker into place - handle first,
+        then the vertical line unfurling out from it (see `POIMarker.
+        setRevealProgress`) - right as `_animate_curve_reveal`'s left-to-
+        right curve draw-in reaches that marker's x position, instead of
+        having every marker appear at full size the instant the sweep
+        starts.
+
+        Markers stay put at their real x the whole time - only their own
+        size animates - so each one's entrance is independent of every
+        other's: `_animate_curve_reveal` advances its drawing front
+        linearly from `x0` to `x1` over the animation's whole duration, so
+        a marker at x-fraction `f` of the way across `[x0, x1]` starts
+        growing once the overall reveal progress reaches `f`, and finishes
+        `_MARKER_REVEAL_FRAC` of the total duration later.
+
+        Rides the *same* `QVariantAnimation` instance that method already
+        started for the main graph's fit lines (`self._curve_reveal_anim`)
+        by connecting an additional slot to its existing `valueChanged`/
+        `finished` signals, rather than threading marker state through that
+        method's own parameters - this is called from `_add_poi_markers`,
+        which `_render_analysis_plots` always runs after `_plot_signal_
+        curves` (so markers land on top of the curves in z-order), by which
+        point that animation is already running.
+
+        Falls back to placing every marker directly at full size (no
+        animation) if there's no reveal animation to ride - e.g. a
+        degenerate run too short for `_animate_curve_reveal` to bother
+        with (see its own `n < 2` guard).
+        """
+        anim = getattr(self, "_curve_reveal_anim", None)
+        if anim is None or not marker_targets:
+            for marker, _target_x in marker_targets:
+                marker.setRevealProgress(1.0)
+            return
+
+        span = x1 - x0
+        windows = []  # (start_frac, end_frac, marker)
+        for marker, target_x in marker_targets:
+            start_frac = (target_x - x0) / span if span else 1.0
+            start_frac = max(0.0, min(1.0, start_frac))
+            end_frac = min(1.0, start_frac + self._MARKER_REVEAL_FRAC)
+            windows.append((start_frac, end_frac, marker))
+
+        for _start_frac, _end_frac, marker in windows:
+            marker.setRevealProgress(0.0)
+
+        def _apply(fraction: float) -> None:
+            for start_frac, end_frac, marker in windows:
+                if fraction <= start_frac:
+                    progress = 0.0
+                elif fraction >= end_frac:
+                    progress = 1.0
+                else:
+                    progress = (fraction - start_frac) / (end_frac - start_frac)
+                try:
+                    marker.setRevealProgress(progress)
+                except RuntimeError:
+                    pass
+
+        def _finish() -> None:
+            for _start_frac, _end_frac, marker in windows:
+                try:
+                    marker.setRevealProgress(1.0)
+                except RuntimeError:
+                    pass
+
+        anim.valueChanged.connect(_apply)
+        anim.finished.connect(_finish)
+        _apply(0.0)
 
     def _save_analysis_state(
         self,
