@@ -41,8 +41,18 @@ uint8_t POGOServo::attach(int pin, int minPulseUs, int maxPulseUs) {
 void POGOServo::detach() {
     if (_attached && _pin >= 0) {
 
+        // First, tell the timer to output a 0% duty cycle.
+        // On Teensy, this forces the hardware channel to transition to 0V 
+        // safely at the conclusion of its normal PWM timing sequence.
+        analogWrite(_pin, 0);          
+        
+        // CRUCIAL STEP: Wait exactly one full PWM cycle (20ms at 50Hz)
+        // This guarantees that any active high pulse has finished naturally, 
+        // leaving the signal line completely flat before we alter the pin mode.
+        delay(20); 
+
         // FIX: Force the pin to remain a hard OUTPUT clamped to 0V (LOW).
-        // This instantly drains your 470pF filtering capacitor to ground,
+        // This instantly drains the 470pF filtering capacitor to ground,
         // preventing it from generating a trailing "phantom 0-deg pulse".
         pinMode(_pin, OUTPUT);          
         digitalWrite(_pin, LOW);  // Stop sending PWM pulses
