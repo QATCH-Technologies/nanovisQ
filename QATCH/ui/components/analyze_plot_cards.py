@@ -13,7 +13,7 @@ import os
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
-from QATCH.ui.interfaces.ui_plots import PlotContainer
+from QATCH.ui.interfaces.ui_plots import GridMenuRow, PlotContainer
 from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode
 from QATCH.ui.styles.tokens import PALETTES
 
@@ -130,7 +130,17 @@ class SignalOverviewCard(PlotContainer):
     Exposes btn_zoom_in/btn_zoom_out/btn_move_left/btn_move_right for the
     caller to wire to zoomFinderPlots/moveCurrentMarker (those callbacks
     live on UIAnalyze, not here).
+
+    Attributes:
+        point_to_point_toggled (QtCore.pyqtSignal): Emitted when the gear
+            menu's "Point-to-Point Rendering" row is toggled. Controls the
+            raw-data "point cloud" - the near-invisible scatter dots the
+            solid fit lines are a smoothed average through - not the fit
+            lines themselves. True shows it, False hides it. UIAnalyze owns
+            applying this to the actual plotted curves.
     """
+
+    point_to_point_toggled = QtCore.pyqtSignal(bool)
 
     def __init__(self, plot_widget: QtWidgets.QWidget, parent=None) -> None:
         super().__init__(
@@ -216,12 +226,43 @@ class SignalOverviewCard(PlotContainer):
         super()._apply_icon_theme(_mode)
         self._refresh_control_icons(_mode)
 
+    def _build_extra_menu_rows(self, menu: QtWidgets.QMenu) -> None:
+        """Adds a "Point-to-Point Rendering" toggle to this card's gear
+        menu - the only card with a raw-data point cloud to show/hide in
+        the first place. Reuses `GridMenuRow` (same compact checkbox-row
+        widget as the Major/Minor gridline toggles above it) rather than
+        introducing a new row type for a single boolean.
+
+        Starts unchecked (point cloud hidden by default) - the overview
+        graph plots a whole run's raw sample count at once, so its point
+        cloud is the more expensive one to leave on by default; the detail
+        cards' equivalent toggle (see `DetailPlotCard._build_extra_menu_
+        rows`) starts checked instead, since each only covers one series'
+        narrower POI window.
+        """
+        menu.addSeparator()
+        row = GridMenuRow("point_to_point", "Point-to-Point Rendering", checked=False)
+        row.toggled.connect(lambda _key, checked: self.point_to_point_toggled.emit(checked))
+
+        wa = QtWidgets.QWidgetAction(menu)
+        wa.setDefaultWidget(row)
+        menu.addAction(wa)
+
 
 class DetailPlotCard(PlotContainer):
     """One of the three small detail plot cards (Resonance/Difference/
     Dissipation) - a colored-dot LegendChip header instead of a plain
     title, wrapping one of AnalyzeUI's graphWidget1/2/3.
+
+    Attributes:
+        point_to_point_toggled (QtCore.pyqtSignal): Emitted when the gear
+            menu's "Point-to-Point Rendering" row is toggled. Controls this
+            card's own raw-data point cloud, independent of the overview
+            card's equivalent toggle. UIAnalyze owns applying this to the
+            actual plotted curves.
     """
+
+    point_to_point_toggled = QtCore.pyqtSignal(bool)
 
     def __init__(self, plot_widget: QtWidgets.QWidget, label: str, color_key: str, parent=None) -> None:
         super().__init__(
@@ -251,3 +292,37 @@ class DetailPlotCard(PlotContainer):
         """
         if key == self._color_key and self._title_chip is not None:
             self._title_chip.set_color(color)
+
+    def _build_extra_menu_rows(self, menu: QtWidgets.QMenu) -> None:
+        """Adds this card's own "Point-to-Point Rendering" toggle - see
+        `SignalOverviewCard._build_extra_menu_rows`, its counterpart there.
+
+        Starts checked (point cloud shown) - unlike the overview card's
+        toggle, which starts unchecked: this card only ever plots one
+        series' data within a narrow POI window, not a whole run's raw
+        sample count, so there's much less reason to default it off.
+
+        Kept as `self._point_to_point_row` so `set_point_to_point_available`
+        can disable it outside the Channel 1/2/3 workflow steps - see that
+        method.
+        """
+        menu.addSeparator()
+        row = GridMenuRow("point_to_point", "Point-to-Point Rendering", checked=True)
+        row.toggled.connect(lambda _key, checked: self.point_to_point_toggled.emit(checked))
+        self._point_to_point_row = row
+
+        wa = QtWidgets.QWidgetAction(menu)
+        wa.setDefaultWidget(row)
+        menu.addAction(wa)
+
+    def set_point_to_point_available(self, available: bool) -> None:
+        """Enables/disables this card's "Point-to-Point Rendering" row -
+        UIAnalyze calls this with `available=False` outside the Channel
+        1/2/3 workflow steps, where this sub-graph's fit line is invisible
+        and its raw-data point cloud is the only thing actually plotted
+        (see `getPoints()`'s `show_fits`/`show_scat`), so hiding the point
+        cloud there would leave nothing to look at. Doesn't touch the
+        row's checked state - re-enabling it later restores whatever it
+        was last set to.
+        """
+        self._point_to_point_row.setEnabled(available)

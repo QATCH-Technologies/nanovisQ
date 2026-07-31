@@ -228,6 +228,7 @@ class GridMenuRow(QtWidgets.QWidget):
         self,
         key: str,
         label: str,
+        checked: bool = False,
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initializes the GridMenuRow.
@@ -235,20 +236,24 @@ class GridMenuRow(QtWidgets.QWidget):
         Args:
             key (str): The unique identifier for the grid axis (e.g., "x", "y").
             label (label): The display text for the checkbox.
+            checked (bool): Initial checkbox state. Defaults to False, matching
+                the grid toggles this row was originally built for (grids start
+                off); pass True for a row that should start enabled instead.
             parent (QWidget): The parent widget, if any.
         """
         super().__init__(parent)
         self._key = key
 
-        self._setup_ui(label)
+        self._setup_ui(label, checked)
         self._connect_signals()
         self._apply_style()
 
-    def _setup_ui(self, label: str) -> None:
+    def _setup_ui(self, label: str, checked: bool = False) -> None:
         """Configures the widget's layout and internal components.
 
         Args:
             label: The display text for the checkbox.
+            checked: Initial checkbox state.
         """
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setObjectName("PlotMenuRow")
@@ -261,7 +266,7 @@ class GridMenuRow(QtWidgets.QWidget):
 
         self._checkbox = QtWidgets.QCheckBox(label)
         self._checkbox.setObjectName("PlotMenuItemLabel")
-        self._checkbox.setChecked(False)  # Off by default
+        self._checkbox.setChecked(checked)
         self._checkbox.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
 
         layout.addWidget(self._checkbox, 1)
@@ -625,7 +630,16 @@ class PlotContainer(QtWidgets.QWidget):
             gwa.setDefaultWidget(grid_row)
             menu.addAction(gwa)
 
+        self._build_extra_menu_rows(menu)
+
         return menu
+
+    def _build_extra_menu_rows(self, menu: QtWidgets.QMenu) -> None:
+        """Hook for a subclass to append its own rows to the gear menu,
+        after the shared section/grid rows above - a no-op here. E.g.
+        `SignalOverviewCard` uses this to add its "Point-to-Point
+        Rendering" toggle, which only makes sense for that one card.
+        """
 
     def paintEvent(self, ev: QtGui.QPaintEvent) -> None:  # noqa: N802
         """Paints the flat card surface (fill + border) behind the plot.

@@ -13,6 +13,27 @@ from PyQt5 import QtGui
 from pyqtgraph import AxisItem
 
 
+def glass_curve_pen(base_color, width: float = 2.0) -> QtGui.QPen:
+    """Builds the "glass" curve pen PlotsUI's real-time plots draw their
+    lines with - `base_color` at ~84% opacity (alpha 215/255) rather than
+    a flat fully-opaque stroke, giving every line a slight translucency.
+
+    See `MainWindow._get_glass_curve_styles` (QATCH.ui.main_window), which
+    calls this for its pen half and builds its own separate frosted-area
+    fill brush alongside it - AnalyzeUI's plots don't use an area fill, so
+    there's no matching brush half here; this is just the pen, shared so
+    AnalyzeUI's curves read as the same family as PlotsUI's.
+
+    Args:
+        base_color: Any QColor-compatible value (hex string, QColor, tuple).
+        width: Pen stroke width in pixels (default 2.0, matching PlotsUI's
+            primary curves - only its secondary Temperature curve uses 1.75).
+    """
+    color = QtGui.QColor(base_color)
+    color.setAlpha(215)
+    return pg.mkPen(color=color, width=width)
+
+
 class GlassAxisItem(AxisItem):
     """An `AxisItem` with no visible spine or tick marks, a small fixed
     tick font, and scientific-notation suppressed for small values (e.g.

@@ -60,6 +60,7 @@ from QATCH.QModel import OnyxDropEpochSignal, VoltaDropEpochSignal
 from QATCH.ui.components.glass_axis_item import (
     GlassAxisItem,
     apply_glass_plot_style,
+    glass_curve_pen,
     suppress_axis_ticks,
 )
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
@@ -3391,15 +3392,14 @@ class MainWindow(QtWidgets.QMainWindow):
         Returns:
             (pen, brush) tuple ready for PlotCurveItem.
         """
-        color = QtGui.QColor(base_color)
+        # Pen: vivid edge with slight translucency - shared with AnalyzeUI
+        # (see QATCH.ui.components.glass_axis_item.glass_curve_pen) so both
+        # windows' curves read as the same family.
+        pen = glass_curve_pen(base_color, width=width)
 
-        # ── Pen: vivid edge with slight translucency ──
-        pen_color = QtGui.QColor(color)
-        pen_color.setAlpha(215)
-        pen = pg.mkPen(color=pen_color, width=width)
-
-        # ── Fill brush: frosted area under the curve ──
-        brush_color = QtGui.QColor(color)
+        # Fill brush: frosted area under the curve - PlotsUI-only, AnalyzeUI's
+        # plots don't fill an area under their lines.
+        brush_color = QtGui.QColor(base_color)
         brush_color.setAlpha(65)  # ~11% - lighter than before for cleaner glass feel
         brush = pg.mkBrush(brush_color)
 

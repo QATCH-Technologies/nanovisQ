@@ -51,16 +51,20 @@ from QATCH.ui.components.analyze_plot_cards import (
     DetailPlotCard,
     SignalOverviewCard,
 )
-from QATCH.ui.components.glass_axis_item import GlassAxisItem, apply_glass_plot_style
+from QATCH.ui.components.glass_axis_item import (
+    GlassAxisItem,
+    apply_glass_plot_style,
+    glass_curve_pen,
+)
 from QATCH.ui.components.pill_stepper import PillStepper
 from QATCH.ui.components.themed_grid_item import ThemedGridItem
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
-from QATCH.ui.interfaces.ui_plots import PlotContainer
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,
     auto_sign_matches_session,
     persist_auto_sign_key,
 )
+from QATCH.ui.interfaces.ui_plots import PlotContainer
 from QATCH.ui.styles.theme_manager import ThemeManager, desc_label_qss, tok_css
 from QATCH.ui.widgets.account_popup import AccountPopup
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
@@ -132,7 +136,10 @@ class ResistantViewBox(pg.ViewBox):
             try:
                 super().wheelEvent(ev, axis=axis)
             except Exception as exc:
-                Log.w(TAG, f"Ignored a degenerate wheel-zoom (view already at a numeric extreme): {exc}")
+                Log.w(
+                    TAG,
+                    f"Ignored a degenerate wheel-zoom (view already at a numeric extreme): {exc}",
+                )
                 ev.accept()
             return
 
@@ -157,7 +164,9 @@ class ResistantViewBox(pg.ViewBox):
             # but this is the actual reported crash, so it's still worth
             # a hard backstop: drop this one tick rather than let a stray
             # numeric edge case propagate into an uncaught exception.
-            Log.w(TAG, f"Ignored a degenerate wheel-zoom (view already at a numeric extreme): {exc}")
+            Log.w(
+                TAG, f"Ignored a degenerate wheel-zoom (view already at a numeric extreme): {exc}"
+            )
             ev.accept()
             return
         ev.accept()
@@ -202,7 +211,7 @@ def _new_glass_plot_widget() -> pg.PlotWidget:
         axisItems={
             "bottom": GlassAxisItem(orientation="bottom"),
             "left": GlassAxisItem(orientation="left"),
-        }
+        },
     )
 
     # Same transparency setup as PlotsUI's own plot widgets (see
@@ -258,6 +267,65 @@ def _enable_adaptive_resolution(item: pg.PlotDataItem) -> pg.PlotDataItem:
     return item
 
 
+def _make_target_symbol() -> QtGui.QPainterPath:
+    """Builds a "target"/crosshair `QPainterPath` - a ring, a center dot,
+    and four diagonal corner ticks, matching `icons/detail-target.svg`'s
+    geometry - normalized to pyqtgraph's own [-0.5, 0.5] symbol coordinate
+    space (see `pyqtgraph.graphicsItems.ScatterPlotItem.Symbols`, which
+    every built-in symbol string like `"star"` resolves to in that same
+    space, and which itself accepts a raw `QPainterPath` as a `symbol=`
+    value in place of one of those strings).
+
+    Passed as the detail sub-graphs' current-POI highlight markers'
+    `symbol=` (star1/2/3, gstars1/2/3 - see `_plot_signal_curves`) in
+    place of the built-in `"star"` shape.
+
+    The ring is two concentric circles under an odd-even fill rule
+    (covered twice near the center - "even", left unfilled; covered once
+    in the band between them - "odd", filled), rather than a single solid
+    disk, matching the source SVG's stroke-only outer circle.
+    """
+    path = QtGui.QPainterPath()
+    path.setFillRule(QtCore.Qt.FillRule.OddEvenFill)
+
+    outer_r, ring_w, dot_r = 0.292, 0.035, 0.083
+    path.addEllipse(QtCore.QRectF(-outer_r, -outer_r, outer_r * 2, outer_r * 2))
+    inner_r = outer_r - ring_w
+    path.addEllipse(QtCore.QRectF(-inner_r, -inner_r, inner_r * 2, inner_r * 2))
+    path.addEllipse(QtCore.QRectF(-dot_r, -dot_r, dot_r * 2, dot_r * 2))
+
+    for (x0, y0), (x1, y1) in (
+        ((-0.206, -0.206), (-0.333, -0.333)),
+        ((0.206, -0.206), (0.333, -0.333)),
+        ((0.333, 0.333), (0.206, 0.206)),
+        ((-0.333, 0.333), (-0.206, 0.206)),
+    ):
+        path.moveTo(x0, y0)
+        path.lineTo(x1, y1)
+
+    return path
+
+
+_TARGET_SYMBOL = _make_target_symbol()
+
+
+def _target_pen(color) -> QtGui.QPen:
+    """Builds the outline pen for a `_TARGET_SYMBOL` scatter marker (see
+    `UIAnalyze._plot_signal_curves` / `_apply_pg_theme`, which color
+    `star1/2/3`/`gstars1/2/3` with this). `pen=` (not just `brush=`)
+    matters here: the target symbol's four corner ticks are open line
+    segments (see `_make_target_symbol`) - fill alone never renders those,
+    only a stroke does. Cosmetic, since pyqtgraph's `drawSymbol` scales
+    the painter by `size` before applying the pen - a non-cosmetic width
+    would scale right along with it (1.5 * 25 = 37.5px for `star1/2/3`'s
+    size=25), while a cosmetic one stays a constant, reasonable
+    device-pixel width regardless of `size`.
+    """
+    pen = pg.mkPen(color, width=1.5)
+    pen.setCosmetic(True)
+    return pen
+
+
 class POIMarker(pg.InfiniteLine):
     """A vertical POI marker with a finite extent and a circular handle.
 
@@ -289,6 +357,10 @@ class POIMarker(pg.InfiniteLine):
 
     _HANDLE_RADIUS = 6.0  # device pixels - constant on screen at any zoom
 
+    # The overview graph's own drag-handle glyph - a plain filled dot, so
+    # no rotation is needed (unlike a directional shape) - see _handle_icon.
+    _HANDLE_ICON_PATH = os.path.join(Architecture.get_path(), "QATCH", "icons", "overview-dot.svg")
+
     # Fraction of a marker's own entrance animation (see setRevealProgress)
     # spent popping in the handle before the vertical line starts expanding
     # out from it - handle-then-line rather than both at once, so the
@@ -311,6 +383,11 @@ class POIMarker(pg.InfiniteLine):
         # animation (e.g. one added outside _reveal_poi_markers) still just
         # paints normally, at full size, immediately.
         self._reveal_frac = 1.0
+        # Cache for _handle_icon - tinting+rotating the SVG is only redone
+        # when the handle's color actually changes (active/muted toggle,
+        # theme switch), not on every paint (i.e. every drag tick).
+        self._icon_cache_key = None
+        self._icon_cache_pixmap = None
         super().__init__(*args, **kwargs)
 
     def setAngle(self, angle: float) -> None:
@@ -373,6 +450,25 @@ class POIMarker(pg.InfiniteLine):
 
         return br
 
+    def _handle_icon(self, color: QtGui.QColor) -> QtGui.QPixmap:
+        """Returns this marker's handle glyph - `overview-dot.svg`
+        (see `_HANDLE_ICON_PATH`), tinted to `color` (the same color that
+        used to fill the plain circle this replaces - see
+        `UIAnalyze._style_poi_marker`, which drives it via the marker's own
+        pen). Cached per color so repeated paints (every drag tick) don't
+        reload/retint the SVG from scratch each time - only actually
+        rebuilt when `color` changes (an active/muted toggle or a theme
+        switch).
+        """
+        key = color.rgba()
+        if self._icon_cache_key != key:
+            size = max(1, round(self._HANDLE_RADIUS * 2))
+            self._icon_cache_pixmap = PlotContainer._tinted_icon(
+                self._HANDLE_ICON_PATH, color, size=size
+            ).pixmap(size, size)
+            self._icon_cache_key = key
+        return self._icon_cache_pixmap
+
     def paint(self, p, *args) -> None:
         pen = self.currentPen
         pen.setJoinStyle(QtCore.Qt.PenJoinStyle.MiterJoin)
@@ -399,14 +495,17 @@ class POIMarker(pg.InfiniteLine):
 
         if handle_frac > 0:
             # Handle drawn in device pixels (reset transform, same trick
-            # InfiniteLine's own addMarker() glyphs use) so its radius stays
-            # constant on screen regardless of the current zoom level.
+            # InfiniteLine's own addMarker() glyphs use) so it stays a
+            # constant size on screen regardless of the current zoom level.
             mid_device = p.transform().map(QtCore.QPointF(0, mid_y))
             tr = p.transform()
             p.resetTransform()
-            p.setPen(pg.mkPen(self._handle_outline, width=1.5))
-            p.setBrush(pg.mkBrush(pen.color()))
-            p.drawEllipse(mid_device, self._HANDLE_RADIUS * handle_frac, self._HANDLE_RADIUS * handle_frac)
+            icon = self._handle_icon(pen.color())
+            size = 2 * self._HANDLE_RADIUS * handle_frac
+            target = QtCore.QRectF(
+                mid_device.x() - size / 2, mid_device.y() - size / 2, size, size
+            )
+            p.drawPixmap(target, icon, QtCore.QRectF(icon.rect()))
             p.setTransform(tr)
 
     def dataBounds(self, axis, frac=1.0, orthoRange=None):
@@ -449,6 +548,16 @@ class UIAnalyze(QtWidgets.QWidget):
         "difference": ("star2", "gstars2"),
         "dissipation": ("star3", "gstars3"),
     }
+    # This series's raw-data "point cloud" attr on the overview graph vs.
+    # its matching detail sub-graph - each pair is a subset of
+    # _SERIES_CURVE_ATTRS above, broken out separately since each has its
+    # own independent Point-to-Point toggle (_overview_point_to_point /
+    # _detail_point_to_point) that _SERIES_CURVE_ATTRS's plain per-series
+    # visibility loop must not blindly override - see
+    # _apply_overview_point_cloud_visibility / _apply_detail_point_cloud_
+    # visibility, both applied as an AND with that per-series visibility.
+    _OVERVIEW_SCATTER_ATTR = {"resonance": "scat1", "difference": "scat2", "dissipation": "scat3"}
+    _DETAIL_SCATTER_ATTR = {"resonance": "scat_1", "difference": "scat_2", "dissipation": "scat_3"}
     _GRID_MAJOR_ALPHA = 45
     _GRID_MINOR_ALPHA = 18
     # Duration of the main overview graph's left-to-right curve draw-in
@@ -756,7 +865,9 @@ class UIAnalyze(QtWidgets.QWidget):
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint)
         self.advancedwidget.setWhatsThis("These settings are for Advanced Users ONLY!")
-        self._advanced_warning_label = QtWidgets.QLabel(f"WARNING: {self.advancedwidget.whatsThis()}")
+        self._advanced_warning_label = QtWidgets.QLabel(
+            f"WARNING: {self.advancedwidget.whatsThis()}"
+        )
         warningLayout = QtWidgets.QVBoxLayout()
         warningLayout.addWidget(self._advanced_warning_label)
         warningLayout.addLayout(self.gridLayout)
@@ -787,6 +898,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.overview_card.btn_zoom_out.clicked.connect(lambda: self.zoomFinderPlots(2.0))
         self.overview_card.btn_move_left.clicked.connect(lambda: self.moveCurrentMarker(-1))
         self.overview_card.btn_move_right.clicked.connect(lambda: self.moveCurrentMarker(+1))
+        self.overview_card.point_to_point_toggled.connect(self._set_overview_point_to_point)
 
         data, rows, cols = [
             {
@@ -894,6 +1006,29 @@ class UIAnalyze(QtWidgets.QWidget):
             "difference": True,
             "dissipation": True,
         }
+        # User preference from the overview card's "Point-to-Point
+        # Rendering" gear-menu toggle (see _set_overview_point_to_point) -
+        # shows/hides the overview graph's raw-data "point cloud" (the
+        # near-invisible scatter dots the fit lines are a smoothed average
+        # through). Defaults off: the overview graph plots a whole run's
+        # raw sample count at once, the most expensive case, so its point
+        # cloud starts hidden - matching the overview card's own gear-menu
+        # checkbox default (see SignalOverviewCard._build_extra_menu_rows).
+        # Persists across run reloads within this session; re-applied to
+        # each newly plotted run's own point-cloud layer (see
+        # _apply_overview_point_cloud_visibility, called from
+        # _plot_signal_curves).
+        self._overview_point_to_point: bool = False
+        # Same preference, but per detail card (see _set_detail_point_to_
+        # point / _apply_detail_point_cloud_visibility) - each covers only
+        # one series' narrower POI window rather than a whole run, so these
+        # default on, matching each detail card's own gear-menu checkbox
+        # default (see DetailPlotCard._build_extra_menu_rows).
+        self._detail_point_to_point: Dict[str, bool] = {
+            "resonance": True,
+            "difference": True,
+            "dissipation": True,
+        }
         for card, plot_widget in (
             (self.overview_card, self.graphWidget),
             (self.resonance_card, self.graphWidget1),
@@ -903,6 +1038,16 @@ class UIAnalyze(QtWidgets.QWidget):
             card.grid_changed.connect(partial(self._on_grid_toggle, plot_widget))
             card.section_color_changed.connect(self._on_analyze_section_color_changed)
             card.section_visibility_changed.connect(self._on_analyze_section_visibility_changed)
+        for key, card in (
+            ("resonance", self.resonance_card),
+            ("difference", self.difference_card),
+            ("dissipation", self.dissipation_card),
+        ):
+            card.point_to_point_toggled.connect(partial(self._set_detail_point_to_point, key))
+        # Starts disabled (self.stateStep is -1 here - see _update_detail_
+        # point_cloud_state) since no run's wizard has reached a Channel
+        # step yet; getPoints() keeps this in sync as the step changes.
+        self._update_detail_point_cloud_state()
 
         # Same visible/draggable gap as lowerGraphs and PlotsUI's own
         # splitters (main_splitter/right_splitter in ui_plots.py), so the
@@ -1125,7 +1270,12 @@ class UIAnalyze(QtWidgets.QWidget):
         tok = ThemeManager.instance().tokens()
         text_pen = pg.mkPen(QtGui.QColor(*tok["plot_text_muted"][:3]))
 
-        for plot_widget in (self.graphWidget, self.graphWidget1, self.graphWidget2, self.graphWidget3):
+        for plot_widget in (
+            self.graphWidget,
+            self.graphWidget1,
+            self.graphWidget2,
+            self.graphWidget3,
+        ):
             # Transparent, matching PlotsUI's own plt/pltB/plt_temp (see
             # MainWindow._configure_plot's `setBackground(None)`) - "surface"
             # is a translucent RGBA token meant to be alpha-blended by
@@ -1146,6 +1296,10 @@ class UIAnalyze(QtWidgets.QWidget):
         # than derived from setMovable()).
         for marker in getattr(self, "poi_markers", []):
             self._style_poi_marker(marker, active=getattr(marker, "_active_style", True))
+
+        # Same idea for the detail sub-graphs' current-POI target markers
+        # (star1/2/3, gstars1/2/3) - see _style_target_markers.
+        self._style_target_markers()
 
     def _toggle_analyze_fullscreen(self, target_widget: QtWidgets.QWidget) -> None:
         """Toggle one plot card between fullscreen and normal splitter
@@ -1210,6 +1364,8 @@ class UIAnalyze(QtWidgets.QWidget):
 
             target_graph_sizes, target_lower_sizes = fullscreen_sizes[target_widget]
 
+        self._update_overview_fullscreen_enabled()
+
         if hasattr(self, "_fs_timer") and self._fs_timer.isActive():
             self._fs_timer.stop()
             self._freeze_analyze_plots(False)
@@ -1257,6 +1413,141 @@ class UIAnalyze(QtWidgets.QWidget):
         self._fs_timer.timeout.connect(_tick)
         self._fs_timer.start()
 
+    def _update_overview_fullscreen_enabled(self) -> None:
+        """Disables the overview card's fullscreen toggle when there's no
+        detail-card row to actually toggle against - either because
+        `lowerGraphs` itself is currently hidden (see
+        `_set_lower_graphs_visible` - no run loaded yet, or the current
+        point-picking step doesn't show it) or because every individual
+        detail card has been hidden via `_on_analyze_section_visibility_
+        changed` (hiding a series on the overview hides its detail card
+        entirely). Fullscreen-ing the overview when there's nothing in the
+        detail row to hide/reveal would just be a no-op that looks like a
+        broken button.
+
+        Always leaves the button enabled while the overview is the
+        *currently active* fullscreen widget, regardless of the above -
+        restoring out of fullscreen must always be reachable, even if,
+        say, every series got hidden while already fullscreen.
+        """
+        btn = getattr(self.overview_card, "btn_fs", None)
+        if btn is None:
+            return
+        if self._fullscreen_active_widget is self.overview_card:
+            btn.setEnabled(True)
+            return
+        any_detail_visible = self.lowerGraphs.isVisible() and any(
+            card.isVisible()
+            for card in (self.resonance_card, self.difference_card, self.dissipation_card)
+        )
+        btn.setEnabled(any_detail_visible)
+
+    def _set_lower_graphs_visible(self, visible: bool) -> None:
+        """Shows/hides the detail-card row (`lowerGraphs`) and keeps the
+        overview card's fullscreen toggle in sync with it - see
+        `_update_overview_fullscreen_enabled`. Use this instead of calling
+        `self.lowerGraphs.setVisible(...)` directly so that recompute never
+        gets missed at a new call site.
+        """
+        self.lowerGraphs.setVisible(visible)
+        self._update_overview_fullscreen_enabled()
+
+    # Duration of the detail-row reflow animation below - shorter than
+    # _toggle_analyze_fullscreen's 380ms since this only resizes within
+    # lowerGraphs itself, not the whole graph_split layout.
+    _DETAIL_VISIBILITY_ANIM_MS = 300
+
+    def _animate_detail_card_visibility(self, card: QtWidgets.QWidget, visible: bool) -> None:
+        """Hides/shows one detail card (resonance_card/difference_card/
+        dissipation_card) by tweening `lowerGraphs`'s splitter sizes rather
+        than calling `card.setVisible()` outright - Qt would otherwise
+        relayout the row instantly the moment a child's visibility
+        changes, which reads as a jump-cut rather than the other card(s)
+        smoothly reclaiming (or yielding) that space. Mirrors
+        `_toggle_analyze_fullscreen`'s splitter-size tween, scoped to just
+        this one row.
+
+        Hiding: animates `card`'s share down to 0 while the *other*
+        currently-visible cards grow to fill it, then calls
+        `card.setVisible(False)` only once it's already at zero width -
+        by then there's nothing left to visually snap.
+
+        Showing: calls `card.setVisible(True)` immediately (a hidden
+        splitter child can't be given a nonzero size), pins its share
+        back to 0 to undo whatever Qt just auto-assigned it, then animates
+        every currently-visible card - including this one - to an even
+        split of the row.
+
+        A no-op if `card` is already in the requested state, or isn't one
+        of the three detail cards at all.
+        """
+        cards = (self.resonance_card, self.difference_card, self.dissipation_card)
+        if card not in cards or card.isVisible() == visible:
+            return
+
+        prev_anim = getattr(self, "_detail_vis_anim", None)
+        prev_pending = getattr(self, "_detail_vis_pending", None)
+        if prev_anim is not None:
+            prev_anim.stop()
+            if prev_pending is not None:
+                # Snap whatever animation this interrupts straight to its
+                # own true end state - never leave a card stranded mid-tween.
+                prev_card, prev_visible = prev_pending
+                prev_card.setVisible(prev_visible)
+            self._detail_vis_anim = None
+            self._detail_vis_pending = None
+
+        idx = cards.index(card)
+        if visible:
+            start_sizes = list(self.lowerGraphs.sizes())
+            start_sizes[idx] = 0
+            card.setVisible(True)
+            # Undo whatever share Qt's own relayout just auto-assigned the
+            # newly-shown card, so the animation's start point is exactly
+            # "0, as if still hidden" rather than wherever Qt jumped it to.
+            self.lowerGraphs.setSizes(start_sizes)
+            visible_indices = [i for i, c in enumerate(cards) if c.isVisible()]
+        else:
+            start_sizes = list(self.lowerGraphs.sizes())
+            visible_indices = [i for i, c in enumerate(cards) if c.isVisible() and c is not card]
+
+        total = sum(start_sizes) or 1
+        target_sizes = [0] * len(cards)
+        if visible_indices:
+            share, remainder = divmod(total, len(visible_indices))
+            for i in visible_indices:
+                target_sizes[i] = share
+            target_sizes[visible_indices[0]] += remainder  # give any leftover to the first slot
+
+        anim = QtCore.QVariantAnimation(self)
+        anim.setDuration(self._DETAIL_VISIBILITY_ANIM_MS)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
+
+        def _apply(t, start=start_sizes, target=target_sizes) -> None:
+            try:
+                self.lowerGraphs.setSizes(
+                    [int(s + (e - s) * t) for s, e in zip(start, target)]
+                )
+            except RuntimeError:
+                pass
+
+        anim.valueChanged.connect(_apply)
+
+        def _finish(anim=anim, card=card, visible=visible) -> None:
+            if getattr(self, "_detail_vis_anim", None) is anim:
+                self._detail_vis_anim = None
+                self._detail_vis_pending = None
+            if not visible:
+                card.setVisible(False)
+            self._update_overview_fullscreen_enabled()
+
+        anim.finished.connect(_finish)
+        self._detail_vis_anim = anim
+        self._detail_vis_pending = (card, visible)
+        anim.start()
+
     def _freeze_analyze_plots(self, freeze: bool) -> None:
         """Suppress/restore pyqtgraph viewport redraws during the fullscreen
         splitter animation (see `_toggle_analyze_fullscreen`), the same
@@ -1272,7 +1563,12 @@ class UIAnalyze(QtWidgets.QWidget):
             else QtWidgets.QGraphicsView.MinimalViewportUpdate
         )
 
-        for plot_widget in (self.graphWidget, self.graphWidget1, self.graphWidget2, self.graphWidget3):
+        for plot_widget in (
+            self.graphWidget,
+            self.graphWidget1,
+            self.graphWidget2,
+            self.graphWidget3,
+        ):
             try:
                 plot_widget.setViewportUpdateMode(update_mode)
                 if not freeze:
@@ -1341,6 +1637,14 @@ class UIAnalyze(QtWidgets.QWidget):
         remembers the choice so it survives the next `_plot_signal_curves()`
         call (e.g. loading a different run).
 
+        Every fit line (fit1/2/3 on the overview, fit_1/2/3 on the detail
+        sub-graphs) re-applies the new color through `glass_curve_pen`
+        rather than setting it as a bare pen - matching both graphs'
+        "glass" line style (see where these are first plotted in
+        `_plot_signal_curves`) means every recolor has to go through the
+        same translucency, or the line would revert to a flat opaque
+        stroke the moment a user picks a new color.
+
         Args:
             key: One of "resonance"/"difference"/"dissipation".
             color: The newly chosen color.
@@ -1351,7 +1655,7 @@ class UIAnalyze(QtWidgets.QWidget):
             if item is None:
                 continue
             if attr.startswith("fit"):
-                item.setPen(color)
+                item.setPen(glass_curve_pen(color))
             else:
                 item.setSymbolBrush(color)
 
@@ -1367,20 +1671,54 @@ class UIAnalyze(QtWidgets.QWidget):
             card.set_section_color(key, color)
 
     def _on_analyze_section_visibility_changed(self, key: str, visible: bool) -> None:
-        """Shows or hides the real curve/marker items for one series, and
-        remembers the choice so it survives the next `_plot_signal_curves()`
-        call (e.g. loading a different run).
+        """Shows or hides the real curve/marker items for one series, hides
+        or shows that series's entire detail card in the details row (see
+        `lowerGraphs`), and remembers the choice so it survives the next
+        `_plot_signal_curves()` call (e.g. loading a different run).
+
+        Both graphs' point-cloud layers for this series (scat1/scat2/scat3
+        on the overview, scat_1/scat_2/scat_3 on the matching detail
+        sub-graph) are deliberately excluded from the direct apply below
+        and instead routed through `_apply_overview_point_cloud_visibility`
+        / `_apply_detail_point_cloud_visibility`, since each one's actual
+        visibility is the AND of this per-series toggle and that graph's
+        own separate "Point-to-Point" toggle - blindly setting either to
+        `visible` here would force it back on even if its own toggle is
+        off.
+
+        Hiding this series's entire detail card (rather than just its
+        curves within it) is what makes the details row read as "only the
+        remaining visible series" (e.g. hiding Dissipation leaves just
+        Resonance and Difference side by side) instead of an empty-looking
+        panel still taking up a third of the row - animated via
+        `_animate_detail_card_visibility` rather than an instant Qt-driven
+        splitter snap, so the remaining cards visibly grow/shrink to
+        reclaim or yield that space instead of jumping straight there.
 
         Args:
             key: One of "resonance"/"difference"/"dissipation".
             visible: The new visibility state.
         """
         self._series_visible[key] = visible
+        skip_attrs = {self._OVERVIEW_SCATTER_ATTR.get(key), self._DETAIL_SCATTER_ATTR.get(key)}
         attrs = self._SERIES_CURVE_ATTRS.get(key, ()) + self._SERIES_STAR_ATTRS.get(key, ())
         for attr in attrs:
+            if attr in skip_attrs:
+                continue
             item = getattr(self, attr, None)
             if item is not None:
                 item.setVisible(visible)
+        self._apply_overview_point_cloud_visibility()
+        self._apply_detail_point_cloud_visibility(key)
+
+        detail_card = {
+            "resonance": getattr(self, "resonance_card", None),
+            "difference": getattr(self, "difference_card", None),
+            "dissipation": getattr(self, "dissipation_card", None),
+        }.get(key)
+        if detail_card is not None:
+            self._animate_detail_card_visibility(detail_card, visible)
+        self._update_overview_fullscreen_enabled()
 
     def _show_analyze_plot_overlay(self) -> None:
         """Creates and displays a progress overlay on the analysis plot.
@@ -3202,7 +3540,7 @@ class UIAnalyze(QtWidgets.QWidget):
         # (re-)entered, instead of the themed PlotsUI-matching background.
         self._apply_pg_theme()
         self.graphStack.setCurrentIndex(0)
-        self.lowerGraphs.setVisible(False)
+        self._set_lower_graphs_visible(False)
         self.btn_Back.setEnabled(False)
         self.btn_Next.setEnabled(False)
 
@@ -5270,7 +5608,8 @@ class UIAnalyze(QtWidgets.QWidget):
         ax3 = self.graphWidget3
         # Only show 5 points (skip POI3)
         w123 = self.stateStep in range(1, 6)
-        self.lowerGraphs.setVisible(w123)
+        self._set_lower_graphs_visible(w123)
+        self._update_detail_point_cloud_state()
         # was_vis = ax1.isVisible()
         # if w123 and not was_vis:
         #     ax2.setFocus() # allow keyboard shortcuts left/right/up/down to work immediately
@@ -6066,7 +6405,7 @@ class UIAnalyze(QtWidgets.QWidget):
             self.progressBar.setFormat('Finished: View most recent "Analyze" results')
             self.stateStep = 8
             self.tool_Cancel.setEnabled(True)
-            self.lowerGraphs.setVisible(False)
+            self._set_lower_graphs_visible(False)
             self.graphStack.setCurrentIndex(1)
             self.setDotStepMarkers(step_num)
             return
@@ -7834,7 +8173,7 @@ class UIAnalyze(QtWidgets.QWidget):
         ax.setXRange(0, xs[-1], padding=0.05)
         ax.setYRange(0, max(np.amax(ys_freq), np.amax(ys), np.amax(ys_diff)), padding=0.05)
 
-        self.lowerGraphs.setVisible(False)
+        self._set_lower_graphs_visible(False)
 
     def _animate_curve_reveal(
         self,
@@ -7952,7 +8291,18 @@ class UIAnalyze(QtWidgets.QWidget):
         ys_diff_fit = curves["ys_diff_fit"]
 
         mask = np.arange(0, len(xs), 1)
-        noPen = pg.mkPen(color=(255, 255, 255), width=0, style=QtCore.Qt.DotLine)
+        # None, not a width=0 QPen: pyqtgraph/Qt renders a 0-width pen as a
+        # cosmetic 1px line regardless of width, so the previous `noPen =
+        # mkPen(color=(255,255,255), width=0, style=DotLine)` still drew a
+        # visible white dotted line connecting every scatter point, despite
+        # the name - all but invisible on the overview graph (whose scatter
+        # sits at alpha 0.01) but plainly visible on the detail sub-graphs,
+        # whose scatter alpha ranges up to 1.0 (see getPoints()'s show_scat)
+        # - and, being pure white, it vanished against a light-mode
+        # background while still showing on dark. `pen=None` is pyqtgraph's
+        # actual "symbols only, no connecting line" - what this always
+        # meant to be.
+        noPen = None
         # Sourced from self._series_colors (defaults to SIGNAL_COLORS) rather
         # than the SIGNAL_COLORS constant directly, so a color picked via a
         # plot card's gear menu survives the next run load / re-plot.
@@ -7969,22 +8319,34 @@ class UIAnalyze(QtWidgets.QWidget):
         # runs ~15ms, and the reveal fires ~90 of those across its six items
         # in well under 1.4s - without downsampling, painting can't keep up
         # with the animation's ticks and the "sweep" degenerates into the
-        # curve just popping in. _settle_to_full_resolution (below) switches
-        # every one of these six items back off of it the moment the reveal
-        # finishes, so actually panning/zooming the settled plot is still
-        # genuinely full-resolution, undownsampled data - only the one-time
-        # entrance animation itself borrows this.
+        # curve just popping in. `_settle_to_full_resolution` (below)
+        # switches every one of these six items back off of it the moment
+        # the reveal finishes, so actually panning/zooming the settled plot
+        # is still genuinely full-resolution, undownsampled data - only the
+        # one-time entrance animation itself borrows this.
+        # Pens match PlotsUI's own "glass" curve style (see
+        # MainWindow._get_glass_curve_styles / glass_curve_pen) - a slight
+        # translucency (alpha 215/255) at 2px width, antialiased - so the
+        # overview's lines read as the same family as PlotsUI's real-time
+        # plots rather than plain opaque 1px pyqtgraph defaults.
         self.fit1 = _enable_adaptive_resolution(
-            ax.plot(xs[mask], ys_freq_fit[mask], pen=res_color, name="Resonance")
+            ax.plot(
+                xs[mask], ys_freq_fit[mask], pen=glass_curve_pen(res_color), antialias=True, name="Resonance"
+            )
         )
         self.fit2 = _enable_adaptive_resolution(
-            ax.plot(xs[mask], ys_diff_fit[mask], pen=diff_color, name="Difference")
+            ax.plot(
+                xs[mask], ys_diff_fit[mask], pen=glass_curve_pen(diff_color), antialias=True, name="Difference"
+            )
         )
         self.fit3 = _enable_adaptive_resolution(
-            ax.plot(xs[mask], ys_fit[mask], pen=diss_color, name="Dissipation")
+            ax.plot(
+                xs[mask], ys_fit[mask], pen=glass_curve_pen(diss_color), antialias=True, name="Dissipation"
+            )
         )
 
-        # Main graph - scatter dots (nearly transparent)
+        # Main graph - scatter dots (nearly transparent). symbolPen=None -
+        # a flat fill, no outline ring around each dot.
         self.scat1 = _enable_adaptive_resolution(
             ax.plot(
                 xs[mask],
@@ -7993,6 +8355,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 symbol="o",
                 symbolSize=5,
                 symbolBrush=res_color,
+                symbolPen=None,
             )
         )
         self.scat2 = _enable_adaptive_resolution(
@@ -8003,6 +8366,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 symbol="o",
                 symbolSize=5,
                 symbolBrush=diff_color,
+                symbolPen=None,
             )
         )
         self.scat3 = _enable_adaptive_resolution(
@@ -8013,6 +8377,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 symbol="o",
                 symbolSize=5,
                 symbolBrush=diss_color,
+                symbolPen=None,
             )
         )
         self.scat1.setAlpha(0.01, False)
@@ -8065,18 +8430,25 @@ class UIAnalyze(QtWidgets.QWidget):
         # current POI (see getPoints()'s ax1/ax2/ax3.setXRange calls), so
         # clipToView+auto-downsampling is usually a no-op here - applied
         # anyway for consistency and for high-sample-rate runs where even a
-        # narrow window still holds more points than screen pixels.
+        # narrow window still holds more points than screen pixels. Pens
+        # match the overview graph's own "glass" curve style (see
+        # glass_curve_pen) during Channel 1/2/3 - the only steps where
+        # these are actually visible (getPoints()'s show_fits sets them to
+        # alpha 0.0 during Fill Start/Fill End, where the sub-graph's raw
+        # point cloud is the only real content).
         self.fit_1 = _enable_adaptive_resolution(
-            ax1.plot(xs[mask], ys_freq_fit[mask], pen=res_color, name="Resonance")
+            ax1.plot(xs[mask], ys_freq_fit[mask], pen=glass_curve_pen(res_color), antialias=True, name="Resonance")
         )
         self.fit_2 = _enable_adaptive_resolution(
-            ax2.plot(xs[mask], ys_diff_fit[mask], pen=diff_color, name="Difference")
+            ax2.plot(xs[mask], ys_diff_fit[mask], pen=glass_curve_pen(diff_color), antialias=True, name="Difference")
         )
         self.fit_3 = _enable_adaptive_resolution(
-            ax3.plot(xs[mask], ys_fit[mask], pen=diss_color, name="Dissipation")
+            ax3.plot(xs[mask], ys_fit[mask], pen=glass_curve_pen(diss_color), antialias=True, name="Dissipation")
         )
 
-        # Sub-graphs - scatter dots
+        # Sub-graphs - scatter dots. symbolPen=None - a flat fill, no
+        # outline ring around each dot, matching the overview graph's own
+        # scatter dots (see above).
         self.scat_1 = _enable_adaptive_resolution(
             ax1.plot(
                 xs[mask],
@@ -8085,6 +8457,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 symbol="o",
                 symbolSize=5,
                 symbolBrush=res_color,
+                symbolPen=None,
             )
         )
         self.scat_2 = _enable_adaptive_resolution(
@@ -8095,6 +8468,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 symbol="o",
                 symbolSize=5,
                 symbolBrush=diff_color,
+                symbolPen=None,
             )
         )
         self.scat_3 = _enable_adaptive_resolution(
@@ -8105,6 +8479,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 symbol="o",
                 symbolSize=5,
                 symbolBrush=diss_color,
+                symbolPen=None,
             )
         )
 
@@ -8113,16 +8488,34 @@ class UIAnalyze(QtWidgets.QWidget):
         pos2 = np.column_stack((xs[0], ys_diff[0]))
         pos3 = np.column_stack((xs[0], ys[0]))
 
-        self.star1 = pg.ScatterPlotItem(pos=pos1, symbol="star", size=25, brush="black")
-        self.star2 = pg.ScatterPlotItem(pos=pos2, symbol="star", size=25, brush="black")
-        self.star3 = pg.ScatterPlotItem(pos=pos3, symbol="star", size=25, brush="black")
+        # Theme-derived, not the old hardcoded "black"/"gray" - those only
+        # ever read correctly in light mode. Same tokens _apply_pg_theme
+        # re-applies on every themeChanged, so these stay correct across a
+        # live theme switch too, not just at creation.
+        bold_color, faint_color = self._target_marker_colors()
+
+        self.star1 = pg.ScatterPlotItem(
+            pos=pos1, symbol=_TARGET_SYMBOL, size=25, pen=_target_pen(bold_color), brush=bold_color
+        )
+        self.star2 = pg.ScatterPlotItem(
+            pos=pos2, symbol=_TARGET_SYMBOL, size=25, pen=_target_pen(bold_color), brush=bold_color
+        )
+        self.star3 = pg.ScatterPlotItem(
+            pos=pos3, symbol=_TARGET_SYMBOL, size=25, pen=_target_pen(bold_color), brush=bold_color
+        )
         ax1.addItem(self.star1)
         ax2.addItem(self.star2)
         ax3.addItem(self.star3)
 
-        self.gstars1 = pg.ScatterPlotItem(pos=pos1, symbol="star", size=10, brush="gray")
-        self.gstars2 = pg.ScatterPlotItem(pos=pos2, symbol="star", size=10, brush="gray")
-        self.gstars3 = pg.ScatterPlotItem(pos=pos3, symbol="star", size=10, brush="gray")
+        self.gstars1 = pg.ScatterPlotItem(
+            pos=pos1, symbol=_TARGET_SYMBOL, size=10, pen=_target_pen(faint_color), brush=faint_color
+        )
+        self.gstars2 = pg.ScatterPlotItem(
+            pos=pos2, symbol=_TARGET_SYMBOL, size=10, pen=_target_pen(faint_color), brush=faint_color
+        )
+        self.gstars3 = pg.ScatterPlotItem(
+            pos=pos3, symbol=_TARGET_SYMBOL, size=10, pen=_target_pen(faint_color), brush=faint_color
+        )
         ax1.addItem(self.gstars1)
         ax2.addItem(self.gstars2)
         ax3.addItem(self.gstars3)
@@ -8137,6 +8530,14 @@ class UIAnalyze(QtWidgets.QWidget):
                 continue
             for attr in attrs + self._SERIES_STAR_ATTRS.get(series_key, ()):
                 getattr(self, attr).setVisible(False)
+
+        # Re-apply the overview and detail cards' own "Point-to-Point"
+        # preferences to this run's freshly-created scatter dot layers -
+        # see _apply_overview_point_cloud_visibility /
+        # _apply_detail_point_cloud_visibility.
+        self._apply_overview_point_cloud_visibility()
+        for series_key in self._SERIES_CURVE_ATTRS:
+            self._apply_detail_point_cloud_visibility(series_key)
 
         # Clamp pan/zoom on every graph (main overview + the three POI
         # detail graphs) to this run's own data - see _apply_plot_limits.
@@ -8162,6 +8563,125 @@ class UIAnalyze(QtWidgets.QWidget):
         for vb in (ax.getViewBox(), ax1.getViewBox(), ax2.getViewBox(), ax3.getViewBox()):
             for delay_ms in (0, 50, 150, 400):
                 QtCore.QTimer.singleShot(delay_ms, lambda vb=vb: self._snap_view_into_bounds(vb))
+
+    def _set_overview_point_to_point(self, enabled: bool) -> None:
+        """Applies the overview card's "Point-to-Point Rendering" gear-menu
+        preference: shows or hides the overview graph's raw-data "point
+        cloud" - the near-invisible (alpha 0.01) scatter-dot layers
+        (scat1/scat2/scat3) that the solid fit lines are a smoothed average
+        through. Doesn't touch the fit lines themselves, or either curve
+        type's resolution/downsampling - those are unaffected and always
+        settle to full resolution once the entrance reveal finishes (see
+        `_plot_signal_curves`), exactly as before this toggle existed.
+
+        A plain user preference (`self._overview_point_to_point`, stored so
+        a freshly loaded run applies whichever state the user last chose -
+        see `_plot_signal_curves`), not something this code decides on its
+        own: this mirrors how the point cloud used to be hidden
+        automatically while actively panning/zooming (an earlier,
+        gesture-driven approach that was reverted in favor of direct user
+        control).
+        """
+        self._overview_point_to_point = enabled
+        self._apply_overview_point_cloud_visibility()
+
+    def _apply_overview_point_cloud_visibility(self) -> None:
+        """Shows/hides each of scat1/scat2/scat3 (the overview graph's raw-
+        data "point cloud" - see `_set_overview_point_to_point`) using the
+        AND of two independent preferences: the overview card's global
+        "Point-to-Point" toggle (`self._overview_point_to_point`) and that
+        series's own per-series visibility (`self._series_visible`, from
+        the eye-icon toggle next to its color swatch - see
+        `_on_analyze_section_visibility_changed`). Either one hiding a
+        series is enough to hide its point cloud; both must allow it for
+        the dots to actually show.
+
+        getattr-guarded since this can run before a run has ever been
+        loaded (the gear-menu toggle is clickable as soon as
+        SignalOverviewCard exists, before `_plot_signal_curves` has
+        created these) - a click in that state just records the
+        preference for the first plot to apply once it exists.
+        """
+        for series_key, scat_attr in self._OVERVIEW_SCATTER_ATTR.items():
+            item = getattr(self, scat_attr, None)
+            if item is None:
+                continue
+            visible = self._overview_point_to_point and self._series_visible.get(series_key, True)
+            try:
+                item.setVisible(visible)
+            except RuntimeError:
+                pass
+
+    def _set_detail_point_to_point(self, key: str, enabled: bool) -> None:
+        """Applies one detail card's own "Point-to-Point Rendering" gear-
+        menu preference - see `_set_overview_point_to_point`, its overview-
+        card counterpart, for the general idea. Independent per card: the
+        Resonance card's toggle never affects Difference's or
+        Dissipation's point cloud.
+
+        Args:
+            key: One of "resonance"/"difference"/"dissipation" - which
+                detail card's toggle fired (bound via `partial` where this
+                is connected).
+            enabled: The new toggle state.
+        """
+        self._detail_point_to_point[key] = enabled
+        self._apply_detail_point_cloud_visibility(key)
+
+    def _apply_detail_point_cloud_visibility(self, key: str) -> None:
+        """Shows/hides one detail sub-graph's raw-data point cloud
+        (scat_1/scat_2/scat_3 - see `_DETAIL_SCATTER_ATTR`), using the AND
+        of that card's own "Point-to-Point" toggle
+        (`self._detail_point_to_point`) and the series's per-series
+        visibility (`self._series_visible`) - the same combination
+        `_apply_overview_point_cloud_visibility` applies to the overview
+        graph's point cloud, just scoped to one series/card at a time.
+
+        Outside the Channel 1/2/3 workflow steps (`self.stateStep < 3` -
+        Fill Start/Fill End), the toggle is ignored entirely and the point
+        cloud is forced visible (still subject to per-series visibility):
+        `getPoints()`'s own `show_fits`/`show_scat` alphas make the fit
+        line invisible during those two steps, so the point cloud is the
+        only thing actually plotted there - a stale "off" preference left
+        over from a Channel step must never black out the whole sub-graph.
+        See `_update_detail_point_cloud_state`, which also disables the
+        gear-menu row itself outside those steps.
+        """
+        scat_attr = self._DETAIL_SCATTER_ATTR.get(key)
+        if scat_attr is None:
+            return
+        item = getattr(self, scat_attr, None)
+        if item is None:
+            return
+        point_to_point = self._detail_point_to_point.get(key, True) if self.stateStep >= 3 else True
+        visible = point_to_point and self._series_visible.get(key, True)
+        try:
+            item.setVisible(visible)
+        except RuntimeError:
+            pass
+
+    def _update_detail_point_cloud_state(self) -> None:
+        """Keeps every detail card's "Point-to-Point Rendering" toggle in
+        sync with the current workflow step: enabled (and its preference
+        actually applied) only during Channel 1/2/3 (`self.stateStep >=
+        3`); disabled - and its point cloud forced visible regardless of
+        the stored preference - during Fill Start/Fill End, where the fit
+        line is invisible and the point cloud is the only content on
+        screen (see `_apply_detail_point_cloud_visibility`).
+
+        Called from `getPoints()` (every time the workflow step changes)
+        and once at setup, so the toggle starts disabled before any run's
+        wizard has reached a Channel step.
+        """
+        available = self.stateStep >= 3
+        for key, card in (
+            ("resonance", getattr(self, "resonance_card", None)),
+            ("difference", getattr(self, "difference_card", None)),
+            ("dissipation", getattr(self, "dissipation_card", None)),
+        ):
+            if card is not None:
+                card.set_point_to_point_available(available)
+            self._apply_detail_point_cloud_visibility(key)
 
     # Debounce window after the last manual pan/zoom tick before checking
     # whether the view needs to bounce back (see _schedule_view_bounce) -
@@ -8281,8 +8801,12 @@ class UIAnalyze(QtWidgets.QWidget):
         except RuntimeError:
             return
 
-        tx0, tx1 = self._clamp_axis_range(x0, x1, limits["xMin"], limits["xMax"], limits["maxXRange"])
-        ty0, ty1 = self._clamp_axis_range(y0, y1, limits["yMin"], limits["yMax"], limits["maxYRange"])
+        tx0, tx1 = self._clamp_axis_range(
+            x0, x1, limits["xMin"], limits["xMax"], limits["maxXRange"]
+        )
+        ty0, ty1 = self._clamp_axis_range(
+            y0, y1, limits["yMin"], limits["yMax"], limits["maxYRange"]
+        )
 
         if (tx0, tx1) == (x0, x1) and (ty0, ty1) == (y0, y1):
             return
@@ -8329,8 +8853,12 @@ class UIAnalyze(QtWidgets.QWidget):
         except RuntimeError:
             return
 
-        tx0, tx1 = self._clamp_axis_range(x0, x1, limits["xMin"], limits["xMax"], limits["maxXRange"])
-        ty0, ty1 = self._clamp_axis_range(y0, y1, limits["yMin"], limits["yMax"], limits["maxYRange"])
+        tx0, tx1 = self._clamp_axis_range(
+            x0, x1, limits["xMin"], limits["xMax"], limits["maxXRange"]
+        )
+        ty0, ty1 = self._clamp_axis_range(
+            y0, y1, limits["yMin"], limits["yMax"], limits["maxYRange"]
+        )
 
         if (tx0, tx1) == (x0, x1) and (ty0, ty1) == (y0, y1):
             return
@@ -8401,6 +8929,38 @@ class UIAnalyze(QtWidgets.QWidget):
         marker.setHoverPen(pg.mkPen(QtGui.QColor(*tok["flat_accent_hover"]), width=2.5))
         marker.setHandleOutlineColor(QtGui.QColor(*tok["plot_glass_rim"]))
 
+    def _target_marker_colors(self) -> Tuple[QtGui.QColor, QtGui.QColor]:
+        """Returns (bold, faint) colors for the detail sub-graphs'
+        current-POI target markers (star1/2/3, gstars1/2/3) - theme
+        tokens rather than the original hardcoded "black"/"gray", which
+        only ever read correctly in light mode. `plot_text_normal`/
+        `plot_text_dim` are the same muted-text token family used
+        elsewhere on these plots (see `_apply_pg_theme`'s axis text,
+        `_style_poi_marker`'s muted marker state) precisely because
+        they're already built to read against either theme's background.
+        """
+        tok = ThemeManager.instance().tokens()
+        return QtGui.QColor(*tok["plot_text_normal"]), QtGui.QColor(*tok["plot_text_dim"])
+
+    def _style_target_markers(self) -> None:
+        """Re-applies `_target_marker_colors` to whichever of star1/2/3 /
+        gstars1/2/3 currently exist - called on init and on every
+        `themeChanged` (see `_apply_pg_theme`), the same way
+        `_style_poi_marker` keeps POI markers correct across a live theme
+        switch.
+        """
+        bold_color, faint_color = self._target_marker_colors()
+        for attrs, color in (
+            (("star1", "star2", "star3"), bold_color),
+            (("gstars1", "gstars2", "gstars3"), faint_color),
+        ):
+            for attr in attrs:
+                item = getattr(self, attr, None)
+                if item is None:
+                    continue
+                item.setBrush(color)
+                item.setPen(_target_pen(color))
+
     def _make_poi_marker(self, x: float, xs: np.ndarray, y0: float, y1: float) -> "POIMarker":
         """Builds one themed, finite-extent `POIMarker` at data-x `x`,
         bounded to `[xs[0], xs[-1]]` and vertically sized to `[y0, y1]`
@@ -8411,7 +8971,9 @@ class UIAnalyze(QtWidgets.QWidget):
         self._style_poi_marker(marker, active=True)
         return marker
 
-    def _add_poi_markers(self, curves: Dict[str, Any], poi_vals: List[int], start_stop: List[int]) -> None:
+    def _add_poi_markers(
+        self, curves: Dict[str, Any], poi_vals: List[int], start_stop: List[int]
+    ) -> None:
         """Places movable POIMarker markers on the main graph.
 
         This method initializes vertical markers (POI) on the
