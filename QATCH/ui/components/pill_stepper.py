@@ -9,6 +9,15 @@ revealing its caption text; every other step stays a bare number. Advancing
 animates the previously-current pill collapsing back to a circle and the new
 current circle expanding into a pill.
 
+Also supports growing/shrinking the row itself - see `add_step`/
+`remove_step`/`step_count`/`mark_reached`. Adding/removing only ever happens
+immediately before the row's permanent last cell (see `UIAnalyze`'s
+Analyze-wizard usage, the only caller today, which owns a pair of external
+"+"/"-" buttons *beside* this widget rather than inside it - see
+`UIAnalyze._embed_stepper_overlay`), so these are deliberately simple
+"grow/shrink the tail" operations, not general insert-anywhere-in-the-row
+support.
+
 `Stepper` itself is left alone (still used by the Export wizard as a full
 two-row header) since the two layouts are different enough - dynamic
 per-cell width vs. a fixed grid - that folding this into `Stepper` would
@@ -22,12 +31,95 @@ compactly.
 
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import List, Sequence, Tuple
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+
+
+class PillCellButton(QtWidgets.QToolButton):
+    """A single round button, self-painted rather than relying on Qt's
+    style-sheet engine for `border-radius` - shows either a caption/number
+    (this row's own numbered pills) or a centered icon pixmap (a sibling
+    "+"/"-" button placed *beside* this row - see
+    `UIAnalyze._embed_stepper_overlay`), never both.
+
+    Confirmed empirically: this widget tree is embedded via
+    `QtWidgets.QGraphicsProxyWidget` into a `pg.PlotWidget`/`GraphicsView`
+    (see `UIAnalyze._embed_stepper_overlay`), and pyqtgraph's `GraphicsView`
+    doesn't enable antialiasing on its own render hints by default - QSS
+    `border-radius` circles rendered through that path came out visibly
+    jagged, while this widget's own `paintEvent` (which sets its own
+    `Antialiasing` hint, the same technique already used by
+    `QATCH.ui.widgets.saved_state_dot.SavedStateDot`) reads crisp regardless
+    of the hosting view's own hints.
+    """
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(False)
+        self._fill = QtGui.QColor(QtCore.Qt.GlobalColor.transparent)
+        self._border = QtGui.QColor(QtCore.Qt.GlobalColor.transparent)
+        self._text_color = QtGui.QColor(QtCore.Qt.GlobalColor.transparent)
+        self._icon_pixmap: QtGui.QPixmap | None = None
+        self._hovered = False
+
+    def enterEvent(self, event: QtCore.QEvent) -> None:  # noqa: N802
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event: QtCore.QEvent) -> None:  # noqa: N802
+        self._hovered = False
+        self.update()
+        super().leaveEvent(event)
+
+    def set_colors(
+        self, fill: QtGui.QColor, border: QtGui.QColor, text_color: QtGui.QColor
+    ) -> None:
+        self._fill = fill
+        self._border = border
+        self._text_color = text_color
+        self.update()
+
+    def set_icon_pixmap(self, pixmap: QtGui.QPixmap | None) -> None:
+        """Sets a centered icon to paint in place of any caption/number
+        text (mutually exclusive with `setText` - whichever was set most
+        recently doesn't matter, `paintEvent` always prefers the icon if
+        one's set). Pass `None` to go back to painting text.
+        """
+        self._icon_pixmap = pixmap
+        self.update()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        rect = QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        radius = rect.height() / 2.0
+        p.setPen(QtGui.QPen(self._border, 1.0))
+        p.setBrush(QtGui.QBrush(self._fill))
+        p.drawRoundedRect(rect, radius, radius)
+        if self._hovered and self.isEnabled():
+            # A translucent white wash rather than a lighter()/darker()
+            # recompute of self._fill - reads as "raised" regardless of the
+            # current theme or whichever fill color was pushed in via
+            # set_colors (accent/surface/etc.), with no theme-token
+            # dependency inside this otherwise externally-colored widget.
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(QtGui.QColor(255, 255, 255, 40))
+            p.drawRoundedRect(rect, radius, radius)
+        if self._icon_pixmap is not None:
+            target = QtCore.QRectF(self._icon_pixmap.rect())
+            target.moveCenter(rect.center())
+            p.drawPixmap(target.topLeft(), self._icon_pixmap)
+        elif self.text():
+            p.setPen(self._text_color)
+            p.setFont(self.font())
+            p.drawText(rect, QtCore.Qt.AlignmentFlag.AlignCenter, self.text())
+        p.end()
 
 
 class PillStepper(QtWidgets.QWidget):
@@ -69,7 +161,7 @@ class PillStepper(QtWidgets.QWidget):
         self._labels = list(labels)
         self._current = 0
         self._max_reached = 0
-        self._buttons: List[QtWidgets.QToolButton] = []
+        self._buttons: List[PillCellButton] = []
         self._lines: List[QtWidgets.QFrame] = []
         self._anims: List[QtCore.QVariantAnimation] = []
 
@@ -77,10 +169,7 @@ class PillStepper(QtWidgets.QWidget):
         font.setPixelSize(self._FONT_PX)
         font.setWeight(QtGui.QFont.Bold)
         self._font = font
-        fm = QtGui.QFontMetricsF(font)
-        self._expanded_widths = [
-            int(fm.horizontalAdvance(label) + self._PILL_PAD_H * 2) for label in self._labels
-        ]
+        self._expanded_widths = [self._expanded_width_for(label) for label in self._labels]
 
         outer = QtWidgets.QHBoxLayout(self)
         outer.setContentsMargins(8, 6, 8, 6)
@@ -93,12 +182,11 @@ class PillStepper(QtWidgets.QWidget):
                 outer.addWidget(line, 0, QtCore.Qt.AlignVCenter)
                 self._lines.append(line)
 
-            btn = QtWidgets.QToolButton()
+            btn = PillCellButton()
             btn.setFont(self._font)
             btn.setFixedHeight(self._CIRCLE)
             btn.setFixedWidth(self._CIRCLE)
             btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(lambda _=False, idx=i: self._on_clicked(idx))
             outer.addWidget(btn, 0, QtCore.Qt.AlignVCenter)
             self._buttons.append(btn)
 
@@ -108,13 +196,39 @@ class PillStepper(QtWidgets.QWidget):
             anim.valueChanged.connect(lambda v, b=btn: b.setFixedWidth(int(v)))
             self._anims.append(anim)
 
+        self._rewire_click_handlers()
         self._apply_current_instant()
         self._restyle()
         ThemeManager.instance().themeChanged.connect(lambda _: self._restyle())
 
+    def _expanded_width_for(self, label: str) -> int:
+        fm = QtGui.QFontMetricsF(self._font)
+        return int(fm.horizontalAdvance(label) + self._PILL_PAD_H * 2)
+
+    def _rewire_click_handlers(self) -> None:
+        """Reconnects every numbered cell's `clicked` signal to carry its
+        *current* index - needed after `add_step`/`remove_step`, since
+        every cell after the splice point shifts position and a stale
+        closure would fire the wrong index.
+        """
+        for i, btn in enumerate(self._buttons):
+            try:
+                btn.clicked.disconnect()
+            except TypeError:
+                pass
+            btn.clicked.connect(lambda _checked=False, idx=i: self._on_clicked(idx))
+
     def _on_clicked(self, idx: int) -> None:
         if idx <= self._max_reached:
             self.stepClicked.emit(idx)
+
+    def step_count(self) -> int:
+        """Total number of currently-shown pills (including the two
+        permanent bookends) - lets an owner translate between its own
+        fixed step-numbering scheme and this widget's actual (possibly
+        shorter) pill count. See `UIAnalyze._pillstepper_index_for`.
+        """
+        return len(self._labels)
 
     def set_current(self, index: int) -> None:
         prev = self._current
@@ -124,6 +238,22 @@ class PillStepper(QtWidgets.QWidget):
             self._animate_to(prev, self._CIRCLE)
             self._animate_to(index, self._expanded_widths[index])
         self._restyle()
+
+    def mark_reached(self, index: int) -> None:
+        """Marks `index` (and everything before it) as "reached" - i.e.
+        clickable, the same side effect `set_current` already has -
+        without changing which pill is currently displayed as *current*.
+
+        Used when a step is revealed via `add_step` (a user's "+" click,
+        or auto-fit finding more real channels than were previously shown
+        - see `UIAnalyze._on_add_step_requested`/`_reveal_steps_for_poi_
+        vals`): the user should be able to click straight into a newly-
+        revealed step, not be blocked until they've clicked "Next" enough
+        times to organically reach it the normal way.
+        """
+        if index > self._max_reached:
+            self._max_reached = index
+            self._restyle()
 
     def reset(self) -> None:
         """Clear "reached" progress entirely and snap (no animation) back to
@@ -135,6 +265,122 @@ class PillStepper(QtWidgets.QWidget):
         self._apply_current_instant()
         self._restyle()
 
+    def add_step(self, label: str) -> None:
+        """Inserts a new pill and its own preceding connector line
+        immediately before the row's permanent last cell, animating both
+        in from width 0 together. See `remove_step` for the mirror-image
+        operation.
+        """
+        pos = len(self._labels) - 1  # index the new cell will occupy
+        # The flat layout is [btn0, line0, btn1, line1, ..., btn_{n-1}], so
+        # the *existing* line that currently sits directly before the
+        # permanent last button - the one that must end up between the
+        # new button and that last button, unchanged - is at 2*pos - 1,
+        # not 2*pos (that's the last button's own slot). Inserting at
+        # 2*pos would land the new line+button *after* that existing
+        # line instead of before it, leaving two consecutive connector
+        # lines with no button between them.
+        insert_at = 2 * pos - 1
+
+        line = QtWidgets.QFrame()
+        line.setFixedHeight(self._LINE_H)
+        line.setFixedWidth(0)
+        self.layout().insertWidget(insert_at, line, 0, QtCore.Qt.AlignVCenter)
+
+        btn = PillCellButton(self)
+        btn.setFont(self._font)
+        btn.setFixedHeight(self._CIRCLE)
+        btn.setFixedWidth(0)
+        btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.layout().insertWidget(insert_at + 1, btn, 0, QtCore.Qt.AlignVCenter)
+
+        anim = QtCore.QVariantAnimation(self)
+        anim.setDuration(self._ANIM_MS)
+        anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        anim.valueChanged.connect(lambda v, b=btn: b.setFixedWidth(int(v)))
+
+        # A second, parallel animation grows the connector line's width in
+        # lockstep with the button's own expansion, rather than the line
+        # popping in at full length instantly - see remove_step for the
+        # mirror-image shrink.
+        line_anim = QtCore.QVariantAnimation(self)
+        line_anim.setDuration(self._ANIM_MS)
+        line_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        line_anim.setStartValue(0)
+        line_anim.setEndValue(self._LINE_LEN)
+        line_anim.valueChanged.connect(lambda v, ln=line: ln.setFixedWidth(int(v)))
+
+        self._labels.insert(pos, label)
+        self._buttons.insert(pos, btn)
+        self._lines.insert(pos - 1, line)
+        self._expanded_widths.insert(pos, self._expanded_width_for(label))
+        self._anims.insert(pos, anim)
+
+        self._rewire_click_handlers()
+        self._restyle()
+        self._animate_to(pos, self._CIRCLE, start_width=0)
+        line_anim.start()
+
+    def remove_step(self) -> None:
+        """Animates the last non-bookend pill's width - and its preceding
+        connector line's width - down to 0 together, then actually
+        detaches both from the layout. A no-op if only the two permanent
+        bookend cells remain.
+
+        Splices `self._labels`/`self._buttons`/etc. *immediately* (not
+        deferred to the animation's `finished` callback) specifically so
+        that two `remove_step()` calls issued back-to-back - e.g. a fast
+        double-click on an owner's "-" button, before the first 190ms
+        animation has finished - each compute a fresh `pos` and target two
+        different cells, rather than both racing to animate (and only ever
+        finishing) the same one. Only the *visual* detach/deleteLater is
+        deferred; the tracked state (and this widget's own `step_count()`,
+        which a caller like `UIAnalyze` reads to stay in sync) is correct
+        the instant this method returns.
+        """
+        pos = len(self._labels) - 2
+        if pos < 1:
+            return
+        btn = self._buttons[pos]
+        line = self._lines[pos - 1]
+        anim = self._anims[pos]
+
+        del self._labels[pos]
+        del self._buttons[pos]
+        del self._lines[pos - 1]
+        del self._expanded_widths[pos]
+        del self._anims[pos]
+        if self._current >= len(self._labels):
+            self._current = len(self._labels) - 1
+        if self._max_reached >= len(self._labels):
+            self._max_reached = len(self._labels) - 1
+        self._rewire_click_handlers()
+        self._restyle()
+
+        line_anim = QtCore.QVariantAnimation(self)
+        line_anim.setDuration(self._ANIM_MS)
+        line_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        line_anim.setStartValue(line.width())
+        line_anim.setEndValue(0)
+        line_anim.valueChanged.connect(lambda v, ln=line: ln.setFixedWidth(int(v)))
+        line_anim.start()
+
+        def _finish(btn=btn, line=line) -> None:
+            self.layout().removeWidget(btn)
+            self.layout().removeWidget(line)
+            btn.deleteLater()
+            line.deleteLater()
+
+        try:
+            anim.finished.disconnect()
+        except TypeError:
+            pass
+        anim.finished.connect(_finish)
+        anim.stop()
+        anim.setStartValue(btn.width())
+        anim.setEndValue(0)
+        anim.start()
+
     def _apply_current_instant(self) -> None:
         for i, btn in enumerate(self._buttons):
             self._anims[i].stop()
@@ -145,7 +391,7 @@ class PillStepper(QtWidgets.QWidget):
                 btn.setFixedWidth(self._CIRCLE)
                 btn.setText(str(i + 1))
 
-    def _animate_to(self, index: int, target_width: int) -> None:
+    def _animate_to(self, index: int, target_width: int, start_width: int | None = None) -> None:
         btn = self._buttons[index]
         anim = self._anims[index]
         anim.stop()
@@ -153,11 +399,11 @@ class PillStepper(QtWidgets.QWidget):
             # Expanding into a pill - swap to the caption immediately so
             # it's legible as soon as there's room, rather than crossfading.
             btn.setText(self._labels[index])
-        else:
+        elif target_width > 0:
             # Collapsing back to a circle - swap to the plain number right
             # away so a long caption doesn't clip mid-word as it narrows.
             btn.setText(str(index + 1))
-        anim.setStartValue(btn.width())
+        anim.setStartValue(start_width if start_width is not None else btn.width())
         anim.setEndValue(target_width)
         anim.start()
 
@@ -169,10 +415,8 @@ class PillStepper(QtWidgets.QWidget):
                 state = "done"
             else:
                 state = "future"
-            btn.setStyleSheet(self._cell_qss(state))
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
-            btn.update()
+            fill, border, text_color = self._cell_colors(state)
+            btn.set_colors(fill, border, text_color)
         for i, line in enumerate(self._lines):
             line.setStyleSheet(self._line_qss(done=(i < self._max_reached)))
             line.style().unpolish(line)
@@ -180,29 +424,25 @@ class PillStepper(QtWidgets.QWidget):
             line.update()
         self.update()
 
-    def _cell_qss(self, state: str) -> str:
+    @staticmethod
+    def _cell_colors(state: str) -> Tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor]:
         tok = ThemeManager.instance().tokens()
         if state == "current":
-            body = (
-                f"background: {tok_css(tok['flat_accent'])}; "
-                f"color: {tok_css(tok['flat_on_accent'])}; border: none;"
+            return (
+                QtGui.QColor(*tok["flat_accent"]),
+                QtGui.QColor(*tok["flat_accent"]),
+                QtGui.QColor(*tok["flat_on_accent"]),
             )
-        elif state == "done":
-            body = (
-                f"background: {tok_css(tok['flat_accent_weak'])}; "
-                f"color: {tok_css(tok['flat_accent'])}; "
-                f"border: 1px solid {tok_css(tok['flat_accent'])};"
+        if state == "done":
+            return (
+                QtGui.QColor(*tok["flat_accent_weak"]),
+                QtGui.QColor(*tok["flat_accent"]),
+                QtGui.QColor(*tok["flat_accent"]),
             )
-        else:
-            body = (
-                f"background: {tok_css(tok['flat_surface2'])}; "
-                f"color: {tok_css(tok['flat_text_muted'])}; "
-                f"border: 1px solid {tok_css(tok['flat_border'])};"
-            )
-        radius = self._CIRCLE // 2
         return (
-            f"QToolButton {{ {body} border-radius: {radius}px; "
-            f"font-weight: 700; font-size: {self._FONT_PX}px; }}"
+            QtGui.QColor(*tok["flat_surface2"]),
+            QtGui.QColor(*tok["flat_text_muted"]),
+            QtGui.QColor(*tok["flat_border"]),
         )
 
     @staticmethod

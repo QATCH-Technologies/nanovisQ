@@ -56,7 +56,7 @@ from QATCH.ui.components.glass_axis_item import (
     apply_glass_plot_style,
     glass_curve_pen,
 )
-from QATCH.ui.components.pill_stepper import PillStepper
+from QATCH.ui.components.pill_stepper import PillCellButton, PillStepper
 from QATCH.ui.components.themed_grid_item import ThemedGridItem
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
@@ -578,6 +578,26 @@ class UIAnalyze(QtWidgets.QWidget):
     _SPINNER_LABEL_SIZE = 72
     _SPINNER_RENDER_SIZE = 64
 
+    # The 5 removable stepper steps, in fixed tail-to-head removal order
+    # (Channel 3 first, Fill Start last - see _on_remove_step_requested/
+    # _on_add_step_requested), paired with each one's `poi_markers` index.
+    # Index 2 (the permanently-hidden POI3/"Post" marker) is deliberately
+    # absent - it's never independently shown/hidden by the user, it only
+    # ever rides along with Fill End (see _INTERMEDIATE_STEPS's one
+    # special-cased transition in _on_remove_step_requested).
+    _INTERMEDIATE_STEPS = (
+        ("Fill Start", 0),
+        ("Fill End", 1),
+        ("Channel 1", 3),
+        ("Channel 2", 4),
+        ("Channel 3", 5),
+    )
+    # Duration of one marker's animated fade in/out when a stepper step is
+    # added/removed via +/- - matches PillStepper._ANIM_MS so the marker
+    # and its pill read as one cohesive transition rather than two
+    # independently-timed animations.
+    _STEP_VIS_ANIM_MS = 190
+
     def setup_ui(self, analyze_window: "AnalyzeWindow", parent: "MainWindow"):
         super(UIAnalyze, self).__init__(None)
         self.parent: "MainWindow" = parent
@@ -888,11 +908,41 @@ class UIAnalyze(QtWidgets.QWidget):
             ["Load", "Fill Start", "Fill End", "Channel 1", "Channel 2", "Channel 3", "Analyze"]
         )
         self.stepper.stepClicked.connect(self._on_stepper_clicked)
+        # +/- step add/remove (see _INTERMEDIATE_STEPS, _on_add_step_requested/
+        # _on_remove_step_requested) - a view-only feature (see those methods'
+        # docstrings): the backend still always sees all 6 POI markers,
+        # exactly as before this existed. The actual +/- buttons live
+        # *beside* the stepper (own widgets, not part of PillStepper itself)
+        # - built in _embed_stepper_overlay, once graphWidget exists below.
+        self.active_count = len(self._INTERMEDIATE_STEPS)
+        self._parked_marker_values: Dict[int, float] = {}
+        # Cached 0/1/2/3-channel auto-fit hypotheses (channel count -> full
+        # 6-point POI list), populated by _cache_channel_hypotheses whenever
+        # Onyx/Volta runs (they're the only engines that support forcing a
+        # channel count) - see _apply_cached_channel_config, which +/- uses
+        # to snap markers to a model-predicted layout instead of parking/
+        # restoring a stale position. Reset alongside self.model_result in
+        # clear()/_run_model_prediction/_restore_qmodel_predictions.
+        self._channel_config_cache: Dict[int, List[int]] = {}
 
         self.graphWidget = _new_glass_plot_widget()
         # Background/axis colors are applied by _apply_pg_theme() (called at
         # the end of setup_ui and on every themeChanged) rather than a
         # hardcoded literal, since pyqtgraph doesn't consume QSS.
+        # The overview always shows the whole run at a fixed scale - drag/
+        # zoom precision is what the three detail sub-graphs below are for -
+        # so interactive pan/zoom here is disabled outright rather than left
+        # for the user to accidentally trigger. This only touches this one
+        # ViewBox, not _new_glass_plot_widget() itself (graphWidget1/2/3 -
+        # the detail sub-graphs - still need pan/zoom for precise POI
+        # placement). ResistantViewBox.wheelEvent already checks
+        # state["mouseEnabled"] and no-ops when both axes are off, so this
+        # also kills wheel-zoom, not just drag-pan. POI marker dragging is
+        # unaffected - that's handled by the marker items themselves, not
+        # routed through the ViewBox's own pan/zoom.
+        overview_vb = self.graphWidget.getViewBox()
+        overview_vb.setMouseEnabled(x=False, y=False)
+        overview_vb.setMenuEnabled(False)
         self.overview_card = SignalOverviewCard(self.graphWidget)
         self.overview_card.btn_zoom_in.clicked.connect(lambda: self.zoomFinderPlots(0.5))
         self.overview_card.btn_zoom_out.clicked.connect(lambda: self.zoomFinderPlots(2.0))
@@ -1972,12 +2022,13 @@ class UIAnalyze(QtWidgets.QWidget):
         }
 
     def _show_qmodel_plot_overlay(self) -> None:
-        """Embeds a dimming layer and spinner overlay into the main graph widget.
+        """Embeds a frosted-glass dimming layer and spinner overlay into the
+        main graph widget.
 
         This method initializes a visual overlay for QModel inference. Unlike the
-        analysis plot, this does not replace the widget; instead, it layers a
-        semi-transparent `QGraphicsRectItem` over the existing plot to "dim" it,
-        then places the shared GIF spinner (see `_build_gif_spinner`) and a
+        analysis plot, this does not replace the widget; instead, it applies a
+        real `QGraphicsBlurEffect` to the plot's ViewBox/axes to dim it, then
+        places the shared GIF spinner (see `_build_gif_spinner`) and a
         status label on top - same look as `_show_loading_run_overlay`'s
         "Loading run..." card, since both represent the same kind of
         "work is happening" state.
@@ -1991,19 +2042,39 @@ class UIAnalyze(QtWidgets.QWidget):
         Note:
             Uses a single-shot timer to execute centering logic (`_center`)
             to ensure that the `ViewBox` geometry is fully calculated before
-            the dimming rectangle is drawn.
+            centering the card.
         """
         self._hide_qmodel_plot_overlay()
 
         plot_item = self.graphWidget.getPlotItem()
         vb = plot_item.getViewBox()
 
-        #  Dimming rect
-        dim_rect = QtWidgets.QGraphicsRectItem()
-        dim_rect.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 160)))
-        dim_rect.setPen(QtGui.QPen(QtCore.Qt.NoPen))
-        dim_rect.setParentItem(plot_item.graphicsItem())
-        dim_rect.setZValue(999)
+        # Same frosted-glass technique as _show_no_run_overlay/
+        # _show_loading_run_overlay: a real QGraphicsBlurEffect on the
+        # ViewBox/axes, animated in lockstep with the card fade below.
+        # This used to be a flat white QGraphicsRectItem, which read as a
+        # tint *brightening* the canvas in dark mode instead of dimming it -
+        # see those two methods' own comments for the same fix.
+        frost_targets = [vb, plot_item.getAxis("bottom"), plot_item.getAxis("left")]
+
+        def _set_frost(progress: float) -> None:
+            for target in frost_targets:
+                if target is None:
+                    continue
+                try:
+                    if progress > 0.01:
+                        effect = target.graphicsEffect()
+                        if not isinstance(effect, QtWidgets.QGraphicsBlurEffect):
+                            effect = QtWidgets.QGraphicsBlurEffect()
+                            effect.setBlurHints(
+                                QtWidgets.QGraphicsBlurEffect.BlurHint.PerformanceHint
+                            )
+                            target.setGraphicsEffect(effect)
+                        effect.setBlurRadius(progress * 10.0)
+                    else:
+                        target.setGraphicsEffect(None)
+                except RuntimeError:
+                    pass
 
         # Spinner container
         container = QtWidgets.QWidget()
@@ -2037,6 +2108,7 @@ class UIAnalyze(QtWidgets.QWidget):
         proxy.setWidget(container)
         proxy.setParentItem(plot_item.graphicsItem())
         proxy.setZValue(1000)
+        _set_frost(1.0)
 
         def _apply_theme(_mode: str | None = None) -> None:
             tok = ThemeManager.instance().tokens()
@@ -2051,7 +2123,6 @@ class UIAnalyze(QtWidgets.QWidget):
         def _center() -> None:
             try:
                 vb_rect = vb.mapRectToItem(plot_item.graphicsItem(), vb.boundingRect())
-                dim_rect.setRect(vb_rect)
                 pw = proxy.boundingRect().width()
                 ph = proxy.boundingRect().height()
                 proxy.setPos(
@@ -2065,7 +2136,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         self._qmodel_overlay = {
             "proxy": proxy,
-            "dim_rect": dim_rect,
+            "frost": _set_frost,
             "movie": movie,
             "status_label": status_label,
             "apply_theme": _apply_theme,
@@ -2090,7 +2161,7 @@ class UIAnalyze(QtWidgets.QWidget):
         if overlay is None:
             return
 
-        proxy, dim_rect = overlay["proxy"], overlay["dim_rect"]
+        proxy, frost = overlay["proxy"], overlay["frost"]
         status_label = overlay["status_label"]
         error_detected = is_error or "error" in status.lower() or "failed" in status.lower()
         is_finished = pct >= 100 or error_detected
@@ -2113,7 +2184,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
             def update_opacity(val: float):
                 proxy.setOpacity(val)
-                dim_rect.setOpacity(val)
+                frost(val)
 
             anim.valueChanged.connect(update_opacity)
             anim.finished.connect(lambda: self._hide_qmodel_plot_overlay(failed=error_detected))
@@ -2124,10 +2195,11 @@ class UIAnalyze(QtWidgets.QWidget):
             QtCore.QTimer.singleShot(800, anim.start)
 
     def _hide_qmodel_plot_overlay(self, failed: bool = False) -> None:
-        """Removes the QModel dimming layer and spinner overlay.
+        """Removes the QModel frost/blur layer and spinner overlay.
 
-        Stops/tears down the spinner's `QMovie` and removes both the
-        `QGraphicsProxyWidget` and the `QGraphicsRectItem` from the scene.
+        Stops/tears down the spinner's `QMovie`, clears the blur effect off
+        the ViewBox/axes, and removes the `QGraphicsProxyWidget` from the
+        scene.
 
         Args:
             failed: If True, shows a warning popup. Defaults to False.
@@ -2136,7 +2208,7 @@ class UIAnalyze(QtWidgets.QWidget):
         if overlay is None:
             return
 
-        proxy, dim_rect = overlay["proxy"], overlay["dim_rect"]
+        proxy, frost = overlay["proxy"], overlay["frost"]
         movie = overlay["movie"]
         try:
             ThemeManager.instance().themeChanged.disconnect(overlay["apply_theme"])
@@ -2144,15 +2216,15 @@ class UIAnalyze(QtWidgets.QWidget):
             pass
         movie.stop()
         movie.deleteLater()
+        frost(0.0)
 
-        for item in (proxy, dim_rect):
-            try:
-                item.setParentItem(None)
-                scene = item.scene()
-                if scene is not None:
-                    scene.removeItem(item)
-            except RuntimeError:
-                pass
+        try:
+            proxy.setParentItem(None)
+            scene = proxy.scene()
+            if scene is not None:
+                scene.removeItem(proxy)
+        except RuntimeError:
+            pass
 
         self._qmodel_overlay = None
 
@@ -2203,10 +2275,65 @@ class UIAnalyze(QtWidgets.QWidget):
         anim.start()
         return anim
 
+    def _make_step_button(self, icon_filename: str, tooltip: str) -> PillCellButton:
+        """Builds one themed, icon-only round button for the stepper
+        overlay's external "+"/"-" controls (see `_embed_stepper_overlay`)
+        - the same self-painted `PillCellButton` the numbered pills use
+        (see its own docstring for why: QSS-rendered circles come out
+        jagged once embedded via `QGraphicsProxyWidget`), sized to match
+        (`PillStepper._CIRCLE`) so the three read as one control cluster,
+        just holding a centered icon instead of a caption/number.
+        """
+        btn = PillCellButton()
+        btn.setFixedSize(PillStepper._CIRCLE, PillStepper._CIRCLE)
+        btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        btn.setToolTip(tooltip)
+        btn.setProperty("_icon_filename", icon_filename)
+        return btn
+
+    def _restyle_step_button(self, btn: PillCellButton) -> None:
+        """Re-tints one stepper +/- button for the current theme and its
+        own current enabled state - a disabled `PillCellButton` doesn't
+        dim itself automatically the way a normal QSS-styled `QToolButton`
+        would, since it paints itself directly (see `PillCellButton`), so
+        this explicitly picks a muted tint when disabled.
+        """
+        tok = ThemeManager.instance().tokens()
+        enabled = btn.isEnabled()
+        icon_color = QtGui.QColor(*(tok["flat_accent"] if enabled else tok["flat_text_muted"]))
+        icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
+        icon_path = os.path.join(icons_dir, btn.property("_icon_filename"))
+        pixmap = PlotContainer._tinted_icon(icon_path, icon_color, size=12).pixmap(12, 12)
+        btn.set_icon_pixmap(pixmap)
+        btn.set_colors(
+            QtGui.QColor(*tok["flat_surface2"]),
+            QtGui.QColor(*tok["flat_border"]),
+            QtGui.QColor(0, 0, 0, 0),
+        )
+
+    def _update_step_buttons_enabled(self) -> None:
+        """Enables/disables the stepper overlay's "+"/"-" buttons to match
+        `self.active_count`'s bounds (0 to `len(_INTERMEDIATE_STEPS)`) and
+        re-tints both for the current enabled state - see
+        `_restyle_step_button`. Called whenever `active_count` changes
+        (`_on_add_step_requested`/`_on_remove_step_requested`/
+        `_reset_step_visibility`/`_reveal_steps_for_poi_vals`) and on
+        every theme switch.
+        """
+        minus_btn = getattr(self, "_stepper_minus_btn", None)
+        plus_btn = getattr(self, "_stepper_plus_btn", None)
+        if minus_btn is None or plus_btn is None:
+            return
+        minus_btn.setEnabled(self.active_count > 0)
+        plus_btn.setEnabled(self.active_count < len(self._INTERMEDIATE_STEPS))
+        self._restyle_step_button(minus_btn)
+        self._restyle_step_button(plus_btn)
+
     def _embed_stepper_overlay(self) -> None:
-        """Embeds self.stepper (a PillStepper) as a persistent overlay
-        floating at the top-center of the Signal Overview plot, using the
-        same QGraphicsProxyWidget-on-a-PlotItem technique as
+        """Embeds self.stepper (a PillStepper), flanked by its own external
+        "+"/"-" buttons, as a persistent overlay floating at the top-center
+        of the Signal Overview plot, using the same
+        QGraphicsProxyWidget-on-a-PlotItem technique as
         `_show_no_run_overlay`/`_show_loading_run_overlay` below - just
         built once here (it's always present once the plots exist, not
         shown/hidden per transient state) and top-anchored instead of
@@ -2214,13 +2341,45 @@ class UIAnalyze(QtWidgets.QWidget):
         and fades out while either is showing (see
         `_update_stepper_overlay_visibility`), since they already occupy the
         same top-of-plot real estate with their own card + blur treatment.
+
+        The +/- buttons are deliberately separate widgets sitting *beside*
+        the stepper in one shared row, rather than built into
+        `PillStepper`'s own layout/stadium card - giving them a bit of
+        breathing room from the pill row instead of crowding its card
+        background.
         """
         plot_item = self.graphWidget.getPlotItem()
         vb = plot_item.getViewBox()
 
+        self._stepper_minus_btn = self._make_step_button("subtract.svg", "Remove a workflow step")
+        self._stepper_plus_btn = self._make_step_button("add.svg", "Add a workflow step")
+        self._stepper_minus_btn.clicked.connect(self._on_remove_step_requested)
+        # QToolButton.clicked emits clicked(bool checked=False) - connecting
+        # directly would bind that `checked` value to _on_add_step_requested's
+        # sole parameter (restore_position: bool = True), silently forcing
+        # restore_position=False on every real click and skipping both the
+        # parked-value restore and the cached-channel-config reposition (see
+        # _apply_cached_channel_config). Wrap in a no-arg lambda so the
+        # method's own default (True) is used instead.
+        self._stepper_plus_btn.clicked.connect(lambda: self._on_add_step_requested())
+        ThemeManager.instance().themeChanged.connect(lambda _: self._update_step_buttons_enabled())
+
+        wrapper = QtWidgets.QWidget()
+        wrapper.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        wrapper.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        wrapper.setAutoFillBackground(False)
+        wrapper_layout = QtWidgets.QHBoxLayout(wrapper)
+        wrapper_layout.setContentsMargins(0, 0, 0, 0)
+        wrapper_layout.setSpacing(10)  # breathing room either side of the pill card
+        wrapper_layout.addWidget(self._stepper_minus_btn, 0, QtCore.Qt.AlignVCenter)
+        wrapper_layout.addWidget(self.stepper, 0, QtCore.Qt.AlignVCenter)
+        wrapper_layout.addWidget(self._stepper_plus_btn, 0, QtCore.Qt.AlignVCenter)
+        self._stepper_overlay_wrapper = wrapper
+
         self.stepper.show()
+        wrapper.show()
         proxy = QtWidgets.QGraphicsProxyWidget()
-        proxy.setWidget(self.stepper)
+        proxy.setWidget(wrapper)
         proxy.setParentItem(plot_item.graphicsItem())
         proxy.setZValue(900)
 
@@ -2238,10 +2397,12 @@ class UIAnalyze(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(0, _position)
         vb.sigResized.connect(_position)
         # A step expanding/collapsing changes the stepper's own width, which
-        # would otherwise leave it off-center until the next plot resize.
+        # would otherwise leave the whole row off-center until the next
+        # plot resize.
         self.stepper.sizeChanged.connect(_position)
 
         self._stepper_overlay_proxy = proxy
+        self._update_step_buttons_enabled()
         self._update_stepper_overlay_visibility(animate=False)
 
     def _update_stepper_overlay_visibility(self, animate: bool = True) -> None:
@@ -3559,6 +3720,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.model_result = -1
         self.model_candidates = None
         self.model_engine = "None"
+        self._channel_config_cache = {}
 
         self.check_user_info()
         self.enable_buttons()
@@ -5254,6 +5416,92 @@ class UIAnalyze(QtWidgets.QWidget):
     def _QModel_onyx_progress_update(self, pct: int, status: Optional[str]):
         self._handle_qmodel_progress(pct, status)
 
+    def _cache_channel_hypotheses(
+        self,
+        predictor: Any,
+        raw_bytes: bytes,
+        detected_channels: int,
+        detected_poi_vals: List[int],
+    ) -> None:
+        """Runs `predictor` once more per channel-count hypothesis (0-3) not
+        already known - the just-completed detection call already covers
+        `detected_channels` - forcing `num_channels` on each additional call
+        (only Onyx/Volta support this; Indus/Tweed callers never reach this
+        method). Stores the resulting 6-point POI configuration in
+        `self._channel_config_cache`, keyed by channel count, so `_apply_
+        cached_channel_config` can snap +/- markers straight to a model-
+        predicted layout for a new channel count instead of leaving a stale
+        position from a different hypothesis or parking at the data edge.
+
+        No-ops if `detected_channels` is the predictor's "no fill at all"
+        sentinel (-1) - there's no meaningful 0-3 channel comparison for a
+        run with no fill.
+
+        Deliberately silent (no progress_signal) - callers on the main
+        thread manage the shared QModel overlay's status text/fade timing
+        themselves around this call (see `_restore_qmodel_predictions`);
+        the background run-load thread has no overlay to manage.
+        """
+        if detected_channels is None or detected_channels < 0:
+            return
+        self._channel_config_cache = {
+            int(detected_channels): [int(v) for v in detected_poi_vals]
+        }
+        for ch in (0, 1, 2, 3):
+            if ch == detected_channels:
+                continue
+            try:
+                result, _ = predictor.predict(file_buffer=BytesIO(raw_bytes), num_channels=ch)
+            except Exception as e:
+                Log.w(TAG, f"[Auto-Fit] Could not cache {ch}-channel configuration: {e}")
+                continue
+            vals = []
+            for i in range(6):
+                data = result.get(f"POI{i+1}", {})
+                indices = data.get("indices", [-1]) or [-1]
+                vals.append(int(indices[0]))
+            if vals[2] == -1 and vals[1] != -1:
+                vals[2] = vals[1] + 2
+            self._channel_config_cache[ch] = vals
+
+    def _cache_channel_hypotheses_for_rerun(
+        self,
+        predictor: Any,
+        raw_bytes: bytes,
+        detected_channels: int,
+        poi_vals: List[int],
+    ) -> None:
+        """Wraps `_cache_channel_hypotheses` for the main-thread "re-run
+        auto-fit" path (`_restore_qmodel_predictions`), which - unlike the
+        background run-load path - has a visible QModel overlay whose
+        fade-out the detected-channel call's own 100%-progress signal
+        already scheduled (see `_update_qmodel_plot_overlay`:
+        `progress_signal.emit(100, "Complete!")` fires from inside
+        `predictor.predict()` itself, before this method ever runs).
+        Cancels that scheduled fade and updates the overlay's status text
+        before the extra caching calls run, then re-triggers the normal
+        fade once they're done, so the overlay stays up and honest for the
+        whole operation instead of disappearing mid-computation while the
+        UI is still (synchronously) busy.
+        """
+        self._qmodel_is_fading = False
+        prev_fade = getattr(self, "_qmodel_fade_anim", None)
+        if prev_fade is not None:
+            try:
+                prev_fade.stop()
+            except RuntimeError:
+                pass
+        overlay = getattr(self, "_qmodel_overlay", None)
+        if overlay is not None:
+            overlay["status_label"].setText("Caching channel configurations…")
+            QtCore.QCoreApplication.processEvents()
+
+        self._cache_channel_hypotheses(predictor, raw_bytes, detected_channels, poi_vals)
+
+        # All hypotheses cached - let the overlay's normal fade-out proceed
+        # now (no-ops if there's no overlay to begin with).
+        self._update_qmodel_plot_overlay(100, "Complete!")
+
     def _restore_qmodel_predictions(self):
         try:
             if self.model_engine == "None":
@@ -5287,12 +5535,14 @@ class UIAnalyze(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
+            self._channel_config_cache = {}
             if Constants.qmodel_onyx_predict:
                 Log.w("Auto-fitting points with QModel Onyx... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
-                        fh = BytesIO(f.read())
+                        raw_bytes = f.read()
+                        fh = BytesIO(raw_bytes)
                         predictor = self.QModel_onyx_predictor
                         predict_result, detected_channels = predictor.predict(
                             file_buffer=fh, progress_signal=self.onyx_predict_progress
@@ -5325,6 +5575,9 @@ class UIAnalyze(QtWidgets.QWidget):
                             if poi_vals[2] == -1 and poi_vals[1] != -1:
                                 # Correct POST point to End-of-fill + 2
                                 poi_vals[2] = poi_vals[1] + 2
+                            self._cache_channel_hypotheses_for_rerun(
+                                predictor, raw_bytes, detected_channels, poi_vals
+                            )
                         else:
                             self.model_result = -1  # Invalid result format
 
@@ -5341,7 +5594,8 @@ class UIAnalyze(QtWidgets.QWidget):
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
-                        fh = BytesIO(f.read())
+                        raw_bytes = f.read()
+                        fh = BytesIO(raw_bytes)
                         predictor = self.QModel_volta_predictor
                         # self._QModel_create_new_progress_dialog()
                         # self.progressBarDiag.setRange(0, 100)
@@ -5376,6 +5630,9 @@ class UIAnalyze(QtWidgets.QWidget):
                             if poi_vals[2] == -1 and poi_vals[1] != -1:
                                 # Correct POST point to End-of-fill + 2
                                 poi_vals[2] = poi_vals[1] + 2
+                            self._cache_channel_hypotheses_for_rerun(
+                                predictor, raw_bytes, detected_channels, poi_vals
+                            )
                         else:
                             self.model_result = -1  # Invalid result format
 
@@ -5522,6 +5779,11 @@ class UIAnalyze(QtWidgets.QWidget):
 
                 self._log_model_confidences()
                 self.detect_change()
+                # If this (re-)run of auto-fit found real positions for
+                # channels beyond what +/- currently shows, reveal those
+                # steps/markers rather than leaving them hidden under a
+                # stale "not present" assumption - see docstring.
+                self._reveal_steps_for_poi_vals(poi_vals)
             else:
                 Log.w(
                     "[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged."
@@ -5633,14 +5895,6 @@ class UIAnalyze(QtWidgets.QWidget):
                 ),
                 padding=0.05,
             )
-            self.textItem = pg.TextItem(
-                "Drag any unused markers all the way to the right side of the plot.",
-                color=(0, 0, 0),
-                anchor=(1, 1),
-                angle=270,
-            )
-            self.textItem.setPos(QtCore.QPointF(self.xs[-1], 0))
-            ax.addItem(self.textItem)
             self.fit1.setAlpha(1, False)
             self.fit2.setAlpha(1, False)
             self.fit3.setAlpha(1, False)
@@ -6330,8 +6584,32 @@ class UIAnalyze(QtWidgets.QWidget):
 
     def _on_stepper_clicked(self, index: int) -> None:
         """Adapter from Stepper.stepClicked(index) to the legacy
-        gotoStepNum(obj, step_num) call every other navigation path uses."""
-        self.gotoStepNum(None, self._STEP_NUMS[index])
+        gotoStepNum(obj, step_num) call every other navigation path uses.
+
+        `index` is the stepper's own *actual* clicked position, which can
+        be fewer than `_STEP_NUMS`'s 7 slots once some intermediate steps
+        are hidden via "-" (see `_INTERMEDIATE_STEPS`) - the clicked pill
+        is always either "Load" (position 0, unchanged), a currently-
+        visible intermediate step (whose `_STEP_NUMS` slot is numerically
+        identical to its stepper position, since hidden steps are always
+        the tail *before* "Analyze" - nothing before them ever shifts), or
+        "Analyze" itself - always the stepper's actual last position, but
+        not necessarily `_STEP_NUMS` index 6 once some are hidden.
+        """
+        last = self.stepper.step_count() - 1
+        step_num = self._STEP_NUMS[-1] if index >= last else self._STEP_NUMS[index]
+        self.gotoStepNum(None, step_num)
+
+    def _pillstepper_index_for(self, step_nums_index: int) -> int:
+        """Maps an index into the fixed 7-slot `_STEP_NUMS` table to
+        `self.stepper`'s own actual current pill index - see
+        `_on_stepper_clicked` for why the two can differ once some
+        intermediate steps are hidden via "-".
+        """
+        last = self.stepper.step_count() - 1
+        if step_nums_index >= len(self._STEP_NUMS) - 1:
+            return last
+        return min(step_nums_index, last)
 
     def setDotStepMarkers(self, step_num):
         if step_num == 0:
@@ -6358,14 +6636,14 @@ class UIAnalyze(QtWidgets.QWidget):
             # auto-advance path, _max_reached never leaves 0 and the pill is
             # unclickable until the user clicks Next once (which reaches
             # step_num 10 and finally bumps it).
-            self.stepper.set_current(len(self._STEP_NUMS) - 1)
+            self.stepper.set_current(self.stepper.step_count() - 1)
             return
         try:
             index = self._STEP_NUMS.index(step_num)
         except ValueError:
             Log.w(f"{TAG} setDotStepMarkers: unexpected step_num {step_num}")
             return
-        self.stepper.set_current(index)
+        self.stepper.set_current(self._pillstepper_index_for(index))
 
     def gotoStepNum(self, obj, step_num=1):
         """
@@ -7294,6 +7572,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.model_result = -1
         self.model_candidates = None
         self.model_engine = "None"
+        self._channel_config_cache = {}
 
         poi_vals = self._try_qmodel_onyx(poi_vals, raw_bytes)
 
@@ -7375,6 +7654,10 @@ class UIAnalyze(QtWidgets.QWidget):
                 poi_vals = list(self.model_result)
                 if poi_vals[2] == -1 and poi_vals[1] != -1:
                     poi_vals[2] = poi_vals[1] + 2
+                self._model_status_changed.emit("Caching channel configurations...")
+                self._cache_channel_hypotheses(
+                    self.QModel_onyx_predictor, raw_bytes, detected_channels, poi_vals
+                )
             else:
                 self.model_result = -1
 
@@ -7451,6 +7734,10 @@ class UIAnalyze(QtWidgets.QWidget):
                 poi_vals = list(self.model_result)
                 if poi_vals[2] == -1 and poi_vals[1] != -1:
                     poi_vals[2] = poi_vals[1] + 2
+                self._model_status_changed.emit("Caching channel configurations...")
+                self._cache_channel_hypotheses(
+                    self.QModel_volta_predictor, raw_bytes, detected_channels, poi_vals
+                )
             else:
                 self.model_result = -1
 
@@ -9015,6 +9302,250 @@ class UIAnalyze(QtWidgets.QWidget):
             marker_targets.append((marker, xs[pt]))
 
         self._reveal_poi_markers(xs[0], xs[-1], marker_targets)
+        self._reset_step_visibility()
+
+    def _reset_step_visibility(self) -> None:
+        """Resets the +/- step-visibility state to "everything shown" -
+        called once per freshly (re)loaded run, right after
+        `_add_poi_markers` rebuilds all 6 markers from scratch (unhidden,
+        every time - see that method). If the user had reduced
+        `active_count` during a *previous* run this session, the stepper
+        itself doesn't otherwise know to grow back on its own, since
+        nothing else re-syncs it to a freshly loaded run's own markers -
+        this keeps the two in lockstep.
+        """
+        self._parked_marker_values = {}
+        while self.stepper.step_count() - 2 < len(self._INTERMEDIATE_STEPS):
+            label, _ = self._INTERMEDIATE_STEPS[self.stepper.step_count() - 2]
+            self.stepper.add_step(label)
+        self.active_count = len(self._INTERMEDIATE_STEPS)
+        self._update_step_buttons_enabled()
+
+    def _animate_marker_reveal(self, marker: "POIMarker", start: float, end: float) -> None:
+        """Animates one `POIMarker`'s entrance/exit via its existing
+        `setRevealProgress` primitive (see `POIMarker`) - used by
+        `_on_remove_step_requested`/`_on_add_step_requested` when a
+        stepper +/- click shows/hides one marker. Deliberately a small,
+        standalone `QVariantAnimation` rather than `_reveal_poi_markers`'s
+        sweep machinery below, which is a one-shot, whole-plot, left-to-
+        right entrance reveal tied to initial run load and long finished
+        by the time a user clicks a stepper button.
+
+        Stashed on the marker itself (mirroring `vb._bounce_anim`-style
+        state elsewhere in this file) so a second call for the same
+        marker - e.g. a fast add/remove/add sequence - stops whichever
+        animation was already in flight rather than fighting it.
+        """
+        prev = getattr(marker, "_step_vis_anim", None)
+        if prev is not None:
+            prev.stop()
+        anim = QtCore.QVariantAnimation(self)
+        anim.setDuration(self._STEP_VIS_ANIM_MS)
+        anim.setStartValue(start)
+        anim.setEndValue(end)
+        anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+        anim.valueChanged.connect(lambda v, m=marker: m.setRevealProgress(v))
+        marker._step_vis_anim = anim
+        anim.start()
+
+    def _animate_marker_removal(self, marker: "POIMarker", target_value: float) -> None:
+        """Animates one `POIMarker`'s removal via +/- "-": turns it red and
+        slides its position from wherever it currently sits to
+        `target_value` (`xs[-1]`, the existing "channel not present"
+        convention - see `_on_remove_step_requested`) while shrinking it
+        away (`setRevealProgress` 1.0->0.0), all together in one animation
+        instead of an instant position jump (the old `marker.setValue(...)`
+        call) followed by a separate in-place fade - reads as the marker
+        actively closing rather than teleporting then vanishing.
+
+        Mirrors `_animate_marker_reveal`'s stash-on-marker convention
+        (`marker._step_vis_anim`) so a fast remove/add/remove sequence
+        stops whichever animation was already in flight rather than
+        fighting it. `_on_add_step_requested` resets the marker's color
+        back to its normal active tint (`_style_poi_marker`) before fading
+        it back in, so the red tint never lingers past one removal.
+        """
+        prev = getattr(marker, "_step_vis_anim", None)
+        if prev is not None:
+            prev.stop()
+        start_value = marker.value()
+        start_color = QtGui.QColor(marker.pen.color())
+        end_color = QtGui.QColor("#DA2E2E")
+
+        anim = QtCore.QVariantAnimation(self)
+        anim.setDuration(self._STEP_VIS_ANIM_MS)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+
+        def _tick(t: float, m=marker) -> None:
+            m.setRevealProgress(1.0 - t)
+            m.setValue(start_value + (target_value - start_value) * t)
+            m.setPen(
+                pg.mkPen(
+                    QtGui.QColor(
+                        round(start_color.red() + (end_color.red() - start_color.red()) * t),
+                        round(
+                            start_color.green() + (end_color.green() - start_color.green()) * t
+                        ),
+                        round(start_color.blue() + (end_color.blue() - start_color.blue()) * t),
+                    ),
+                    width=2,
+                )
+            )
+
+        anim.valueChanged.connect(_tick)
+        marker._step_vis_anim = anim
+        anim.start()
+
+    def _on_remove_step_requested(self) -> None:
+        """Handles the stepper's "-" button: hides the last currently-
+        shown intermediate step (Channel 3 first, working back to Fill
+        Start - see `_INTERMEDIATE_STEPS`), turning its `POIMarker` red and
+        sliding it to `xs[-1]` while it shrinks away (see
+        `_animate_marker_removal`).
+
+        Deliberately view-only: the marker is *not* removed from
+        `self.poi_markers`/the scene, and `self.stateStep`/`_STEP_NUMS`/
+        `_current_visible_poi_index()` are untouched. Ending at `xs[-1]` is
+        exactly the existing "channel not present in this run" convention
+        (see `getContextWidth`/`getPoints()`'s clipped-context skip) - it's
+        what makes Back/Next already glide straight past this step without
+        any further changes needed here. A real, user-set position is
+        remembered (see `_parked_marker_values`) so a later "+" can restore
+        it instead of forcing the user to re-drag from the edge.
+        """
+        if self.active_count <= 0:
+            return
+        _, marker_idx = self._INTERMEDIATE_STEPS[self.active_count - 1]
+        markers = getattr(self, "poi_markers", None)
+        xs = getattr(self, "xs", None)
+        if markers is not None and xs is not None and marker_idx < len(markers):
+            marker = markers[marker_idx]
+            current_val = marker.value()
+            if abs(current_val - xs[-1]) > 1e-9:
+                self._parked_marker_values[marker_idx] = current_val
+            marker.setMovable(False)
+            self._animate_marker_removal(marker, xs[-1])
+        self.active_count -= 1
+        self.stepper.remove_step()
+        self._update_step_buttons_enabled()
+        self._apply_cached_channel_config()
+
+    def _on_add_step_requested(self, restore_position: bool = True) -> None:
+        """Handles the stepper's "+" button - the mirror image of
+        `_on_remove_step_requested`: reveals the next hidden intermediate
+        step (in fixed order - see `_INTERMEDIATE_STEPS`), resets its
+        `POIMarker`'s color back from the removal animation's red tint,
+        and fades it back in.
+
+        `restore_position=True` (the default, used for an actual "+"
+        click) restores the marker's last real position if one was
+        remembered (see `_parked_marker_values`), or leaves it parked at
+        `xs[-1]` (same "drag it into place" convention a freshly-
+        undetected channel already uses) if not. `restore_position=False`
+        (used by `_reveal_steps_for_poi_vals`, when auto-fit itself just
+        set the marker to a fresh predicted position) skips that restore
+        entirely, so a stale remembered position can't clobber the new
+        one - the parked value is still discarded either way, so it can't
+        linger and apply incorrectly on some later reveal.
+
+        Also marks the newly-revealed pill as "reached" (see
+        `PillStepper.mark_reached`) so it's immediately clickable, rather
+        than requiring the user to click "Next" repeatedly until Back/
+        Next's normal forward progress happens to reach it.
+        """
+        if self.active_count >= len(self._INTERMEDIATE_STEPS):
+            return
+        label, marker_idx = self._INTERMEDIATE_STEPS[self.active_count]
+        self.active_count += 1
+        markers = getattr(self, "poi_markers", None)
+        if markers is not None and marker_idx < len(markers):
+            marker = markers[marker_idx]
+            restored = self._parked_marker_values.pop(marker_idx, None)
+            if restore_position and restored is not None:
+                marker.setValue(restored)
+            marker.setMovable(True)
+            # Undo _animate_marker_removal's red tint before fading back in,
+            # so it never lingers past one removal.
+            self._style_poi_marker(marker, active=True)
+            self._animate_marker_reveal(marker, 0.0, 1.0)
+        self.stepper.add_step(label)
+        self.stepper.mark_reached(self.stepper.step_count() - 2)
+        self._update_step_buttons_enabled()
+        if restore_position:
+            self._apply_cached_channel_config()
+
+    def _apply_cached_channel_config(self) -> None:
+        """After `active_count` changes via +/-, if a cached 0-3-channel
+        auto-fit hypothesis exists for the resulting channel count (see
+        `_cache_channel_hypotheses`), snap every currently-visible
+        intermediate marker straight to it instead of leaving stale
+        positions from a different channel-count hypothesis.
+
+        No-ops below the Fill Start/Fill End floor (`active_count < 2`,
+        i.e. no meaningful channel count in play) or when no cache exists
+        for this run/engine (Indus/Tweed don't support forcing a channel
+        count, or a given hypothesis failed to compute) - falls back to
+        the existing parking/restore behavior untouched in that case.
+
+        Deliberately overrides any restored `_parked_marker_values`
+        position for markers a cache hit covers: the cache reflects what
+        the model actually predicts for this exact channel count, which is
+        strictly more useful than a stale hand-dragged position from a
+        different one.
+        """
+        if self.active_count < 2:
+            return
+        cached = self._channel_config_cache.get(self.active_count - 2)
+        if cached is None:
+            return
+        markers = getattr(self, "poi_markers", None)
+        xs = getattr(self, "xs", None)
+        if markers is None or xs is None:
+            return
+        for step_idx in range(self.active_count):
+            _, marker_idx = self._INTERMEDIATE_STEPS[step_idx]
+            if marker_idx >= len(markers) or marker_idx >= len(cached):
+                continue
+            target = int(cached[marker_idx])
+            if target == -1:
+                continue
+            target = max(0, min(len(xs) - 1, target))
+            markers[marker_idx].setValue(xs[target])
+            self._parked_marker_values.pop(marker_idx, None)
+            # POI3 (index 2, permanently hidden) rides along with Fill End
+            # (index 1) everywhere else in this file - keep it consistent.
+            if marker_idx == 1 and 2 < len(markers) and 2 < len(cached):
+                post = max(0, min(len(xs) - 1, int(cached[2])))
+                markers[2].setValue(xs[post])
+        self.detect_change()
+
+    def _reveal_steps_for_poi_vals(self, poi_vals: List[int]) -> None:
+        """After auto-fit (re-)runs (see `_restore_qmodel_predictions`) and
+        produces a fresh full 6-point `poi_vals`, reveals any additional
+        intermediate steps the model found real positions for beyond
+        what's currently shown via +/- (see `_INTERMEDIATE_STEPS`/
+        `active_count`) - e.g. if the user had previously hidden Channel 3
+        and auto-fit is re-run on a run that does have a third channel,
+        that step's marker/pill reappear automatically instead of staying
+        hidden with a stale "missing" assumption.
+
+        Grows the shown prefix one step at a time (see
+        `_on_add_step_requested`, called with `restore_position=False`
+        since the position was just freshly set by the caller, not a
+        stale remembered one), stopping at the first still-undetected
+        (-1) point, since the active set is always a contiguous prefix of
+        `_INTERMEDIATE_STEPS`.
+        """
+        markers = getattr(self, "poi_markers", None)
+        if markers is None or len(poi_vals) != len(markers):
+            return
+        while self.active_count < len(self._INTERMEDIATE_STEPS):
+            _, marker_idx = self._INTERMEDIATE_STEPS[self.active_count]
+            if int(poi_vals[marker_idx]) == -1:
+                break
+            self._on_add_step_requested(restore_position=False)
 
     # Duration (as a fraction of _animate_curve_reveal's own total duration)
     # of one POI marker's own entrance effect - short relative to the whole
