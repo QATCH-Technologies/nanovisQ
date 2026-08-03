@@ -9,7 +9,7 @@ from .qatch_line_edit import QATCHLineEdit
 from .qatch_option_card import QATCHOptionCard, QATCHOptionCardGroup
 from .qatch_panel import QATCHPanel
 from .qatch_push_button import QATCHPushButton
-from .qatch_toggle import QATCHToggle
+from .qatch_toggle import LabeledToggle, QATCHToggle
 from .qatch_warning_label import QATCHWarningLabel
 from .run_controls_button import RunControls
 from .segmented_control import SegmentedControl
@@ -27,6 +27,7 @@ __all__ = [
     "QATCHPanel",
     "QATCHPushButton",
     "QATCHToggle",
+    "LabeledToggle",
     "QATCHWarningLabel",
     "NumberIconButton",
     "QATCHCard",

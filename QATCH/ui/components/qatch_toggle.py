@@ -153,3 +153,82 @@ class QATCHToggle(QtWidgets.QAbstractButton):
 
     def sizeHint(self) -> QtCore.QSize:
         return QtCore.QSize(self._TRACK_W, self._TRACK_H)
+
+
+class LabeledToggle(QtWidgets.QWidget):
+    """A QATCHToggle paired with a text label in a horizontal row.
+
+    Exposes the subset of the QCheckBox API used by the rest of the app
+    (`isChecked`, `setChecked`, `setEnabled`, `setText`, `toggled`,
+    `clicked`) so it can stand in for a checkbox without touching call
+    sites.
+
+    Attributes:
+        toggled (pyqtSignal): A signal forwarded from the internal QATCHToggle
+            that is emitted when the toggle state changes.
+        clicked (pyqtSignal): A signal forwarded from the internal QATCHToggle
+            that is emitted on every user click (same as QCheckBox.clicked).
+    """
+
+    def __init__(self, text: str = "", parent=None, *, label_left: bool = False) -> None:
+        """Initializes the LabeledToggle.
+
+        Args:
+            text: The label text to display next to the toggle.
+            parent: The parent widget, if any.
+            label_left: If True, positions the label to the left of the toggle;
+                otherwise, positions it to the right.
+        """
+        super().__init__(parent)
+        self.toggle = QATCHToggle(self)
+        self.label = QtWidgets.QLabel(text, self)
+        self.label.setObjectName("CtrlToggleLabel")
+        self.label.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
+        if label_left:
+            lay.addWidget(self.label)
+            lay.addWidget(self.toggle)
+            lay.addStretch()
+        else:
+            lay.addWidget(self.toggle)
+            lay.addWidget(self.label)
+            lay.addStretch()
+        self.toggled = self.toggle.toggled
+        self.clicked = self.toggle.clicked
+
+    def isChecked(self) -> bool:
+        """Returns the current checked state of the toggle."""
+        return self.toggle.isChecked()
+
+    def setChecked(self, checked: bool) -> None:
+        """Sets the checked state of the toggle.
+
+        Args:
+            checked: The boolean state to apply.
+        """
+        self.toggle.setChecked(checked)
+
+    def setText(self, text: str) -> None:
+        """Sets the text for the label.
+
+        Args:
+            text: The new label string.
+        """
+        self.label.setText(text)
+
+    def text(self) -> str:
+        """Returns the current label text."""
+        return self.label.text()
+
+    def setEnabled(self, enabled: bool) -> None:
+        """Sets the enabled state for the widget and its children.
+
+        Args:
+            enabled: The boolean state to apply to the entire widget and children.
+        """
+        super().setEnabled(enabled)
+        self.toggle.setEnabled(enabled)
+        self.label.setEnabled(enabled)

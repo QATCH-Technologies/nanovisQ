@@ -44,7 +44,12 @@ from QATCH.processors.CurveOptimizer import (
     DropEffectCorrection,
 )
 from QATCH.QModel import QModelIndus, QModelOnyx, QModelTweed, QModelVolta
-from QATCH.ui.components import AnimatedComboBox, QATCHPushButton
+from QATCH.ui.components import (
+    AnimatedComboBox,
+    LabeledToggle,
+    QATCHLineEdit,
+    QATCHPushButton,
+)
 from QATCH.ui.components.analyze_action_bar import AnalyzeActionBar
 from QATCH.ui.components.analyze_plot_cards import (
     SIGNAL_COLORS,
@@ -786,21 +791,24 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Devices ------------------------------------------------------
         # Fixes #30
-        self.showRunsFromAllDevices = QtWidgets.QCheckBox("Show all available runs")
+        self.showRunsFromAllDevices = LabeledToggle("Show all available runs")
+        self.showRunsFromAllDevices.setToolTip(
+            "Show runs from every known device instead of only the one selected above."
+        )
         self.showRunsFromAllDevices.setChecked(True)
         self.showRunsFromAllDevices.clicked.connect(self.showRunsFromAllDevices_clicked)
         self.cBox_Devices.setEnabled(False)
 
         # Parameters ------------------------------------------------------
         self.validFactor = QtGui.QDoubleValidator(0.5, 2, 3)  # allow exponential notation
-        self.tbox_diff_factor = QtWidgets.QLineEdit()
+        self.tbox_diff_factor = QATCHLineEdit()
         self.tbox_diff_factor.setValidator(self.validFactor)
         self.tbox_diff_factor.setFixedWidth(75)
-        self.btn_diff_factor = QtWidgets.QPushButton("Set/Reload")
+        self.btn_diff_factor = QATCHPushButton("Set/Reload", variant="default")
         self.btn_diff_factor.pressed.connect(self.set_new_diff_factor)
 
         self.validThickness = QtGui.QDoubleValidator(0, 1, 3)  # allow exponential notation
-        self.tbox_ch_thick = QtWidgets.QLineEdit()
+        self.tbox_ch_thick = QATCHLineEdit()
         self.tbox_ch_thick.setValidator(self.validThickness)
         self.tbox_ch_thick.setFixedWidth(75)
         self.tbox_ch_thick.setText(str(Constants.channel_thickness))
@@ -810,12 +818,16 @@ class UIAnalyze(QtWidgets.QWidget):
             tooltip="<b>Changes here apply to this session ONLY</b> Modify 'constants.py' to make a constant change value forever.",
         )
 
-        self.custom_poi_text = QtWidgets.QLineEdit()
+        self.custom_poi_text = QATCHLineEdit()
         self.custom_poi_text.setFixedWidth(250)
         self.custom_poi_text.editingFinished.connect(self.update_custom_pois)
 
         # Options ------------------------------------------------------
-        self.option_remove_dups = QtWidgets.QCheckBox("Remove duplicate analysis output files")
+        self.option_remove_dups = LabeledToggle("Remove duplicate analysis output files")
+        self.option_remove_dups.setToolTip(
+            "If a re-analysis produces output identical to the previous save, delete the "
+            "redundant older copy instead of keeping both."
+        )
         self.option_remove_dups.setChecked(True)
         # self.correct_drop_effect = QtWidgets.QCheckBox(
         #     "Apply drop effect vectors")
@@ -824,24 +836,40 @@ class UIAnalyze(QtWidgets.QWidget):
         # self.correct_drop_effect.clicked.connect(self.change_drop_effect)
 
         # Add the checkbox and call-backs for using the curve-optimizer utility.
-        self.difference_factor_optimizer_checkbox = QtWidgets.QCheckBox(
+        self.difference_factor_optimizer_checkbox = LabeledToggle(
             'Auto-Calculate "Difference Factor"'
+        )
+        self.difference_factor_optimizer_checkbox.setToolTip(
+            "Automatically calculate the resonance/dissipation difference factor from the "
+            "run data instead of using the fixed value set below."
         )
         self.difference_factor_optimizer_checkbox.setChecked(False)
         self.difference_factor_optimizer_checkbox.clicked.connect(
             self.use_difference_factor_optimizer
         )
 
-        self.drop_effect_cancelation_checkbox = QtWidgets.QCheckBox("Drop effect correction")
+        self.drop_effect_cancelation_checkbox = LabeledToggle("Drop effect correction")
+        self.drop_effect_cancelation_checkbox.setToolTip(
+            "Detect and correct anomalies in the dissipation/resonance curves caused by the "
+            "initial liquid drop onto the sensor."
+        )
         self.drop_effect_cancelation_checkbox.setChecked(True)
         self.drop_effect_cancelation_checkbox.clicked.connect(self.use_drop_effect_cancelation)
 
-        self.partial_fills_checkbox = QtWidgets.QCheckBox("Enable Partial-Fills")
+        self.partial_fills_checkbox = LabeledToggle("Enable Partial-Fills")
+        self.partial_fills_checkbox.setToolTip(
+            "Let the auto-fit prediction models account for runs where the channel wasn't "
+            "completely filled."
+        )
         self.partial_fills_checkbox.setChecked(False)
 
         # Predict Model ------------------------------------------------------
         self.cBox_Models = AnimatedComboBox(
             icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg")
+        )
+        self.cBox_Models.setToolTip(
+            "Selects which QModel version predicts this run's points of interest (POIs) "
+            "automatically."
         )
         self.cBox_Models.addItems(Constants.list_predict_models)
         if Constants.qmodel_onyx_predict:
@@ -1262,17 +1290,26 @@ class UIAnalyze(QtWidgets.QWidget):
         styles with inline QSS and to the pyqtgraph plot widgets, which
         don't consume QSS at all.
 
-        The Advanced Settings panel no longer needs manual re-styling here -
-        it's built from `SectionHeader`/`AdvancedMainWidget`, which already
+        The Advanced Settings panel's group titles/panel/toggles
+        (`SectionHeader`/`AdvancedMainWidget`/`LabeledToggle`) already
         self-theme via their own `ThemeManager.themeChanged` subscriptions
-        (see `_build_advanced_layout`/`advanced_main_widget.py`).
+        (see `_build_advanced_layout`/`advanced_main_widget.py`) - only its
+        plain field-caption QLabels (not a themed component of their own)
+        still need re-styling here, same as footerText_hint/keys.
 
         Args:
             _mode: Optional theme mode string, provided when connected
                 directly to ThemeManager.themeChanged. Unused - the tokens
                 are always re-read fresh from ThemeManager.instance().
         """
-        for label in (self.footerText_hint, self.footerText_keys):
+        for label in (
+            self.footerText_hint,
+            self.footerText_keys,
+            self.text_Devices,
+            self._lbl_diff_factor,
+            self._lbl_ch_thick,
+            self._lbl_custom_poi,
+        ):
             label.setStyleSheet(desc_label_qss())
         self._apply_pg_theme()
 
@@ -3283,11 +3320,16 @@ class UIAnalyze(QtWidgets.QWidget):
         device_row = hrow(self.text_Devices, self.cBox_Devices)
         run_selection = section("Run Selection", device_row, self.showRunsFromAllDevices)
 
-        diff_factor_row = hrow(
-            QtWidgets.QLabel("Difference Factor:"), self.tbox_diff_factor, self.btn_diff_factor
-        )
-        ch_thick_row = hrow(QtWidgets.QLabel("Channel Thickness:"), self.tbox_ch_thick, self.h0)
-        custom_poi_row = hrow(QtWidgets.QLabel("Custom POIs:"), self.custom_poi_text)
+        # Small field captions (unlike SectionHeader's group titles) - kept
+        # as self.* attributes so _apply_theme's caption loop can re-style
+        # them on every theme change, same as footerText_hint/keys.
+        self._lbl_diff_factor = QtWidgets.QLabel("Difference Factor:")
+        self._lbl_ch_thick = QtWidgets.QLabel("Channel Thickness:")
+        self._lbl_custom_poi = QtWidgets.QLabel("Custom POIs:")
+
+        diff_factor_row = hrow(self._lbl_diff_factor, self.tbox_diff_factor, self.btn_diff_factor)
+        ch_thick_row = hrow(self._lbl_ch_thick, self.tbox_ch_thick, self.h0)
+        custom_poi_row = hrow(self._lbl_custom_poi, self.custom_poi_text)
         parameters = section("Parameters", diff_factor_row, ch_thick_row, custom_poi_row)
 
         left_col = QtWidgets.QVBoxLayout()
