@@ -390,139 +390,6 @@ class LabeledToggle(QtWidgets.QWidget):
         self.label.setEnabled(enabled)
 
 
-class _PerspectiveAnimator(QtCore.QObject):
-    """Plays a gentle entrance on a perspective container each time it is shown.
-
-    IMPORTANT: this deliberately does NOT use QGraphicsOpacityEffect. Wrapping a
-    container that holds custom-painted children (combos, toggles,
-    buttons) in a graphics effect caches them into an offscreen pixmap, which
-    causes ghosting, duplicated section labels, and widgets vanishing on hover.
-    Instead the fade is applied to the top-level popup window via
-    setWindowOpacity (no pixmap caching), paired with a brief top-margin slide.
-
-    Attributes:
-        _container (QtWidgets.QWidget): The target widget container to animate.
-        _slide (QtCore.QVariantAnimation): Animation for the vertical sliding movement.
-        _fade (QtCore.QVariantAnimation): Animation for the window opacity transition.
-    """
-
-    def __init__(self, container: QtWidgets.QWidget) -> None:
-        """Initializes the animator and attaches an event filter to the container.
-
-        Args:
-            container: The widget container whose window will be animated.
-        """
-        super().__init__(container)
-        self._container = container
-
-        # Guard flag: ensures only one _begin_slide is ever scheduled per show
-        # event cycle.  Multiple ShowEvents can fire on the container during a
-        # single open (e.g. from set_page's show() and set_advanced_perspective's
-        # show()), particularly on the first open when the container transitions
-        # from a hidden top-level widget.  Without this guard the animation
-        # starts twice, producing the "doubly renders and animates" glitch.
-        self._start_pending: bool = False
-
-        # Slide the whole popup window DOWN into place (start 12px above the
-        # final position), matching the account menu. Animating the inner
-        # top-margin instead made content rise up from the bottom, which read
-        # as a bottom-up animation.
-        self._slide = QtCore.QVariantAnimation(self)
-        self._slide.setDuration(220)
-        self._slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self._slide.setStartValue(0.0)
-        self._slide.setEndValue(1.0)
-        self._slide.valueChanged.connect(self._apply_slide)
-        self._slide_from = None
-        self._slide_to = None
-        self._slide_offset = 12
-
-        self._fade = QtCore.QVariantAnimation(self)
-        self._fade.setDuration(200)
-        self._fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        self._fade.setStartValue(0.0)
-        self._fade.setEndValue(1.0)
-        self._fade.valueChanged.connect(self._apply_fade)
-        self._fade.finished.connect(self._finish_fade)
-
-        container.installEventFilter(self)
-
-    def _apply_slide(self, t: float) -> None:
-        """Calculates and applies the window position during the slide animation.
-
-        Args:
-            t (float): Normalized time value (0.0 to 1.0).
-        """
-        win = self._container.window()
-        if win is None or self._slide_to is None:
-            return
-        slide_from = self._slide_from
-        if slide_from is not None:
-            x = self._slide_to.x()
-            y = int(slide_from.y() + (self._slide_to.y() - slide_from.y()) * float(t))
-        else:
-            y = self._slide_to.y()
-        win.move(x, y)
-
-    def _apply_fade(self, v: float) -> None:
-        """Applies the window opacity during the fade animation.
-
-        Args:
-            v (float): Opacity value (0.0 to 1.0).
-        """
-        win = self._container.window()
-        if win is not None:
-            win.setWindowOpacity(float(v))
-
-    def _finish_fade(self) -> None:
-        """Ensures the window is fully opaque and at the final position upon finish."""
-        win = self._container.window()
-        if win is not None:
-            win.setWindowOpacity(1.0)
-            if self._slide_to is not None:
-                win.move(self._slide_to)
-
-    def eventFilter(self, obj, event) -> bool:  # noqa: N802
-        """Filters show events to trigger animations after the widget is visible.
-
-        Args:
-            obj: The object the event is sent to.
-            event: The QEvent object.
-
-        Returns:
-            True if the event was handled, otherwise the base class result.
-        """
-        if obj is self._container and event.type() == QtCore.QEvent.Type.Show:
-            # Deduplicate: only schedule _begin_slide once per open cycle.
-            # The fade is NOT started here - _begin_slide starts both animations
-            # together after the popup window is confirmed visible, preventing
-            # the fade from running ahead of the slide (and ahead of show()).
-            if not self._start_pending:
-                self._start_pending = True
-                QtCore.QTimer.singleShot(0, self._begin_slide)
-        return super().eventFilter(obj, event)
-
-    def _begin_slide(self) -> None:
-        """Calculates start/end positions and starts both fade and slide animations.
-
-        Called once per open cycle via a zero-delay singleShot, after all
-        queued ShowEvents have been processed.  Resets the _start_pending
-        guard so the next open cycle can arm again.
-        """
-        self._start_pending = False
-        win = self._container.window()
-        if win is None or not win.isVisible():
-            return
-        final_pos = win.pos()
-        self._slide_to = QtCore.QPoint(final_pos)
-        self._slide_from = QtCore.QPoint(final_pos.x(), final_pos.y() - self._slide_offset)
-        win.move(self._slide_from)
-        self._fade.stop()
-        self._fade.start()
-        self._slide.stop()
-        self._slide.start()
-
-
 class UIControls:
     """UI definition and controller for the QATCH Controls Window.
 
@@ -1266,7 +1133,7 @@ class UIControls:
                 self._advanced_controls_layout
             )
             self._advanced_content_container = self.advanced_container
-            self._install_perspective_animation(self.advanced_container)
+            AdvancedMainWidget.install_entrance_animation(self, self.advanced_container)
         else:
             # Use the full grid as the central layout.
             self.centralwidget.setLayout(self.gridLayout)
@@ -3533,27 +3400,6 @@ class UIControls:
             Log.w('To adjust Temp Control: Press "Stop" first, then adjust setpoint accordingly.')
         else:
             Log.w('To stop Temp Control: Press "Stop" first, then click "Temp Control" button.')
-
-    def _install_perspective_animation(self, container: QtWidgets.QWidget) -> None:
-        """Install a fade + slide-up entrance animation for a UI container.
-
-        The animation is triggered whenever the container is shown, providing
-        a smooth transition between perspectives (e.g., advanced view and
-        device-info view) instead of an abrupt appearance.
-
-        A dedicated `_PerspectiveAnimator` event filter is attached to the
-        container to intercept show events and run the animation.
-
-        Args:
-            container: The QWidget that will receive the entrance animation.
-        """
-        animator = _PerspectiveAnimator(container)
-        if not hasattr(self, "_perspective_animators"):
-            self._perspective_animators = []
-
-        self._perspective_animators.append(animator)
-
-        container.installEventFilter(animator)
 
     def _build_advanced_layout(self) -> QtWidgets.QLayout:
         """Assemble the advanced-panel widgets into a clean, sectioned layout.

@@ -65,8 +65,10 @@ from QATCH.ui.dialogs.signature_dialog import (
     persist_auto_sign_key,
 )
 from QATCH.ui.interfaces.ui_plots import PlotContainer
+from QATCH.ui.labels.section_label import SectionHeader
 from QATCH.ui.styles.theme_manager import ThemeManager, desc_label_qss, tok_css
 from QATCH.ui.widgets.account_popup import AccountPopup
+from QATCH.ui.widgets.advanced_main_widget import AdvancedMainWidget, _InfoIcon
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
 from QATCH.ui.widgets.run_filter_popover import RunFilterPopover
 from QATCH.ui.widgets.table_view_widget import TableView
@@ -512,6 +514,22 @@ class POIMarker(pg.InfiniteLine):
         return (self._y0, self._y1)
 
 
+def _hairline() -> QtWidgets.QFrame:
+    """Creates a 1px divider matching the account dropdown's hairline separators.
+
+    Same objectName-driven pattern as UIControls' own `_hairline()` (see
+    app_theme.qss's app-wide `QFrame#CtrlHairline` rule, not Controls-scoped),
+    duplicated locally here rather than imported cross-module.
+
+    Returns:
+        QtWidgets.QFrame: A configured frame object representing the hairline.
+    """
+    line = QtWidgets.QFrame()
+    line.setFrameShape(QtWidgets.QFrame.HLine)
+    line.setObjectName("CtrlHairline")
+    return line
+
+
 ###############################################################################
 # Elaborate on the raw data gathered from the SerialProcess in parallel timing
 ###############################################################################
@@ -627,6 +645,10 @@ class UIAnalyze(QtWidgets.QWidget):
         self._filter_date_to = None
         self._run_filter_popover = None
 
+        # Advanced Settings popup state (see action_advanced/_build_advanced_layout).
+        self._advanced_popup = None
+        self._advanced_popup_closed_at = 0.0
+
         # Filesystem-watcher state that keeps the run list auto-maintained
         # instead of requiring a manual Rescan button or a full rescan on
         # every mode switch (see _ensure_watcher_armed/_rearm_watcher).
@@ -661,7 +683,6 @@ class UIAnalyze(QtWidgets.QWidget):
         self.QModel_onyx_modules_loaded = False
         self.QModel_onyx_predictor = None
         screen = QtWidgets.QDesktopWidget().availableGeometry()
-        USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
         pct_height = 75
         self.resize(
@@ -683,7 +704,9 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Fixes #30
         self.text_Devices = QtWidgets.QLabel("Show Only:")
-        self.cBox_Devices = QtWidgets.QComboBox()
+        self.cBox_Devices = AnimatedComboBox(
+            icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg")
+        )
 
         self.btn_Load = QtWidgets.QPushButton("Load")
         self.btn_Back = QtWidgets.QPushButton("Back")
@@ -748,6 +771,9 @@ class UIAnalyze(QtWidgets.QWidget):
             self.action_analyze
         )  # TODO: skip ahead to analyze (if pois are all set)
         self.tool_Advanced.clicked.connect(self.action_advanced)
+        self.tool_Advanced.toggled.connect(
+            lambda _: self.parent.controls_window.ui._refresh_checkable_style(self.tool_Advanced)
+        )
         self.tool_User.clicked.connect(self._toggle_account_popup)
         self.tool_User.toggled.connect(
             lambda _: self.parent.controls_window.ui._refresh_checkable_style(self.tool_User)
@@ -758,91 +784,44 @@ class UIAnalyze(QtWidgets.QWidget):
         self.toolLayout.addWidget(self.actionbar)
         self.toolLayout.addWidget(self.progressBar)
 
-        self.gridLayout = QtWidgets.QGridLayout()
-        self.gridLayout.setObjectName("gridLayout")
-
         # Devices ------------------------------------------------------
-        self.l0 = QtWidgets.QLabel()
-
-        # Fixing issue #30
-        self.l0.setText("<font color=#ffffff >Run Selection</font> </a>")
-        if USE_FULLSCREEN:
-            self.l0.setFixedHeight(50)
-        # else:
-        #    self.l0.setFixedHeight(15)
-        self.gridLayout.addWidget(self.l0, 1, 1, 1, 4)
-
-        self.gridLayout.addWidget(self.text_Devices, 2, 1)
-        # row, col, rowspan, colspan
-        self.gridLayout.addWidget(self.cBox_Devices, 2, 2, 1, 2)
-
         # Fixes #30
         self.showRunsFromAllDevices = QtWidgets.QCheckBox("Show all available runs")
         self.showRunsFromAllDevices.setChecked(True)
         self.showRunsFromAllDevices.clicked.connect(self.showRunsFromAllDevices_clicked)
         self.cBox_Devices.setEnabled(False)
 
-        self.gridLayout.addWidget(self.showRunsFromAllDevices, 3, 2, 1, 2)
-
         # Parameters ------------------------------------------------------
-        self.l1 = QtWidgets.QLabel()
-        self.l1.setText("<font color=#ffffff >Parameters</font> </a>")
-        if USE_FULLSCREEN:
-            self.l1.setFixedHeight(50)
-        # else:
-        #    self.l1.setFixedHeight(15)
-        self.gridLayout.addWidget(self.l1, 4, 1, 1, 4)
-
-        self.gridLayout.addWidget(QtWidgets.QLabel("Difference Factor:"), 5, 1)
         self.validFactor = QtGui.QDoubleValidator(0.5, 2, 3)  # allow exponential notation
         self.tbox_diff_factor = QtWidgets.QLineEdit()
         self.tbox_diff_factor.setValidator(self.validFactor)
         self.tbox_diff_factor.setFixedWidth(75)
-        self.gridLayout.addWidget(self.tbox_diff_factor, 5, 2)
         self.btn_diff_factor = QtWidgets.QPushButton("Set/Reload")
         self.btn_diff_factor.pressed.connect(self.set_new_diff_factor)
-        self.gridLayout.addWidget(self.btn_diff_factor, 5, 3)
 
-        self.gridLayout.addWidget(QtWidgets.QLabel("Channel Thickness:"), 6, 1)
         self.validThickness = QtGui.QDoubleValidator(0, 1, 3)  # allow exponential notation
         self.tbox_ch_thick = QtWidgets.QLineEdit()
         self.tbox_ch_thick.setValidator(self.validThickness)
         self.tbox_ch_thick.setFixedWidth(75)
         self.tbox_ch_thick.setText(str(Constants.channel_thickness))
         self.tbox_ch_thick.textEdited.connect(self.set_new_ch_thick)
-        self.gridLayout.addWidget(self.tbox_ch_thick, 6, 2)
-        self.h0 = QtWidgets.QLabel()
-        self.h0.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.h0.setText("<u>?</u>")
-        self.h0.setToolTip(
-            "<b>Changes here apply to this session ONLY</b> Modify 'constants.py' to make a constant change value forever."
+        self.h0 = _InfoIcon(
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "question-circle.svg"),
+            tooltip="<b>Changes here apply to this session ONLY</b> Modify 'constants.py' to make a constant change value forever.",
         )
-        self.gridLayout.addWidget(self.h0, 6, 3)
 
-        self.gridLayout.addWidget(QtWidgets.QLabel("Custom POIs:"), 7, 1)
         self.custom_poi_text = QtWidgets.QLineEdit()
         self.custom_poi_text.setFixedWidth(250)
         self.custom_poi_text.editingFinished.connect(self.update_custom_pois)
-        self.gridLayout.addWidget(self.custom_poi_text, 7, 2, 1, 3)
 
         # Options ------------------------------------------------------
-        self.l2 = QtWidgets.QLabel()
-        self.l2.setText("<font color=#ffffff >Options</font> </a>")
-        if USE_FULLSCREEN:
-            self.l2.setFixedHeight(50)
-        # else:
-        #    self.l2.setFixedHeight(15)
-        self.gridLayout.addWidget(self.l2, 1, 5, 1, 3)
-
         self.option_remove_dups = QtWidgets.QCheckBox("Remove duplicate analysis output files")
         self.option_remove_dups.setChecked(True)
-        self.gridLayout.addWidget(self.option_remove_dups, 2, 5, 1, 3)
         # self.correct_drop_effect = QtWidgets.QCheckBox(
         #     "Apply drop effect vectors")
         # # per issue #26, disable by default
         # self.correct_drop_effect.setChecked(False)
         # self.correct_drop_effect.clicked.connect(self.change_drop_effect)
-        # self.gridLayout.addWidget(self.correct_drop_effect, 3, 5, 1, 3)
 
         # Add the checkbox and call-backs for using the curve-optimizer utility.
         self.difference_factor_optimizer_checkbox = QtWidgets.QCheckBox(
@@ -852,27 +831,18 @@ class UIAnalyze(QtWidgets.QWidget):
         self.difference_factor_optimizer_checkbox.clicked.connect(
             self.use_difference_factor_optimizer
         )
-        self.gridLayout.addWidget(self.difference_factor_optimizer_checkbox, 3, 5, 1, 3)
 
         self.drop_effect_cancelation_checkbox = QtWidgets.QCheckBox("Drop effect correction")
         self.drop_effect_cancelation_checkbox.setChecked(True)
         self.drop_effect_cancelation_checkbox.clicked.connect(self.use_drop_effect_cancelation)
-        self.gridLayout.addWidget(self.drop_effect_cancelation_checkbox, 4, 5, 1, 3)
 
         self.partial_fills_checkbox = QtWidgets.QCheckBox("Enable Partial-Fills")
         self.partial_fills_checkbox.setChecked(False)
-        self.gridLayout.addWidget(self.partial_fills_checkbox, 5, 5, 1, 3)
 
         # Predict Model ------------------------------------------------------
-        self.l3 = QtWidgets.QLabel()
-        self.l3.setText("<font color=#ffffff >Auto-Fit Model</font> </a>")
-        if USE_FULLSCREEN:
-            self.l3.setFixedHeight(50)
-        # else:
-        #    self.l3.setFixedHeight(15)
-        self.gridLayout.addWidget(self.l3, 6, 5, 1, 3)
-
-        self.cBox_Models = QtWidgets.QComboBox()
+        self.cBox_Models = AnimatedComboBox(
+            icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg")
+        )
         self.cBox_Models.addItems(Constants.list_predict_models)
         if Constants.qmodel_onyx_predict:
             self.cBox_Models.setCurrentIndex(3)
@@ -883,21 +853,15 @@ class UIAnalyze(QtWidgets.QWidget):
         elif Constants.qmodel_tweed_predict:
             self.cBox_Models.setCurrentIndex(0)
         self.cBox_Models.currentTextChanged.connect(self.set_new_prediction_model)
-        self.gridLayout.addWidget(self.cBox_Models, 7, 5, 1, 3)
 
-        self.advancedwidget = QtWidgets.QWidget()
-        self.advancedwidget.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint)
-        self.advancedwidget.setWhatsThis("These settings are for Advanced Users ONLY!")
-        self._advanced_warning_label = QtWidgets.QLabel(
-            f"WARNING: {self.advancedwidget.whatsThis()}"
-        )
-        warningLayout = QtWidgets.QVBoxLayout()
-        warningLayout.addWidget(self._advanced_warning_label)
-        warningLayout.addLayout(self.gridLayout)
-        self.advancedwidget.setLayout(warningLayout)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
-        self.advancedwidget.setWindowIcon(QtGui.QIcon(icon_path))  # .png
-        self.advancedwidget.setWindowTitle("Advanced Settings")
+        # Advanced Settings popup - anchored/animated flat popup shared with
+        # UIControls (see AdvancedMainWidget/_build_advanced_layout), replacing
+        # the old always-on-top Dialog window this used to be (see git history
+        # for the previous self.advancedwidget/self.l0..l3 implementation).
+        self._advanced_controls_layout = self._build_advanced_layout()
+        self.advanced_container = AdvancedMainWidget.build_container(self._advanced_controls_layout)
+        self._advanced_content_container = self.advanced_container
+        AdvancedMainWidget.install_entrance_animation(self, self.advanced_container)
 
         # Numbered step indicator (was dot2..dot7, dot9, dot10 - dot8 was
         # already permanently hidden, "for POI3 removal"; dot1, the "Loaded &
@@ -1295,21 +1259,19 @@ class UIAnalyze(QtWidgets.QWidget):
 
     def _apply_theme(self, _mode: Optional[str] = None) -> None:
         """Re-applies token-driven colors to the chrome this panel still
-        styles with inline QSS (the Advanced Settings banners) and to the
-        pyqtgraph plot widgets, which don't consume QSS at all.
+        styles with inline QSS and to the pyqtgraph plot widgets, which
+        don't consume QSS at all.
+
+        The Advanced Settings panel no longer needs manual re-styling here -
+        it's built from `SectionHeader`/`AdvancedMainWidget`, which already
+        self-theme via their own `ThemeManager.themeChanged` subscriptions
+        (see `_build_advanced_layout`/`advanced_main_widget.py`).
 
         Args:
             _mode: Optional theme mode string, provided when connected
                 directly to ThemeManager.themeChanged. Unused - the tokens
                 are always re-read fresh from ThemeManager.instance().
         """
-        tok = ThemeManager.instance().tokens()
-        section_qss = f"background: {tok_css(tok['flat_accent'])}; padding: 1px;"
-        for label in (self.l0, self.l1, self.l2, self.l3):
-            label.setStyleSheet(section_qss)
-        self._advanced_warning_label.setStyleSheet(
-            f"background: {tok_css(tok['flat_warning'])}; padding: 1px; font-weight: bold;"
-        )
         for label in (self.footerText_hint, self.footerText_keys):
             label.setStyleSheet(desc_label_qss())
         self._apply_pg_theme()
@@ -3266,9 +3228,140 @@ class UIAnalyze(QtWidgets.QWidget):
         anchor.setChecked(True)
         self._account_popup.show_anchored_to(anchor, main_window=self.parent)
 
-    def action_advanced(self, obj):
-        if self.advancedwidget.isVisible():
-            self.advancedwidget.hide()
+    def _build_advanced_layout(self) -> QtWidgets.QLayout:
+        """Assemble the advanced-panel widgets into a clean, sectioned layout.
+
+        Called once during `setup_ui` to produce the `QVBoxLayout` that is
+        handed to `AdvancedMainWidget.build_container`. Mirrors
+        `UIControls._build_advanced_layout`'s shape (titled sections in two
+        side-by-side columns) so both Advanced menus share the same look.
+
+        Layout structure
+        ----------------
+        **Left column**:
+
+        * Run Selection (`text_Devices` + `cBox_Devices`, `showRunsFromAllDevices`)
+        * Parameters (Difference Factor, Channel Thickness, Custom POIs)
+
+        **Right column**:
+
+        * Options (the 4 existing checkboxes)
+        * Auto-Fit Model (`cBox_Models`)
+
+        Returns:
+            QtWidgets.QLayout: The fully assembled outer `QVBoxLayout` ready
+            to be passed to `AdvancedMainWidget.build_container`.
+        """
+
+        def section(title, *rows):
+            """A titled vertical group: header, hairline, then content rows."""
+            col = QtWidgets.QVBoxLayout()
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setSpacing(6)
+            col.addWidget(SectionHeader(title))
+            col.addWidget(_hairline())
+            for row in rows:
+                if isinstance(row, QtWidgets.QLayout):
+                    col.addLayout(row)
+                else:
+                    col.addWidget(row)
+            col.addStretch()
+            return col
+
+        def hrow(*widgets, spacing=6):
+            row = QtWidgets.QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(spacing)
+            for w in widgets:
+                if isinstance(w, QtWidgets.QLayout):
+                    row.addLayout(w)
+                else:
+                    row.addWidget(w)
+            return row
+
+        # Left column - Run Selection + Parameters
+        device_row = hrow(self.text_Devices, self.cBox_Devices)
+        run_selection = section("Run Selection", device_row, self.showRunsFromAllDevices)
+
+        diff_factor_row = hrow(
+            QtWidgets.QLabel("Difference Factor:"), self.tbox_diff_factor, self.btn_diff_factor
+        )
+        ch_thick_row = hrow(QtWidgets.QLabel("Channel Thickness:"), self.tbox_ch_thick, self.h0)
+        custom_poi_row = hrow(QtWidgets.QLabel("Custom POIs:"), self.custom_poi_text)
+        parameters = section("Parameters", diff_factor_row, ch_thick_row, custom_poi_row)
+
+        left_col = QtWidgets.QVBoxLayout()
+        left_col.setSpacing(14)
+        left_col.addLayout(run_selection)
+        left_col.addLayout(parameters)
+        left_col.addStretch()
+
+        # Right column - Options + Auto-Fit Model
+        options = section(
+            "Options",
+            self.option_remove_dups,
+            self.difference_factor_optimizer_checkbox,
+            self.drop_effect_cancelation_checkbox,
+            self.partial_fills_checkbox,
+        )
+        auto_fit_model = section("Auto-Fit Model", self.cBox_Models)
+
+        right_col = QtWidgets.QVBoxLayout()
+        right_col.setSpacing(14)
+        right_col.addLayout(options)
+        right_col.addLayout(auto_fit_model)
+        right_col.addStretch()
+
+        columns = QtWidgets.QHBoxLayout()
+        columns.setSpacing(22)
+        columns.addLayout(left_col, 1)
+        columns.addLayout(right_col, 1)
+
+        outer = QtWidgets.QVBoxLayout()
+        outer.setContentsMargins(2, 2, 2, 2)
+        outer.addLayout(columns)
+        return outer
+
+    def action_advanced(self, obj=None) -> None:
+        """Toggle the advanced control panel popup.
+
+        Opens or closes the advanced controls widget anchored to the
+        toolbar button, mirroring `UIControls.action_advanced` - closes it
+        if already open, discards a very-recently-closed instance instead
+        of reusing it (debounced via `_advanced_popup_closed_at`), or
+        otherwise opens a fresh `AdvancedMainWidget` anchored to
+        `tool_Advanced`. Pre-fills `custom_poi_text` from the currently
+        loaded run's POI markers, same as the old implementation, but only
+        on the "about to open" path rather than unconditionally on every
+        click.
+        """
+        prev = getattr(self, "_advanced_popup", None)
+        if prev is not None:
+            if prev.isVisible():
+                self.tool_Advanced.setChecked(False)
+                prev.close()
+                return
+            closed_at = getattr(self, "_advanced_popup_closed_at", 0.0)
+            if monotonic() - closed_at < 0.25:
+                self.tool_Advanced.setChecked(False)
+                # `prev.deleteLater()` destroys the whole popup subtree,
+                # including `_advanced_content_container` if it's still
+                # parented inside it (it's built once and reused across
+                # every popup open via `AdvancedMainWidget.toggle`, not
+                # rebuilt per-popup) - deleting them here would leave that
+                # cached attribute pointing at a dead C++ object, raising
+                # "wrapped C/C++ object ... has been deleted" the next
+                # time it's reparented into a new popup. Detach it first
+                # so only the popup shell itself gets torn down.
+                content = getattr(self, "_advanced_content_container", None)
+                if content is not None:
+                    try:
+                        content.setParent(None)
+                    except RuntimeError:
+                        pass
+                prev.deleteLater()
+                self._advanced_popup = None
+                return
 
         try:
             poi_vals = []
@@ -3284,13 +3377,26 @@ class UIAnalyze(QtWidgets.QWidget):
             )
             Log.e(f"Error Details: {str(e)}")
 
-        self.advancedwidget.move(0, 0)
-        self.advancedwidget.show()
-        # QtWidgets.QWhatsThis.enterWhatsThisMode()
-        # QtWidgets.QWhatsThis.showText(
-        #     QtCore.QPoint(int(self.advancedwidget.width() / 2), int(self.advancedwidget.height() * (2/3))),
-        #     self.advancedwidget.whatsThis(),
-        #     self.advancedwidget)
+        popup = AdvancedMainWidget.toggle(
+            owner=self,
+            anchor=self.tool_Advanced,
+            controls_layout=self._advanced_controls_layout,
+            main_window=self.parent,
+        )
+
+        if popup is None:
+            self.tool_Advanced.setChecked(False)
+            self._advanced_popup_closed_at = monotonic()
+            return
+
+        def _advanced_popup_closed():
+            self._advanced_popup_closed_at = monotonic()
+            self.tool_Advanced.setChecked(False)
+
+        popup.closed.connect(_advanced_popup_closed)
+        popup.destroyed.connect(lambda _=None: self.tool_Advanced.setChecked(False))
+        self.tool_Advanced.setChecked(True)
+        self.advanced_container = popup.content_container
 
     def enable_buttons(self, refocus: bool = True, enable: bool = True) -> None:
         """Enables or disables UI buttons based on the current state.

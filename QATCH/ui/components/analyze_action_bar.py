@@ -361,7 +361,7 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         )
 
     def _build_app_group(self) -> None:
-        self.tool_Advanced = self._tool_button("Advanced", "gear.svg")
+        self.tool_Advanced = self._tool_button("Advanced", "gear.svg", checkable=True)
         self.tool_Cancel = self._tool_button("Close", "cancel.svg")
         self.tool_User = self._tool_button("Anonymous", "user-circle.svg", checkable=True)
         # Starts disabled; UIAnalyze.setup_ui/check_user_info refresh this to

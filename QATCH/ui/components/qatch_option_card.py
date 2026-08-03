@@ -159,9 +159,9 @@ class QATCHOptionCard(QtWidgets.QFrame):
         repaints on check-state or theme change, never on a timer or a
         hover-driven cycle, so it doesn't hit the offscreen-pixmap-caching
         ghosting failure mode documented for those other widgets (see
-        ui_controls.py's `_PerspectiveAnimator` docstring). Do not "fix"
-        this back to a manual per-paint opacity multiply without re-reading
-        that reasoning.
+        advanced_main_widget.py's `_PerspectiveAnimator` docstring). Do not
+        "fix" this back to a manual per-paint opacity multiply without
+        re-reading that reasoning.
         """
         self.setEnabled(enabled)
         self.setCursor(

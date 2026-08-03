@@ -400,7 +400,7 @@ class QATCHPushButton(QtWidgets.QPushButton):
         # a QGraphicsDropShadowEffect - this widget is hover-repainted, and
         # wrapping it in a graphics effect risks the pixmap-caching ghosting
         # documented for other continuously-repainted custom widgets in this
-        # app (see ui_controls.py's _PerspectiveAnimator docstring).
+        # app (see advanced_main_widget.py's _PerspectiveAnimator docstring).
         if colors["shadow"]:
             tok = ThemeManager.instance().tokens()
             shadow_rect = QtCore.QRectF(0.0, 1.0, float(w), float(h))
