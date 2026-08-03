@@ -31,7 +31,12 @@ from QATCH.ui.styles.fonts import FONT_SANS, FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
 _ANY_DEVICE = "All devices"
-_SORT_ITEMS = (("Date (newest)", 1), ("Name (A–Z)", 0))  # label -> sort_order
+_SORT_ITEMS = (
+    ("Date (newest)", 1),
+    ("Date (oldest)", 3),
+    ("Name (A–Z)", 0),
+    ("Name (Z–A)", 4),
+)  # label -> sort_order
 
 
 def _animated_combo(items: List[str]) -> AnimatedComboBox:

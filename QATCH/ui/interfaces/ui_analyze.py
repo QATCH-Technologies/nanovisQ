@@ -502,9 +502,7 @@ class POIMarker(pg.InfiniteLine):
             p.resetTransform()
             icon = self._handle_icon(pen.color())
             size = 2 * self._HANDLE_RADIUS * handle_frac
-            target = QtCore.QRectF(
-                mid_device.x() - size / 2, mid_device.y() - size / 2, size, size
-            )
+            target = QtCore.QRectF(mid_device.x() - size / 2, mid_device.y() - size / 2, size, size)
             p.drawPixmap(target, icon, QtCore.QRectF(icon.rect()))
             p.setTransform(tr)
 
@@ -614,6 +612,11 @@ class UIAnalyze(QtWidgets.QWidget):
         self.run_devices = {}
         self.run_names = {}
         self.run_is_new = {}  # dict_key -> bool, see _scan_run's is_new / the "New" sort filter
+        # dict_keys ("{folder}:{device}") whose device was actually confirmed
+        # from that run's own XML (see _scan_run's device_from_xml) at some
+        # point - used by _prune_unconfirmed_devices to tell a real device
+        # folder apart from filesystem cruft with no genuine capture inside.
+        self._device_xml_confirmed_runs = set()
 
         # Run-filter popover state (independent of sort_order's Name/Date
         # choice - see _refresh_cbox_runs). date bounds are "YYYY-MM-DD"
@@ -1577,9 +1580,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         def _apply(t, start=start_sizes, target=target_sizes) -> None:
             try:
-                self.lowerGraphs.setSizes(
-                    [int(s + (e - s) * t) for s, e in zip(start, target)]
-                )
+                self.lowerGraphs.setSizes([int(s + (e - s) * t) for s, e in zip(start, target)])
             except RuntimeError:
                 pass
 
@@ -3661,6 +3662,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.run_devices = {}
         self.run_names = {}
         self.run_is_new = {}
+        self._device_xml_confirmed_runs = set()
 
         # find most recent device run
         if self.scan_for_most_recent_run:
@@ -3788,6 +3790,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.run_devices = {}
         self.run_names = {}
         self.run_is_new = {}
+        self._device_xml_confirmed_runs = set()
 
         self.find_most_recent_run()
 
@@ -3867,6 +3870,7 @@ class UIAnalyze(QtWidgets.QWidget):
             self.run_timestamps.pop(dict_key, None)
             self.run_names.pop(dict_key, None)
             self.run_is_new.pop(dict_key, None)
+            self._device_xml_confirmed_runs.discard(dict_key)
 
         idx = self.cBox_Devices.findText(data_device)
         if idx != -1:
@@ -4347,7 +4351,20 @@ class UIAnalyze(QtWidgets.QWidget):
 
         Returns:
             Dict[str, Any]: A dictionary containing the scan results. Keys include:
-                - "device" (str): The device name.
+                - "device" (str): The device name, taken from the run XML's
+                    <run_info device="..."> attribute (written at capture
+                    time - see QueryRunInfoWidget) when present, so the
+                    reported device is guaranteed to match what actually
+                    produced the run rather than just the on-disk folder
+                    it happens to be scanned from. Falls back to
+                    data_device (the folder name) if the XML has no device
+                    attribute (e.g. missing/legacy XML) or parse_xml=False.
+                - "device_from_xml" (bool): True only if "device" above was
+                    actually confirmed from the run's own XML this call -
+                    used by _apply_scan_results/_prune_unconfirmed_devices
+                    to tell a real device folder (has at least one XML-
+                    confirmed run) apart from filesystem cruft (a stray
+                    folder under log_prefer_path with no genuine capture).
                 - "folder" (str): The folder name.
                 - "dict_key" (str): A unique key formatted as "{folder}:{device}".
                 - "files" (List[str]): A list of data files (may be empty on error).
@@ -4360,6 +4377,7 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         result = {
             "device": data_device,
+            "device_from_xml": False,
             "folder": data_folder,
             "dict_key": f"{data_folder}:{data_device}",
             "files": [],
@@ -4385,66 +4403,73 @@ class UIAnalyze(QtWidgets.QWidget):
 
             root = None
 
-            # "audit.zip" is a legacy/back-compat name checked first for any
-            # pre-existing data that might still use it; "capture.zip" is
-            # the actual archive name every current save/export/import path
-            # (RenameOutputFilesWorker, main_window.load_run, data_mode_export,
-            # etc.) uses - without checking it here too, every fully-saved,
-            # zipped run falls through to the loose-XML fallback below, which
-            # also always misses (the loose XML is deleted once it's zipped),
-            # permanently showing the run as "Undated".
+            # The XML is written/rewritten in place by QueryRunInfoWidget
+            # (PARAMS/audit updates re-parse and re-save it after capture),
+            # so it is deliberately never bundled into capture.zip - only
+            # the CSV/CRC/TEC files get zipped. Every current run on disk
+            # therefore keeps its XML as a loose file next to capture.zip,
+            # so that must be checked first. "audit.zip" is a legacy
+            # back-compat name for pre-existing data that might have
+            # actually archived the XML inside it; only fall back to
+            # looking inside a zip (audit.zip, then capture.zip) if no
+            # loose XML is found, instead of skipping the loose file
+            # whenever any zip happens to exist - the previous zip-first
+            # order caused every zipped/fully-saved run to permanently
+            # show up as "Undated", since the loose XML was never checked.
             run_dir = os.path.join(Constants.log_prefer_path, data_device, data_folder)
-            zn = next(
-                (
-                    candidate
-                    for candidate in (
-                        os.path.join(run_dir, "audit.zip"),
-                        os.path.join(run_dir, "capture.zip"),
-                    )
-                    if FileManager.file_exists(candidate)
-                ),
-                None,
-            )
-            if zn is not None:
-                with pyzipper.AESZipFile(
-                    zn,
-                    "r",
-                    compression=pyzipper.ZIP_DEFLATED,
-                    allowZip64=True,
-                    encryption=pyzipper.WZ_AES,
-                ) as zf:
-                    # Cheap encryption probe: read the general-purpose bit
-                    # flag from the central directory instead of calling
-                    # zf.testzip(), which decompresses and CRC-checks every
-                    # member of the archive (including the large raw
-                    # capture CSV) just to populate the run list.
-                    entries = zf.infolist()
-                    if entries and (entries[0].flag_bits & 0x1):
-                        zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
-                    files = zf.namelist()
-                    xml_filename = next((x for x in files if x.endswith(".xml")), None)
-                    if xml_filename is not None:
-                        with zf.open(xml_filename, "r") as fh:
-                            xml_bytes = fh.read()
-                        root = ET.fromstring(xml_bytes)
-            else:
-                xml_filename = next((x for x in result["files"] if x.endswith(".xml")), None)
-                if xml_filename is None:
+            xml_filename = next((x for x in result["files"] if x.endswith(".xml")), None)
+            if xml_filename is not None:
+                xml_path = os.path.join(
+                    Constants.log_prefer_path,
+                    data_device,
+                    data_folder,
+                    xml_filename,
+                )
+                if os.path.exists(xml_path):
+                    root = ET.parse(xml_path).getroot()
+
+            if root is None:
+                zn = next(
+                    (
+                        candidate
+                        for candidate in (
+                            os.path.join(run_dir, "audit.zip"),
+                            os.path.join(run_dir, "capture.zip"),
+                        )
+                        if FileManager.file_exists(candidate)
+                    ),
+                    None,
+                )
+                if zn is not None:
+                    with pyzipper.AESZipFile(
+                        zn,
+                        "r",
+                        compression=pyzipper.ZIP_DEFLATED,
+                        allowZip64=True,
+                        encryption=pyzipper.WZ_AES,
+                    ) as zf:
+                        # Cheap encryption probe: read the general-purpose bit
+                        # flag from the central directory instead of calling
+                        # zf.testzip(), which decompresses and CRC-checks every
+                        # member of the archive (including the large raw
+                        # capture CSV) just to populate the run list.
+                        entries = zf.infolist()
+                        if entries and (entries[0].flag_bits & 0x1):
+                            zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
+                        files = zf.namelist()
+                        zip_xml_filename = next((x for x in files if x.endswith(".xml")), None)
+                        if zip_xml_filename is not None:
+                            with zf.open(zip_xml_filename, "r") as fh:
+                                xml_bytes = fh.read()
+                            root = ET.fromstring(xml_bytes)
+
+                if root is None:
                     result["warnings"].append(
                         f'WARNING: XML file not found in data files for run "{data_folder}"'
                     )
                     result["warnings"].append(
                         'Unable to parse "Date" without XML file. Treating as "Undated".'
                     )
-                else:
-                    xml_path = os.path.join(
-                        Constants.log_prefer_path,
-                        data_device,
-                        data_folder,
-                        xml_filename,
-                    )
-                    if os.path.exists(xml_path):
-                        root = ET.parse(xml_path).getroot()
 
             if root is not None:
                 for m in root.iter("metric"):
@@ -4455,6 +4480,15 @@ class UIAnalyze(QtWidgets.QWidget):
                     if p.get("name") == "run_name":
                         result["run_name"] = p.get("value")
                         break
+                # <run_info device="..."> is the device that actually
+                # captured this run (set once at CAPTURE time - see
+                # QueryRunInfoWidget). Prefer it over the on-disk folder
+                # name so a renamed/misplaced device folder can't silently
+                # misattribute a run's device in the UI.
+                xml_device = root.get("device")
+                if xml_device:
+                    result["device"] = xml_device
+                    result["device_from_xml"] = True
 
         except Exception as e:
             result["error"] = str(e)
@@ -4490,6 +4524,9 @@ class UIAnalyze(QtWidgets.QWidget):
                 Log.e(f'Error getting timestamp from XML for run "{data_folder}"!')
                 Log.d(f"Error message: {r['error']}")
 
+            if r.get("device_from_xml"):
+                self._device_xml_confirmed_runs.add(dict_key)
+
             self.run_names[dict_key] = data_folder
 
             if self.run_timestamps.get(dict_key) is None:
@@ -4497,7 +4534,15 @@ class UIAnalyze(QtWidgets.QWidget):
                     self.run_timestamps[dict_key] = r["timestamp"]
                 if r["run_name"] is not None:
                     self.run_names[dict_key] = r["run_name"]
-                    self.run_devices[r["run_name"]] = data_device
+                    self.run_devices[r["run_name"]] = r["device"]
+                # Only set on first resolution (i.e. when this run was
+                # actually XML-parsed - see _scan_run's parse_xml=False
+                # early-return). A later incremental rescan of an
+                # already-known run skips XML parsing entirely, so r["device"]
+                # would just be the raw folder name again; updating
+                # unconditionally on every pass would silently discard the
+                # XML-resolved device and revert to the file structure.
+                self.run_devices[data_folder] = r["device"]
 
             if len(data_files) > 0:
                 if dict_key in unchecked_runs:
@@ -4512,12 +4557,33 @@ class UIAnalyze(QtWidgets.QWidget):
             else:
                 Log.w(f"Removing empty run info ({dict_key})")
 
-            self.run_devices[data_folder] = data_device
-
         for dict_key in unchecked_runs:
             Log.w(f"Removing missing run info ({dict_key})")
             self.run_timestamps.pop(dict_key, None)
             self.run_is_new.pop(dict_key, None)
+
+    def _prune_unconfirmed_devices(self) -> None:
+        """Removes any cBox_Devices entry that has been scanned but has not
+        a single run confirmed via that run's own XML `device` attribute
+        (see _scan_run's device_from_xml).
+
+        Constants.log_prefer_path can accumulate stray top-level folders
+        that aren't real instrument folders at all (e.g. leftover analysis
+        output moved/created outside the normal save flow) - since
+        cBox_Devices is originally seeded from a plain directory listing
+        (see reset/_full_resync), those show up as bogus "devices" with no
+        genuine capture inside. A folder only earns removal once it's been
+        scanned and found to have zero XML-confirmed runs; a device with no
+        scanned runs at all (e.g. brand new, no captures yet) is left alone
+        since there's no evidence either way yet.
+        """
+        for device in [self.cBox_Devices.itemText(i) for i in range(self.cBox_Devices.count())]:
+            suffix = f":{device}"
+            keys_for_device = {k for k in self.run_timestamps if k.endswith(suffix)}
+            if not keys_for_device:
+                continue
+            if not (keys_for_device & self._device_xml_confirmed_runs):
+                self._remove_device(device)
 
     def _refresh_cbox_runs(self) -> None:
         """Sorts the cached run data and repopulates the UI run selection combobox.
@@ -4532,10 +4598,17 @@ class UIAnalyze(QtWidgets.QWidget):
             - `self.sort_order = 0`: Sort by Name (Ascending)
             - `self.sort_order = 1`: Sort by Date (Descending)
             - `self.sort_order = 2`: New (filters to unanalyzed runs, Date Descending)
+            - `self.sort_order = 3`: Sort by Date (Ascending)
+            - `self.sort_order = 4`: Sort by Name (Descending)
         """
         # Define sorting configuration for readability: {order_index: (sort_key_index, reverse_bool)}
         # item[0] is the dict_key (name-based), item[1] is the timestamp
-        sort_config = {0: (0, False), 1: (1, True)}  # Name: Ascending  # Date: Descending
+        sort_config = {
+            0: (0, False),  # Name: Ascending
+            1: (1, True),  # Date: Descending
+            3: (1, False),  # Date: Ascending
+            4: (0, True),  # Name: Descending
+        }
 
         key_idx, is_reverse = sort_config.get(self.sort_order, (1, True))
 
@@ -4702,6 +4775,11 @@ class UIAnalyze(QtWidgets.QWidget):
             )
 
             self.cBox_Devices.setCurrentIndex(self._async_best_dev_idx)
+            # Only after every device has been scanned and the "most
+            # recent" index above has already been consumed - pruning can
+            # remove/shift cBox_Devices entries (see _remove_device), which
+            # would otherwise invalidate _async_best_dev_idx mid-loop.
+            self._prune_unconfirmed_devices()
             self._refresh_cbox_runs()
             self.enable_buttons()
 
@@ -4754,6 +4832,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 worker's queue (always True for single-device updates).
         """
         self._apply_scan_results(scan_results, data_device, unchecked_runs)
+        self._prune_unconfirmed_devices()
         self._refresh_cbox_runs()
         self.enable_buttons()
 
@@ -5444,9 +5523,7 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         if detected_channels is None or detected_channels < 0:
             return
-        self._channel_config_cache = {
-            int(detected_channels): [int(v) for v in detected_poi_vals]
-        }
+        self._channel_config_cache = {int(detected_channels): [int(v) for v in detected_poi_vals]}
         for ch in (0, 1, 2, 3):
             if ch == detected_channels:
                 continue
@@ -8618,17 +8695,29 @@ class UIAnalyze(QtWidgets.QWidget):
         # plots rather than plain opaque 1px pyqtgraph defaults.
         self.fit1 = _enable_adaptive_resolution(
             ax.plot(
-                xs[mask], ys_freq_fit[mask], pen=glass_curve_pen(res_color), antialias=True, name="Resonance"
+                xs[mask],
+                ys_freq_fit[mask],
+                pen=glass_curve_pen(res_color),
+                antialias=True,
+                name="Resonance",
             )
         )
         self.fit2 = _enable_adaptive_resolution(
             ax.plot(
-                xs[mask], ys_diff_fit[mask], pen=glass_curve_pen(diff_color), antialias=True, name="Difference"
+                xs[mask],
+                ys_diff_fit[mask],
+                pen=glass_curve_pen(diff_color),
+                antialias=True,
+                name="Difference",
             )
         )
         self.fit3 = _enable_adaptive_resolution(
             ax.plot(
-                xs[mask], ys_fit[mask], pen=glass_curve_pen(diss_color), antialias=True, name="Dissipation"
+                xs[mask],
+                ys_fit[mask],
+                pen=glass_curve_pen(diss_color),
+                antialias=True,
+                name="Dissipation",
             )
         )
 
@@ -8724,13 +8813,31 @@ class UIAnalyze(QtWidgets.QWidget):
         # alpha 0.0 during Fill Start/Fill End, where the sub-graph's raw
         # point cloud is the only real content).
         self.fit_1 = _enable_adaptive_resolution(
-            ax1.plot(xs[mask], ys_freq_fit[mask], pen=glass_curve_pen(res_color), antialias=True, name="Resonance")
+            ax1.plot(
+                xs[mask],
+                ys_freq_fit[mask],
+                pen=glass_curve_pen(res_color),
+                antialias=True,
+                name="Resonance",
+            )
         )
         self.fit_2 = _enable_adaptive_resolution(
-            ax2.plot(xs[mask], ys_diff_fit[mask], pen=glass_curve_pen(diff_color), antialias=True, name="Difference")
+            ax2.plot(
+                xs[mask],
+                ys_diff_fit[mask],
+                pen=glass_curve_pen(diff_color),
+                antialias=True,
+                name="Difference",
+            )
         )
         self.fit_3 = _enable_adaptive_resolution(
-            ax3.plot(xs[mask], ys_fit[mask], pen=glass_curve_pen(diss_color), antialias=True, name="Dissipation")
+            ax3.plot(
+                xs[mask],
+                ys_fit[mask],
+                pen=glass_curve_pen(diss_color),
+                antialias=True,
+                name="Dissipation",
+            )
         )
 
         # Sub-graphs - scatter dots. symbolPen=None - a flat fill, no
@@ -8795,13 +8902,25 @@ class UIAnalyze(QtWidgets.QWidget):
         ax3.addItem(self.star3)
 
         self.gstars1 = pg.ScatterPlotItem(
-            pos=pos1, symbol=_TARGET_SYMBOL, size=10, pen=_target_pen(faint_color), brush=faint_color
+            pos=pos1,
+            symbol=_TARGET_SYMBOL,
+            size=10,
+            pen=_target_pen(faint_color),
+            brush=faint_color,
         )
         self.gstars2 = pg.ScatterPlotItem(
-            pos=pos2, symbol=_TARGET_SYMBOL, size=10, pen=_target_pen(faint_color), brush=faint_color
+            pos=pos2,
+            symbol=_TARGET_SYMBOL,
+            size=10,
+            pen=_target_pen(faint_color),
+            brush=faint_color,
         )
         self.gstars3 = pg.ScatterPlotItem(
-            pos=pos3, symbol=_TARGET_SYMBOL, size=10, pen=_target_pen(faint_color), brush=faint_color
+            pos=pos3,
+            symbol=_TARGET_SYMBOL,
+            size=10,
+            pen=_target_pen(faint_color),
+            brush=faint_color,
         )
         ax1.addItem(self.gstars1)
         ax2.addItem(self.gstars2)
@@ -9385,9 +9504,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 pg.mkPen(
                     QtGui.QColor(
                         round(start_color.red() + (end_color.red() - start_color.red()) * t),
-                        round(
-                            start_color.green() + (end_color.green() - start_color.green()) * t
-                        ),
+                        round(start_color.green() + (end_color.green() - start_color.green()) * t),
                         round(start_color.blue() + (end_color.blue() - start_color.blue()) * t),
                     ),
                     width=2,
