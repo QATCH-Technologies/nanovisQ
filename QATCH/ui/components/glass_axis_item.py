@@ -12,6 +12,8 @@ import pyqtgraph as pg
 from PyQt5 import QtGui
 from pyqtgraph import AxisItem
 
+from QATCH.ui.styles.typography import make_qfont
+
 
 def glass_curve_pen(base_color, width: float = 2.0) -> QtGui.QPen:
     """Builds the "glass" curve pen PlotsUI's real-time plots draw their
@@ -42,9 +44,7 @@ class GlassAxisItem(AxisItem):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        f = QtGui.QFont("Segoe UI")
-        f.setPixelSize(10)
-        self.setTickFont(f)
+        self.setTickFont(make_qfont(pixel_size=10))
         self.setStyle(
             tickLength=0,
             tickTextOffset=3,

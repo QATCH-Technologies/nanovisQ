@@ -21,6 +21,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.logger import Logger as Log
 from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.typography import FONT_SANS_STACK
 
 TAG = "[PlotStatusBanner]"
 
@@ -174,7 +175,7 @@ class PlotStatusBanner:
             self._text_lbl.setStyleSheet(
                 f"QLabel {{"
                 f"  color: {theme['text_color']};"
-                f"  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;"
+                f"  font-family: {FONT_SANS_STACK};"
                 f"  font-size: 9pt;"
                 f"  font-weight: 500;"
                 f"  background: transparent;"

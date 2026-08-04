@@ -27,8 +27,8 @@ from QATCH.ui.components import AnimatedComboBox
 from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.components.qatch_push_button import QATCHPushButton
 from QATCH.ui.components.segmented_control import SegmentedControl
-from QATCH.ui.styles.fonts import FONT_SANS, FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import FONT_SANS_STACK
 
 _ANY_DEVICE = "All devices"
 _SORT_ITEMS = (
@@ -72,7 +72,7 @@ def _flat_date_edit() -> QtWidgets.QDateEdit:
             border-radius: 13px;
             padding: 4px 10px;
             color: {tok_css(tok["flat_text"])};
-            font-family: '{FONT_SANS}';
+            font-family: {FONT_SANS_STACK};
             font-size: 11.5px;
         }}
         QDateEdit::drop-down {{ border: none; width: 16px; }}
@@ -244,12 +244,13 @@ class RunFilterPopover(QtWidgets.QWidget):
     def _apply_theme(self) -> None:
         tok = ThemeManager.instance().tokens()
         self._title.setStyleSheet(
-            f"color: {tok_css(tok['flat_text_muted'])}; font-family: '{FONT_SANS_SEMIBOLD}'; "
-            "font-size: 10px; letter-spacing: 1px; background: transparent; border: none;"
+            f"color: {tok_css(tok['flat_text_muted'])}; font-family: {FONT_SANS_STACK}; "
+            "font-size: 10px; font-weight: 600; letter-spacing: 1px; background: transparent; "
+            "border: none;"
         )
         field_label_qss = (
-            f"color: {tok_css(tok['flat_text_muted'])}; font-family: '{FONT_SANS_SEMIBOLD}'; "
-            "font-size: 10px; background: transparent; border: none;"
+            f"color: {tok_css(tok['flat_text_muted'])}; font-family: {FONT_SANS_STACK}; "
+            "font-size: 10px; font-weight: 600; background: transparent; border: none;"
         )
         for label in self._field_labels:
             label.setStyleSheet(field_label_qss)

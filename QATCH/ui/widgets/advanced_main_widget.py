@@ -21,8 +21,8 @@ import PyQt5.QtWidgets as QtWidgets
 
 from QATCH.common.architecture import Architecture
 from QATCH.ui.components.flat_paint import paint_flat_surface
-from QATCH.ui.styles.fonts import FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import FONT_SANS_STACK
 
 
 def _tinted_pixmap(src: QtGui.QPixmap, color: QtGui.QColor) -> QtGui.QPixmap:
@@ -554,7 +554,7 @@ class AdvancedMainWidget(QtWidgets.QWidget):
                 gear.setPixmap(_tinted_pixmap(_gear_pix, QtGui.QColor(*tok["flat_text_muted"])))
             title.setStyleSheet(
                 f"QLabel {{ color: {tok_css(tok['flat_text'])}; "
-                f"font-family: '{FONT_SANS_SEMIBOLD}'; font-size: 14px; "
+                f"font-family: {FONT_SANS_STACK}; font-size: 14px; font-weight: 600; "
                 "background: transparent; border: none; }"
             )
 

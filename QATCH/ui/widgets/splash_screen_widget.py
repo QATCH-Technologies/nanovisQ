@@ -20,6 +20,7 @@ import types
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.core.constants import Constants
+from QATCH.ui.styles.typography import make_qfont
 
 # Tile geometry + base fill color, sampled directly from the QATCH
 # mosaic-circle brand mark (the logo corner of QATCH/icons/qatch-splash.png)
@@ -173,9 +174,7 @@ class QatchSplashScreen(QtWidgets.QWidget):
         )
 
     def _build_fonts(self) -> None:
-        self._wordmark_bold_font = QtGui.QFont("Segoe UI")
-        self._wordmark_bold_font.setPixelSize(_WORDMARK_FONT_PX)
-        self._wordmark_bold_font.setWeight(QtGui.QFont.Bold)
+        self._wordmark_bold_font = make_qfont(pixel_size=_WORDMARK_FONT_PX, weight=QtGui.QFont.Bold)
         self._wordmark_bold_font.setLetterSpacing(
             QtGui.QFont.AbsoluteSpacing, _WORDMARK_FONT_PX * _WORDMARK_LETTER_SPACING_EM
         )
@@ -186,8 +185,7 @@ class QatchSplashScreen(QtWidgets.QWidget):
         self._wordmark_light_font = QtGui.QFont(self._wordmark_bold_font)
         self._wordmark_light_font.setWeight(QtGui.QFont.Light)
 
-        self._build_font = QtGui.QFont("Segoe UI")
-        self._build_font.setPixelSize(_BUILD_FONT_PX)
+        self._build_font = make_qfont(pixel_size=_BUILD_FONT_PX)
         self._build_font.setLetterSpacing(
             QtGui.QFont.AbsoluteSpacing, _BUILD_FONT_PX * _BUILD_LETTER_SPACING_EM
         )

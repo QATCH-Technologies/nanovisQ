@@ -21,8 +21,8 @@ Date:
 
 from PyQt5 import QtWidgets
 
-from QATCH.ui.styles.fonts import FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import FONT_SANS_STACK
 
 
 class SectionHeader(QtWidgets.QLabel):
@@ -81,7 +81,7 @@ class SectionHeader(QtWidgets.QLabel):
         tok = ThemeManager.instance().tokens()
         self.setStyleSheet(
             f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; "
-            f"font-family: '{FONT_SANS_SEMIBOLD}'; font-size: 10px; "
+            f"font-family: {FONT_SANS_STACK}; font-size: 10px; font-weight: 600; "
             "letter-spacing: 1px; background: transparent; "
             "border: none; padding: 0px 1px; }"
         )

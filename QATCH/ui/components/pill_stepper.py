@@ -25,6 +25,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import make_qfont
 
 
 class PillCellButton(QtWidgets.QToolButton):
@@ -190,10 +191,7 @@ class PillStepper(QtWidgets.QWidget):
         self._lines: list[QtWidgets.QFrame] = []
         self._anims: list[QtCore.QVariantAnimation] = []
 
-        font = QtGui.QFont("Segoe UI")
-        font.setPixelSize(self._FONT_PX)
-        font.setWeight(QtGui.QFont.Bold)
-        self._font = font
+        self._font = make_qfont(pixel_size=self._FONT_PX, weight=QtGui.QFont.Bold)
         self._expanded_widths = [self._expanded_width_for(label) for label in self._labels]
 
         outer = QtWidgets.QHBoxLayout(self)

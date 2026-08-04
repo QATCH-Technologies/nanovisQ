@@ -42,8 +42,8 @@ from typing import Callable, List, Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.components.qatch_line_edit import QATCHLineEdit
-from QATCH.ui.styles.fonts import FONT_MONO, FONT_SANS
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import FONT_MONO_STACK, FONT_SANS_STACK
 
 
 class _FlowLayout(QtWidgets.QLayout):
@@ -158,11 +158,12 @@ class _POIChip(QtWidgets.QWidget):
         )
         self._label.setStyleSheet(
             "QLabel { background: transparent; border: none; "
-            f"color: {tok_css(tok['flat_text'])}; font-family: '{FONT_MONO}'; font-size: 12px; }}"
+            f"color: {tok_css(tok['flat_text'])}; font-family: {FONT_MONO_STACK}; font-size: 12px; }}"
         )
         self._close.setStyleSheet(
             "QLabel { background: transparent; border: none; "
-            f"color: {tok_css(tok['flat_text_muted'])}; font-family: '{FONT_SANS}'; font-size: 13px; }}"
+            f"color: {tok_css(tok['flat_text_muted'])}; font-family: {FONT_SANS_STACK}; "
+            "font-size: 13px; }"
         )
 
 
@@ -171,6 +172,11 @@ class POIChipField(QtWidgets.QWidget):
     `QATCHLineEdit` that preserves the exact bracket-string format
     `UIAnalyze.update_custom_pois` parses. See module docstring for the
     full backend contract.
+
+    Capped at `max_chips` entries (the "add index…" input hides itself once
+    full, and reappears the moment a chip is removed) and always kept in
+    ascending order - every add/remove re-sorts the full value list before
+    writing it back, rather than only accepting already-sorted input.
     """
 
     def __init__(
@@ -178,10 +184,13 @@ class POIChipField(QtWidgets.QWidget):
         backing_field: QATCHLineEdit,
         on_commit: Optional[Callable[[], None]] = None,
         parent: Optional[QtWidgets.QWidget] = None,
+        *,
+        max_chips: int = 5,
     ) -> None:
         super().__init__(parent)
         self._backing = backing_field
         self._on_commit = on_commit
+        self._max_chips = max_chips
         self._guard = False
         self._chips: List[_POIChip] = []
 
@@ -222,9 +231,18 @@ class POIChipField(QtWidgets.QWidget):
         )
         self._new_input.setStyleSheet(
             "QLineEdit { background: transparent; border: none; "
-            f"color: {tok_css(tok['flat_text'])}; font-family: '{FONT_MONO}'; "
+            f"color: {tok_css(tok['flat_text'])}; font-family: {FONT_MONO_STACK}; "
             "font-size: 12px; padding: 3px 4px; }"
         )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def values(self) -> List[int]:
+        """Returns the current chip values, in ascending order (the same
+        list currently reflected in both the chip row and the backing
+        field)."""
+        return self._parse_values()[: self._max_chips]
 
     # ------------------------------------------------------------------
     # Parsing / sync (backend contract - see module docstring)
@@ -243,7 +261,7 @@ class POIChipField(QtWidgets.QWidget):
     def _sync_from_backing(self, _text: str = "") -> None:
         if self._guard:
             return
-        self._rebuild_chips(self._parse_values())
+        self._rebuild_chips(self._parse_values()[: self._max_chips])
 
     def _rebuild_chips(self, values: List[int]) -> None:
         while self._flow.count():
@@ -260,8 +278,10 @@ class POIChipField(QtWidgets.QWidget):
             self._flow.addWidget(chip)
             self._chips.append(chip)
         self._flow.addWidget(self._new_input)
+        self._new_input.setVisible(len(values) < self._max_chips)
 
     def _write_back(self, values: List[int]) -> None:
+        values = sorted(values)
         self._guard = True
         try:
             self._backing.setText(str(values))
@@ -280,7 +300,7 @@ class POIChipField(QtWidgets.QWidget):
     def _on_new_index_entered(self) -> None:
         text = self._new_input.text().strip()
         self._new_input.clear()
-        if not text:
+        if not text or len(self._chips) >= self._max_chips:
             return
         try:
             value = int(float(text))

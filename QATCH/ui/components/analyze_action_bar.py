@@ -9,8 +9,8 @@ needed.
 Laid out as three captioned zones - RUN / FIT & ANALYZE / APP - separated
 by hairline dividers, per the "2a" task bar redesign: the run selector is
 a searchable, filterable field with the saved-state indicator folded into
-the RUN caption itself, and Back/Next now flank a plain "pos N/6" label
-instead of standing alone - both still built via the same `_tool_button()`
+the RUN caption itself, and Back/Next stand adjacent (no step-position
+label between them) - both still built via the same `_tool_button()`
 helper as every other button in the bar, so they read as one family rather
 than a visually distinct control.
 
@@ -36,51 +36,14 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
 from QATCH.ui.components import AnimatedComboBox
-from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.components.icon_utils import tinted_icon
+from QATCH.ui.components.task_bar_base import TaskBarBase, TaskBarDivider, _icon_path
 from QATCH.ui.labels.section_label import SectionHeader
-from QATCH.ui.styles.fonts import FONT_SANS_SEMIBOLD
-from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.theme_manager import ThemeManager
 from QATCH.ui.widgets.saved_state_dot import SavedStateDot
 
 
-def _icon_path(icon_name: str) -> str:
-    return os.path.join(Architecture.get_path(), "QATCH", "icons", icon_name)
-
-
-class _VDivider(QtWidgets.QFrame):
-    """A hairline vertical divider between action-bar zones, themed from
-    `flat_border` so it stays correct across light/dark switches.
-
-    Sized to `height` (the zones' own CtrlToolBar row height, passed in by
-    _assemble) and added with AlignVCenter there - not left to stretch to
-    the full zone height (which reads as a full edge-to-edge rule spanning
-    the caption line too), and not an arbitrary short fixed height either
-    (which reads as stubbier than ControlsUI's own toolbar separators,
-    whose `margin: 5px 4px` QSS makes them nearly as tall as their row).
-    Centered on the bar as a whole, not bottom-anchored to the toolbar row
-    specifically - anchoring to the row alone left the divider sitting
-    visibly low relative to the bar's overall vertical center once the
-    caption line above it is taken into account.
-    """
-
-    def __init__(self, height: int, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        super().__init__(parent)
-        self.setFrameShape(QtWidgets.QFrame.NoFrame)
-        self.setFixedWidth(1)
-        self.setFixedHeight(height)
-        self._apply_theme()
-        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
-
-    def _on_theme_changed(self, _mode: str) -> None:
-        self._apply_theme()
-
-    def _apply_theme(self) -> None:
-        tok = ThemeManager.instance().tokens()
-        self.setStyleSheet(f"background-color: {tok_css(tok['flat_border'])}; border: none;")
-
-
-class AnalyzeActionBar(QtWidgets.QWidget):
+class AnalyzeActionBar(TaskBarBase):
     """Searchable run field + Auto-Fit/position-stepper/Modify/Analyze +
     Advanced/Close/User, grouped into three captioned zones (RUN / FIT &
     ANALYZE / APP), as one themed card.
@@ -102,64 +65,28 @@ class AnalyzeActionBar(QtWidgets.QWidget):
             CtrlToolBar theming as every other button in the bar.
         tool_Back, tool_Next: the position-step buttons, built via the same
             `_tool_button()` helper as Auto-Fit/Modify/Analyze so they share
-            identical chrome; `position_label` is the plain "pos N/6" text
-            sitting between them.
+            identical chrome.
         tool_Modify, tool_Analyze, tool_Advanced, tool_Cancel, tool_User:
             the remaining action buttons (Close now lives in the APP zone
             alongside Advanced/User, not beside Back/Next).
     """
 
-    _R = 12.0
-
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
-        self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
-
-        # (button, icon_name) pairs built via _tool_button(), retinted as a
-        # batch on every theme change (see _retint_icon_buttons).
-        self._icon_buttons: list = []
 
         self._build_run_selector()
         self._build_fit_group()
         self._build_app_group()
         self._assemble()
 
-        self._style_position_label()
-        self._retint_icon_buttons()
+        self.retint_icon_buttons()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
-        self._style_position_label()
-        self._retint_icon_buttons()
+        self.retint_icon_buttons()
         self._restyle_filter_icon()
         self._restyle_static_line_edit_icons()
         self.update()
-
-    def _tool_button(
-        self, text: str, icon_name: Optional[str] = None, checkable: bool = False
-    ) -> QtWidgets.QToolButton:
-        """Builds a themed toolbutton, matching every other button in the
-        bar (see module docstring re: icon tinting)."""
-        btn = QtWidgets.QToolButton()
-        btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        btn.setText(text)
-        btn.setCheckable(checkable)
-        if icon_name:
-            self._icon_buttons.append((btn, icon_name))
-        return btn
-
-    def _retint_icon_buttons(self) -> None:
-        tok = ThemeManager.instance().tokens()
-        color = QtGui.QColor(*tok["flat_text"])
-        for btn, icon_name in self._icon_buttons:
-            # QIcon never upscales past its registered pixmap's own
-            # resolution (it deliberately avoids the blur that would cause)
-            # - rendering smaller than the toolbar's own iconSize (30px
-            # tall, matching ControlsUI's CtrlToolBar) left these looking
-            # shrunk inside their slot rather than filling it the way the
-            # original untinted (natively-sized) icons did.
-            btn.setIcon(tinted_icon(_icon_path(icon_name), color, 30))
 
     def _build_run_selector(self) -> None:
         self.run_caption = SectionHeader("Run")
@@ -256,9 +183,7 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         # gives every other button in this bar its chrome, so without it
         # Run Info would render unstyled next to a themed search field.
         self.tBtn_Info = self._tool_button("Run Info", "info-circle.svg")
-        self.run_info_bar = QtWidgets.QToolBar()
-        self.run_info_bar.setObjectName("CtrlToolBar")
-        self.run_info_bar.setIconSize(QtCore.QSize(50, 30))
+        self.run_info_bar = self._make_toolbar()
         self.run_info_bar.addWidget(self.tBtn_Info)
 
         # AlignVCenter on both: cBox_Runs (a fixed 30px field) and
@@ -324,24 +249,17 @@ class AnalyzeActionBar(QtWidgets.QWidget):
 
         # Back/Next - same _tool_button() helper (and so the same chrome)
         # as Auto-Fit/Modify/Analyze, now with the dedicated previous/next
-        # icon files instead of a native arrow glyph. position_label is a
-        # plain, unstyled-as-a-button label sitting between them - not a
-        # separate composite control.
+        # icon files instead of a native arrow glyph. Standing adjacent
+        # (the "pos N/6" label that used to sit between them was removed).
         self.tool_Back = self._tool_button("Back", "previous.svg")
         self.tool_Next = self._tool_button("Next", "next.svg")
-
-        self.position_label = QtWidgets.QLabel("1 / 6")
-        self.position_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         self.tool_Modify = self._tool_button("Modify", "modify.svg", checkable=True)
         self.tool_Analyze = self._tool_button("Analyze", "play-circle.svg")
 
-        self.fit_bar = QtWidgets.QToolBar()
-        self.fit_bar.setObjectName("CtrlToolBar")
-        self.fit_bar.setIconSize(QtCore.QSize(50, 30))
+        self.fit_bar = self._make_toolbar()
         self.fit_bar.addWidget(self.tBtn_Predict)
         self.fit_bar.addWidget(self.tool_Back)
-        self.fit_bar.addWidget(self.position_label)
         self.fit_bar.addWidget(self.tool_Next)
         self.fit_bar.addWidget(self.tool_Modify)
         self.fit_bar.addWidget(self.tool_Analyze)
@@ -352,14 +270,6 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         self.fit_zone.addWidget(SectionHeader("Fit & Analyze"))
         self.fit_zone.addWidget(self.fit_bar)
 
-    def _style_position_label(self) -> None:
-        tok = ThemeManager.instance().tokens()
-        self.position_label.setStyleSheet(
-            f"QLabel {{ color: {tok_css(tok['flat_text'])}; "
-            f"font-family: '{FONT_SANS_SEMIBOLD}'; font-size: 11.5px; "
-            "background: transparent; border: none; }"
-        )
-
     def _build_app_group(self) -> None:
         self.tool_Advanced = self._tool_button("Advanced", "gear.svg", checkable=True)
         self.tool_Cancel = self._tool_button("Close", "cancel.svg")
@@ -368,9 +278,7 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         # the real signed-in state (mirrors UIControls.refresh_user_button_state).
         self.tool_User.setEnabled(False)
 
-        self.app_bar = QtWidgets.QToolBar()
-        self.app_bar.setObjectName("CtrlToolBar")
-        self.app_bar.setIconSize(QtCore.QSize(50, 30))
+        self.app_bar = self._make_toolbar()
         self.app_bar.addWidget(self.tool_Advanced)
         self.app_bar.addWidget(self.tool_Cancel)
         self.app_bar.addWidget(self.tool_User)
@@ -383,33 +291,15 @@ class AnalyzeActionBar(QtWidgets.QWidget):
 
     def _assemble(self) -> None:
         layout = QtWidgets.QHBoxLayout(self)
-        # Tighter than ControlsUI's own toolbar row (`toolLayout.
-        # setContentsMargins(8, 4, 8, 4)`) because this bar also carries a
-        # caption line ControlsUI's doesn't - matching its margins on top of
-        # that would stack the extra height twice. Keeping vertical margins
-        # minimal here is what actually keeps the two bars close in height.
-        layout.setContentsMargins(10, 1, 10, 1)
-        layout.setSpacing(14)
+        layout.setContentsMargins(*self.OUTER_MARGINS)
+        layout.setSpacing(self.ZONE_SPACING)
         # All three CtrlToolBar rows (run_info_bar/fit_bar/app_bar) share
         # the same icon size/QSS, so they hint to the same height - use
         # that as the divider height rather than a guessed constant.
         toolbar_h = self.fit_bar.sizeHint().height()
         layout.addLayout(self.run_zone)
-        layout.addWidget(_VDivider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(TaskBarDivider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(self.fit_zone)
         layout.addStretch(1)
-        layout.addWidget(_VDivider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(TaskBarDivider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(self.app_zone)
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
-        tok = ThemeManager.instance().tokens()
-        painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        paint_flat_surface(
-            self,
-            radius=self._R,
-            fill=QtGui.QColor(*tok["surface"]),
-            border=QtGui.QColor(*tok["surface_border"]),
-            painter=painter,
-        )
-        painter.end()

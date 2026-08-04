@@ -28,8 +28,8 @@ from __future__ import annotations
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from QATCH.ui.styles.fonts import FONT_SANS, FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.typography import FONT_SANS_STACK
 
 
 class _RadioDot(QtWidgets.QWidget):
@@ -214,12 +214,13 @@ class QATCHOptionCard(QtWidgets.QFrame):
         self.setStyleSheet(frame_qss)
         self._title_lbl.setStyleSheet(
             f"QLabel#optionCardTitle {{ color: {rgba(tok['flat_text'])}; "
-            f"font-family: '{FONT_SANS_SEMIBOLD}'; font-size: 13px; background: transparent; }}"
+            f"font-family: {FONT_SANS_STACK}; font-size: 13px; font-weight: 600; "
+            "background: transparent; }"
         )
         if self._desc_lbl is not None:
             self._desc_lbl.setStyleSheet(
                 f"QLabel#optionCardDesc {{ color: {rgba(tok['flat_text_muted'])}; "
-                f"font-family: '{FONT_SANS}'; font-size: 11.5px; background: transparent; }}"
+                f"font-family: {FONT_SANS_STACK}; font-size: 11.5px; background: transparent; }}"
             )
 
 

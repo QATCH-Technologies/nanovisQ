@@ -5,8 +5,8 @@ from typing import Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.components.flat_paint import paint_flat_surface
-from QATCH.ui.styles.fonts import FONT_SANS
 from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.typography import FONT_SANS_STACK
 
 _RADIUS = 7.0
 
@@ -58,7 +58,7 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
             "  border: none;"
             "  padding: 9px 12px;"
             f"  color: {self._rgba(text_color)};"
-            f"  font-family: '{FONT_SANS}';"
+            f"  font-family: {FONT_SANS_STACK};"
             "  font-size: 13px;"
             f"  selection-background-color: {self._rgba(tok['flat_accent_weak'])};"
             f"  selection-color: {self._rgba(tok['flat_accent'])};"

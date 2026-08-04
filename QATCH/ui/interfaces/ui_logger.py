@@ -22,6 +22,7 @@ from QATCH.core.constants import Constants
 from QATCH.ui.components import AnimatedComboBox, QATCHLineEdit
 from QATCH.ui.components.icon_utils import tinted_icon, tinted_pixmap
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import FONT_MONO_STACK
 
 if TYPE_CHECKING:
     from QATCH.ui.windows import LoggerWindow
@@ -855,7 +856,7 @@ class QTextEditLogger(QtCore.QObject):
         msg_html = f"<span style='color:{lvl_color}; font-weight:{weight};'>{raw_msg}</span>"
 
         return (
-            f"<span style='font-family: Consolas, \"Courier New\", monospace;'>"
+            f"<span style='font-family: {FONT_MONO_STACK};'>"
             f"{time_html} | {lvl_html} | {loc_html} | {msg_html}</span><br>"
         )
 

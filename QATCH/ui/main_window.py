@@ -67,6 +67,14 @@ from QATCH.ui.components.plot_grid_item import PlotGridItem
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import (
+    FONT_SANS_STACK,
+    TYPE_DISPLAY,
+    TYPE_TOOLTIP,
+    TYPE_TOOLTIP_SUB,
+    font_css,
+    make_qfont,
+)
 from QATCH.ui.widgets.floating_message_badge_widget import FloatingMessageBadgeWidget
 from QATCH.ui.widgets.update_status_badge import UpdateStatusIcon
 from QATCH.ui.windows import (
@@ -2311,7 +2319,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Determine responsive font sizes
         font_size_pt = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
-        font_family = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font_family = FONT_SANS_STACK
 
         tok = ThemeManager.instance().tokens()
         text_color_val = tok["plot_text_muted"]
@@ -2322,7 +2330,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._text1 = pg.TextItem("", anchor=(0.5, 0.5))
         self._text1.setHtml(
             f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; margin: 0;'>"
-            f"<span style='font-size: 16pt; font-weight: 600; letter-spacing: 0.5px;'>"
+            f"<span style='{font_css(TYPE_DISPLAY)}'>"
             f"Welcome to nanovisQ&trade;</span></p>"
         )
 
@@ -3533,9 +3541,7 @@ class MainWindow(QtWidgets.QMainWindow):
         class GlassDateAxis(DateAxis):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                f = QtGui.QFont("Segoe UI")
-                f.setPixelSize(10)
-                self.setTickFont(f)
+                self.setTickFont(make_qfont(pixel_size=10))
                 self.setStyle(
                     tickLength=0,
                     tickTextOffset=3,
@@ -5825,10 +5831,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         html = (
             "<div style='"
-            "font-family: Segoe UI, -apple-system, system-ui, sans-serif;"
-            f"font-size: 9pt; color: {text_css};'>"
+            f"font-family: {FONT_SANS_STACK}; {font_css(TYPE_TOOLTIP)} color: {text_css};'>"
             f"<b>{label_text}</b><br/>"
-            f"<span style='font-size: 8pt; color: {muted_css};'>"
+            f"<span style='{font_css(TYPE_TOOLTIP_SUB)} color: {muted_css};'>"
             f"t = {t:.2f} s"
             "</span></div>"
         )

@@ -10,7 +10,6 @@ from .qatch_line_edit import QATCHLineEdit
 from .qatch_option_card import QATCHOptionCard, QATCHOptionCardGroup
 from .qatch_panel import QATCHPanel
 from .qatch_push_button import QATCHPushButton
-from .qatch_stepper_field import attach_stepper
 from .qatch_toggle import LabeledToggle, QATCHToggle
 from .qatch_warning_label import QATCHWarningLabel
 from .run_controls_button import RunControls
@@ -39,5 +38,4 @@ __all__ = [
     "FLUXControl",
     "PlotStatusBanner",
     "POIChipField",
-    "attach_stepper",
 ]

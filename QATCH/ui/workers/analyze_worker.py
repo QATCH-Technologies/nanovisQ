@@ -15,6 +15,7 @@ from QATCH.common.fileStorage import secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants
+from QATCH.ui.styles.typography import FONT_SANS_STACK
 from QATCH.ui.widgets.table_view_widget import TableView
 
 TAG = "[AnalyzeWorker]"
@@ -3152,7 +3153,7 @@ class AnalyzeWorker(QtCore.QObject):
                 table_layout.addWidget(tableWidget)
                 tableLabel = QtWidgets.QLabel(summary_text)
                 tableLabel.setStyleSheet(
-                    "font-family: Roboto, Arial, Calibri, sans-serif; font-size: 12pt; font-weight: bold;"
+                    f"font-family: {FONT_SANS_STACK}; font-size: 12pt; font-weight: bold;"
                 )
                 tableLabel.setWordWrap(True)
                 table_layout.addWidget(tableLabel)

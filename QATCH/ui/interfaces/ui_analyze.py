@@ -3,7 +3,6 @@ import atexit
 import datetime as dt
 import hashlib
 import os
-import re
 import sys
 import time
 import traceback
@@ -46,11 +45,11 @@ from QATCH.processors.CurveOptimizer import (
 from QATCH.QModel import QModelIndus, QModelOnyx, QModelTweed, QModelVolta
 from QATCH.ui.components import (
     AnimatedComboBox,
+    AnimatedDoubleSpinBox,
     LabeledToggle,
     POIChipField,
     QATCHLineEdit,
     QATCHPushButton,
-    attach_stepper,
 )
 from QATCH.ui.components.analyze_action_bar import AnalyzeActionBar
 from QATCH.ui.components.analyze_plot_cards import (
@@ -554,7 +553,7 @@ class UIAnalyze(QtWidgets.QWidget):
     # to perform directly back onto the main thread.
     _model_status_changed = QtCore.pyqtSignal(str)
     _model_status_cleared = QtCore.pyqtSignal()
-    _diff_factor_text_changed = QtCore.pyqtSignal(str)
+    _diff_factor_value_changed = QtCore.pyqtSignal(float)
 
     # Plot-card gear menu wiring: maps each SIGNAL_COLORS key to the curve
     # attribute names _plot_signal_curves() assigns on self (main-graph fit
@@ -615,6 +614,12 @@ class UIAnalyze(QtWidgets.QWidget):
         ("Channel 2", 4),
         ("Channel 3", 5),
     )
+    # The same 5 user-facing poi_markers indices as _INTERMEDIATE_STEPS
+    # above, without the step labels - the Custom POIs field (POIChipField)
+    # reads/writes exactly these 5 slots, in order, and never touches index
+    # 2 (POI3). Derived from _INTERMEDIATE_STEPS rather than repeated as a
+    # separate literal, so there's one place that knows "POI3 is hidden".
+    _VISIBLE_POI_SLOTS = tuple(idx for _, idx in _INTERMEDIATE_STEPS)
     # Duration of one marker's animated fade in/out when a stepper step is
     # added/removed via +/- - matches PillStepper._ANIM_MS so the marker
     # and its pill read as one cohesive transition rather than two
@@ -756,7 +761,6 @@ class UIAnalyze(QtWidgets.QWidget):
         self.tool_Cancel = self.actionbar.tool_Cancel
         self.tool_Back = self.actionbar.tool_Back
         self.tool_Next = self.actionbar.tool_Next
-        self.position_label = self.actionbar.position_label
         self.tool_Modify = self.actionbar.tool_Modify
         self.tool_Analyze = self.actionbar.tool_Analyze
         self.tool_Advanced = self.actionbar.tool_Advanced
@@ -802,25 +806,29 @@ class UIAnalyze(QtWidgets.QWidget):
         self.cBox_Devices.setEnabled(False)
 
         # Parameters ------------------------------------------------------
-        self.validFactor = QtGui.QDoubleValidator(0.5, 2, 3)  # allow exponential notation
-        self.tbox_diff_factor = QATCHLineEdit()
-        self.tbox_diff_factor.setValidator(self.validFactor)
+        self.tbox_diff_factor = AnimatedDoubleSpinBox(
+            up_icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg"),
+            down_icon_path=os.path.join(
+                Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
+            ),
+        )
+        self.tbox_diff_factor.setDecimals(3)
+        self.tbox_diff_factor.setRange(0.5, 2.0)
+        self.tbox_diff_factor.setSingleStep(0.05)
         self.tbox_diff_factor.setFixedWidth(100)
+        self.tbox_diff_factor.setValue(Constants.default_diff_factor)
         # Enter / focus-loss now commits directly (previously only the
         # deleted "Set/Reload" button did) - see set_new_diff_factor.
         self.tbox_diff_factor.editingFinished.connect(self.set_new_diff_factor)
-        # Tiny +/- 0.05 stepper embedded in the field's own right edge (see
-        # QATCH.ui.components.qatch_stepper_field) - replaces the old
-        # separate "Set/Reload" button entirely.
-        self._diff_factor_stepper = attach_stepper(
-            self.tbox_diff_factor, step=0.05, minimum=0.5, maximum=2.0, decimals=3
-        )
 
-        self.validThickness = QtGui.QDoubleValidator(0, 1, 3)  # allow exponential notation
+        # Displayed/edited in micrometers (Constants.channel_thickness itself
+        # stays in meters - the SI unit analyze_worker.py's viscosity formulas
+        # expect) so the field shows e.g. "2.250" instead of "2.25e-06".
+        self.validThickness = QtGui.QDoubleValidator(0, 1e6, 3)
         self.tbox_ch_thick = QATCHLineEdit()
         self.tbox_ch_thick.setValidator(self.validThickness)
         self.tbox_ch_thick.setFixedWidth(75)
-        self.tbox_ch_thick.setText(str(Constants.channel_thickness))
+        self.tbox_ch_thick.setText(f"{Constants.channel_thickness * 1e6:.3f}")
         self.tbox_ch_thick.textEdited.connect(self.set_new_ch_thick)
         self.h0 = _InfoIcon(
             os.path.join(Architecture.get_path(), "QATCH", "icons", "question-circle.svg"),
@@ -1286,7 +1294,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.onyx_predict_progress.connect(self._QModel_onyx_progress_update)
         self._model_status_changed.connect(self._set_model_status_text)
         self._model_status_cleared.connect(self._clear_model_status_text)
-        self._diff_factor_text_changed.connect(self.tbox_diff_factor.setText)
+        self._diff_factor_value_changed.connect(self.tbox_diff_factor.setValue)
 
         # Arm the run-list watcher and do the one full scan now, so the run
         # list is already warm by the time the user first opens Analyze mode
@@ -1324,6 +1332,7 @@ class UIAnalyze(QtWidgets.QWidget):
             self._lbl_ch_thick,
             self._lbl_custom_poi,
             self._lbl_ch_thick_unit,
+            self._poi_copied_label,
         ):
             label.setStyleSheet(desc_label_qss())
         # text_Devices/_diff_hint_label have their own state-dependent
@@ -2931,6 +2940,12 @@ class UIAnalyze(QtWidgets.QWidget):
         setSizes = [min_width, full_width - min_width]
         return setSizes
 
+    def _visible_poi_vals(self, poi_vals_all6: List[int]) -> List[int]:
+        """Projects a full 6-value (one per `self.poi_markers` slot) index
+        list down to the 5 user-facing Custom POI values, dropping POI3's
+        (index 2) value - see `_VISIBLE_POI_SLOTS`."""
+        return [poi_vals_all6[i] for i in self._VISIBLE_POI_SLOTS]
+
     def update_custom_pois(self):
         new_pois = self.custom_poi_text.text()
         new_pois = (
@@ -2940,18 +2955,39 @@ class UIAnalyze(QtWidgets.QWidget):
             new_pois, sep=" "
         ).tolist()  # convert string to numpy array and then to a list
         Log.w(f"Set Custom POIs: {new_pois}")
-        for px, pm in enumerate(self.poi_markers):
+        # Maps onto the 5 user-facing slots only (POI1, POI2, POI4, POI5,
+        # POI6 - see _VISIBLE_POI_SLOTS) - POI3 (poi_markers[2]) is never
+        # reachable through this path. Fewer than 5 provided values leaves
+        # the trailing visible markers untouched rather than erroring.
+        for slot, val in enumerate(new_pois[: len(self._VISIBLE_POI_SLOTS)]):
+            marker_idx = self._VISIBLE_POI_SLOTS[slot]
+            pm = self.poi_markers[marker_idx]
             try:
-                index = self.xs[int(new_pois[px])]
+                index = self.xs[int(val)]
                 if pm.value() != index:
-                    Log.d(f"Moving marker {px} to position {index}")
+                    Log.d(f"Moving marker {marker_idx} to position {index}")
                     self.detect_change()
-                    self.poi_markers[px].setValue(index)
-                    self.poi_markers[px].sigPositionChangeFinished.emit(self.poi_markers[px])
+                    pm.setValue(index)
+                    pm.sigPositionChangeFinished.emit(pm)
                 else:
-                    Log.d(f"Moving marker {px} not required. Already there.")
+                    Log.d(f"Moving marker {marker_idx} not required. Already there.")
             except Exception as e:
-                Log.e(f"Moving marker {px} failed: {str(e)}")
+                Log.e(f"Moving marker {marker_idx} failed: {str(e)}")
+
+    def _copy_custom_pois(self) -> None:
+        """Copies the current (<=5) Custom POI values to the clipboard as a
+        Python-list literal, e.g. "[8723, 8725, 12180]" - same clipboard
+        pattern as `run_info_widget.RunInfoWidget.copyText`."""
+        values = self._poi_chip_field.values()
+        try:
+            cb = QtWidgets.QApplication.clipboard()
+            cb.clear(mode=cb.Clipboard)
+            cb.setText(str(values), mode=cb.Clipboard)
+        except Exception as e:
+            Log.e(f"Clipboard error: {e}")
+            return
+        self._poi_copied_label.setVisible(True)
+        QtCore.QTimer.singleShot(2000, lambda: self._poi_copied_label.setVisible(False))
 
     def showRunsFromAllDevices_clicked(self):
         self.cBox_Devices.setEnabled(not self.showRunsFromAllDevices.isChecked())
@@ -3338,9 +3374,9 @@ class UIAnalyze(QtWidgets.QWidget):
         * Parameters - a Difference Factor sub-group (header row pairing
           the "Difference Factor" caption with the compact
           `difference_factor_optimizer_checkbox` "Auto-calculate" toggle,
-          then `tbox_diff_factor` with an embedded +/- stepper - see
-          `QATCH.ui.components.qatch_stepper_field` - plus a range/status
-          hint label), a Channel Thickness row (`tbox_ch_thick` + unit
+          then `tbox_diff_factor` - an `AnimatedDoubleSpinBox` with its own
+          built-in +/- chevrons - plus a range/status hint label), a
+          Channel Thickness row (`tbox_ch_thick` + unit
           suffix + `h0` info icon), and a Custom POIs chip field
           (`QATCH.ui.components.poi_chip_field.POIChipField`, backed by the
           still-real but non-visible `custom_poi_text` line edit).
@@ -3396,7 +3432,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self._lbl_diff_factor = QtWidgets.QLabel("Difference Factor")
         self._lbl_ch_thick = QtWidgets.QLabel("Channel Thickness")
         self._lbl_custom_poi = QtWidgets.QLabel("Custom POIs")
-        self._lbl_ch_thick_unit = QtWidgets.QLabel("m")
+        self._lbl_ch_thick_unit = QtWidgets.QLabel("µm")
 
         # Difference Factor sub-group: header row (caption + compact
         # Auto-calculate toggle) above the value row (stepper field + hint).
@@ -3430,10 +3466,27 @@ class UIAnalyze(QtWidgets.QWidget):
         # existing (now non-visible) custom_poi_text line edit - see
         # QATCH.ui.components.poi_chip_field for the full backend contract.
         self._poi_chip_field = POIChipField(self.custom_poi_text, self.update_custom_pois)
+
+        # Header row (caption + "Copied!" flash + Copy button), mirroring
+        # diff_header_row's label/stretch/control layout above.
+        self._poi_copied_label = QtWidgets.QLabel("Copied!")
+        self._poi_copied_label.setVisible(False)
+        self._poi_copy_button = QATCHPushButton("Copy", variant="ghost")
+        self._poi_copy_button.setToolTip("Copy the Custom POI indices to the clipboard")
+        self._poi_copy_button.clicked.connect(self._copy_custom_pois)
+
+        custom_poi_header_row = QtWidgets.QHBoxLayout()
+        custom_poi_header_row.setContentsMargins(0, 0, 0, 0)
+        custom_poi_header_row.setSpacing(6)
+        custom_poi_header_row.addWidget(self._lbl_custom_poi)
+        custom_poi_header_row.addStretch()
+        custom_poi_header_row.addWidget(self._poi_copied_label)
+        custom_poi_header_row.addWidget(self._poi_copy_button)
+
         custom_poi_group = QtWidgets.QVBoxLayout()
         custom_poi_group.setContentsMargins(0, 0, 0, 0)
         custom_poi_group.setSpacing(6)
-        custom_poi_group.addWidget(self._lbl_custom_poi)
+        custom_poi_group.addLayout(custom_poi_header_row)
         custom_poi_group.addWidget(self._poi_chip_field)
 
         parameters = section("Parameters", diff_factor_group, ch_thick_row, custom_poi_group)
@@ -3517,7 +3570,7 @@ class UIAnalyze(QtWidgets.QWidget):
                 cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
                 poi_vals.append(cur_idx)
             poi_vals.sort()
-            self.custom_poi_text.setText(f"{poi_vals}")
+            self.custom_poi_text.setText(f"{self._visible_poi_vals(poi_vals)}")
         except Exception as e:
             Log.e(
                 "Error: An exception occurred while pre-filling current POIs. Is a run even loaded?"
@@ -3622,12 +3675,10 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         checked = self.difference_factor_optimizer_checkbox.isChecked()
         if not checked:
-            self.tbox_diff_factor.setText(f"{Constants.default_diff_factor:1.3f}")
-        # Grey out the manual field (and its stepper) while auto-calculate
-        # is on - it previously stayed enabled/editable regardless.
+            self.tbox_diff_factor.setValue(Constants.default_diff_factor)
+        # Grey out the manual field while auto-calculate is on - it
+        # previously stayed enabled/editable regardless.
         self.tbox_diff_factor.setEnabled(not checked)
-        if hasattr(self, "_diff_factor_stepper"):
-            self._diff_factor_stepper.setEnabled(not checked)
         if hasattr(self, "_diff_hint_label"):
             self._set_diff_hint_text()
         self.set_new_diff_factor()
@@ -3636,13 +3687,8 @@ class UIAnalyze(QtWidgets.QWidget):
         try:
             self.action_cancel()  # ask if they mean it if there are unsaved changes
             if not self.hasUnsavedChanges():  # only proceed if they say yes
-                try:
-                    self.diff_factor = round(float(self.tbox_diff_factor.text()), 3)
-                    Log.d(f"Difference Factor = {self.diff_factor}")
-                except:
-                    if hasattr(self, "diff_factor"):
-                        del self.diff_factor  # unset to revert to default auto-calc value
-                        Log.d("Difference Factor deleted")
+                self.diff_factor = round(self.tbox_diff_factor.value(), 3)
+                Log.d(f"Difference Factor = {self.diff_factor}")
                 self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
@@ -3651,63 +3697,29 @@ class UIAnalyze(QtWidgets.QWidget):
         try:
             self.action_cancel()  # ask if they mean it if there are unsaved changes
             if not self.hasUnsavedChanges():  # only proceed if they say yes
-                try:
-                    self.diff_factor = round(float(self.tbox_diff_factor.text()), 3)
-                    Log.d(f"Difference Factor = {self.diff_factor}")
-                except:
-                    if hasattr(self, "diff_factor"):
-                        del self.diff_factor  # unset to revert to default auto-calc value
-                        Log.d("Difference Factor deleted")
+                self.diff_factor = round(self.tbox_diff_factor.value(), 3)
+                Log.d(f"Difference Factor = {self.diff_factor}")
                 self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
 
     def set_new_diff_factor(self):
         """
-        Validates and sets a new difference factor based on user input.
+        Sets a new difference factor from `tbox_diff_factor`'s current value.
 
-        This method checks if the input in `tbox_diff_factor` is valid and within
-        the acceptable range defined by `self.validFactor`. If valid, it confirms
-        any unsaved changes before proceeding to update the `diff_factor` with the
-        provided input. If the input is invalid, it logs an error message. After
-        updating the difference factor, it refreshes the plots by calling `self.load_run()`.
-
-        Raises an error if the process fails.
-
-        Behavior:
-            - If `tbox_diff_factor` input is invalid:
-                - Logs an error message.
-                - Exits without making changes.
-            - If there are unsaved changes:
-                - Calls `self.action_cancel()` to confirm changes.
-            - If confirmed:
-                - Updates `diff_factor` with the validated input value.
-                - If input parsing fails, reverts to the default auto-calculated value.
-                - Logs the updated or reverted state.
-            - Refreshes the plots to reflect the new difference factor.
+        `AnimatedDoubleSpinBox` enforces its own [0.5, 2.0] range natively, so
+        the value is always valid - no separate acceptable-input check is
+        needed here anymore. Confirms any unsaved changes before updating
+        `diff_factor` and refreshing the plots via `self.load_run()`.
 
         Exceptions:
             Logs an error message if setting the new difference factor fails.
-
         """
         try:
-            if not self.tbox_diff_factor.hasAcceptableInput():
-                Log.e(
-                    "Input Error: Difference Factor must be between {} and {}.".format(
-                        self.validFactor.bottom(), self.validFactor.top()
-                    )
-                )
-                return
-
             self.action_cancel()  # ask if they mean it if there are unsaved changes
             if not self.hasUnsavedChanges():  # only proceed if they say yes
-                try:
-                    self.diff_factor = round(float(self.tbox_diff_factor.text()), 3)
-                    Log.d(f"Difference Factor = {self.diff_factor}")
-                except:
-                    if hasattr(self, "diff_factor"):
-                        del self.diff_factor  # unset to revert to default auto-calc value
-                        Log.d("Difference Factor deleted")
+                self.diff_factor = round(self.tbox_diff_factor.value(), 3)
+                Log.d(f"Difference Factor = {self.diff_factor}")
                 self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
@@ -3716,14 +3728,16 @@ class UIAnalyze(QtWidgets.QWidget):
         try:
             if not self.tbox_ch_thick.hasAcceptableInput():
                 Log.e(
-                    "Input Error: Channel Thickness must be between {} and {}.".format(
+                    "Input Error: Channel Thickness must be between {} and {} µm.".format(
                         self.validThickness.bottom(), self.validThickness.top()
                     )
                 )
                 return
 
-            Constants.channel_thickness = float(self.tbox_ch_thick.text())
-            Log.d(f"Channel thickness = {Constants.channel_thickness}")
+            # Field is in micrometers; Constants.channel_thickness stays in
+            # meters (the SI unit analyze_worker.py's formulas expect).
+            Constants.channel_thickness = float(self.tbox_ch_thick.text()) * 1e-6
+            Log.d(f"Channel thickness = {Constants.channel_thickness} m")
         except:
             Log.e("Failed to set new channel thickness!")
 
@@ -3762,25 +3776,7 @@ class UIAnalyze(QtWidgets.QWidget):
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
-    _STEP_TEXT_RE = re.compile(r"^Step (\d+) of (\d+)")
-
-    def _sync_position_chip(self, status: Optional[str]) -> None:
-        """Mirrors the action bar's "pos N/total" chip off the same "Step N
-        of total: ..." / "Summary: ..." text getPoints()/goBack() already
-        pass to `_update_progress_value` - rather than re-deriving the
-        position independently at every one of stateStep's own mutation
-        sites, which would drift the moment that state machine changes.
-        """
-        if not status:
-            return
-        match = self._STEP_TEXT_RE.match(status)
-        if match:
-            self.position_label.setText(f"{match.group(1)} / {match.group(2)}")
-        elif status.startswith("Summary"):
-            self.position_label.setText("6 / 6")
-
     def _update_progress_value(self, value=0, status=None):
-        self._sync_position_chip(status)
         pct = self.progressBar.value()
         if status != None:
             self.progressBar.setValue(value)
@@ -6522,7 +6518,7 @@ class UIAnalyze(QtWidgets.QWidget):
                             cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
                             poi_vals.append(cur_idx)
                         poi_vals.sort()
-                        self.custom_poi_text.setText(f"{poi_vals}")
+                        self.custom_poi_text.setText(f"{self._visible_poi_vals(poi_vals)}")
                         self.update_custom_pois()  # write POI markers in correct order
                     except Exception as e:
                         Log.e("Error: An exception occurred while sorting POI markers.")
@@ -6571,7 +6567,7 @@ class UIAnalyze(QtWidgets.QWidget):
                             # Track which markers have been moved and only update model for those points, otherwise take starting point
                             if poi_vals != model_starting_points:
                                 # Updating custom POIs also re-writes the POI markers
-                                self.custom_poi_text.setText(f"{poi_vals}")
+                                self.custom_poi_text.setText(f"{self._visible_poi_vals(poi_vals)}")
                                 self.update_custom_pois()  # write POI markers in correct order
                                 self.moved_markers = [
                                     False,
@@ -6607,7 +6603,7 @@ class UIAnalyze(QtWidgets.QWidget):
                                 cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
                                 poi_vals.append(cur_idx)
                             poi_vals.sort()
-                            self.custom_poi_text.setText(f"{poi_vals}")
+                            self.custom_poi_text.setText(f"{self._visible_poi_vals(poi_vals)}")
                             self.update_custom_pois()  # write POI markers in correct order
                         except Exception as e:
                             Log.e("Error: An exception occurred while sorting POI markers.")
@@ -8504,7 +8500,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         Log.d(f"Difference factor: {diff_factor:.3f}x")
         Log.d("Setting diff_factor on Advanced Settings menu")
-        self._diff_factor_text_changed.emit(f"{diff_factor:.3f}")
+        self._diff_factor_value_changed.emit(diff_factor)
 
         # Noise-floor parameters for start/stop thresholding
         eh1 = float(abs(np.amax(ys_diff[t_0p5:t_1p0])))

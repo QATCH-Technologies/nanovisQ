@@ -5,8 +5,8 @@ from typing import Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.components.flat_paint import paint_flat_surface
-from QATCH.ui.styles.fonts import FONT_SANS, FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import FONT_SANS_STACK, make_qfont
 
 _RADIUS = 7.0
 
@@ -58,15 +58,15 @@ class _FlatItemDelegate(QtWidgets.QStyledItemDelegate):
             painter.setBrush(QtGui.QColor(*tok["flat_accent_weak"]))
             painter.drawRoundedRect(row_rect, self._ROW_RADIUS, self._ROW_RADIUS)
             text_color = QtGui.QColor(*tok["flat_accent"])
-            font = QtGui.QFont(FONT_SANS_SEMIBOLD)
+            font = make_qfont(weight=QtGui.QFont.DemiBold)
         elif is_hover:
             painter.setBrush(QtGui.QColor(*tok["flat_surface2"]))
             painter.drawRoundedRect(row_rect, self._ROW_RADIUS, self._ROW_RADIUS)
             text_color = QtGui.QColor(*tok["flat_text"])
-            font = QtGui.QFont(FONT_SANS)
+            font = make_qfont()
         else:
             text_color = QtGui.QColor(*tok["flat_text"])
-            font = QtGui.QFont(FONT_SANS)
+            font = make_qfont()
         font.setPixelSize(13)
         painter.setFont(font)
 
@@ -137,15 +137,15 @@ class _CompleterRowDelegate(QtWidgets.QStyledItemDelegate):
             painter.setBrush(QtGui.QColor(*tok["flat_accent_weak"]))
             painter.drawRoundedRect(row_rect, self._ROW_RADIUS, self._ROW_RADIUS)
             text_color = QtGui.QColor(*tok["flat_accent"])
-            font = QtGui.QFont(FONT_SANS_SEMIBOLD)
+            font = make_qfont(weight=QtGui.QFont.DemiBold)
         elif is_hover:
             painter.setBrush(QtGui.QColor(*tok["flat_surface2"]))
             painter.drawRoundedRect(row_rect, self._ROW_RADIUS, self._ROW_RADIUS)
             text_color = QtGui.QColor(*tok["flat_text"])
-            font = QtGui.QFont(FONT_SANS)
+            font = make_qfont()
         else:
             text_color = QtGui.QColor(*tok["flat_text"])
-            font = QtGui.QFont(FONT_SANS)
+            font = make_qfont()
         font.setPixelSize(13)
         painter.setFont(font)
 
@@ -436,7 +436,7 @@ class AnimatedComboBox(QtWidgets.QComboBox):
         self.setStyleSheet(f"""
             QComboBox#AnimatedComboBox {{
                 color: rgba({r}, {g}, {b}, {a});
-                font-family: '{FONT_SANS}';
+                font-family: {FONT_SANS_STACK};
                 font-size: 13px;
                 padding-left: 12px;
             }}

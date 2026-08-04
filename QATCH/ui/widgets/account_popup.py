@@ -6,8 +6,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.components.qatch_push_button import QATCHPushButton
-from QATCH.ui.styles.fonts import FONT_SANS, FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import FONT_SANS_STACK
 
 
 def _tinted_icon(path: str, color: QtGui.QColor, size: int = 16) -> QtGui.QIcon:
@@ -358,29 +358,29 @@ class AccountPopup(QtWidgets.QWidget):
         tok = ThemeManager.instance().tokens()
 
         self._name_lbl.setStyleSheet(
-            f"color: {tok_css(tok['flat_text'])}; font-family: '{FONT_SANS_SEMIBOLD}'; "
-            "font-size: 13px; background: transparent; border: none;"
+            f"color: {tok_css(tok['flat_text'])}; font-family: {FONT_SANS_STACK}; "
+            "font-size: 13px; font-weight: 600; background: transparent; border: none;"
         )
         self._initials_lbl.setStyleSheet(
-            f"color: {tok_css(tok['flat_text_muted'])}; font-family: '{FONT_SANS}'; "
+            f"color: {tok_css(tok['flat_text_muted'])}; font-family: {FONT_SANS_STACK}; "
             "font-size: 10px; background: transparent; border: none;"
         )
 
         role_colors = _role_colors(self._role_name)
         self._role_badge.setStyleSheet(
             f"background: {tok_css(role_colors['bg'])}; color: {tok_css(role_colors['text'])}; "
-            f"font-family: '{FONT_SANS_SEMIBOLD}'; border-radius: 4px; padding: 1px 7px; "
+            f"font-family: {FONT_SANS_STACK}; font-weight: 600; border-radius: 4px; padding: 1px 7px; "
             f"font-size: 10px; border: 1px solid {tok_css(role_colors['border'])};"
         )
 
         if self._last_lbl is not None:
             self._last_lbl.setStyleSheet(
-                f"color: {tok_css(tok['flat_text_muted'])}; font-family: '{FONT_SANS}'; "
+                f"color: {tok_css(tok['flat_text_muted'])}; font-family: {FONT_SANS_STACK}; "
                 "font-size: 10px; background: transparent; border: none; padding-left: 1px;"
             )
         if self._status_lbl is not None:
             self._status_lbl.setStyleSheet(
-                f"color: {tok_css(tok['flat_error'])}; font-family: '{FONT_SANS}'; "
+                f"color: {tok_css(tok['flat_error'])}; font-family: {FONT_SANS_STACK}; "
                 "font-size: 10px; font-style: italic; background: transparent; "
                 "border: none; padding-left: 1px;"
             )

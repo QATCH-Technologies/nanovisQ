@@ -51,8 +51,8 @@ from typing import Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.components.flat_paint import paint_flat_surface
-from QATCH.ui.styles.fonts import FONT_SANS_SEMIBOLD
 from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.typography import FONT_SANS_STACK, make_qfont
 
 _RADIUS = 7.0
 _RADIUS_ICON_TOOLBAR = 8.0
@@ -200,8 +200,9 @@ class QATCHPushButton(QtWidgets.QPushButton):
                 background: transparent;
                 border: none;
                 padding: {v_pad}px {h_pad}px;
-                font-family: '{FONT_SANS_SEMIBOLD}';
+                font-family: {FONT_SANS_STACK};
                 font-size: 13px;
+                font-weight: 600;
             }}
         """)
 
@@ -521,9 +522,7 @@ class QATCHPushButton(QtWidgets.QPushButton):
             p.drawPixmap(icon_pad, icon_y, icon.pixmap(isz))
             text_x = icon_pad + isz.width() + gap
 
-        font = QtGui.QFont(FONT_SANS_SEMIBOLD)
-        font.setPixelSize(13)
-        p.setFont(font)
+        p.setFont(make_qfont(pixel_size=13, weight=QtGui.QFont.DemiBold))
         p.setPen(QtGui.QPen(text_color))
         text_rect = QtCore.QRect(text_x, 0, w - text_x - 12, h)
         p.drawText(

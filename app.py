@@ -87,9 +87,6 @@ class QATCH:
         QtCore.QCoreApplication.setApplicationName("nanovisQ")
         self._app = QApplication(argv)
 
-        from QATCH.ui.styles.fonts import register_app_fonts
-
-        register_app_fonts()
         from QATCH.ui.styles.theme_manager import ThemeManager
 
         ThemeManager.instance().apply_app_stylesheet(self._app)

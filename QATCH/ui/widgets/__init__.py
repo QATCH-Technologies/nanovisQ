@@ -2,7 +2,6 @@ from .account_popup import AccountPopup
 from .advanced_main_widget import AdvancedMainWidget
 from .collapsible_box_widget import CollapsibleBox
 from .configure_data_widget import UIConfigureData
-from .controls_widget import ControlsWidget
 from .create_user_widget import CreateUserWidget
 from .data_management_widget import DataManagementWidget
 from .data_mode_advanced import AdvancedMode
@@ -57,7 +56,6 @@ __all__ = [
     "UserPreferencesWidget",
     "UserProfilesManagerWidget",
     "WellPlate",
-    "ControlsWidget",
     "SavedStateDot",
     "AccountPopup",
     "RunFilterPopover",

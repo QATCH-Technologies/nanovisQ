@@ -43,12 +43,11 @@ from QATCH.ui.components import (
     AnimatedDoubleSpinBox,
     FLUXControl,
     LabeledToggle,
-    NumberIconButton,
     QATCHLineEdit,
     QATCHPushButton,
     QATCHToggle,
-    RunControls,
 )
+from QATCH.ui.components.controls_action_bar import ControlsActionBar
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.labels import (
     DeviceConfigLabel,
@@ -58,9 +57,9 @@ from QATCH.ui.labels import (
     TemperatureLabel,
 )
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import make_qfont
 from QATCH.ui.widgets import (
     AdvancedMainWidget,
-    ControlsWidget,
     SavedStateDot,
     UserProfilesManagerWidget,
     WellPlate,
@@ -660,7 +659,9 @@ class UIControls:
         self.lTemp = TemperatureLabel()
         self.lTemp.setText("PV:--.--C SP:--.--C OP:----")
         self.lTemp.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.lTemp.setFont(QtGui.QFont("Consolas", -1))
+        self.lTemp.setFont(
+            make_qfont(families=["Consolas", "Courier New"], style_hint=QtGui.QFont.Monospace)
+        )
         self.lTemp.hide()
         self.Layout_controls.addWidget(self.lTemp, 2, 4, 1, 1)
 
@@ -842,142 +843,50 @@ class UIControls:
         # toolbar layout
 
         self.toolLayout = QtWidgets.QVBoxLayout()
-        self.toolBar = QtWidgets.QHBoxLayout()
-
-        self.tool_bar = QtWidgets.QToolBar()
-        self.tool_bar.setObjectName("CtrlToolBar")
-        self.tool_bar.setIconSize(QtCore.QSize(50, 30))
-
-        self.tool_NextPortRow = NumberIconButton()
-        self.tool_NextPortRow.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)  # type: ignore
-        self.tool_NextPortRow.setText("Next Port")
-        self.tool_NextPortRow.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.tool_NextPortRow.clicked.connect(self.action_next_port)
-        self.action_NextPortRow = self.tool_bar.addWidget(self.tool_NextPortRow)
-
-        self.action_NextPortSep = self.tool_bar.addSeparator()
-
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons")
-
-        icon_init = QtGui.QIcon()
-        icon_init.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "speedometer.svg")), QtGui.QIcon.Mode.Normal
-        )
-        self.tool_Initialize = QtWidgets.QToolButton()
-        self.tool_Initialize.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)  # type: ignore
-        self.tool_Initialize.setIcon(icon_init)
-        self.tool_Initialize.setText("Initialize")
-        self.tool_Initialize.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.tool_Initialize.clicked.connect(self.action_initialize)
-        self.tool_bar.addWidget(self.tool_Initialize)
-
-        self.tool_bar.addSeparator()
-
-        # RunControls composite widget
-        self.run_controls = RunControls()
-        self.run_controls.startRequested.connect(self.action_start)
-        self.run_controls.stopRequested.connect(self.action_stop)
-        self.run_controls.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.run_controls.setEnabled(False)
-        self.tool_Start = self.run_controls  # backward-compat alias
-        self.tool_Stop = self.run_controls
-        self.tool_bar.addWidget(self.run_controls)
-        self.tool_bar.addSeparator()
-
-        icon_reset = QtGui.QIcon()
-        icon_reset.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "reset.svg")), QtGui.QIcon.Mode.Normal
-        )
-        self.tool_Reset = QtWidgets.QToolButton()
-        self.tool_Reset.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)  # type: ignore
-        self.tool_Reset.setIcon(icon_reset)
-        self.tool_Reset.setText("Reset")
-        self.tool_Reset.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.tool_Reset.clicked.connect(self.action_reset)
-        self.tool_bar.addWidget(self.tool_Reset)
-
-        self.tool_bar.addSeparator()
 
         self._warningTimer = QtCore.QTimer()
         self._warningTimer.setSingleShot(True)
         self._warningTimer.timeout.connect(self.action_tempcontrol_warning)
         self._warningTimer.setInterval(2000)
 
-        icon_temp = QtGui.QIcon()
-        icon_temp.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "temperature-control.svg")),
-            QtGui.QIcon.Mode.Normal,
-        )
-        self.tool_TempControl = QtWidgets.QToolButton()
-        self.tool_TempControl.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)  # type: ignore
-        self.tool_TempControl.setIcon(icon_temp)
-        self.tool_TempControl.setText("Temp Control")
-        self.tool_TempControl.setCheckable(True)
-        self.tool_TempControl.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        # Construction/layout lives in ControlsActionBar (shares chrome with
+        # AnalyzeActionBar via TaskBarBase); this class only wires callbacks
+        # onto the widgets it builds - same "wrap, don't own" pattern as
+        # UIAnalyze.setup_ui/AnalyzeActionBar.
+        self.controls_actionbar = ControlsActionBar(self.slTemp)
+        self.tool_NextPortRow = self.controls_actionbar.tool_NextPortRow
+        self.action_NextPortRow = self.controls_actionbar.action_NextPortRow
+        self.action_NextPortSep = self.controls_actionbar.action_NextPortSep
+        self.tool_Initialize = self.controls_actionbar.tool_Initialize
+        self.run_controls = self.controls_actionbar.run_controls
+        self.tool_Start = self.run_controls  # backward-compat alias
+        self.tool_Stop = self.run_controls
+        self.tool_Reset = self.controls_actionbar.tool_Reset
+        self.tool_TempControl = self.controls_actionbar.tool_TempControl
+        self.tempController = self.controls_actionbar.tempController
+        self.tempStatusBar = self.controls_actionbar.tempStatusBar
+        self.lPV = self.controls_actionbar.lPV
+        self.lSP = self.controls_actionbar.lSP
+        self.lOP = self.controls_actionbar.lOP
+        self.tempPidInfo = self.controls_actionbar.tempPidInfo
+        self.tool_Advanced = self.controls_actionbar.tool_Advanced
+        self.tool_User = self.controls_actionbar.tool_User
+        self.tool_bar = self.controls_actionbar.run_bar
+        self.tool_bar_2 = self.controls_actionbar.app_bar
+
+        self.tool_NextPortRow.clicked.connect(self.action_next_port)
+        self.tool_Initialize.clicked.connect(self.action_initialize)
+        self.run_controls.startRequested.connect(self.action_start)
+        self.run_controls.stopRequested.connect(self.action_stop)
+        self.tool_Reset.clicked.connect(self.action_reset)
         self.tool_TempControl.clicked.connect(self.action_tempcontrol)
         self.tool_TempControl.enterEvent = self.action_tempcontrol_warn_start  # type: ignore[assignment]
         self.tool_TempControl.leaveEvent = self.action_tempcontrol_warn_stop  # type: ignore[assignment]
-        self.tool_bar.addWidget(self.tool_TempControl)
-
-        self.toolBar.addWidget(self.tool_bar)
-
-        # TEC temperature side-panel
-        self.tempController = QtWidgets.QWidget()
-        self.tempController.setObjectName("tempController")
         self.tempController.enterEvent = self.action_tempcontrol_warn_start  # type: ignore[assignment]
         self.tempController.leaveEvent = self.action_tempcontrol_warn_stop  # type: ignore[assignment]
-        self.tempController.setMinimumWidth(0)
-        self.tempController.setMaximumWidth(0)  # collapsed until activated
-
-        # Status banner
-        self.tempStatusBar = QtWidgets.QLabel("Offline")
-        self.tempStatusBar.setObjectName("tempStatusBanner")
-        self.tempStatusBar.setFixedHeight(18)
-        self.tempStatusBar.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        _status_font = QtGui.QFont()
-        _status_font.setPointSize(7)
-        _status_font.setBold(True)
-        self.tempStatusBar.setFont(_status_font)
-
-        # Status (top) above slider (bottom)
-        left_col = QtWidgets.QVBoxLayout()
-        left_col.setContentsMargins(0, 0, 0, 0)
-        left_col.setSpacing(4)
-        left_col.addWidget(self.tempStatusBar)
-        left_col.addWidget(self.slTemp)
-
-        # PID Info panel
-        value_font = QtGui.QFont("Consolas", 7)
-        self.lPV = QtWidgets.QLabel("PV  --.--°C")
-        self.lSP = QtWidgets.QLabel("SP  --.--°C")
-        self.lOP = QtWidgets.QLabel("OP  ----")
-        for lbl in (self.lPV, self.lSP, self.lOP):
-            lbl.setObjectName("TempPidValue")
-            lbl.setFont(value_font)
-            lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
-
-        self.tempPidInfo = QtWidgets.QFrame()
-        self.tempPidInfo.setObjectName("tempPidInfo")
-        pid_layout = QtWidgets.QVBoxLayout(self.tempPidInfo)
-        pid_layout.setContentsMargins(8, 4, 8, 4)
-        pid_layout.setSpacing(1)
-
-        pid_header = QtWidgets.QLabel("PID INFO")
-        pid_header.setObjectName("tempPidHeader")
-        pid_header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        pid_layout.addWidget(pid_header)
-        pid_layout.addWidget(self.lPV)
-        pid_layout.addWidget(self.lSP)
-        pid_layout.addWidget(self.lOP)
-
-        # Assemble panel
-        self.tempLayout = QtWidgets.QHBoxLayout()
-        self.tempLayout.setContentsMargins(8, 6, 8, 6)
-        self.tempLayout.setSpacing(8)
-        self.tempLayout.addLayout(left_col, 1)
-        self.tempLayout.addWidget(self.tempPidInfo, 0)
-        self.tempController.setLayout(self.tempLayout)
-        self.toolBar.addWidget(self.tempController)
+        self.tool_Advanced.clicked.connect(self.action_advanced)
+        self.tool_User.setEnabled(self._is_user_signed_in())
+        self.tool_User.clicked.connect(self._toggle_account_popup)
 
         # Set initial chevron on the toolbar button
         self._set_temp_arrow(expand=False)
@@ -985,53 +894,10 @@ class UIControls:
         # Wire live temperature updates to the display panel
         self.lTemp.text_updated.connect(self._update_temp_display)
 
-        self.toolBar.addStretch()
-
-        self.tool_bar_2 = QtWidgets.QToolBar()
-        self.tool_bar_2.setObjectName("CtrlToolBar")
-        self.tool_bar_2.setIconSize(QtCore.QSize(50, 30))
-
-        icon_advanced = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "gear.svg")
-        icon_advanced.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Mode.Normal)
-        self.tool_Advanced = QtWidgets.QToolButton()
-        self.tool_Advanced.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)  # type: ignore
-        self.tool_Advanced.setIcon(icon_advanced)
-        self.tool_Advanced.setText("Advanced")
-        self.tool_Advanced.setCheckable(True)
-        self.tool_Advanced.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.tool_Advanced.clicked.connect(self.action_advanced)
-        self.tool_Advanced.toggled.connect(
-            lambda _: self._refresh_checkable_style(self.tool_Advanced)
-        )
-        self.tool_bar_2.addWidget(self.tool_Advanced)
-
-        self.tool_bar_2.addSeparator()
-
-        icon_user = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "user-circle.svg")
-        icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Mode.Normal)
-        icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Mode.Disabled)
-        self.tool_User = QtWidgets.QToolButton()
-        self.tool_User.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)  # type: ignore
-        self.tool_User.setIcon(icon_user)
-        self.tool_User.setText("Account")
-        self.tool_User.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        self.tool_User.setCheckable(True)
-        self.tool_User.setEnabled(self._is_user_signed_in())
-        self.tool_User.clicked.connect(self._toggle_account_popup)
-        self.tool_User.toggled.connect(lambda _: self._refresh_checkable_style(self.tool_User))
-        self.tool_bar_2.addWidget(self.tool_User)
-
-        self.toolBar.addWidget(self.tool_bar_2)
-
-        self.toolBar.setContentsMargins(8, 4, 8, 4)
-
-        # Container for the entire toolbar row
-        self.toolBarWidget = ControlsWidget()
-        self.toolBarWidget.setLayout(self.toolBar)
-
-        self.toolLayout.addWidget(self.toolBarWidget)
+        # ControlsActionBar paints its own themed card background (see
+        # TaskBarBase) - no wrapper container needed, same as
+        # UIAnalyze.setup_ui's self.toolLayout.addWidget(self.actionbar).
+        self.toolLayout.addWidget(self.controls_actionbar)
         self.toolLayout.addWidget(self.run_progress_bar)
 
         # Activate the appropriate layout mode.  Grid widgets are always
@@ -2772,20 +2638,8 @@ class UIControls:
         re-rendered with the correct light-or-dark tint rather than staying
         permanently dark or light regardless of the active mode.
         """
-        tok = ThemeManager.instance().tokens()
-        color = QtGui.QColor(*tok["plot_text_normal"])
-        icon_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
-
-        buttons_icons = [
-            (getattr(self, "tool_Initialize", None), "speedometer.svg"),
-            (getattr(self, "tool_Reset", None), "reset.svg"),
-            (getattr(self, "tool_TempControl", None), "temperature-control.svg"),
-            (getattr(self, "tool_Advanced", None), "gear.svg"),
-        ]
-
-        for btn, icon_name in buttons_icons:
-            if btn is not None:
-                btn.setIcon(self._tinted_icon(os.path.join(icon_dir, icon_name), color))
+        if hasattr(self, "controls_actionbar"):
+            self.controls_actionbar.retint_icon_buttons()
 
         self._refresh_user_button_icon()
 
@@ -3488,22 +3342,6 @@ class UIControls:
         outer.addWidget(self.infobar_readout)
 
         return outer
-
-    @staticmethod
-    def _refresh_checkable_style(btn: QtWidgets.QAbstractButton) -> None:
-        """Forces an immediate QSS repolish of a checkable toolbar button.
-
-        Connected to `toggled` for `tool_Advanced`/`tool_User` so the
-        `:checked` highlight (see `app_theme.qss`'s `CtrlToolBar QToolButton`
-        rules) repaints the instant the state actually changes, covering
-        every place that flips it - the native click auto-toggle as well as
-        the explicit `setChecked()` calls in `action_advanced`/
-        `_toggle_account_popup` - rather than only the ones that happen to
-        already be visually in sync.
-        """
-        btn.style().unpolish(btn)
-        btn.style().polish(btn)
-        btn.update()
 
     def action_advanced(self, obj=None) -> None:
         """Toggle the advanced control panel popup.

@@ -28,10 +28,22 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.styles.fonts import FONT_MONO
 from QATCH.ui.styles.native_titlebar import apply_dark_titlebar_to_all_windows
 from QATCH.ui.styles.style_loader import StyleLoader
 from QATCH.ui.styles.tokens import PALETTES, ColorTokens
+from QATCH.ui.styles.typography import (
+    FONT_MONO_STACK,
+    FONT_SANS_STACK,
+    TYPE_BODY,
+    TYPE_CAPTION,
+    TYPE_CARD_TITLE,
+    TYPE_DESC,
+    TYPE_ERROR,
+    TYPE_FIELD,
+    TYPE_MONO_PREVIEW,
+    TYPE_TITLE,
+    font_css,
+)
 
 TAG = "[ThemeManager]"
 
@@ -75,7 +87,7 @@ def desc_label_qss() -> str:
     """
     tok = ThemeManager.instance().tokens()
     return (
-        f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 12px; "
+        f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; {font_css(TYPE_DESC)} "
         "background: transparent; }"
     )
 
@@ -90,8 +102,7 @@ def caption_label_qss() -> str:
     """
     tok = ThemeManager.instance().tokens()
     return (
-        f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 10px; "
-        "font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; "
+        f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; {font_css(TYPE_CAPTION)} "
         "background: transparent; }"
     )
 
@@ -105,14 +116,14 @@ def dialog_title_qss() -> str:
     titles render identically.
     """
     tok = ThemeManager.instance().tokens()
-    return f"QLabel {{ color: {tok_css(tok['plot_text_bright'])}; font-size: 14px; font-weight: 700; }}"
+    return f"QLabel {{ color: {tok_css(tok['plot_text_bright'])}; {font_css(TYPE_TITLE)} }}"
 
 
 def dialog_message_qss() -> str:
     """Shared QSS for a glass-dialog body QLabel, resolved fresh from the
     active theme's `plot_text_normal` token. See `dialog_title_qss`."""
     tok = ThemeManager.instance().tokens()
-    return f"QLabel {{ color: {tok_css(tok['plot_text_normal'])}; font-size: 13px; }}"
+    return f"QLabel {{ color: {tok_css(tok['plot_text_normal'])}; {font_css(TYPE_BODY)} }}"
 
 
 def hairline_qss() -> str:
@@ -384,8 +395,8 @@ def card_title_qss() -> str:
     'Reset Password')."""
     tok = ThemeManager.instance().tokens()
     return (
-        f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 14pt; "
-        f"font-weight: 700; background: transparent; }}"
+        f"QLabel {{ color: {tok_css(tok['flat_text'])}; {font_css(TYPE_CARD_TITLE)} "
+        f"background: transparent; }}"
     )
 
 
@@ -394,8 +405,8 @@ def error_label_qss() -> str:
     active theme's `flat_error` token."""
     tok = ThemeManager.instance().tokens()
     return (
-        f"QLabel {{ color: {tok_css(tok['flat_error'])}; font-size: 8.5pt; "
-        f"font-weight: 600; background: transparent; padding-left: 6px; }}"
+        f"QLabel {{ color: {tok_css(tok['flat_error'])}; {font_css(TYPE_ERROR)} "
+        f"background: transparent; padding-left: 6px; }}"
     )
 
 
@@ -578,8 +589,8 @@ def field_label_qss() -> str:
     color and a fixed weight, distinct from the muted `desc_label_qss`."""
     tok = ThemeManager.instance().tokens()
     return (
-        f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12.5px; "
-        "font-weight: 600; background: transparent; }"
+        f"QLabel {{ color: {tok_css(tok['flat_text'])}; {font_css(TYPE_FIELD)} "
+        "background: transparent; }"
     )
 
 
@@ -588,9 +599,10 @@ def mono_preview_qss() -> str:
     generated file-name/date-time pattern), resolved fresh from the active
     theme's `flat_accent` token."""
     tok = ThemeManager.instance().tokens()
+    mono_css = font_css(TYPE_MONO_PREVIEW, family=FONT_MONO_STACK)
     return (
         f"QLabel {{ color: {tok_css(tok['flat_accent'])}; "
-        f"font-family: '{FONT_MONO}'; font-size: 12.5px; background: transparent; }}"
+        f"{mono_css} background: transparent; }}"
     )
 
 
@@ -676,6 +688,8 @@ class ThemeManager(QtCore.QObject):
             app (QtWidgets.QApplication): The running application instance.
         """
         token_placeholders = {key.upper(): _css_rgba(value) for key, value in self.tokens().items()}
+        token_placeholders["FONT_SANS"] = FONT_SANS_STACK
+        token_placeholders["FONT_MONO"] = FONT_MONO_STACK
         self._loader.set_tokens(token_placeholders)
         try:
             app.setStyleSheet(self._loader.get_stylesheet(use_cache=False))

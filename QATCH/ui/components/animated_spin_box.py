@@ -5,8 +5,8 @@ from typing import Optional
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.components.flat_paint import paint_flat_surface
-from QATCH.ui.styles.fonts import FONT_SANS_MEDIUM
 from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.typography import make_qfont
 
 # Chrome (fill/border/radius/hover/focus-ring/error) is painted in Python via
 # `_OdometerMixin._paint_chrome`, matching the app's flat control system (see
@@ -353,8 +353,7 @@ class _OdometerMixin:
         self._in_error = False
         self.setAttribute(QtCore.Qt.WA_Hover, True)
         self.setStyleSheet("padding-left: 12px;")
-        f = QtGui.QFont(FONT_SANS_MEDIUM)
-        f.setPixelSize(14)
+        f = make_qfont(pixel_size=14, weight=QtGui.QFont.Medium)
         self.setFont(f)
         if self.lineEdit() is not None:
             self.lineEdit().setFont(f)
@@ -465,10 +464,13 @@ class _OdometerMixin:
         # grid. Without this, the proportional line edit and the uniform-grid
         # overlay would disagree and you'd see a tiny snap when the roll ends.
         # This also keeps the decimal point fixed between states.
-        # FONT_SANS_MEDIUM (IBM Plex Sans Medium, matching the rest of the flat
-        # control system) ships tabular-width digits 0-9 by default - verified
-        # via QFontMetricsF.horizontalAdvance - so no monospace family or extra
-        # OpenType feature request is needed to keep the grid aligned.
+        # `_init_flat_chrome()` sets this widget's font to Segoe UI at
+        # QFont.Medium weight, which ships tabular-width digits 0-9 by
+        # default - verified via QFontMetricsF.horizontalAdvance (Segoe UI
+        # at QFont.DemiBold does NOT: digit "1" measures narrower there) -
+        # so no monospace family or extra OpenType feature request is
+        # needed to keep the grid aligned. If this widget's font or weight
+        # ever changes, re-verify tabularity before assuming it still holds.
         f = self.font()
         f.setStyleStrategy(QtGui.QFont.PreferDefault)
         f.setKerning(False)

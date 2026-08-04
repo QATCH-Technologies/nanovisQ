@@ -366,7 +366,7 @@ class OfflineViewer(QWebEngineView):
                 body {{
                     background-color: #f8f9fa;
                     color: #343a40;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
                     display: flex;
                     flex-direction: column;
                     align-items: center;
