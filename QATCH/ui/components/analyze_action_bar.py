@@ -224,9 +224,7 @@ class AnalyzeActionBar(QtWidgets.QWidget):
         # (near-black, invisible in dark mode) text the next time this
         # widget's own theming runs without this line also re-running.
 
-        self.search_action = line_edit.addAction(
-            QtGui.QIcon(), QtWidgets.QLineEdit.LeadingPosition
-        )
+        self.search_action = line_edit.addAction(QtGui.QIcon(), QtWidgets.QLineEdit.LeadingPosition)
         # Quick-clear "x" - only shown once a filter is actually active (see
         # set_filter_active), sitting just before the filter icon so a
         # filter can be cleared right from the field without opening the
@@ -303,7 +301,9 @@ class AnalyzeActionBar(QtWidgets.QWidget):
 
     def _restyle_filter_icon(self) -> None:
         tok = ThemeManager.instance().tokens()
-        color = QtGui.QColor(*(tok["flat_accent"] if self._filter_active else tok["flat_text_muted"]))
+        color = QtGui.QColor(
+            *(tok["flat_accent"] if self._filter_active else tok["flat_text_muted"])
+        )
         self.filter_action.setIcon(tinted_icon(_icon_path("filter.svg"), color, 18))
 
     def _restyle_static_line_edit_icons(self) -> None:

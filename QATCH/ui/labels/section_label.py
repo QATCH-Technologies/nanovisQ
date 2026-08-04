@@ -1,4 +1,24 @@
-from typing import Optional
+"""
+QATCH.ui.labels.section_label.py
+
+Minimal themed section header widget.
+
+This module provides :class:`SectionHeader`, a lightweight
+:class:`QtWidgets.QLabel` used to visually separate groups of controls
+without introducing heavy visual hierarchy. Unlike the application's
+banner-style headers, section headers are rendered as muted uppercase text
+that integrates naturally into flat control panels.
+
+The widget automatically updates its appearance when the application theme
+changes by applying colors from the active theme tokens.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-04
+"""
+
 from PyQt5 import QtWidgets
 
 from QATCH.ui.styles.fonts import FONT_SANS_SEMIBOLD
@@ -6,35 +26,58 @@ from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
 
 class SectionHeader(QtWidgets.QLabel):
-    """Soft, muted section header matching the app's flat control system.
+    """A muted uppercase label used to separate groups of controls.
 
-    Replaces the heavy blue HeaderLabel pills inside the advanced panel
-    with quiet uppercase text, so the panel reads as clean grouped
-    sections rather than a grid of competing colored bars. Colors come
-    from the "flat_*" tokens (see QATCH.ui.styles.tokens) and update
-    automatically on light/dark theme changes.
+    This widget provides a subtle alternative to the application's larger
+    banner headers. It renders uppercase text using the application's
+    semibold font and muted text color, creating visual grouping without
+    competing for attention.
+
+    Styling is derived from the active application theme and automatically
+    refreshes whenever the theme changes.
     """
 
-    def __init__(self, text: str = "", parent: Optional[QtWidgets.QWidget] = None) -> None:
-        """Initializes the SectionHeader with muted, uppercase styling.
+    def __init__(self, text: str = "", parent: QtWidgets.QWidget | None = None) -> None:
+        """Initializes the themed section header.
 
-        The text is automatically converted to uppercase to maintain visual
-        consistency across the UI. Styles are applied via a transparent
-        stylesheet to ensure it blends seamlessly into the panel background.
+        The supplied text is converted to uppercase before being displayed
+        to provide a consistent visual style throughout the application.
+        Theme-aware styling is then applied and kept synchronized with future
+        theme changes.
 
         Args:
-            text (str): The label text to display. Defaults to an empty string.
-            parent (Optional[QtWidgets.QWidget]): The parent widget.
-                Defaults to None.
+            text (str): Section title to display.
+            parent (QtWidgets.QWidget | None): Parent widget, if any.
         """
         super().__init__(text.upper(), parent)
         self._apply_theme()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refreshes the widget styling after a theme change.
+
+        The active theme colors are reapplied so the section header remains
+        consistent with the rest of the user interface.
+
+        Args:
+            _mode (str): Name of the newly activated theme. The value is not
+                used directly because the current theme is obtained from the
+                ThemeManager singleton.
+        """
         self._apply_theme()
 
     def _apply_theme(self) -> None:
+        """Applies the current theme styling to the label.
+
+        Configures the widget using the application's muted text color,
+        semibold font family, uppercase-friendly letter spacing, and a
+        transparent background. The styling is regenerated whenever the
+        application theme changes.
+
+        The stylesheet intentionally avoids borders and decorative elements
+        so the widget serves as a lightweight visual grouping cue rather than
+        a prominent title.
+        """
         tok = ThemeManager.instance().tokens()
         self.setStyleSheet(
             f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; "

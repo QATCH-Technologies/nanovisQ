@@ -1,91 +1,135 @@
-from typing import Optional
+"""
+QATCH.ui.labels.device_config_label.py
+
+Device configuration banner label with legacy API compatibility.
+
+This module provides :class:`DeviceConfigLabel`, a specialized
+:class:`QtWidgets.QLabel` that presents a modern, themed device configuration
+title while remaining fully compatible with the application's legacy banner
+API.
+
+The widget separates the displayed text from the underlying value exposed
+through :meth:`text`. Legacy code continues to interact with the original
+banner string (for example, checking prefixes or extracting device handles),
+while users see a cleaner, HTML-formatted title with an optional themed
+device "chip".
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-04
+"""
+
 from PyQt5 import QtWidgets
 
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
 
 class DeviceConfigLabel(QtWidgets.QLabel):
-    """Title label for the device-config perspective that stays banner-compatible.
+    """A themed device configuration title with legacy banner compatibility.
 
-    This widget maps legacy "banner" strings to a more modern, friendly UI
-    rendering. It maintains full API compatibility by intercepting `setText`
-    and `text` methods, ensuring that existing string parsing logic (like
-    `endswith` checks) in the parent application continues to function
-    uninterrupted.
+    This widget acts as a drop-in replacement for a standard QLabel while
+    preserving the application's historical banner string format. Calls to
+    :meth:`setText` store the original string internally, allowing
+    :meth:`text` to return the exact legacy value expected by existing code,
+    while the visible label displays a cleaner, HTML-formatted title.
 
-    Colors come from the "flat_*" tokens (see QATCH.ui.styles.tokens). Since
-    the rendered text is HTML (inline `style=` spans, needed for the device
-    -handle "chip"), colors are baked into the markup at render time rather
-    than living in a stylesheet - so a theme change re-renders the current
-    text from scratch instead of just re-polishing a QSS rule.
+    When the banner contains a device handle, it is rendered as a themed
+    "chip" beside the title using colors from the active application theme.
 
     Attributes:
-        _PREFIX (str): The legacy prefix expected by external logic.
-        _DISPLAY_BASE (str): The human-readable title shown in the UI.
+        _PREFIX (str): Legacy banner prefix used to identify and extract the
+            device handle.
+        _DISPLAY_BASE (str): User-facing title displayed before the optional
+            device handle.
     """
 
     _PREFIX: str = "Configuration Editor for Device"
     _DISPLAY_BASE: str = "Device Configuration"
 
-    def __init__(self, text: str = "", parent: Optional[QtWidgets.QWidget] = None) -> None:
-        """Initializes the label and applies the initial banner text."""
+    def __init__(self, text: str = "", parent: QtWidgets.QWidget | None = None) -> None:
+        """Initializes the themed configuration label.
+
+        Stores the initial banner text, renders the visible title, and
+        subscribes to theme change notifications so the embedded HTML colors
+        remain synchronized with the active application theme.
+
+        Args:
+            text (str): Initial legacy banner string.
+            parent (Optional[QtWidgets.QWidget]): Parent widget, if any.
+        """
         super().__init__(parent)
         self._raw_text: str = ""
         self.setText(text)
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
-        # Re-render the current raw text so the baked-in HTML colors refresh.
-        super().setText(self._render(self._raw_text))
+        """Updates the rendered HTML after a theme change.
 
-    def setText(self, text: str) -> None:  # noqa: N802
-        """Sets the raw banner text and updates the rendered display.
-
-        Overrides the base method to store the raw input string for legacy
-        API compatibility while rendering a formatted version to the UI.
+        Rich-text colors are embedded directly into the generated HTML rather
+        than supplied through Qt stylesheets. When the application theme
+        changes, the current raw banner text is rendered again using the
+        updated theme tokens.
 
         Args:
-            text (str): The raw string expected by the legacy API.
+            _mode (str): Name of the newly activated theme. The value is not
+                used directly because the active theme is retrieved from the
+                ThemeManager singleton.
+        """
+        super().setText(self._render(self._raw_text))
+
+    def setText(self, text: str) -> None:
+        """Stores the raw banner text and updates the displayed title.
+
+        Overrides :meth:`QtWidgets.QLabel.setText` to preserve the original
+        banner string for legacy API compatibility while displaying a themed,
+        HTML-formatted representation.
+
+        Args:
+            text (str): Legacy banner string, typically beginning with
+                :attr:`_PREFIX` followed by an optional device handle.
         """
         self._raw_text = text if text is not None else ""
         super().setText(self._render(self._raw_text))
 
     def text(self) -> str:
-        """Returns the raw banner string for legacy API compliance.
+        """Returns the original, unmodified banner string.
+
+        This override preserves compatibility with existing application code
+        that parses the banner text rather than the rendered HTML.
 
         Returns:
-            str: The raw text string, preserving any device handles or
-                metadata expected by external parsing logic.
+            str: The raw banner string supplied via :meth:`setText`.
         """
         return self._raw_text
 
     def _render(self, raw: str) -> str:
-        """Maps a raw banner string to a friendly, styled visible title.
+        """Converts a legacy banner string into themed rich text.
 
-        Parses the device handle from the legacy prefix and formats the
-        output using HTML/CSS spans to create a "chip" effect for the
-        device handle.
+        The method extracts an optional device handle from the legacy banner
+        prefix and generates an HTML representation.
+
+        The generated HTML is recreated whenever the theme changes so that
+        embedded colors always reflect the active theme.
 
         Args:
-            raw (str): The raw banner string to parse.
+            raw (str): Raw legacy banner string.
 
         Returns:
-            str: An HTML-formatted string suitable for display.
+            str: HTML-formatted rich text suitable for display by QLabel.
         """
         handle: str = ""
         if raw.startswith(self._PREFIX):
             handle = raw[len(self._PREFIX) :].strip()
 
         tok = ThemeManager.instance().tokens()
-
-        # Build the styled base title
         base = (
             f"<span style='color: {tok_css(tok['flat_text'])}; font-size:14px; "
             f"font-weight:bold;'>{self._DISPLAY_BASE}</span>"
         )
 
         if handle:
-            # Render handle as a stylized UI chip, tinted from the accent tokens.
             r, g, b, _ = tok["flat_accent"]
             chip = (
                 "<span style='"
@@ -98,7 +142,6 @@ class DeviceConfigLabel(QtWidgets.QLabel):
                 "letter-spacing: 0.5px;"
                 f"'>&nbsp;{handle}&nbsp;</span>"
             )
-            # Use an em-space (&#8195;) for clean horizontal spacing
             return f"{base}&#8195;{chip}"
 
         return base

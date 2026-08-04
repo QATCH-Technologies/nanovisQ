@@ -1,22 +1,55 @@
-from PyQt5 import QtCore, QtGui, QtWidgets
+"""
+QATCH.ui.labels.header_label.py
+
+Custom header label widget.
+
+This module provides :class:`HeaderLabel`, a lightweight replacement for
+:class:`QtWidgets.QLabel` that renders a rounded, blue gradient background
+with translucent glass effects. The widget is intended for use as a section
+header throughout the application, providing a consistent visual style while
+preserving all standard QLabel behavior such as text alignment, word wrapping,
+and stylesheet-based text rendering.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-04
+"""
+
 from typing import Any
+
+from PyQt5 import QtCore, QtGui, QtWidgets
 
 
 class HeaderLabel(QtWidgets.QLabel):
-    """Section-header label rendered as a blue panel.
+    """A QLabel styled as a branded panel section header.
+
+    The widget paints a rounded blue background with layered translucent
+    gradients while delegating text rendering to :class:`QtWidgets.QLabel`.
+    This ensures compatibility with standard QLabel features such as alignment,
+    eliding, word wrapping, and stylesheet-defined text properties.
 
     Attributes:
-        _RADIUS (float): The corner radius applied to the panel
-            background.
+        _RADIUS (float): Corner radius, in pixels, used when drawing the
+            rounded background and border.
     """
 
     _RADIUS: float = 4.0
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the HeaderLabel with custom glass-style styling.
+        """Initializes the custom header label.
 
-        Configures widget attributes to disable system background rendering,
-        ensuring the custom paintEvent handles the glass aesthetic.
+        Configures the widget to disable automatic system background painting
+        so that all background rendering is performed by the custom
+        :meth:`paintEvent`. A transparent stylesheet is also applied so only
+        the text is handled by Qt's standard QLabel implementation.
+
+        Args:
+            *args: Positional arguments forwarded to
+                :class:`QtWidgets.QLabel`.
+            **kwargs: Keyword arguments forwarded to
+                :class:`QtWidgets.QLabel`.
         """
         super().__init__(*args, **kwargs)
         self.setAutoFillBackground(False)
@@ -26,18 +59,26 @@ class HeaderLabel(QtWidgets.QLabel):
             "padding: 2px 6px; font-weight: bold; background: transparent; }"
         )
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
-        """Performs custom painting to render the glass-panel header.
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        """Paints the custom header background.
 
-        The painting sequence follows a specific layering order:
-        1. Base Brand-Blue gradient.
-        2. Semi-transparent glass tints.
-        3. Top-down shimmer effect.
-        4. Inner and outer anti-aliased borders.
-        5. Default label text rendering via base class.
+        Rendering is performed in multiple layers to create depth and improve
+        readability:
+
+        1. Clip drawing to a rounded rectangle.
+        2. Paint the branded blue gradient background.
+        3. Apply translucent tint overlays.
+        4. Draw a subtle top shimmer highlight.
+        5. Render inner and outer rounded borders.
+        6. Delegate text painting to the base QLabel implementation.
+
+        The text itself is intentionally rendered by the base class so that
+        alignment, eliding, word wrapping, and stylesheet properties continue
+        to behave exactly as they do for a standard QLabel.
 
         Args:
-            event (QtGui.QPaintEvent): The paint event provided by the Qt system.
+            event (QtGui.QPaintEvent): The Qt paint event triggering the
+                repaint.
         """
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
