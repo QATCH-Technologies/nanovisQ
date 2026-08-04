@@ -18,6 +18,11 @@ Usage
     # For silent initialisation (avoid triggering the handler):
     toggle.setChecked(value)          # connect signal AFTER this call
     toggle.toggled.connect(handler)
+
+    # Smaller footprint (34x19 track / 15px thumb instead of the default
+    # 42x23 / 18px) for inline compact rows, e.g. a sub-row's
+    # "Auto-calculate" affordance sitting next to its own field:
+    small = QATCHToggle(parent, compact=True)
 """
 
 from __future__ import annotations
@@ -45,8 +50,32 @@ class QATCHToggle(QtWidgets.QAbstractButton):
     _TRACK_H: int = 23
     _THUMB_D: int = 18  # diameter; margin = (_TRACK_H - _THUMB_D) / 2 = 2.5 px
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    # Smaller footprint used when `compact=True` is passed to __init__ -
+    # shadows the class-level geometry above with instance attributes of
+    # the same name, so paintEvent()/sizeHint() (which already read
+    # self._TRACK_W/_TRACK_H/_THUMB_D dynamically) need no changes at all.
+    _COMPACT_TRACK_W: int = 34
+    _COMPACT_TRACK_H: int = 19
+    _COMPACT_THUMB_D: int = 15
+
+    def __init__(
+        self, parent: Optional[QtWidgets.QWidget] = None, *, compact: bool = False
+    ) -> None:
+        """Initializes the toggle.
+
+        Args:
+            parent: The parent widget, if any.
+            compact: If True, uses the smaller `_COMPACT_*` geometry instead
+                of the default `_TRACK_W`/`_TRACK_H`/`_THUMB_D` - for inline
+                sub-row affordances that need to read as visually secondary
+                to the main pill toggles. Every existing call site keeps its
+                current (non-compact) size since this defaults to False.
+        """
         super().__init__(parent)
+        if compact:
+            self._TRACK_W = self._COMPACT_TRACK_W
+            self._TRACK_H = self._COMPACT_TRACK_H
+            self._THUMB_D = self._COMPACT_THUMB_D
         self.setCheckable(True)
         self.setFixedSize(self._TRACK_W, self._TRACK_H)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
@@ -170,7 +199,14 @@ class LabeledToggle(QtWidgets.QWidget):
             that is emitted on every user click (same as QCheckBox.clicked).
     """
 
-    def __init__(self, text: str = "", parent=None, *, label_left: bool = False) -> None:
+    def __init__(
+        self,
+        text: str = "",
+        parent=None,
+        *,
+        label_left: bool = False,
+        compact: bool = False,
+    ) -> None:
         """Initializes the LabeledToggle.
 
         Args:
@@ -178,16 +214,23 @@ class LabeledToggle(QtWidgets.QWidget):
             parent: The parent widget, if any.
             label_left: If True, positions the label to the left of the toggle;
                 otherwise, positions it to the right.
+            compact: If True, uses a smaller `QATCHToggle(compact=True)` and a
+                slightly smaller label font - for inline sub-row affordances
+                (e.g. "Auto-calculate" beside its own field) that should read
+                as visually secondary to the main pill toggles. Defaults to
+                False so every existing call site is unaffected.
         """
         super().__init__(parent)
-        self.toggle = QATCHToggle(self)
+        self.toggle = QATCHToggle(self, compact=compact)
         self.label = QtWidgets.QLabel(text, self)
         self.label.setObjectName("CtrlToggleLabel")
         self.label.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        if compact:
+            self.label.setStyleSheet("QLabel#CtrlToggleLabel { font-size: 11px; }")
 
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
+        lay.setSpacing(6 if compact else 8)
         if label_left:
             lay.addWidget(self.label)
             lay.addWidget(self.toggle)

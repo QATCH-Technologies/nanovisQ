@@ -7773,10 +7773,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
                 self.progressBar.setWindowTitle("QATCH nanovisQ")
                 self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
-                self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
                 self.progressBar.setFixedSize(
                     int(self.progressBar.width() * 1.5),
                     int(self.progressBar.height() * 1.1),
+                )
+                # Re-center over the main window's *current* position (not
+                # wherever it was when the dialog was first constructed) so
+                # the dialog shows up on whichever display the app is
+                # currently on.
+                self.progressBar.move(
+                    self.frameGeometry().center() - self.progressBar.rect().center()
                 )
                 self.progressBar.show()
                 _cancel = False
@@ -7951,12 +7957,17 @@ class MainWindow(QtWidgets.QMainWindow):
                         f" Installing SW {os.path.basename(new_install_path)}"
                     )
                     self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
-                    self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
                     self.progressBar.canceled.disconnect()
                     self.progressBar.canceled.connect(self.install_cancel)
                     self.progressBar.setFixedSize(
                         int(self.progressBar.width() * 1.5),
                         int(self.progressBar.height() * 1.1),
+                    )
+                    # Re-center over the main window's current position so
+                    # the dialog appears on whichever display the app is
+                    # currently on, rather than wherever it last was.
+                    self.progressBar.move(
+                        self.frameGeometry().center() - self.progressBar.rect().center()
                     )
 
                     self.upd_thread = QtCore.QThread()
@@ -8105,11 +8116,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
             self.progressBar.setWindowTitle(f" Installing SW {os.path.basename(new_install_path)}")
             self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
-            self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
             self.progressBar.canceled.disconnect()
             self.progressBar.setFixedSize(
                 int(self.progressBar.width() * 1.5),
                 int(self.progressBar.height() * 1.1),
+            )
+            # Re-center over the main window's current position so the
+            # dialog appears on whichever display the app is currently on.
+            self.progressBar.move(
+                self.frameGeometry().center() - self.progressBar.rect().center()
             )
             self.progressBar.findChild(QtWidgets.QPushButton).setEnabled(
                 False

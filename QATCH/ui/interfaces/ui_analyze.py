@@ -47,8 +47,10 @@ from QATCH.QModel import QModelIndus, QModelOnyx, QModelTweed, QModelVolta
 from QATCH.ui.components import (
     AnimatedComboBox,
     LabeledToggle,
+    POIChipField,
     QATCHLineEdit,
     QATCHPushButton,
+    attach_stepper,
 )
 from QATCH.ui.components.analyze_action_bar import AnalyzeActionBar
 from QATCH.ui.components.analyze_plot_cards import (
@@ -708,7 +710,7 @@ class UIAnalyze(QtWidgets.QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
 
         # Fixes #30
-        self.text_Devices = QtWidgets.QLabel("Show Only:")
+        self.text_Devices = QtWidgets.QLabel("Device")
         self.cBox_Devices = AnimatedComboBox(
             icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg")
         )
@@ -803,9 +805,16 @@ class UIAnalyze(QtWidgets.QWidget):
         self.validFactor = QtGui.QDoubleValidator(0.5, 2, 3)  # allow exponential notation
         self.tbox_diff_factor = QATCHLineEdit()
         self.tbox_diff_factor.setValidator(self.validFactor)
-        self.tbox_diff_factor.setFixedWidth(75)
-        self.btn_diff_factor = QATCHPushButton("Set/Reload", variant="default")
-        self.btn_diff_factor.pressed.connect(self.set_new_diff_factor)
+        self.tbox_diff_factor.setFixedWidth(100)
+        # Enter / focus-loss now commits directly (previously only the
+        # deleted "Set/Reload" button did) - see set_new_diff_factor.
+        self.tbox_diff_factor.editingFinished.connect(self.set_new_diff_factor)
+        # Tiny +/- 0.05 stepper embedded in the field's own right edge (see
+        # QATCH.ui.components.qatch_stepper_field) - replaces the old
+        # separate "Set/Reload" button entirely.
+        self._diff_factor_stepper = attach_stepper(
+            self.tbox_diff_factor, step=0.05, minimum=0.5, maximum=2.0, decimals=3
+        )
 
         self.validThickness = QtGui.QDoubleValidator(0, 1, 3)  # allow exponential notation
         self.tbox_ch_thick = QATCHLineEdit()
@@ -818,6 +827,11 @@ class UIAnalyze(QtWidgets.QWidget):
             tooltip="<b>Changes here apply to this session ONLY</b> Modify 'constants.py' to make a constant change value forever.",
         )
 
+        # Real (but not directly user-facing) data store for the Custom
+        # POIs chip field below - see QATCH.ui.components.poi_chip_field
+        # and update_custom_pois for the full backend contract. Kept as a
+        # QATCHLineEdit instance so the several `setText(f"{poi_vals}")`
+        # call sites elsewhere in this file keep working unmodified.
         self.custom_poi_text = QATCHLineEdit()
         self.custom_poi_text.setFixedWidth(250)
         self.custom_poi_text.editingFinished.connect(self.update_custom_pois)
@@ -835,9 +849,12 @@ class UIAnalyze(QtWidgets.QWidget):
         # self.correct_drop_effect.setChecked(False)
         # self.correct_drop_effect.clicked.connect(self.change_drop_effect)
 
-        # Add the checkbox and call-backs for using the curve-optimizer utility.
+        # Add the checkbox and call-backs for using the curve-optimizer
+        # utility. Compact + relocated into its own row beside the
+        # "Difference Factor" caption (see _build_advanced_layout) rather
+        # than living in the Processing/Options list.
         self.difference_factor_optimizer_checkbox = LabeledToggle(
-            'Auto-Calculate "Difference Factor"'
+            "Auto-calculate", compact=True
         )
         self.difference_factor_optimizer_checkbox.setToolTip(
             "Automatically calculate the resonance/dissipation difference factor from the "
@@ -1305,13 +1322,54 @@ class UIAnalyze(QtWidgets.QWidget):
         for label in (
             self.footerText_hint,
             self.footerText_keys,
-            self.text_Devices,
             self._lbl_diff_factor,
             self._lbl_ch_thick,
             self._lbl_custom_poi,
+            self._lbl_ch_thick_unit,
         ):
             label.setStyleSheet(desc_label_qss())
+        # text_Devices/_diff_hint_label have their own state-dependent
+        # styling (dimmed/hint text differs by toggle state, not just
+        # theme) - see _style_device_label / _set_diff_hint_text.
+        self._style_device_label()
+        self._style_diff_hint_label()
         self._apply_pg_theme()
+
+    def _style_device_label(self) -> None:
+        """Dims `text_Devices` to a further-muted `flat_text_muted` while
+        `cBox_Devices` is disabled (i.e. "Show all available runs" is on) -
+        previously only the combo itself dimmed/disabled, leaving its
+        caption a fixed color regardless of state.
+        """
+        tok = ThemeManager.instance().tokens()
+        if self.showRunsFromAllDevices.isChecked():
+            r, g, b, a = tok["flat_text_muted"]
+            color = f"rgba({r}, {g}, {b}, {max(0, int(a * 0.55))})"
+        else:
+            color = tok_css(tok["flat_text_muted"])
+        self.text_Devices.setStyleSheet(
+            f"QLabel {{ color: {color}; font-size: 12px; background: transparent; }}"
+        )
+
+    def _style_diff_hint_label(self) -> None:
+        """Re-applies the muted/italic style to the Difference Factor hint
+        label ("0.5 - 2.0" / "computed from run") on every theme change."""
+        if not hasattr(self, "_diff_hint_label"):
+            return
+        tok = ThemeManager.instance().tokens()
+        self._diff_hint_label.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; font-size: 11px; "
+            "font-style: italic; background: transparent; }"
+        )
+
+    def _set_diff_hint_text(self) -> None:
+        """Sets the Difference Factor hint label text for the current
+        auto-calculate state ("computed from run" vs. the valid range)."""
+        auto = self.difference_factor_optimizer_checkbox.isChecked()
+        self._diff_hint_label.setText(
+            "computed from run" if auto else "0.5 – 2.0"
+        )
+        self._style_diff_hint_label()
 
     def _apply_pg_theme(self) -> None:
         """Applies token-driven background/axis colors to the pyqtgraph plot
@@ -2901,6 +2959,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
     def showRunsFromAllDevices_clicked(self):
         self.cBox_Devices.setEnabled(not self.showRunsFromAllDevices.isChecked())
+        self._style_device_label()
         self.update_run(self.cBox_Devices.currentIndex())
 
     def _open_run_filter_popover(self) -> None:
@@ -3277,12 +3336,24 @@ class UIAnalyze(QtWidgets.QWidget):
         ----------------
         **Left column**:
 
-        * Run Selection (`text_Devices` + `cBox_Devices`, `showRunsFromAllDevices`)
-        * Parameters (Difference Factor, Channel Thickness, Custom POIs)
+        * Run Selection - `showRunsFromAllDevices` toggle above the
+          `text_Devices` + `cBox_Devices` device row (dimmed via
+          `_style_device_label` while the toggle is on).
+        * Parameters - a Difference Factor sub-group (header row pairing
+          the "Difference Factor" caption with the compact
+          `difference_factor_optimizer_checkbox` "Auto-calculate" toggle,
+          then `tbox_diff_factor` with an embedded +/- stepper - see
+          `QATCH.ui.components.qatch_stepper_field` - plus a range/status
+          hint label), a Channel Thickness row (`tbox_ch_thick` + unit
+          suffix + `h0` info icon), and a Custom POIs chip field
+          (`QATCH.ui.components.poi_chip_field.POIChipField`, backed by the
+          still-real but non-visible `custom_poi_text` line edit).
 
         **Right column**:
 
-        * Options (the 4 existing checkboxes)
+        * Processing - `option_remove_dups`, `drop_effect_cancelation_checkbox`,
+          `partial_fills_checkbox` (the difference-factor auto-calculate
+          toggle now lives in Parameters instead - see above).
         * Auto-Fit Model (`cBox_Models`)
 
         Returns:
@@ -3317,20 +3388,59 @@ class UIAnalyze(QtWidgets.QWidget):
             return row
 
         # Left column - Run Selection + Parameters
+        # "Show all available runs" now sits ABOVE the device row (was
+        # below); the device caption dims via _style_device_label whenever
+        # the toggle disables cBox_Devices.
         device_row = hrow(self.text_Devices, self.cBox_Devices)
-        run_selection = section("Run Selection", device_row, self.showRunsFromAllDevices)
+        run_selection = section("Run Selection", self.showRunsFromAllDevices, device_row)
 
         # Small field captions (unlike SectionHeader's group titles) - kept
         # as self.* attributes so _apply_theme's caption loop can re-style
         # them on every theme change, same as footerText_hint/keys.
-        self._lbl_diff_factor = QtWidgets.QLabel("Difference Factor:")
-        self._lbl_ch_thick = QtWidgets.QLabel("Channel Thickness:")
-        self._lbl_custom_poi = QtWidgets.QLabel("Custom POIs:")
+        self._lbl_diff_factor = QtWidgets.QLabel("Difference Factor")
+        self._lbl_ch_thick = QtWidgets.QLabel("Channel Thickness")
+        self._lbl_custom_poi = QtWidgets.QLabel("Custom POIs")
+        self._lbl_ch_thick_unit = QtWidgets.QLabel("m")
 
-        diff_factor_row = hrow(self._lbl_diff_factor, self.tbox_diff_factor, self.btn_diff_factor)
-        ch_thick_row = hrow(self._lbl_ch_thick, self.tbox_ch_thick, self.h0)
-        custom_poi_row = hrow(self._lbl_custom_poi, self.custom_poi_text)
-        parameters = section("Parameters", diff_factor_row, ch_thick_row, custom_poi_row)
+        # Difference Factor sub-group: header row (caption + compact
+        # Auto-calculate toggle) above the value row (stepper field + hint).
+        diff_header_row = QtWidgets.QHBoxLayout()
+        diff_header_row.setContentsMargins(0, 0, 0, 0)
+        diff_header_row.setSpacing(6)
+        diff_header_row.addWidget(self._lbl_diff_factor)
+        diff_header_row.addStretch()
+        diff_header_row.addWidget(self.difference_factor_optimizer_checkbox)
+
+        self._diff_hint_label = QtWidgets.QLabel()
+        hint_font = QtGui.QFont()
+        hint_font.setItalic(True)
+        hint_font.setPixelSize(11)
+        self._diff_hint_label.setFont(hint_font)
+        self._set_diff_hint_text()
+
+        diff_value_row = hrow(self.tbox_diff_factor, self._diff_hint_label)
+
+        diff_factor_group = QtWidgets.QVBoxLayout()
+        diff_factor_group.setContentsMargins(0, 0, 0, 0)
+        diff_factor_group.setSpacing(6)
+        diff_factor_group.addLayout(diff_header_row)
+        diff_factor_group.addLayout(diff_value_row)
+
+        ch_thick_row = hrow(
+            self._lbl_ch_thick, self.tbox_ch_thick, self._lbl_ch_thick_unit, self.h0
+        )
+
+        # Custom POIs: wrapping removable-chip field, backed by the
+        # existing (now non-visible) custom_poi_text line edit - see
+        # QATCH.ui.components.poi_chip_field for the full backend contract.
+        self._poi_chip_field = POIChipField(self.custom_poi_text, self.update_custom_pois)
+        custom_poi_group = QtWidgets.QVBoxLayout()
+        custom_poi_group.setContentsMargins(0, 0, 0, 0)
+        custom_poi_group.setSpacing(6)
+        custom_poi_group.addWidget(self._lbl_custom_poi)
+        custom_poi_group.addWidget(self._poi_chip_field)
+
+        parameters = section("Parameters", diff_factor_group, ch_thick_row, custom_poi_group)
 
         left_col = QtWidgets.QVBoxLayout()
         left_col.setSpacing(14)
@@ -3338,11 +3448,10 @@ class UIAnalyze(QtWidgets.QWidget):
         left_col.addLayout(parameters)
         left_col.addStretch()
 
-        # Right column - Options + Auto-Fit Model
-        options = section(
-            "Options",
+        # Right column - Processing + Auto-Fit Model
+        processing = section(
+            "Processing",
             self.option_remove_dups,
-            self.difference_factor_optimizer_checkbox,
             self.drop_effect_cancelation_checkbox,
             self.partial_fills_checkbox,
         )
@@ -3350,7 +3459,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         right_col = QtWidgets.QVBoxLayout()
         right_col.setSpacing(14)
-        right_col.addLayout(options)
+        right_col.addLayout(processing)
         right_col.addLayout(auto_fit_model)
         right_col.addStretch()
 
@@ -3515,8 +3624,16 @@ class UIAnalyze(QtWidgets.QWidget):
             object (QWidget): The widget or object interacting with this method. Typically,
                 this could represent the checkbox or related UI component triggering the event.
         """
-        if not self.difference_factor_optimizer_checkbox.isChecked():
+        checked = self.difference_factor_optimizer_checkbox.isChecked()
+        if not checked:
             self.tbox_diff_factor.setText(f"{Constants.default_diff_factor:1.3f}")
+        # Grey out the manual field (and its stepper) while auto-calculate
+        # is on - it previously stayed enabled/editable regardless.
+        self.tbox_diff_factor.setEnabled(not checked)
+        if hasattr(self, "_diff_factor_stepper"):
+            self._diff_factor_stepper.setEnabled(not checked)
+        if hasattr(self, "_diff_hint_label"):
+            self._set_diff_hint_text()
         self.set_new_diff_factor()
 
     def use_drop_effect_interpolation(self, object):

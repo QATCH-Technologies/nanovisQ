@@ -49,11 +49,12 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self._position_gap_px = 15
 
         # Frameless tool window that stays above the app without stealing focus.
-        self.setWindowFlags(
-            QtCore.Qt.Tool
-            | QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowStaysOnTopHint
-        )
+        # No WindowStaysOnTopHint: that flag makes Qt/Windows keep the badge
+        # above *every* application's windows, not just this one. Passing
+        # `parent` above already gives it an owned-window relationship with
+        # the app's top-level window, which is enough to keep it above the
+        # app's own windows without floating over other apps too.
+        self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowType.FramelessWindowHint)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(QtCore.Qt.WA_ShowWithoutActivating)
         self.setWindowOpacity(0.0)

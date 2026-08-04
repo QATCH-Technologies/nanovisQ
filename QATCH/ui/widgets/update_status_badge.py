@@ -27,17 +27,29 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         anchor: QtWidgets.QWidget,
         text: str = "Software update available",
     ) -> None:
-        super().__init__(None)
+        # Own this badge by the app's top-level window instead of leaving it
+        # parentless. Combined with dropping WindowStaysOnTopHint below, this
+        # keeps the badge above the app's own windows (owned-window Z-order)
+        # without making it a system-wide always-on-top window that floats
+        # over other applications too.
+        app_window = find_app_window() or anchor.window()
+        super().__init__(app_window)
         self._anchor = anchor
+        self._app_window = app_window
         self._bg = QtGui.QColor(30, 38, 48, 235)
         self._border = QtGui.QColor(255, 255, 255, 45)
 
         self.setWindowFlag(QtCore.Qt.WindowType.FramelessWindowHint, True)
         self.setWindowFlag(QtCore.Qt.WindowType.Tool, True)
-        self.setWindowFlag(QtCore.Qt.WindowType.WindowStaysOnTopHint, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
+        # Track the app window so the badge follows it (e.g. when dragged to
+        # a different display) instead of staying anchored to wherever it
+        # was first shown.
+        if self._app_window is not None:
+            self._app_window.installEventFilter(self)
 
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(10, 5, 5, 5)
@@ -100,12 +112,11 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         y = global_pos.y() + self._anchor.height() + 4
 
         # Constrain to the app's own window, not just the screen: the badge
-        # is a separate top-level (frameless, always-on-top) widget, so
-        # clamping only to screen geometry lets it drift past the app
-        # window's own edge onto the desktop whenever the anchor icon sits
-        # near a window edge (e.g. a maximized-but-not-fullscreen app, or a
-        # smaller window). Falls back to screen geometry if the app window
-        # can't be resolved for some reason.
+        # is a separate top-level (frameless) widget, so clamping only to
+        # screen geometry lets it drift past the app window's own edge onto
+        # the desktop whenever the anchor icon sits near a window edge (e.g.
+        # a maximized-but-not-fullscreen app, or a smaller window). Falls
+        # back to screen geometry if the app window can't be resolved.
         app_window = find_app_window()
         if app_window is not None:
             bounds = app_window_bounds_global(app_window)
@@ -125,6 +136,18 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         self.reposition()
         self.show()
         self.raise_()
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802
+        """Follows the app window when it moves/resizes (e.g. dragged to a
+        different display) instead of staying anchored to its old position.
+        """
+        if watched is self._app_window and self.isVisible() and event.type() in (
+            QtCore.QEvent.Type.Move,
+            QtCore.QEvent.Type.Resize,
+            QtCore.QEvent.Type.WindowStateChange,
+        ):
+            self.reposition()
+        return super().eventFilter(watched, event)
 
     # ── Interaction ───────────────────────────────────────────────────────────
 

@@ -221,12 +221,19 @@ class FW_Updater(QtCore.QObject):
                             self.progressBar.setWindowFlag(
                                 QtCore.Qt.WindowContextHelpButtonHint, False
                             )
-                            self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
                             self.progressBar.canceled.disconnect()
                             self.progressBar.canceled.connect(self.update_cancel)
                             self.progressBar.setFixedSize(
                                 int(self.progressBar.width() * 1.5),
                                 int(self.progressBar.height() * 1.1),
+                            )
+                            # Re-center over the parent window's current
+                            # position so the dialog appears on whichever
+                            # display the app is currently on, rather than
+                            # wherever it last was.
+                            self.progressBar.move(
+                                parent.frameGeometry().center()
+                                - self.progressBar.rect().center()
                             )
 
                             self.upd_thread = QtCore.QThread()
