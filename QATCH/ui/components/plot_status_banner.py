@@ -1,83 +1,99 @@
-"""QATCH.ui.components.plot_status_banner
+"""QATCH.ui.components.plot_status_banner.py
 
-Provides PlotStatusBanner: a compact pill-shaped status chip that floats
-in the header strip of a pyqtgraph PlotItem - horizontally centred between
+Provides :class:`PlotStatusBanner`: a compact pill-shaped status chip that floats
+in the header strip of a :class:`pyqtgraph.PlotItem` - horizontally centred between
 the left and right axis title labels, vertically centred in the header row.
 
-Color → state mapping (backwards-compatible with legacy pg.LabelItem.setText
-color tuples used in main_window.py):
-    (0, 200, 0)   → "success"  - Apply drop now
-    (0, 0, 200)   → "warning"  - Sensor not dry / restart
-    (200, 100, 0) → "info"     - Fill-state classifier message
-    anything else → "neutral"
+Color-to-state mapping (backwards-compatible with legacy :meth:`pyqtgraph.LabelItem.setText`
+color tuples used in `main_window.py`):
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-04
 """
 
 import os
+from typing import ClassVar
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.common.logger import Logger as Log
 from QATCH.ui.styles.theme_manager import ThemeManager
+
+TAG = "[PlotStatusBanner]"
 
 
 class PlotStatusBanner:
-    """Pill-shaped, icon-driven status chip for a pyqtgraph PlotItem header.
+    """Pill-shaped, icon-driven status chip for a :class:`pyqtgraph.PlotItem` header.
 
-    The chip is a `QGraphicsProxyWidget` wrapping a styled `QFrame` that
-    floats over the PlotItem's title row - the narrow strip above the
-    ViewBox that shows the axis labels.  It tracks plot resizes via
-    `ViewBox.sigResized` and re-centres itself automatically.
+    The chip is a :class:`QtWidgets.QGraphicsProxyWidget` wrapping a styled :class:`QtWidgets.QFrame`
+    that floats over the :class:`pyqtgraph.PlotItem`'s title row - the narrow strip above the
+    :class:`pyqtgraph.ViewBox` that shows the axis labels. It tracks plot resizes via
+    :attr:`pyqtgraph.ViewBox.sigResized` and re-centers itself automatically.
 
     Args:
-        plot_item: The `pg.PlotItem` to anchor the banner to.
-        icon_dir:  Path to the QATCH icons folder (must contain
-                   `warning-circle.svg`, `checkmark-circle.svg`,
-                   `info-circle.svg`).
-        z_value:   Scene Z-order for the proxy (default 150, above labels).
+        plot_item (pyqtgraph.PlotItem): The plot item to anchor the banner to.
+        icon_dir (str): Path to the QATCH icons folder (must contain `warning-circle.svg`,
+            `checkmark-circle.svg`, and `info-circle.svg`).
+        z_value (int, optional): Scene Z-order for the proxy widget (above labels).
+            Defaults to `150`.
+
+    Attributes:
+        _FALLBACK_W (int): Fallback widget width used when layout bounding rect is uninitialized.
+        _FALLBACK_H (int): Fallback widget height used when layout bounding rect is uninitialized.
+        _COLOR_TO_STATE (dict[tuple, str]): Maps legacy RGB color tuples to theme state strings.
+        _STATE_ICON (dict[str, str]): Maps state names to SVG icon filenames.
+        _STATE_TOKEN (dict[str, str]): Maps state names to theme token names.
+        _ICON_PIXMAP_CACHE (dict[tuple, QtGui.QPixmap]): Cache mapping `(icon_dir, state, mode)`
+            tuples to pre-tinted pixmaps.
     """
 
-    # Fallback geometry when the widget hasn't laid out yet
     _FALLBACK_W = 270
     _FALLBACK_H = 22
 
-    _COLOR_TO_STATE: dict[tuple, str] = {
+    _COLOR_TO_STATE: ClassVar[dict[tuple, str]] = {
         (0, 200, 0): "success",
         (0, 0, 200): "warning",
         (200, 100, 0): "info",
     }
 
-    # Which SVG and which theme token supplies each state's base hue. Colors
-    # are derived from the active theme (see `_state_theme`) rather than a
-    # fixed palette, so the banner reads correctly in both light and dark
-    # mode instead of always rendering its original light-mode design.
-    _STATE_ICON = {
+    _STATE_ICON: ClassVar[dict[str, str]] = {
         "warning": "warning-circle.svg",
         "success": "checkmark-circle.svg",
         "info": "info-circle.svg",
         "neutral": "info-circle.svg",
     }
-    _STATE_TOKEN = {
+    _STATE_TOKEN: ClassVar[dict[str, str]] = {
         "warning": "danger",
         "success": "success",
         "info": "warning",
         "neutral": "plot_text_muted",
     }
 
-    # Tinted status-icon pixmaps, keyed by (icon_dir, state). The themed
-    # icons are a pure function of those two values, and this banner's
-    # `setText`/`set_state` is called on every ~100ms plot tick for most of
-    # a run's duration, so caching avoids re-reading and re-tinting the SVG
-    # from disk on every tick.
-    _ICON_PIXMAP_CACHE: dict[tuple, "QtGui.QPixmap"] = {}
+    _ICON_PIXMAP_CACHE: ClassVar[dict[tuple, "QtGui.QPixmap"]] = {}
 
     def __init__(self, plot_item, icon_dir: str, z_value: int = 150) -> None:
+        """Initializes a new PlotStatusBanner instance.
+
+        Creates the underlying pill container (:class:`QtWidgets.QFrame`), configures its layout,
+        wraps it inside a :class:`QtWidgets.QGraphicsProxyWidget` attached to the target
+        :class:`pyqtgraph.PlotItem`, and connects resize signals to handle automatic centering.
+
+        Args:
+            plot_item (pyqtgraph.PlotItem): The parent plot item to anchor the banner to.
+            icon_dir (str): Path to the icons directory (must contain `warning-circle.svg`,
+                `checkmark-circle.svg`, and `info-circle.svg`).
+            z_value (int, optional): Scene Z-order layer for the graphics proxy widget.
+                Defaults to `150`.
+        """
         self._plot_item = plot_item
         self._icon_dir = icon_dir
         self._resize_cb = None
         self._current_state: str | None = None
         self._current_text: str | None = None
         self._current_mode: str | None = None
-
-        # ── Pill frame ────────────────────────────────────────────────
         self._pill = QtWidgets.QFrame()
         self._pill.setObjectName("PlotStatusBannerPill")
 
@@ -93,7 +109,6 @@ class PlotStatusBanner:
         self._text_lbl.setAlignment(
             QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft
         )
-        # Prevent the label from triggering unwanted size expansion
         self._text_lbl.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,
             QtWidgets.QSizePolicy.Policy.Fixed,
@@ -101,27 +116,27 @@ class PlotStatusBanner:
 
         lay.addWidget(self._icon_lbl)
         lay.addWidget(self._text_lbl)
-
-        # Size it once so boundingRect works before the first paint
         self._pill.adjustSize()
-
-        # ── Proxy (free-floating, parented to plot's graphicsItem) ────
         self._proxy = QtWidgets.QGraphicsProxyWidget()
         self._proxy.setWidget(self._pill)
         self._proxy.setParentItem(plot_item.graphicsItem())
         self._proxy.setZValue(z_value)
         self._proxy.setVisible(False)
 
-        # ── Track plot resizes to recentre the chip ───────────────────
         self._resize_cb = self._make_reposition_cb(plot_item, self._proxy)
         plot_item.getViewBox().sigResized.connect(self._resize_cb)
 
-    # ── Public API ────────────────────────────────────────────────────
-
     def set_state(self, state: str, text: str) -> None:
-        """Show the banner with *state* theme and *text*.
+        """Show the banner with the specified state theme and text.
 
-        Passing an empty or whitespace-only string hides the banner.
+        Passing an empty or whitespace-only string hides the banner widget.
+        Repeated calls with identical parameters and active theme mode skip
+        redundant rendering updates.
+
+        Args:
+            state (str): Visual state name (e.g., `"warning"`, `"success"`,
+                `"info"`, `"neutral"`).
+            text (str): Status text message to display on the banner label.
         """
         if not text or not text.strip():
             self._proxy.setVisible(False)
@@ -131,13 +146,6 @@ class PlotStatusBanner:
             return
 
         mode = ThemeManager.instance().mode().value
-
-        # This is invoked every plot tick (~10x/sec) for most of a run's
-        # duration, almost always re-showing the same state/text as last
-        # tick. Skip the icon reload, stylesheet re-parse, and relayout
-        # entirely when nothing actually changed since the last call - a
-        # light/dark switch counts as a change too, since the derived
-        # colors depend on it.
         if (
             state == self._current_state
             and text == self._current_text
@@ -148,8 +156,6 @@ class PlotStatusBanner:
 
         theme = self._state_theme(state, mode)
         restyle = state != self._current_state or mode != self._current_mode
-
-        # Icon (cached per icon_dir+state+mode so the SVG is only read/tinted once)
         if restyle:
             cache_key = (self._icon_dir, state, mode)
             px = self._ICON_PIXMAP_CACHE.get(cache_key)
@@ -163,8 +169,6 @@ class PlotStatusBanner:
                 self._icon_lbl.setVisible(True)
             else:
                 self._icon_lbl.setVisible(False)
-
-        # Text label
         self._text_lbl.setText(text)
         if restyle:
             self._text_lbl.setStyleSheet(
@@ -198,16 +202,23 @@ class PlotStatusBanner:
 
     @classmethod
     def _state_theme(cls, state: str, mode: str) -> dict:
-        """Derives this state's icon/bg/border/text colors from the active
-        theme's semantic tokens, so the banner reads correctly in both
-        light and dark mode instead of a single fixed light-mode palette.
+        """Derives a state's icon, background, border, and text colors from active theme tokens.
+
+        Allows the banner to adjust correctly in both light and dark theme modes rather
+        than using a single fixed color palette.
 
         Args:
-            state: One of "warning", "success", "info", "neutral".
-            mode: The active `ThemeMode` value ("light" or "dark").
+            state (str): One of `"warning"`, `"success"`, `"info"`, or `"neutral"`.
+            mode (str): The active :class:`~QATCH.ui.styles.theme_manager.ThemeMode` value
+                (`"light"` or `"dark"`).
 
         Returns:
-            dict: icon_svg, icon_hex, bg, border, text_color.
+            dict: Dictionary containing theme specs:
+                * `"icon_svg"` (str): Filename of the SVG icon.
+                * `"icon_hex"` (str): Hex color code for icon tinting.
+                * `"bg"` (str): CSS `rgba()` background color.
+                * `"border"` (str): CSS `rgba()` border color.
+                * `"text_color"` (str): Hex color code for the text.
         """
         tok = ThemeManager.instance().tokens()
         icon_svg = cls._STATE_ICON.get(state, cls._STATE_ICON["neutral"])
@@ -230,14 +241,19 @@ class PlotStatusBanner:
         }
 
     def hide(self) -> None:
-        """Hide the banner without destroying it."""
+        """Hide the banner graphics proxy widget without destroying it."""
         self._proxy.setVisible(False)
 
-    def setText(self, text: str, color: tuple = None) -> None:
-        """Backwards-compatible shim matching `pg.LabelItem.setText`.
+    def setText(self, text: str, color: tuple | None = None) -> None:
+        """Backwards-compatible shim matching :meth:`pyqtgraph.LabelItem.setText`.
 
-        Maps the *color* tuple to one of the named visual states and
-        delegates to :meth:`set_state`.
+        Maps an RGB color tuple to one of the named visual states and delegates
+        rendering to :meth:`set_state`.
+
+        Args:
+            text (str): Status string to render.
+            color (tuple, optional): An `(R, G, B)` color tuple matching legacy label
+                formatting. Defaults to `None`.
         """
         if not text or not text.strip():
             self.hide()
@@ -246,7 +262,7 @@ class PlotStatusBanner:
         self.set_state(state, text)
 
     def remove(self) -> None:
-        """Detach the proxy from the scene and disconnect the resize signal."""
+        """Detach the proxy widget from the scene and disconnect resize signals."""
         if self._resize_cb is not None:
             try:
                 self._plot_item.getViewBox().sigResized.disconnect(self._resize_cb)
@@ -262,42 +278,46 @@ class PlotStatusBanner:
         except RuntimeError:
             pass
 
-    # ── Helpers ───────────────────────────────────────────────────────
-
     def _make_reposition_cb(self, plot_item, proxy):
-        """Return a zero-arg callback that centres the proxy in the header strip."""
+        """Construct a callback that centers the proxy widget within the plot header strip.
+
+        Args:
+            plot_item (pyqtgraph.PlotItem): Target plot container.
+            proxy (QtWidgets.QGraphicsProxyWidget): Floating widget proxy to align.
+
+        Returns:
+            Callable[..., None]: Zero-argument repositioning callback function.
+        """
         fw, fh = self._FALLBACK_W, self._FALLBACK_H
 
         def _reposition(*_args) -> None:
             try:
                 vb = plot_item.getViewBox()
-                # ViewBox rect in the PlotItem's own coordinate space.
-                # vb_rect.y() is the height of the header strip above the ViewBox.
                 vb_rect = vb.mapRectToItem(plot_item.graphicsItem(), vb.boundingRect())
                 pw = proxy.boundingRect().width() or fw
                 ph = proxy.boundingRect().height() or fh
 
                 header_h = vb_rect.y()  # pixels above the ViewBox
-
-                # Horizontal: centred over the ViewBox (between the two axis labels)
                 banner_x = vb_rect.x() + (vb_rect.width() - pw) / 2.0
-
-                # Vertical: centred within the header strip; clamp to ≥ 1 px from top
                 banner_y = max(1.0, (header_h - ph) / 2.0)
-
                 proxy.setPos(banner_x, banner_y)
-            except Exception:
-                pass
+
+            except Exception as e:  # noqa: BLE001
+                Log.w(TAG, f"Error repositioning banner: {e}")
 
         return _reposition
 
 
-# ── Module-level helpers (used by PlotStatusBanner) ──────────────────────────
-
-
 def _shade(rgb: tuple, amt: float) -> tuple:
-    """Lightens (amt > 0, toward white) or darkens (amt < 0, toward black)
-    an (r, g, b) tuple. `amt` is roughly in [-1, 1]; 0 returns `rgb` as-is.
+    """Lightens or darkens an RGB color tuple.
+
+    Args:
+        rgb (tuple[int, int, int]): Original `(R, G, B)` color tuple.
+        amt (float): Factor in range `[-1.0, 1.0]`. Positive values lighten toward white;
+            negative values darken toward black; `0` returns `rgb` unchanged.
+
+    Returns:
+        tuple[int, int, int]: The shaded `(R, G, B)` color tuple.
     """
     r, g, b = rgb
     if amt >= 0:
@@ -310,7 +330,16 @@ def _shade(rgb: tuple, amt: float) -> tuple:
 
 
 def _tinted_pixmap(svg_path: str, color: QtGui.QColor, size: int) -> QtGui.QPixmap:
-    """Return a *size*×*size* pixmap loaded from *svg_path* recoloured to *color*."""
+    """Load an SVG icon and render it recolored to a specified color.
+
+    Args:
+        svg_path (str): Path to the target SVG asset.
+        color (QtGui.QColor): Target color used to fill non-transparent icon regions.
+        size (int): Width and height in pixels for the generated square pixmap.
+
+    Returns:
+        QtGui.QPixmap: The tinted pixmap image.
+    """
     src = QtGui.QIcon(svg_path).pixmap(size, size)
     dst = QtGui.QPixmap(src.size())
     dst.fill(QtCore.Qt.GlobalColor.transparent)

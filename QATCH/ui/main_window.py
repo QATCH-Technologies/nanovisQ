@@ -63,8 +63,8 @@ from QATCH.ui.components.glass_axis_item import (
     glass_curve_pen,
     suppress_axis_ticks,
 )
+from QATCH.ui.components.plot_grid_item import PlotGridItem
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
-from QATCH.ui.components.themed_grid_item import ThemedGridItem
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets.floating_message_badge_widget import FloatingMessageBadgeWidget
@@ -4128,7 +4128,7 @@ class MainWindow(QtWidgets.QMainWindow):
             alpha = self._GRID_MAJOR_ALPHA if is_major else self._GRID_MINOR_ALPHA
 
             if grid is None:
-                grid = ThemedGridItem(
+                grid = PlotGridItem(
                     pen=grid_pen,
                     alpha=alpha,
                     x_axis=x_axis,

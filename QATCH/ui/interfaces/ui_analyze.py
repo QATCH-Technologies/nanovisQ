@@ -64,7 +64,7 @@ from QATCH.ui.components.glass_axis_item import (
     glass_curve_pen,
 )
 from QATCH.ui.components.pill_stepper import PillCellButton, PillStepper
-from QATCH.ui.components.themed_grid_item import ThemedGridItem
+from QATCH.ui.components.plot_grid_item import PlotGridItem
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,
@@ -853,9 +853,7 @@ class UIAnalyze(QtWidgets.QWidget):
         # utility. Compact + relocated into its own row beside the
         # "Difference Factor" caption (see _build_advanced_layout) rather
         # than living in the Processing/Options list.
-        self.difference_factor_optimizer_checkbox = LabeledToggle(
-            "Auto-calculate", compact=True
-        )
+        self.difference_factor_optimizer_checkbox = LabeledToggle("Auto-calculate", compact=True)
         self.difference_factor_optimizer_checkbox.setToolTip(
             "Automatically calculate the resonance/dissipation difference factor from the "
             "run data instead of using the fixed value set below."
@@ -1366,9 +1364,7 @@ class UIAnalyze(QtWidgets.QWidget):
         """Sets the Difference Factor hint label text for the current
         auto-calculate state ("computed from run" vs. the valid range)."""
         auto = self.difference_factor_optimizer_checkbox.isChecked()
-        self._diff_hint_label.setText(
-            "computed from run" if auto else "0.5 – 2.0"
-        )
+        self._diff_hint_label.setText("computed from run" if auto else "0.5 – 2.0")
         self._style_diff_hint_label()
 
     def _apply_pg_theme(self) -> None:
@@ -1721,7 +1717,7 @@ class UIAnalyze(QtWidgets.QWidget):
             alpha = self._GRID_MAJOR_ALPHA if is_major else self._GRID_MINOR_ALPHA
 
             if grid is None:
-                grid = ThemedGridItem(
+                grid = PlotGridItem(
                     pen=grid_pen,
                     alpha=alpha,
                     x_axis=plot_item.getAxis("bottom"),

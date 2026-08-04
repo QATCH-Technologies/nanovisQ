@@ -62,8 +62,7 @@ class StatusLabel(QtWidgets.QLabel):
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Paints the background.
 
-        Rendering is performed in multiple layers to produce a subtle
-        effect:
+        Rendering effect(s):
 
         1. Clip drawing to a rounded rectangle.
         2. Paint a translucent white base.
