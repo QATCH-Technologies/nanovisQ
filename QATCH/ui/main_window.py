@@ -54,17 +54,17 @@ from QATCH.processors.updater import (
     UpdaterTask_Git,
 )
 from QATCH.QModel import OnyxDropEpochSignal, VoltaDropEpochSignal
+from QATCH.ui.components.plot_grid_item import PlotGridItem
+from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
-from QATCH.ui.components.glass_axis_item import (
+from QATCH.ui.components.qatch_axis_item import (
     QATCHAxisItem,
     apply_glass_plot_style,
     glass_curve_pen,
     suppress_axis_ticks,
 )
-from QATCH.ui.components.plot_grid_item import PlotGridItem
-from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.styles.typography import (
