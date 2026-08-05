@@ -56,6 +56,16 @@ class TaskBarBase(QtWidgets.QWidget):
     _CARD_RADIUS = 12.0
     OUTER_MARGINS = (10, 1, 10, 1)
     ZONE_SPACING = 14
+    # Shaved off a zone divider's height (top+bottom combined) relative to
+    # the toolbar row it's measured from. Without this, a divider sized to
+    # the full toolbar row height reads as a full-bleed rule spanning the
+    # bar's entire height - fine when a caption line above the toolbar
+    # made the row shorter than the zone's own bounding box, but both bars
+    # dropped their captions (see analyze_action_bar.py/
+    # controls_action_bar.py), so the toolbar row height now *is* the
+    # bar's full height and needs this explicit inset to still read as a
+    # floating accent.
+    DIVIDER_INSET = 16
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
@@ -75,6 +85,13 @@ class TaskBarBase(QtWidgets.QWidget):
         bar.setObjectName("CtrlToolBar")
         bar.setIconSize(self.ICON_SIZE)
         return bar
+
+    def _make_divider(self, toolbar_h: int) -> "TaskBarDivider":
+        """A `TaskBarDivider` inset from `toolbar_h` by `DIVIDER_INSET`, so
+        it reads as a floating accent between zones rather than a
+        full-bleed rule - shared so both bars' dividers are sized by
+        identical logic instead of each `_assemble()` picking its own."""
+        return TaskBarDivider(max(toolbar_h - self.DIVIDER_INSET, 1))
 
     def _tool_button(
         self, text: str, icon_name: Optional[str] = None, checkable: bool = False

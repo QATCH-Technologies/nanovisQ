@@ -6,13 +6,17 @@ objectName "CtrlToolBar" so they pick up the exact same app-wide QSS that
 already themes ControlsUI's toolbar (see app_theme.qss) - no new QSS rules
 needed.
 
-Laid out as three captioned zones - RUN / FIT & ANALYZE / APP - separated
+Laid out as three zones - run selector / fit & analyze / app - separated
 by hairline dividers, per the "2a" task bar redesign: the run selector is
-a searchable, filterable field with the saved-state indicator folded into
-the RUN caption itself, and Back/Next stand adjacent (no step-position
-label between them) - both still built via the same `_tool_button()`
-helper as every other button in the bar, so they read as one family rather
-than a visually distinct control.
+a searchable, filterable field with the saved-state indicator inline
+beside it, and Back/Next stand adjacent (no step-position label between
+them) - both still built via the same `_tool_button()` helper as every
+other button in the bar, so they read as one family rather than a visually
+distinct control. Zones are uncaptioned (no `SectionHeader` row) - a
+caption line made this bar's height diverge from `ControlsActionBar`'s and
+from the plot panels' own header rhythm elsewhere in the app, for less
+benefit than the height cost; the divider alone still reads as "three
+groups" without it.
 
 Every toolbutton icon (and the search/filter/clear icons embedded in the
 run field) is tinted from the active theme's `flat_*` tokens at build time
@@ -37,8 +41,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.ui.components import AnimatedComboBox
 from QATCH.ui.components.icon_utils import tinted_icon
-from QATCH.ui.components.task_bar_base import TaskBarBase, TaskBarDivider, _icon_path
-from QATCH.ui.labels.section_label import SectionHeader
+from QATCH.ui.components.task_bar_base import TaskBarBase, _icon_path
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.styles.typography import FONT_SANS_STACK
 from QATCH.ui.widgets.saved_state_dot import SavedStateDot
@@ -46,19 +49,17 @@ from QATCH.ui.widgets.saved_state_dot import SavedStateDot
 
 class AnalyzeActionBar(TaskBarBase):
     """Searchable run field + Auto-Fit/position-stepper/Modify/Analyze +
-    Advanced/Close/User, grouped into three captioned zones (RUN / FIT &
-    ANALYZE / APP), as one themed card.
+    Advanced/Close/User, grouped into three uncaptioned zones, as one
+    themed card.
 
     Public attributes (all plain Qt widgets - the caller wires their
     signals and owns their behavior):
-        active_run_header, cBox_Runs: the searchable run selector (header
-            above the combo box). Typing filters the list via an attached
-            QCompleter; `filter_action` is the trailing "filters" affordance
-            embedded in the field.
+        cBox_Runs: the searchable run selector. Typing filters the list via
+            an attached QCompleter; `filter_action` is the trailing
+            "filters" affordance embedded in the field.
         saved_state_dot, saved_state_label, saved_state_widget: the
-            "Loaded & saved" status pill, shown inline in the field row
-            beside cBox_Runs/run_info_bar (not in the RUN caption row -
-            see `_build_run_selector` for why).
+            "Loaded & saved" status pill, shown inline in `run_zone` beside
+            cBox_Runs/run_info_bar.
         text_Created: hidden internal-state label, not shown in the bar -
             see `_build_run_selector`.
         tBtn_Predict, tBtn_Info: Auto-Fit/Run Info buttons - tBtn_Info sits
@@ -91,20 +92,12 @@ class AnalyzeActionBar(TaskBarBase):
         self.update()
 
     def _build_run_selector(self) -> None:
-        self.run_caption = SectionHeader("Run")
-
-        # Saved-state pill - sits in field_row beside cBox_Runs/run_info_bar
-        # (not in caption_row next to the RUN caption - SavedStateDot's own
-        # fixed 14px size, needed for its glow animation, would otherwise
-        # sizeHint this caption line taller than every other zone's bare
-        # SectionHeader caption, making this bar's RUN zone - and so the
-        # whole bar - taller than ControlsActionBar's for no reason other
-        # than this pill's placement). UIAnalyze drives its actual
-        # color/text (blank/unsaved/saved/error) and wires its click
-        # behavior (jump to step 1); this class only builds/positions it,
-        # and keeps the same `saved_state_widget` container so that wiring
-        # (mousePressEvent) keeps working unchanged regardless of where it
-        # sits in the layout.
+        # Saved-state pill - sits in field_row beside cBox_Runs/run_info_bar.
+        # UIAnalyze drives its actual color/text (blank/unsaved/saved/error)
+        # and wires its click behavior (jump to step 1); this class only
+        # builds/positions it, and keeps the same `saved_state_widget`
+        # container so that wiring (mousePressEvent) keeps working
+        # unchanged regardless of where it sits in the layout.
         self.saved_state_dot = SavedStateDot()
         self.saved_state_label = QtWidgets.QLabel("Loaded & saved")
         # Explicitly sized/themed rather than left on the ambient default
@@ -118,12 +111,6 @@ class AnalyzeActionBar(TaskBarBase):
         saved_state_layout.setSpacing(6)
         saved_state_layout.addWidget(self.saved_state_dot)
         saved_state_layout.addWidget(self.saved_state_label)
-
-        caption_row = QtWidgets.QHBoxLayout()
-        caption_row.setContentsMargins(0, 0, 0, 0)
-        caption_row.setSpacing(10)
-        caption_row.addWidget(self.run_caption)
-        caption_row.addStretch(1)
 
         # Searchable run field: an editable AnimatedComboBox with a
         # substring-filtering QCompleter sharing its own item model, so
@@ -201,23 +188,13 @@ class AnalyzeActionBar(TaskBarBase):
         # saved_state_widget (a 14px dot + label), and run_info_bar (taller
         # - icon-over-label) would otherwise be stretched to the row's full
         # height by the layout and read as top-aligned relative to each
-        # other. The row's own height is already governed by run_info_bar
-        # (a full CtrlToolBar row), so the pill just floats centered in it
-        # at no extra height cost - unlike sitting in caption_row above.
-        field_row = QtWidgets.QHBoxLayout()
-        field_row.setContentsMargins(0, 0, 0, 0)
-        field_row.setSpacing(8)
-        field_row.addWidget(self.cBox_Runs, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        field_row.addWidget(self.saved_state_widget, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        field_row.addWidget(self.run_info_bar, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-
-        self.run_zone = QtWidgets.QVBoxLayout()
+        # other.
+        self.run_zone = QtWidgets.QHBoxLayout()
         self.run_zone.setContentsMargins(0, 0, 0, 0)
-        # Tight caption-to-content gap - keeps the caption line from adding
-        # much more than its own text height to the bar's overall height.
-        self.run_zone.setSpacing(1)
-        self.run_zone.addLayout(caption_row)
-        self.run_zone.addLayout(field_row)
+        self.run_zone.setSpacing(8)
+        self.run_zone.addWidget(self.cBox_Runs, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.run_zone.addWidget(self.saved_state_widget, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.run_zone.addWidget(self.run_info_bar, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         # UIAnalyze/MainWindow track the current run's identity via this
         # label's text (see e.g. MainWindow.set_captured_data and
@@ -293,12 +270,6 @@ class AnalyzeActionBar(TaskBarBase):
         self.fit_bar.addWidget(self.tool_Modify)
         self.fit_bar.addWidget(self.tool_Analyze)
 
-        self.fit_zone = QtWidgets.QVBoxLayout()
-        self.fit_zone.setContentsMargins(0, 0, 0, 0)
-        self.fit_zone.setSpacing(1)
-        self.fit_zone.addWidget(SectionHeader("Fit & Analyze"))
-        self.fit_zone.addWidget(self.fit_bar)
-
     def _build_app_group(self) -> None:
         self.tool_Advanced = self._tool_button("Advanced", "gear.svg", checkable=True)
         self.tool_Cancel = self._tool_button("Close", "cancel.svg")
@@ -312,12 +283,6 @@ class AnalyzeActionBar(TaskBarBase):
         self.app_bar.addWidget(self.tool_Cancel)
         self.app_bar.addWidget(self.tool_User)
 
-        self.app_zone = QtWidgets.QVBoxLayout()
-        self.app_zone.setContentsMargins(0, 0, 0, 0)
-        self.app_zone.setSpacing(1)
-        self.app_zone.addWidget(SectionHeader("App"))
-        self.app_zone.addWidget(self.app_bar)
-
     def _assemble(self) -> None:
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(*self.OUTER_MARGINS)
@@ -327,8 +292,8 @@ class AnalyzeActionBar(TaskBarBase):
         # that as the divider height rather than a guessed constant.
         toolbar_h = self.fit_bar.sizeHint().height()
         layout.addLayout(self.run_zone)
-        layout.addWidget(TaskBarDivider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        layout.addLayout(self.fit_zone)
+        layout.addWidget(self._make_divider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.fit_bar, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addStretch(1)
-        layout.addWidget(TaskBarDivider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        layout.addLayout(self.app_zone)
+        layout.addWidget(self._make_divider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.app_bar, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)

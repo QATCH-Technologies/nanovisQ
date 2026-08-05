@@ -57,8 +57,8 @@ from QATCH.ui.components.analyze_plot_cards import (
     DetailPlotCard,
     SignalOverviewCard,
 )
-from QATCH.ui.components.glass_axis_item import (
-    GlassAxisItem,
+from QATCH.ui.components.qatch_axis_item import (
+    QATCHAxisItem,
     apply_glass_plot_style,
     glass_curve_pen,
 )
@@ -203,7 +203,7 @@ class ResistantViewBox(pg.ViewBox):
 
 
 def _new_glass_plot_widget() -> pg.PlotWidget:
-    """A `pg.PlotWidget` pre-built with `GlassAxisItem` bottom/left axes -
+    """A `pg.PlotWidget` pre-built with `QATCHAxisItem` bottom/left axes -
     the same no-spine/no-tick-marks look PlotsUI's plots use (see
     QATCH.ui.main_window._configure_plot), so Analyze's four plot cards
     read as the same family rather than plain default pyqtgraph axes.
@@ -217,8 +217,8 @@ def _new_glass_plot_widget() -> pg.PlotWidget:
     w = pg.PlotWidget(
         viewBox=ResistantViewBox(),
         axisItems={
-            "bottom": GlassAxisItem(orientation="bottom"),
-            "left": GlassAxisItem(orientation="left"),
+            "bottom": QATCHAxisItem(orientation="bottom"),
+            "left": QATCHAxisItem(orientation="left"),
         },
     )
 
@@ -713,6 +713,12 @@ class UIAnalyze(QtWidgets.QWidget):
         # margins push the action bar down/inward and wrap the plot area in
         # an unwanted border of empty space that Controls/Plots don't have.
         self.layout.setContentsMargins(0, 0, 0, 0)
+        # Explicit, matching PlotsUI's root_layout.setSpacing(6) - this was
+        # previously unset, falling back to Qt's platform-default QVBoxLayout
+        # spacing, which left the gap between the action bar and the plot
+        # area below it (self.graph_split) inconsistent with PlotsUI's own
+        # toolbar-to-plot buffer rather than an intentional, matching value.
+        self.layout.setSpacing(6)
 
         # Fixes #30
         self.text_Devices = QtWidgets.QLabel("Device")
@@ -782,13 +788,7 @@ class UIAnalyze(QtWidgets.QWidget):
             self.action_analyze
         )  # TODO: skip ahead to analyze (if pois are all set)
         self.tool_Advanced.clicked.connect(self.action_advanced)
-        self.tool_Advanced.toggled.connect(
-            lambda _: self.parent.controls_window.ui._refresh_checkable_style(self.tool_Advanced)
-        )
         self.tool_User.clicked.connect(self._toggle_account_popup)
-        self.tool_User.toggled.connect(
-            lambda _: self.parent.controls_window.ui._refresh_checkable_style(self.tool_User)
-        )
         self._refresh_account_button_state()
 
         self.toolLayout = QtWidgets.QVBoxLayout()
@@ -1045,7 +1045,14 @@ class UIAnalyze(QtWidgets.QWidget):
         self.graph_split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self.graph_split.addWidget(self.graphStack)
         self.graph_split.addWidget(self.lowerGraphs)
-        self.graph_split.setSizes([1, 1])
+        # 2:1 in favor of the overview - the whole-run signal view is the
+        # primary thing being read here, same dominant-pane ratio PlotsUI
+        # already uses between its own main plot and secondary plots (see
+        # ui_plots.py's main_splitter.setStretchFactor(0, 2)/(1, 1)) rather
+        # than an unrelated new number. _toggle_analyze_fullscreen reads
+        # this splitter's *current* sizes() at runtime (not this literal),
+        # so it adapts to whatever ratio is set here.
+        self.graph_split.setSizes([2, 1])
 
         # Expand/configure parity with PlotsUI: each plot card's fullscreen
         # toggle animates graph_split/lowerGraphs to give it the whole
@@ -1139,33 +1146,44 @@ class UIAnalyze(QtWidgets.QWidget):
         layout_s2.addStretch()
         handle2.setLayout(layout_s2)
 
-        # Drag-marker hint (left) + terse keyboard-shortcut hints (right),
-        # matching the target layout - previously reversed (keyboard hints
-        # were on the left, drag hint on the right).
+        # Drag-marker hint (bottom-left corner) + terse keyboard-shortcut
+        # hints (bottom-right corner), floated directly over the overview
+        # plot itself rather than docked in a footer row below it - frees up
+        # the vertical space that row used to take (see graph_split's 2:1
+        # split above) while keeping both hints visible without competing
+        # with the plot for layout height. Parented straight to graphWidget
+        # (not added to any layout) and manually kept pinned to its bottom
+        # corners by _position_overview_footer_hints/the resize event filter
+        # installed on it below - the same "plain overlay widget on top of a
+        # pg.PlotWidget" technique, just widget-geometry-based instead of
+        # pg.TextItem/ViewBox-based since these are static UI captions, not
+        # data annotations (compare _annotate_welcome_text in main_window.py,
+        # which *does* need ViewBox/data-space coordinates).
         self.footerText_hint = QtWidgets.QLabel(
             "<i>Drag markers for rough placement &nbsp;·&nbsp; "
-            "click the detail plots for precise placement.</i>"
+            "click the detail plots for precise placement.</i>",
+            self.graphWidget,
         )
         self.footerText_keys = QtWidgets.QLabel(
-            "<b>Esc</b> | Back &nbsp;&nbsp; <b>Enter</b> | Next"
+            "<b>Esc</b> | Back &nbsp;&nbsp; <b>Enter</b> | Next",
+            self.graphWidget,
         )
         self.footerText_hint.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         self.footerText_keys.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         self.footerText_hint.setStyleSheet(desc_label_qss())
         self.footerText_keys.setStyleSheet(desc_label_qss())
+        self.footerText_hint.adjustSize()
+        self.footerText_keys.adjustSize()
+        self.footerText_hint.raise_()
+        self.footerText_keys.raise_()
+        self.graphWidget.installEventFilter(self)
+        self._position_overview_footer_hints()
 
-        layout_h3 = QtWidgets.QHBoxLayout()
-        layout_h3.addWidget(self.footerText_hint)
-        layout_h3.addWidget(self.footerText_keys)
-
-        # Add widgets to layout - hint bar sits at the very bottom, under
-        # the detail-plot row, per the target layout. The workflow stepper is
-        # no longer a docked row here - it floats over the plot itself (see
-        # _embed_stepper_overlay), so the action bar sits directly above the
-        # plot area now.
+        # The workflow stepper is no longer a docked row here either - it
+        # floats over the plot itself (see _embed_stepper_overlay), so the
+        # action bar sits directly above the plot area now.
         self.layout.addLayout(self.toolLayout)
         self.layout.addWidget(self.graph_split)
-        self.layout.addLayout(layout_h3)
 
         self.setLayout(self.layout)
         self.setWindowTitle("Analyze Data")
@@ -1527,6 +1545,28 @@ class UIAnalyze(QtWidgets.QWidget):
         self._fs_timer.setInterval(interval_ms)
         self._fs_timer.timeout.connect(_tick)
         self._fs_timer.start()
+
+    def _position_overview_footer_hints(self) -> None:
+        """Keeps footerText_hint/footerText_keys pinned to graphWidget's
+        bottom-left/bottom-right corners.
+
+        Called once at construction and on every resize of graphWidget (see
+        the eventFilter installed on it in setup_ui) - a plain `.move()`
+        against its current `.height()/.width()`, not a layout, since these
+        two labels are floating overlays parented directly to graphWidget
+        rather than participants in `self.layout`.
+        """
+        margin = 8
+        y = self.graphWidget.height() - self.footerText_hint.height() - margin
+        self.footerText_hint.move(margin, y)
+        self.footerText_keys.move(
+            self.graphWidget.width() - self.footerText_keys.width() - margin, y
+        )
+
+    def eventFilter(self, obj, event):
+        if obj is self.graphWidget and event.type() == QtCore.QEvent.Type.Resize:
+            self._position_overview_footer_hints()
+        return super().eventFilter(obj, event)
 
     def _update_overview_fullscreen_enabled(self) -> None:
         """Disables the overview card's fullscreen toggle when there's no
