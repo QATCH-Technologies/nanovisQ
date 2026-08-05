@@ -54,6 +54,10 @@ class ControlsActionBar(TaskBarBase):
             its own icon/theming, like `tool_NextPortRow`.
         tempController: the collapsible temp-control side panel (status
             banner + PID readout), embedded between `run_bar` and `app_bar`.
+        tempCollapsedHeight: `run_bar`'s own toolbar row height - the cap
+            `tempController.maximumHeight()` is pinned to while collapsed
+            (see `_build_run_group`). `UIControls._animate_temp_controller`
+            reuses this to restore the cap once a collapse finishes.
         tempStatusBar, lPV, lSP, lOP, tempPidInfo: widgets inside
             `tempController` - `UIControls` reads/writes these directly
             (e.g. `_update_temp_display`).
@@ -172,6 +176,21 @@ class ControlsActionBar(TaskBarBase):
         temp_layout.addWidget(self.tempPidInfo, 0)
         self.tempController.setLayout(temp_layout)
 
+        # Collapsed by default (setMaximumWidth(0) above) - but a
+        # QWidgetItem's sizeHint().height() is governed by maximumHeight,
+        # not maximumWidth, so without this cap tempController's own
+        # natural content height (status banner + slider + tempPidInfo,
+        # taller than BUTTON_HEIGHT) still leaks into run_row's
+        # QHBoxLayout height computation via AlignVCenter even while the
+        # panel is visibly 0px wide - inflating this whole bar above
+        # AnalyzeActionBar's and knocking run_bar's buttons out of
+        # vertical alignment with app_bar's. UIControls
+        # ._animate_temp_controller lifts this cap in lockstep with the
+        # width animation whenever the panel is actually opened, and
+        # restores it once a collapse animation finishes.
+        self.tempCollapsedHeight = self.run_bar.sizeHint().height()
+        self.tempController.setMaximumHeight(self.tempCollapsedHeight)
+
         # Run zone: caption above a row pairing run_bar with the temp panel
         # (AlignVCenter on both, matching how AnalyzeActionBar's RUN zone
         # nests run_info_bar beside cBox_Runs) - temp control is a run-time
@@ -212,6 +231,6 @@ class ControlsActionBar(TaskBarBase):
         layout.setSpacing(self.ZONE_SPACING)
         toolbar_h = self.run_bar.sizeHint().height()
         layout.addLayout(self.run_zone)
-        layout.addWidget(TaskBarDivider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addStretch(1)
+        layout.addWidget(TaskBarDivider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(self.app_zone)

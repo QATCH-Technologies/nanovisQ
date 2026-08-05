@@ -36,7 +36,7 @@ def glass_curve_pen(base_color, width: float = 2.0) -> QtGui.QPen:
     return pg.mkPen(color=color, width=width)
 
 
-class GlassAxisItem(AxisItem):
+class QATCHAxisItem(AxisItem):
     """An `AxisItem` with no visible spine or tick marks, a small fixed
     tick font, and scientific-notation suppressed for small values (e.g.
     Dissipation numbers like 0.000193, which pyqtgraph would otherwise

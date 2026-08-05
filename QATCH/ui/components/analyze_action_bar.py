@@ -39,7 +39,8 @@ from QATCH.ui.components import AnimatedComboBox
 from QATCH.ui.components.icon_utils import tinted_icon
 from QATCH.ui.components.task_bar_base import TaskBarBase, TaskBarDivider, _icon_path
 from QATCH.ui.labels.section_label import SectionHeader
-from QATCH.ui.styles.theme_manager import ThemeManager
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.typography import FONT_SANS_STACK
 from QATCH.ui.widgets.saved_state_dot import SavedStateDot
 
 
@@ -55,9 +56,9 @@ class AnalyzeActionBar(TaskBarBase):
             QCompleter; `filter_action` is the trailing "filters" affordance
             embedded in the field.
         saved_state_dot, saved_state_label, saved_state_widget: the
-            "Loaded & saved" status pill, now shown inline beside the RUN
-            caption (folded up per the 2a redesign) rather than beneath
-            cBox_Runs.
+            "Loaded & saved" status pill, shown inline in the field row
+            beside cBox_Runs/run_info_bar (not in the RUN caption row -
+            see `_build_run_selector` for why).
         text_Created: hidden internal-state label, not shown in the bar -
             see `_build_run_selector`.
         tBtn_Predict, tBtn_Info: Auto-Fit/Run Info buttons - tBtn_Info sits
@@ -86,19 +87,30 @@ class AnalyzeActionBar(TaskBarBase):
         self.retint_icon_buttons()
         self._restyle_filter_icon()
         self._restyle_static_line_edit_icons()
+        self._restyle_saved_state_label()
         self.update()
 
     def _build_run_selector(self) -> None:
         self.run_caption = SectionHeader("Run")
 
-        # Saved-state pill - folded up beside the RUN caption per the 2a
-        # redesign (was a separate row beneath cBox_Runs). UIAnalyze drives
-        # its actual color/text (blank/unsaved/saved/error) and wires its
-        # click behavior (jump to step 1); this class only builds/positions
-        # it, and keeps the same `saved_state_widget` container so that
-        # wiring (mousePressEvent) keeps working unchanged.
+        # Saved-state pill - sits in field_row beside cBox_Runs/run_info_bar
+        # (not in caption_row next to the RUN caption - SavedStateDot's own
+        # fixed 14px size, needed for its glow animation, would otherwise
+        # sizeHint this caption line taller than every other zone's bare
+        # SectionHeader caption, making this bar's RUN zone - and so the
+        # whole bar - taller than ControlsActionBar's for no reason other
+        # than this pill's placement). UIAnalyze drives its actual
+        # color/text (blank/unsaved/saved/error) and wires its click
+        # behavior (jump to step 1); this class only builds/positions it,
+        # and keeps the same `saved_state_widget` container so that wiring
+        # (mousePressEvent) keeps working unchanged regardless of where it
+        # sits in the layout.
         self.saved_state_dot = SavedStateDot()
         self.saved_state_label = QtWidgets.QLabel("Loaded & saved")
+        # Explicitly sized/themed rather than left on the ambient default
+        # label font, which reads inconsistently next to every other themed
+        # small-text element in this bar.
+        self._restyle_saved_state_label()
         self.saved_state_widget = QtWidgets.QWidget()
         self.saved_state_widget.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         saved_state_layout = QtWidgets.QHBoxLayout(self.saved_state_widget)
@@ -111,7 +123,6 @@ class AnalyzeActionBar(TaskBarBase):
         caption_row.setContentsMargins(0, 0, 0, 0)
         caption_row.setSpacing(10)
         caption_row.addWidget(self.run_caption)
-        caption_row.addWidget(self.saved_state_widget)
         caption_row.addStretch(1)
 
         # Searchable run field: an editable AnimatedComboBox with a
@@ -186,14 +197,18 @@ class AnalyzeActionBar(TaskBarBase):
         self.run_info_bar = self._make_toolbar()
         self.run_info_bar.addWidget(self.tBtn_Info)
 
-        # AlignVCenter on both: cBox_Runs (a fixed 30px field) and
-        # run_info_bar (taller - icon-over-label) would otherwise be
-        # stretched to the row's full height by the layout and read as
-        # top-aligned relative to each other.
+        # AlignVCenter on all three: cBox_Runs (a fixed 30px field),
+        # saved_state_widget (a 14px dot + label), and run_info_bar (taller
+        # - icon-over-label) would otherwise be stretched to the row's full
+        # height by the layout and read as top-aligned relative to each
+        # other. The row's own height is already governed by run_info_bar
+        # (a full CtrlToolBar row), so the pill just floats centered in it
+        # at no extra height cost - unlike sitting in caption_row above.
         field_row = QtWidgets.QHBoxLayout()
         field_row.setContentsMargins(0, 0, 0, 0)
         field_row.setSpacing(8)
         field_row.addWidget(self.cBox_Runs, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        field_row.addWidget(self.saved_state_widget, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         field_row.addWidget(self.run_info_bar, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         self.run_zone = QtWidgets.QVBoxLayout()
@@ -230,6 +245,20 @@ class AnalyzeActionBar(TaskBarBase):
             *(tok["flat_accent"] if self._filter_active else tok["flat_text_muted"])
         )
         self.filter_action.setIcon(tinted_icon(_icon_path("filter.svg"), color, 18))
+
+    def _restyle_saved_state_label(self) -> None:
+        """Sizes/tints "Loaded & saved" to match `SectionHeader`'s compact
+        10px caption font (muted color, normal case/weight - this is a
+        status message, not a section title, so it deliberately skips
+        `SectionHeader`'s uppercase/letter-spacing/600-weight treatment)
+        rather than the ambient default label font, which reads
+        inconsistently next to this bar's other themed small text."""
+        tok = ThemeManager.instance().tokens()
+        self.saved_state_label.setStyleSheet(
+            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; "
+            f"font-family: {FONT_SANS_STACK}; font-size: 10px; font-weight: 400; "
+            "background: transparent; border: none; padding: 0px; }"
+        )
 
     def _restyle_static_line_edit_icons(self) -> None:
         """Retints the leading search icon and the quick-clear "x" - both

@@ -25,7 +25,7 @@ _HEADER_H = 52
 _SESSION_KEY_PATH = os.path.join(Constants.user_profiles_path, "session.key")
 
 
-def _read_key(path: str) -> Optional[str]:
+def _read_key(path: str) -> str | None:
     if os.path.exists(path):
         with open(path, "r") as f:
             return f.readline()
@@ -78,7 +78,7 @@ class SignatureDialog(DialogBase):
 
     def __init__(
         self,
-        parent: Optional[Any] = None,
+        parent: Any | None = None,
         on_switch_user: Optional[Callable[[], Optional[Tuple[str, str]]]] = None,
     ) -> None:
         """Initializes the SignatureDialog and loads session metadata.

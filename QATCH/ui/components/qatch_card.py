@@ -1,4 +1,35 @@
-from typing import Optional
+"""
+QATCH.ui.widgets.qatch_card.py
+
+Ccard widget for the QATCH login interface.
+
+This module provides :class:`QATCHCard`, a custom `QFrame` that renders a
+live frosted effect by sampling the blurred backdrop maintained by a
+:class:`LoginCentralWidget`. Unlike traditional translucent widgets that rely
+on platform composition or semi-transparent backgrounds, this implementation
+reconstructs the appearance entirely in software, ensuring consistent
+visual results across platforms and Qt styles.
+
+The card's rendering pipeline:
+
+    1. Clips all painting to a rounded rectangle.
+    2. Samples the corresponding region of the shared blurred backdrop.
+    3. Falls back to a themed gradient when no backdrop is available.
+    4. Applies configurable tint and shimmer overlays.
+    5. Draws layered borders using theme-defined colors.
+    6. Optionally renders an animated emphasis border used during UI
+       transitions.
+
+All visual styling is driven by :class:`ThemeManager`, allowing the widget to
+adapt automatically to application theme changes while maintaining a consistent
+appearance throughout the interface.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-05
+"""
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -7,23 +38,30 @@ from QATCH.ui.widgets.login_central_widget import LoginCentralWidget
 
 
 class QATCHCard(QtWidgets.QFrame):
-    """A custom frame that renders a glassmorphism effect via backdrop sampling.
+    """Card that renders a live blurred backdrop.
 
-    This widget creates the illusion of translucent glass by sampling the blurred
-    pixmap from a LoginCentralWidget. It maps its local coordinates to the
-    backdrop's coordinate space to 'slice' the background perfectly.
+    This widget implements the frosted-glass panels used throughout the login
+    interface. Rather than drawing a static translucent background, it samples
+    the blurred snapshot maintained by a :class:`LoginCentralWidget`, allowing
+    the card to remain visually synchronized with animated background blur and
+    dimming effects.
 
-    The rendering pipeline follows these steps:
-        1. Create a rounded-rectangle clip path.
-        2. Sample and translate the blurred backdrop slice.
-        3. Apply a neutral 'frost' tint and a faint cool blue identifier tint.
-        4. Render a top-down white shimmer gradient.
-        5. Draw a multi-layered border (muted outer stroke + inner highlight rim).
+    During painting the widget:
+
+    1. Clips rendering to a rounded rectangle.
+    2. Samples the appropriate region of the shared blurred backdrop.
+    3. Applies configurable glass tint and shimmer overlays.
+    4. Draws multi-layer glass borders.
+    5. Optionally renders an animated emphasis border.
+
+    If no backdrop snapshot is available, a theme-defined fallback gradient is
+    rendered instead.
 
     Attributes:
-        _RADIUS (float): The corner radius for the rounded rectangle.
-        _backdrop (LoginCentralWidget): Reference to the widget providing the
-            blurred source image.
+        _RADIUS: Corner radius, in pixels, used for all rounded geometry.
+        _backdrop: Widget supplying blurred and unblurred background snapshots.
+        _border_frac: Progress of the animated emphasis border in the range
+            `[0.0, 1.0]`.
     """
 
     _RADIUS: float = 22.0
@@ -31,13 +69,16 @@ class QATCHCard(QtWidgets.QFrame):
     def __init__(
         self,
         backdrop: LoginCentralWidget,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
-        """Initializes the glass card and configures transparency attributes.
+        """Initializes the card.
+
+        Stores the backdrop provider and configures the frame for fully custom
+        painting by disabling Qt's default background rendering.
 
         Args:
-            backdrop (LoginCentralWidget): The source widget for background blur.
-            parent (QtWidgets.QWidget, optional): The parent widget.
+            backdrop: Login widget that provides the blurred backdrop images.
+            parent: Optional parent widget.
         """
         super().__init__(parent)
         self._backdrop = backdrop
@@ -48,16 +89,36 @@ class QATCHCard(QtWidgets.QFrame):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def set_border_frac(self, value: float) -> None:
-        """Sets the emphasis-border progress (0.0 hidden -> 1.0 fully shown)."""
+        """Sets the animated emphasis border progress.
+
+        The supplied value is clamped to the range `[0.0, 1.0]` before
+        scheduling a repaint.
+
+        Args:
+            value: Border animation progress, where `0.0` hides the emphasis
+                border and `1.0` displays it at full intensity.
+        """
         self._border_frac = max(0.0, min(1.0, value))
         self.update()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Executes the custom glassmorphism painting pipeline.
+        """Paints the entire card.
 
-        This method manually handles all background and border rendering. It
-        specifically avoids calling super().paintEvent() to prevent Qt Style
-        Sheets from overwriting the translucent effects with opaque colors.
+        The entire appearance is rendered manually instead of relying on Qt
+        stylesheets so that the translucent effect remains intact.
+
+        The rendering sequence is:
+
+        1. Enable antialiasing and smooth pixmap rendering.
+        2. Clip painting to a rounded rectangle.
+        3. Draw the corresponding region of the shared blurred backdrop, or a
+           fallback gradient if no backdrop exists.
+        4. Apply theme-defined tint and shimmer overlays.
+        5. Draw the outer rim and inner inset borders.
+        6. Render the optional animated emphasis border.
+
+        Args:
+            event: Paint event generated by Qt.
         """
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
@@ -95,9 +156,7 @@ class QATCHCard(QtWidgets.QFrame):
             grad.setColorAt(1.0, QtGui.QColor(*tokens["backdrop_fallback_end"]))
             p.fillRect(self.rect(), QtGui.QBrush(grad))
 
-        # Glass tint + shimmer layers, driven from the shared glass tokens so
-        # this login card matches the other frosted surfaces (and tracks the
-        # active theme). The sampled backdrop above is left intact underneath.
+        # Tint and shimmer effects.
         tokens = ThemeManager.instance().tokens()
         p.fillRect(self.rect(), QtGui.QColor(*tokens["plot_glass_shimmer_top"]))
         p.fillRect(self.rect(), QtGui.QColor(*tokens["plot_glass_overlay"]))
@@ -116,8 +175,7 @@ class QATCHCard(QtWidgets.QFrame):
             self._RADIUS - 1.5,
         )
 
-        # Emphasis border: a crisp 1px highlight edge that catches up shortly
-        # after the card pops in, like glass catching the light.
+        # Emphasis border
         if self._border_frac > 0.0:
             rim = tokens["plot_glass_rim"]
             p.setPen(

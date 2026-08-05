@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.components.flat_paint import paint_flat_surface
@@ -30,7 +28,7 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
         _in_error (bool): True while `set_error(True)` is active.
     """
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         """Initializes the line edit with the flat control chrome."""
         super().__init__(parent)
         self._hovered: bool = False
@@ -38,7 +36,7 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
 
         self.setFrame(False)
         self.setAutoFillBackground(False)
-        self.setAttribute(QtCore.Qt.WA_Hover, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover, True)
         self._apply_text_qss()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 

@@ -1,7 +1,7 @@
 """
-qatch_warning_label.py
+QATCH.ui.components.qatch_warning_label.py
 
-This module defines the `QATCHWarningLabel` widget: a calm, glass-styled
+This module defines the `QATCHWarningLabel` widget: a calm, styled
 informational banner used in place of harshly colored inline warning text.
 
 Three severities are supported - "info" (default, calm blue-gray), "warning"
@@ -11,19 +11,20 @@ hardcoded to one fixed palette.
 
 The widget keeps a QLabel-like `setText`/`text` API for drop-in use at
 existing call sites.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-05
 """
 
 from __future__ import annotations
 
-from typing import Optional
-
-import PyQt5.QtCore as QtCore
-import PyQt5.QtGui as QtGui
-import PyQt5.QtWidgets as QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.ui.styles.theme_manager import ThemeManager
 
-# severity -> (text/border token, weak-background token)
 _SEVERITY_TOKENS = {
     "info": ("flat_accent", "flat_accent_weak"),
     "warning": ("flat_warning", "flat_warning_weak"),
@@ -51,7 +52,7 @@ class QATCHWarningLabel(QtWidgets.QWidget):
         self,
         text: str = "",
         icon_path: str = "",
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
         *,
         severity: str = "info",
     ) -> None:
@@ -113,7 +114,7 @@ class QATCHWarningLabel(QtWidgets.QWidget):
             self.icon_lbl.setPixmap(pix)
             self.icon_lbl.show()
 
-    def setText(self, text: str) -> None:  # noqa: N802
+    def setText(self, text: str) -> None:
         """Sets the informational text of the banner (QLabel-API parity)."""
         self.text_lbl.setText(text)
 
@@ -130,11 +131,11 @@ class QATCHWarningLabel(QtWidgets.QWidget):
         text_key, _ = _SEVERITY_TOKENS[self._severity]
         r, g, b, a = tok[text_key]
         self.text_lbl.setStyleSheet(
-            "QLabel { color: rgba(%d, %d, %d, %d); font-size: 11px; "
-            "font-weight: normal; background: transparent; border: none; }" % (r, g, b, a)
+            f"QLabel {{ color: rgba({r}, {g}, {b}, {a}); font-size: 11px; "
+            f"font-weight: normal; background: transparent; border: none; }}"
         )
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Renders the glass background: a rounded shape tinted per
         `severity`, a subtle top shimmer, and a hairline border - all
         resolved fresh from the active theme's tokens.

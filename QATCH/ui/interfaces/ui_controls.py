@@ -864,6 +864,7 @@ class UIControls:
         self.tool_Reset = self.controls_actionbar.tool_Reset
         self.tool_TempControl = self.controls_actionbar.tool_TempControl
         self.tempController = self.controls_actionbar.tempController
+        self.tempCollapsedHeight = self.controls_actionbar.tempCollapsedHeight
         self.tempStatusBar = self.controls_actionbar.tempStatusBar
         self.lPV = self.controls_actionbar.lPV
         self.lSP = self.controls_actionbar.lSP
@@ -3009,6 +3010,16 @@ class UIControls:
 
         self._set_temp_arrow(expand)
 
+        if expand:
+            # Lift the collapsed-state height cap (see ControlsActionBar
+            # ._build_run_group) before the width even starts opening -
+            # otherwise the drawer's full content (status + slider + PID
+            # box) would render clipped to the button-row height for the
+            # ~220ms the panel is mid-slide. sizeHint().height() is the
+            # drawer's true natural height regardless of its current
+            # width (nothing inside it word-wraps).
+            self.tempController.setMaximumHeight(self.tempController.sizeHint().height())
+
         animation = QtCore.QPropertyAnimation(
             self.tempController,
             b"maximumWidth",
@@ -3017,6 +3028,14 @@ class UIControls:
         animation.setStartValue(current_width)
         animation.setEndValue(target_width)
         animation.setEasingCurve(QtCore.QEasingCurve.InOutQuart)
+
+        if not expand:
+            # Only clamp the height back down once the panel has fully
+            # slid shut - clamping it up front would chop the bottom off
+            # the still-visible drawer for the ~220ms it's closing.
+            animation.finished.connect(
+                lambda: self.tempController.setMaximumHeight(self.tempCollapsedHeight)
+            )
 
         self._temp_anim = animation
         animation.start(QtCore.QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)

@@ -1,11 +1,17 @@
-"""QATCH.ui.components.qatch_dialog
+"""QATCH.ui.components.qatch_dialog.py
 
-Glassmorphic modal dialog that matches the app's frosted-glass aesthetic.
-Replaces QMessageBox across all PopUp static methods - zero call-site changes.
+Modal dialog that matches the app's frosted aesthetic.
+Replaces QMessageBox across all PopUp static methods.
 
 Renders a semi-transparent dim overlay over the root window with a centred
-frosted glass card containing title, body text, optional expandable details,
+frosted card containing title, body text, optional expandable details,
 and QATCHPushButton actions.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-05
 """
 
 from __future__ import annotations

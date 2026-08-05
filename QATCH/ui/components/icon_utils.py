@@ -1,12 +1,24 @@
 """
-QATCH.ui.components.icon_utils
+QATCH.ui.components.icon_utils.py
 
-Shared icon-tinting helper.
+Utility functions for creating tinted Qt icons and pixmaps.
 
-A handful of components each hand-rolled the same "load an SVG, recolor it
-solid via SourceAtop compositing" routine independently (glass_dialog,
-GlassSegmentedControl, and each of the data-management mode widgets). This
-centralizes that recipe so every caller gets the same result from one place.
+This module provides a centralized implementation for recoloring icons using
+Qt's `CompositionMode_SourceAtop` composition mode. Several UI components
+require monochrome versions of the same SVG or raster assets that match the
+current application theme. By consolidating the tinting logic into a single
+module, all components produce consistent visual results while avoiding
+duplicate rendering code.
+
+The tinting process preserves the original alpha channel, allowing transparent
+regions of the source image to remain transparent while replacing all visible
+pixels with the requested color.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-05
 """
 
 from __future__ import annotations
@@ -15,18 +27,27 @@ from PyQt5 import QtCore, QtGui
 
 
 def tinted_icon(path: str, color: QtGui.QColor, size: int = 18) -> QtGui.QIcon:
-    """Returns a copy of the icon/SVG at `path` fully recolored to `color`.
+    """Creates a solid-color version of an icon.
 
-    Uses SourceAtop compositing, so transparent areas of the source stay
-    transparent - only opaque pixels are recolored.
+    Loads an icon from disk, renders it into a square pixmap, and recolors all
+    visible pixels using Qt's `CompositionMode_SourceAtop` composition mode.
+    The source image's transparency is preserved, making the function suitable
+    for tinting SVGs and other icons used throughout the application's user
+    interface.
 
     Args:
-        path: Filesystem path to an icon (SVG, PNG, etc).
-        color: Solid color to paint the icon.
-        size: Square pixmap side length, in px.
+        path: Filesystem path to the source icon. Any image format supported by
+            Qt (such as SVG or PNG) may be used.
+        color: Color used to tint the rendered icon.
+        size: Width and height, in pixels, of the rendered square pixmap.
+            Defaults to `18`.
 
     Returns:
-        A QIcon wrapping the tinted pixmap.
+        A `QIcon` containing the tinted image.
+
+    Notes:
+        The original image is not modified. A new pixmap is rendered and
+        returned each time this function is called.
     """
     src = QtGui.QIcon(path).pixmap(size, size)
     dst = QtGui.QPixmap(src.size())
@@ -40,7 +61,26 @@ def tinted_icon(path: str, color: QtGui.QColor, size: int = 18) -> QtGui.QIcon:
 
 
 def tinted_pixmap(path: str, color: QtGui.QColor, size: int = 18) -> QtGui.QPixmap:
-    """Same as `tinted_icon`, returning the raw QPixmap instead of a QIcon."""
+    """Creates a solid-color version of an image as a `QPixmap`.
+
+    Performs the same rendering and tinting operation as :func:`tinted_icon`,
+    but returns the resulting `QPixmap` directly instead of wrapping it in a
+    `QIcon`. This is useful when a pixmap is required for custom painting,
+    animations, or other image processing operations.
+
+    Args:
+        path: Filesystem path to the source icon or image.
+        color: Color used to tint the rendered image.
+        size: Width and height, in pixels, of the rendered square pixmap.
+            Defaults to `18`.
+
+    Returns:
+        A tinted `QPixmap` with the source image's transparency preserved.
+
+    Notes:
+        The tinting operation preserves the original alpha channel so only
+        opaque portions of the image are recolored.
+    """
     src = QtGui.QIcon(path).pixmap(size, size)
     dst = QtGui.QPixmap(src.size())
     dst.fill(QtCore.Qt.GlobalColor.transparent)

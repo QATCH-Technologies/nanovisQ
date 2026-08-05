@@ -125,7 +125,7 @@ class TaskBarBase(QtWidgets.QWidget):
         for btn, icon_name in self._icon_buttons:
             btn.setIcon(tinted_icon(_icon_path(icon_name), color, self.ICON_SIZE.height()))
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Paints the shared rounded-card background behind the bar.
 
         Ported from the now-retired `QATCH.ui.widgets.controls_widget
@@ -139,11 +139,7 @@ class TaskBarBase(QtWidgets.QWidget):
         """
         mode = ThemeManager.instance().mode()
         size = self.size()
-        if (
-            self._bg_cache is None
-            or self._bg_cache.size() != size
-            or self._bg_cache_mode != mode
-        ):
+        if self._bg_cache is None or self._bg_cache.size() != size or self._bg_cache_mode != mode:
             self._bg_cache = self._render_background(size)
             self._bg_cache_mode = mode
 

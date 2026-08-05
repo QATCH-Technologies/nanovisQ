@@ -58,7 +58,7 @@ from QATCH.QModel import OnyxDropEpochSignal, VoltaDropEpochSignal
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.ui.components.glass_axis_item import (
-    GlassAxisItem,
+    QATCHAxisItem,
     apply_glass_plot_style,
     glass_curve_pen,
     suppress_axis_ticks,
@@ -788,7 +788,10 @@ class MainWindow(QtWidgets.QMainWindow):
             captured = datetime.fromtimestamp(captured, timezone.utc)
             captured = captured.strftime("%Y-%m-%d")  # %H:%M:%S")
         self.analyze_window.ui.text_Created.setText("Loaded: {} ({})".format(data_folder, captured))
-        if hasattr(self.analyze_window.ui, "_batched_runs") and self.analyze_window.ui._batched_runs:
+        if (
+            hasattr(self.analyze_window.ui, "_batched_runs")
+            and self.analyze_window.ui._batched_runs
+        ):
             self.analyze_window.ui._current_run = self.analyze_window.ui.text_Created.text()
 
         self.analyze_window.ui.analyze_data(data_path)
@@ -3602,8 +3605,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 row=y,
                 colspan=span,
                 axisItems={
-                    "bottom": GlassAxisItem(orientation="bottom"),
-                    "left": GlassAxisItem(orientation="left"),
+                    "bottom": QATCHAxisItem(orientation="bottom"),
+                    "left": QATCHAxisItem(orientation="left"),
                 },
                 **{"font-size": "9pt"},
             )
@@ -3639,7 +3642,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
 
             x, y = i % 2, i // 2
-            self._yaxis.append(GlassAxisItem(orientation="left"))
+            self._yaxis.append(QATCHAxisItem(orientation="left"))
             self._xaxis.append(GlassDateAxis(orientation="bottom"))
 
             plot_layout = self.plots_window.ui.pltB.addPlot(
@@ -3723,7 +3726,7 @@ class MainWindow(QtWidgets.QMainWindow):
             colspan=1,
             axisItems={
                 "bottom": GlassDateAxis(orientation="bottom"),
-                "left": GlassAxisItem(orientation="left"),
+                "left": QATCHAxisItem(orientation="left"),
             },
         )
 
@@ -4670,8 +4673,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _show_auto_stop_message(self) -> None:
         """Displays/refreshes the floating auto-stop countdown banner."""
         self._auto_stop_badge.show_message(
-            f"{self._auto_stop_reason} - Auto-stopping in "
-            f"{self._auto_stop_remaining}…",
+            f"{self._auto_stop_reason} - Auto-stopping in " f"{self._auto_stop_remaining}…",
             is_error=False,
             parent_widget=self.controls_window.ui.run_controls,
         )
@@ -8128,9 +8130,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             # Re-center over the main window's current position so the
             # dialog appears on whichever display the app is currently on.
-            self.progressBar.move(
-                self.frameGeometry().center() - self.progressBar.rect().center()
-            )
+            self.progressBar.move(self.frameGeometry().center() - self.progressBar.rect().center())
             self.progressBar.findChild(QtWidgets.QPushButton).setEnabled(
                 False
             )  # disable "cancel" button

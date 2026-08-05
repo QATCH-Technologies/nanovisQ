@@ -1,8 +1,13 @@
-"""Shared horizontal numbered-step indicator.
+"""
+QATCH.ui.components.stepper.py
 
-Promoted from the Export wizard's private `_Stepper` (formerly in
-`QATCH.ui.widgets.data_mode_export`) so other panels (e.g. AnalyzeUI) can
-reuse the same circles-connected-by-lines step widget.
+Shared horizontal numbered-step indicator.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-05
 """
 
 from PyQt5 import QtCore, QtWidgets
@@ -13,24 +18,34 @@ from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 class Stepper(QtWidgets.QWidget):
     """Horizontal numbered-step indicator.
 
-    Circles connected by thin rule lines; the current step is filled solid,
-    reached-but-not-current steps are outlined/tinted, future steps are plain
+    Circles are connected by thin rule lines; the current step is filled solid,
+    reached-but-not-current steps are outlined/tinted, and future steps are plain
     gray. Clicking a step the user has already reached jumps back to it.
+
+    Attributes:
+        stepClicked (:class:`~PyQt5.QtCore.pyqtSignal`): Signal emitted with the integer
+            index of the step clicked by the user.
     """
 
     stepClicked = QtCore.pyqtSignal(int)
 
-    def __init__(self, labels, parent=None, compact=False):
+    def __init__(self, labels, parent: QtWidgets.QWidget | None = None, compact: bool = False):
+        """Initializes the Stepper widget.
+
+        Args:
+            labels (list of str): A list of string labels for each step in the wizard.
+            parent (:class:`~PyQt5.QtWidgets.QWidget`, optional): The parent widget.
+            compact (bool, optional): If True, renders smaller circles and margins for contexts
+                where the :class:`Stepper` sits in a thin toolbar-like card (e.g. AnalyzeUI's
+                workflow bar) rather than as a wizard's own prominent header.
+                Defaults to False.
+        """
         super().__init__(parent)
         self._current = 0
         self._max_reached = 0
         self._circles = []
         self._captions = []
         self._lines = []
-        # Compact mode: smaller circles/margins for contexts where the
-        # Stepper sits in a thin toolbar-like card (e.g. AnalyzeUI's workflow
-        # bar) rather than as a wizard's own prominent header (the Export
-        # wizard uses the default, full-size geometry).
         self._compact = compact
         circle_size = 20 if compact else 26
 
@@ -38,11 +53,6 @@ class Stepper(QtWidgets.QWidget):
         outer.setContentsMargins(*((2, 2, 2, 4) if compact else (4, 4, 4, 8)))
         outer.setSpacing(0)
 
-        # Circles and connecting lines live in their OWN grid row (row 0),
-        # with captions in a separate row (row 1) below. Keeping captions out
-        # of row 0 means row 0's height is just the circle's height, so a
-        # vertically-centered line lands on the circle's true center instead
-        # of the midpoint of "circle + caption" as a combined column.
         grid = QtWidgets.QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(0)
@@ -54,7 +64,7 @@ class Stepper(QtWidgets.QWidget):
                 line = QtWidgets.QFrame()
                 line.setFixedHeight(2)
                 line.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-                grid.addWidget(line, 0, col, QtCore.Qt.AlignVCenter)
+                grid.addWidget(line, 0, col, QtCore.Qt.AlignmentFlag.AlignVCenter)
                 grid.setColumnStretch(col, 1)
                 self._lines.append(line)
                 col += 1
@@ -64,11 +74,11 @@ class Stepper(QtWidgets.QWidget):
             circle.setFixedSize(circle_size, circle_size)
             circle.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
             circle.clicked.connect(lambda _=False, idx=i: self._on_clicked(idx))
-            grid.addWidget(circle, 0, col, QtCore.Qt.AlignCenter)
+            grid.addWidget(circle, 0, col, QtCore.Qt.AlignmentFlag.AlignCenter)
 
             cap = QtWidgets.QLabel(label)
-            cap.setAlignment(QtCore.Qt.AlignCenter)
-            grid.addWidget(cap, 1, col, QtCore.Qt.AlignHCenter)
+            cap.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(cap, 1, col, QtCore.Qt.AlignmentFlag.AlignHCenter)
 
             self._circles.append(circle)
             self._captions.append(cap)
@@ -79,28 +89,46 @@ class Stepper(QtWidgets.QWidget):
         self._restyle()
         ThemeManager.instance().themeChanged.connect(lambda _: self._restyle())
 
-    def _on_clicked(self, idx):
+    def _on_clicked(self, idx) -> None:
+        """Internal handler for when a step circle is clicked.
+
+        Emits the stepClicked signal if the selected index has already been reached.
+
+        Args:
+            idx (int): The index of the clicked step.
+        """
         if idx <= self._max_reached:
             self.stepClicked.emit(idx)
 
-    def set_current(self, index):
+    def set_current(self, index: int) -> None:
+        """Updates the current active step.
+
+        Args:
+            index (int): The index of the new current step.
+        """
         self._current = index
         self._max_reached = max(self._max_reached, index)
         self._restyle()
 
-    def reset(self):
-        """Clear "reached" progress entirely - used when the wizard itself
-        resets, so old steps don't keep showing as done/clickable."""
+    def reset(self) -> None:
+        """Clears "reached" progress entirely.
+
+        Used when the wizard itself resets, so old steps don't keep showing as
+        done/clickable.
+        """
         self._current = 0
         self._max_reached = 0
         self._restyle()
 
-    def _restyle(self):
-        # setStyleSheet() alone can leave a stale rendered pixmap behind for
-        # QSS-styled QToolButtons during rapid restyles (each step click
-        # restyles two circles at once) - an explicit unpolish/polish +
-        # update() forces an immediate, clean repaint instead of a "ghost"
-        # of the previous state lingering under the new one.
+    def _restyle(self) -> None:
+        """Forces an immediate, clean repaint of the widget states.
+
+        Calling setStyleSheet() alone can leave a stale rendered pixmap behind for
+        QSS-styled QToolButtons during rapid restyles (each step click restyles
+        two circles at once). An explicit unpolish/polish + update() forces
+        an immediate, clean repaint instead of a "ghost" of the previous state
+        lingering under the new one.
+        """
         for i, circle in enumerate(self._circles):
             if i == self._current:
                 state = "current"
@@ -125,7 +153,16 @@ class Stepper(QtWidgets.QWidget):
             line.update()
 
     @staticmethod
-    def _circle_qss(state, compact=False):
+    def _circle_qss(state, compact: bool = False) -> str:
+        """Generates the QSS string for a step circle based on its current state.
+
+        Args:
+            state (str): The state of the step, one of "current", "done", or "future".
+            compact (bool, optional): Whether compact styling should be applied. Defaults to False.
+
+        Returns:
+            str: The generated stylesheet string for the circle.
+        """
         tok = ThemeManager.instance().tokens()
         if state == "current":
             body = (
@@ -152,11 +189,20 @@ class Stepper(QtWidgets.QWidget):
         )
 
     @staticmethod
-    def _caption_qss(active):
-        # Weight is constant (700) regardless of state - varying it between
-        # active/inactive changes the text's rendered width slightly, which
-        # made the whole bar visibly jitter/resize on every step transition.
-        # Only colour differentiates the active step now.
+    def _caption_qss(active: bool) -> str:
+        """Generates the QSS string for a step caption.
+
+        Weight is constant (700) regardless of state - varying it between active/inactive
+        changes the text's rendered width slightly, which made the whole bar visibly
+        jitter/resize on every step transition. Only colour differentiates
+        the active step now.
+
+        Args:
+            active (bool): True if the caption corresponds to the active step.
+
+        Returns:
+            str: The generated stylesheet string for the caption.
+        """
         tok = ThemeManager.instance().tokens()
         color = tok_css(tok["flat_accent"] if active else tok["flat_text_muted"])
         return (
@@ -165,7 +211,15 @@ class Stepper(QtWidgets.QWidget):
         )
 
     @staticmethod
-    def _line_qss(done):
+    def _line_qss(done: bool) -> str:
+        """Generates the QSS string for a connecting line.
+
+        Args:
+            done (bool): True if the line connects to a completed step.
+
+        Returns:
+            str: The generated stylesheet string for the line.
+        """
         tok = ThemeManager.instance().tokens()
         color = tok_css(tok["flat_accent"] if done else tok["flat_border"])
         return f"QFrame {{ background: {color}; border: none; }}"
