@@ -197,12 +197,24 @@ class ControlsActionBar(TaskBarBase):
         # ._animate_temp_controller lifts this cap in lockstep with the
         # width animation whenever the panel is actually opened, and
         # restores it once a collapse animation finishes.
-        self.tempCollapsedHeight = self.run_bar.sizeHint().height()
+        #
+        # Deliberately BUTTON_HEIGHT, not run_bar.sizeHint().height():
+        # read this early (before the app's real QSS stylesheet is applied
+        # to run_bar), the latter measured 60 instead of run_bar's true
+        # post-QSS height of 56 - a stale snapshot that, frozen into this
+        # cap, made tempController the row's tallest item and inflated the
+        # whole bar to 62px against AnalyzeActionBar's 58px (confirmed via
+        # live sizeHint() logging - see git history). BUTTON_HEIGHT is the
+        # value this cap was always meant to track (every run_bar button is
+        # individually fixed to it), so reading it directly instead of
+        # re-deriving it from a timing-sensitive sizeHint() removes the
+        # staleness outright.
+        self.tempCollapsedHeight = self.BUTTON_HEIGHT
         self.tempController.setMaximumHeight(self.tempCollapsedHeight)
 
         # Run zone: run_bar paired with the temp panel (AlignVCenter on
-        # both, matching how AnalyzeActionBar's run zone nests run_info_bar
-        # beside cBox_Runs).
+        # both, matching how AnalyzeActionBar's run zone nests
+        # run_actions_bar beside cBox_Runs).
         self.run_zone = QtWidgets.QHBoxLayout()
         self.run_zone.setContentsMargins(0, 0, 0, 0)
         self.run_zone.setSpacing(8)

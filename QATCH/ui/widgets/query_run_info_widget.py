@@ -14,11 +14,29 @@ from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
+from QATCH.ui.components import (
+    AnimatedComboBox,
+    AnimatedSpinBox,
+    LabeledToggle,
+    QATCHLineEdit,
+    QATCHOptionCard,
+    QATCHOptionCardGroup,
+    QATCHPanel,
+    QATCHPushButton,
+)
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,
     auto_sign_matches_session,
     persist_auto_sign_key,
+)
+from QATCH.ui.styles.theme_manager import (
+    ThemeManager,
+    caption_label_qss,
+    desc_label_qss,
+    field_label_qss,
+    hairline_qss,
+    tok_css,
 )
 from QATCH.ui.widgets.collapsible_box_widget import CollapsibleBox
 from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
@@ -77,29 +95,39 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         # NOTE: Changes to Database are only saved if Database().close() is called
         # However, to avoid un-audit-signed changes, only add signal after signing
 
+        # Themed labels tracked here get their QSS re-applied on theme change
+        # (see _apply_theme/_on_theme_changed) since each is styled with a
+        # one-shot setStyleSheet() call rather than a live-token paintEvent -
+        # same convention as UserPreferencesWidget.
+        self._captions: list[QtWidgets.QLabel] = []
+        self._field_labels: list[QtWidgets.QLabel] = []
+        self._hints: list[QtWidgets.QLabel] = []
+        self._hairlines: list[QtWidgets.QFrame] = []
+        self._ICON_CHEVRON = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
+        )
+        self._ICON_SPIN_UP = os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg")
+        self._ICON_SPIN_DOWN = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
+        )
+
         self.q_runname = QtWidgets.QHBoxLayout()  # runname #
         # self.q_runname.setContentsMargins(10, 0, 10, 0)
-        self.l_runname = QtWidgets.QLabel()
-        self.l_runname.setText("Run Name\t=")
+        self.l_runname = self._field_label("Run Name")
         self.q_runname.addWidget(self.l_runname)
-        self.t_runname = QtWidgets.QLineEdit()
+        self.t_runname = QATCHLineEdit()
         self.t_runname.setText(self.run_name)
         self.q_runname.addWidget(self.t_runname)
-        self.h_runname = QtWidgets.QLabel()
-        self.h_runname.setText("<u>?</u>")
-        self.h_runname.setToolTip("<b>Hint:</b> This name applies to all ports captured this run.")
+        self.h_runname = self._hint("This name applies to all ports captured this run.")
         self.q_runname.addWidget(self.h_runname)
 
         self.q_batch = QtWidgets.QHBoxLayout()  # batch #
-        self.l_batch = QtWidgets.QLabel()
-        self.l_batch.setText("Batch Number\t=")
+        self.l_batch = self._field_label("Batch Number")
         self.q_batch.addWidget(self.l_batch)
-        self.t_batch = QtWidgets.QLineEdit()
+        self.t_batch = QATCHLineEdit()
         self.t_batch.textEdited.connect(self.prevent_duplicate_scans)
         self.q_batch.addWidget(self.t_batch)
-        self.h_batch = QtWidgets.QLabel()
-        self.h_batch.setText("<u>?</u>")
-        self.h_batch.setToolTip("<b>Hint:</b> Find this # on the crystal's packaging.")
+        self.h_batch = self._hint("Find this # on the crystal's packaging.")
         self.q_batch.addWidget(self.h_batch)
 
         self.blankIcon = QtGui.QIcon()
@@ -117,28 +145,31 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.t_batch.editingFinished.connect(self.find_batch_num)
 
         self.notes = QtWidgets.QPlainTextEdit()
+        self.notes.setObjectName("runInfoNotes")
         self.notes.setPlaceholderText("Notes")
         self.notes.setTabChangesFocus(True)
         self.notes.setFixedHeight(100)
 
-        self.groupBioformulation = QtWidgets.QGroupBox("Is this a bioformulation?")
-        self.groupBioformulation.setCheckable(False)
+        self.groupBioformulation = QATCHPanel()
+        bio_layout = QtWidgets.QVBoxLayout(self.groupBioformulation)
+        bio_layout.setContentsMargins(14, 12, 14, 12)
+        bio_layout.setSpacing(8)
+        bio_layout.addWidget(self._caption("Is this a bioformulation?"))
         self.q1 = QtWidgets.QHBoxLayout()
-        self.groupBioformulation.setLayout(self.q1)
-        self.g1 = QtWidgets.QButtonGroup()
-        self.b1 = QtWidgets.QCheckBox("Yes")
-        self.b2 = QtWidgets.QCheckBox("No")
-        self.g1.addButton(self.b1, 1)
-        self.g1.addButton(self.b2, 2)
+        bio_layout.addLayout(self.q1)
+        self.g1 = QATCHOptionCardGroup(self)
+        self.b1 = QATCHOptionCard("Yes")
+        self.b2 = QATCHOptionCard("No")
+        self.g1.addCard(self.b1, 1)
+        self.g1.addCard(self.b2, 2)
         self.q1.addWidget(self.b1)
         self.q1.addWidget(self.b2)
-        self.g1.buttonClicked.connect(self.show_hide_gui)
+        self.g1.toggled.connect(lambda _card, _checked: self.show_hide_gui(None))
 
         self.q2 = QtWidgets.QHBoxLayout()
-        self.l2 = QtWidgets.QLabel()
-        self.l2.setText("Type\t\t=")  # solvent type
+        self.l2 = self._field_label("Type")  # solvent type
         self.q2.addWidget(self.l2)
-        self.t0 = QtWidgets.QLineEdit()
+        self.t0 = QATCHLineEdit()
 
         self.fluids = []
         self.surface_tensions = []
@@ -192,288 +223,220 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             Log.w("You will need to enter your solvent run parameters manually.")
 
         self.q2.addWidget(self.t0)
-        self.h0 = QtWidgets.QLabel()
-        self.h0.setText("<u>?</u>")
-        self.h0.setToolTip("<b>Hint:</b> If not listed, enter parameters manually.")
+        self.h0 = self._hint("If not listed, enter parameters manually.")
         self.q2.addWidget(self.h0)
         self.t0.textChanged.connect(self.lookup_completer)
         self.t0.editingFinished.connect(self.enforce_completer)
 
         # Solvent Groupbox
-        self.groupSolvent = QtWidgets.QGroupBox("Solvent Information")
-        self.groupSolvent.setCheckable(False)
-        self.vbox0 = QtWidgets.QVBoxLayout()
-        self.groupSolvent.setLayout(self.vbox0)
+        self.groupSolvent, self.vbox0 = self._panel("Solvent Information")
         self.vbox0.addLayout(self.q2)
 
         self.q3 = QtWidgets.QHBoxLayout()
-        self.l3 = QtWidgets.QLabel()
-        self.l3.setText("Surfactant\t=")
+        self.l3 = self._field_label("Surfactant")
         self.q3.addWidget(self.l3)
-        self.t3 = QtWidgets.QLineEdit()
+        self.t3 = QATCHLineEdit()
         self.validSurfactant = QtGui.QDoubleValidator(0, 1, 5)
         self.validSurfactant.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t3.setValidator(self.validSurfactant)
         self.q3.addWidget(self.t3)
-        self.h3 = QtWidgets.QLabel()
-        self.h3.setText("<u>%w</u>")
-        self.h3.setToolTip('<b>Hint:</b> For 0.010%w enter "0.010".')
+        self.h3 = self._hint('For 0.010%w enter "0.010".', text="%w")
         self.q3.addWidget(self.h3)
         self.t3.textChanged.connect(self.calc_params)
         self.t3.editingFinished.connect(self.calc_params)
 
         self.q4 = QtWidgets.QHBoxLayout()
-        self.l4 = QtWidgets.QLabel()
-        self.l4.setText("Concentration\t=")
+        self.l4 = self._field_label("Concentration")
         self.q4.addWidget(self.l4)
-        self.t4 = QtWidgets.QLineEdit()
+        self.t4 = QATCHLineEdit()
         self.validConcentration = QtGui.QDoubleValidator(0, 1000, 3)
         self.validConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t4.setValidator(self.validConcentration)
         self.q4.addWidget(self.t4)
-        self.h4 = QtWidgets.QLabel()
-        self.h4.setText("<u>mg/mL</u>")
-        self.h4.setToolTip('<b>Hint:</b> For 100mg/mL enter "100".')
+        self.h4 = self._hint('For 100mg/mL enter "100".', text="mg/mL")
         self.q4.addWidget(self.h4)
         self.t4.textChanged.connect(self.calc_params)
         self.t4.editingFinished.connect(self.calc_params)
 
         # Protein Type
         self.q10 = QtWidgets.QHBoxLayout()
-        self.l10 = QtWidgets.QLabel()
-        self.l10.setText("Type\t\t=")
+        self.l10 = self._field_label("Type")
         self.q10.addWidget(self.l10)
-        self.c10 = QtWidgets.QComboBox()
+        self.c10 = AnimatedComboBox(self._ICON_CHEVRON)
         self.q10.addWidget(self.c10, 1)
-        self.h10 = QtWidgets.QLabel()
-        self.h10.setText("<u>?</u>")
-        self.h10.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h10 = self._hint("If not listed, add a new entry to the list.")
         self.q10.addWidget(self.h10)
         self.c10.currentTextChanged.connect(self.new_protein_type)
 
         # Protein Concentration
         self.q12 = QtWidgets.QHBoxLayout()
-        self.l12 = QtWidgets.QLabel()
-        self.l12.setText("Concentration\t=")
+        self.l12 = self._field_label("Concentration")
         self.q12.addWidget(self.l12)
-        self.t12 = QtWidgets.QLineEdit()
+        self.t12 = QATCHLineEdit()
         self.validProteinConcentration = QtGui.QDoubleValidator(0, 1000, 3)
         self.validProteinConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t12.setValidator(self.validProteinConcentration)
         self.q12.addWidget(self.t12)
-        self.h12 = QtWidgets.QLabel()
-        self.h12.setText("<u>mg/mL</u>")
-        self.h12.setToolTip('<b>Hint:</b> For 100mg/mL enter "100".')
+        self.h12 = self._hint('For 100mg/mL enter "100".', text="mg/mL")
         self.q12.addWidget(self.h12)
         self.t12.textChanged.connect(self.calc_params)
         self.t12.editingFinished.connect(self.calc_params)
 
         # Protein Groupbox
-        self.groupProtein = QtWidgets.QGroupBox("Protein Information")
-        self.groupProtein.setCheckable(False)
-        self.vbox2 = QtWidgets.QVBoxLayout()
-        self.groupProtein.setLayout(self.vbox2)
+        self.groupProtein, self.vbox2 = self._panel("Protein Information")
         self.vbox2.addLayout(self.q10)
         self.vbox2.addLayout(self.q12)
 
         # Buffer Type
         self.q13 = QtWidgets.QHBoxLayout()
-        self.l13 = QtWidgets.QLabel()
-        self.l13.setText("Type\t\t=")
+        self.l13 = self._field_label("Type")
         self.q13.addWidget(self.l13)
-        self.c13 = QtWidgets.QComboBox()
+        self.c13 = AnimatedComboBox(self._ICON_CHEVRON)
         self.q13.addWidget(self.c13, 1)
-        self.h13 = QtWidgets.QLabel()
-        self.h13.setText("<u>?</u>")
-        self.h13.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h13 = self._hint("If not listed, add a new entry to the list.")
         self.q13.addWidget(self.h13)
         self.c13.currentTextChanged.connect(self.new_buffer_type)
 
         # Buffer Concentration
         self.q14 = QtWidgets.QHBoxLayout()
-        self.l14 = QtWidgets.QLabel()
-        self.l14.setText("Concentration\t=")
+        self.l14 = self._field_label("Concentration")
         self.q14.addWidget(self.l14)
-        self.t14 = QtWidgets.QLineEdit()
+        self.t14 = QATCHLineEdit()
         self.validBufferConcentration = QtGui.QDoubleValidator(0, 1000, 3)
         self.validBufferConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t14.setValidator(self.validBufferConcentration)
         self.q14.addWidget(self.t14)
-        self.h14 = QtWidgets.QLabel()
-        self.h14.setText("<u>mM</u>")
-        self.h14.setToolTip('<b>Hint:</b> For 10mM enter "10".')
+        self.h14 = self._hint('For 10mM enter "10".', text="mM")
         self.q14.addWidget(self.h14)
 
         # Buffer pH
         self.q20 = QtWidgets.QHBoxLayout()
-        self.l20 = QtWidgets.QLabel()
-        self.l20.setText("pH\t\t=")
+        self.l20 = self._field_label("pH")
         self.q20.addWidget(self.l20)
-        self.t20 = QtWidgets.QLineEdit()
+        self.t20 = QATCHLineEdit()
         self.validBufferPH = QtGui.QDoubleValidator(0, 14, 3)
         self.validBufferPH.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t20.setValidator(self.validBufferPH)
         self.t20.textChanged.connect(self.detect_change)
         self.q20.addWidget(self.t20)
-        self.h20 = QtWidgets.QLabel()
-        self.h20.setText("<u>?</u>")
-        self.h20.setToolTip("<b>NOTE:</b> This is a required field.")
+        self.h20 = self._hint("This is a required field.")
         self.q20.addWidget(self.h20)
 
         # Buffer Groupbox
-        self.groupBuffer = QtWidgets.QGroupBox("Buffer Information")
-        self.groupBuffer.setCheckable(False)
-        self.vbox3 = QtWidgets.QVBoxLayout()
-        self.groupBuffer.setLayout(self.vbox3)
+        self.groupBuffer, self.vbox3 = self._panel("Buffer Information")
         self.vbox3.addLayout(self.q13)
         self.vbox3.addLayout(self.q14)
         self.vbox3.addLayout(self.q20)
 
         # Surfactant Type
         self.q9 = QtWidgets.QHBoxLayout()
-        self.l9 = QtWidgets.QLabel()
-        self.l9.setText("Type\t\t=")
+        self.l9 = self._field_label("Type")
         self.q9.addWidget(self.l9)
-        self.c9 = QtWidgets.QComboBox()
+        self.c9 = AnimatedComboBox(self._ICON_CHEVRON)
         self.q9.addWidget(self.c9, 1)
-        self.h9 = QtWidgets.QLabel()
-        self.h9.setText("<u>?</u>")
-        self.h9.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h9 = self._hint("If not listed, add a new entry to the list.")
         self.q9.addWidget(self.h9)
         self.c9.currentTextChanged.connect(self.new_surfactant_type)
 
         # Surfactant Concentration
         self.q6 = QtWidgets.QHBoxLayout()
-        self.l6 = QtWidgets.QLabel()
-        self.l6.setText("Concentration\t=")
+        self.l6 = self._field_label("Concentration")
         self.q6.addWidget(self.l6)
-        self.t6 = QtWidgets.QLineEdit()
+        self.t6 = QATCHLineEdit()
         self.validSurfactantConcentration = QtGui.QDoubleValidator(0, 1, 5)
         self.validSurfactantConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t6.setValidator(self.validSurfactantConcentration)
         self.q6.addWidget(self.t6)
-        self.h6 = QtWidgets.QLabel()
-        self.h6.setText("<u>%w</u>")
-        self.h6.setToolTip('<b>Hint:</b> For 0.010%w enter "0.010".')
+        self.h6 = self._hint('For 0.010%w enter "0.010".', text="%w")
         self.q6.addWidget(self.h6)
 
         # Surfactant Groupbox
-        self.groupSurfactant = QtWidgets.QGroupBox("Surfactant Information")
-        self.groupSurfactant.setCheckable(False)
-        self.vbox1 = QtWidgets.QVBoxLayout()
-        self.groupSurfactant.setLayout(self.vbox1)
+        self.groupSurfactant, self.vbox1 = self._panel("Surfactant Information")
         self.vbox1.addLayout(self.q9)
         self.vbox1.addLayout(self.q6)
         self.vbox1.addStretch()  # required for spacing against `pH` field
 
         # Stabilizer Type
         self.q11 = QtWidgets.QHBoxLayout()
-        self.l11 = QtWidgets.QLabel()
-        self.l11.setText("Type\t\t=")
+        self.l11 = self._field_label("Type")
         self.q11.addWidget(self.l11)
-        self.c11 = QtWidgets.QComboBox()
+        self.c11 = AnimatedComboBox(self._ICON_CHEVRON)
         self.q11.addWidget(self.c11, 1)
-        self.h11 = QtWidgets.QLabel()
-        self.h11.setText("<u>?</u>")
-        self.h11.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h11 = self._hint("If not listed, add a new entry to the list.")
         self.q11.addWidget(self.h11)
         self.c11.currentTextChanged.connect(self.new_stabilizer_type)
         self.c11.currentTextChanged.connect(self.calc_params)
 
         # Stabilizer Concentration
         self.q8 = QtWidgets.QHBoxLayout()
-        self.l8 = QtWidgets.QLabel()
-        self.l8.setText("Concentration\t=")
+        self.l8 = self._field_label("Concentration")
         self.q8.addWidget(self.l8)
-        self.t8 = QtWidgets.QLineEdit()
+        self.t8 = QATCHLineEdit()
         self.validStabilizerConcentration = QtGui.QDoubleValidator(0, 1, 3)
         self.validStabilizerConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t8.setValidator(self.validStabilizerConcentration)
         self.q8.addWidget(self.t8)
-        self.h8 = QtWidgets.QLabel()
-        self.h8.setText("<u>M</u>")
-        self.h8.setToolTip('<b>Hint:</b> For a molar mass of 0.50 enter "0.50".')
+        self.h8 = self._hint('For a molar mass of 0.50 enter "0.50".', text="M")
         self.q8.addWidget(self.h8)
         self.t8.textChanged.connect(self.calc_params)
         self.t8.editingFinished.connect(self.calc_params)
 
         # Stabilizer Groupbox
-        self.groupStabilizer = QtWidgets.QGroupBox("Stabilizer Information")
-        self.groupStabilizer.setCheckable(False)
-        self.vbox3 = QtWidgets.QVBoxLayout()
-        self.groupStabilizer.setLayout(self.vbox3)
+        self.groupStabilizer, self.vbox3 = self._panel("Stabilizer Information")
         self.vbox3.addLayout(self.q11)
         self.vbox3.addLayout(self.q8)
 
         # Salt Type
-        self.l15 = QtWidgets.QLabel()
         self.q15 = QtWidgets.QHBoxLayout()
-        self.l15.setText("Type\t\t=")
+        self.l15 = self._field_label("Type")
         self.q15.addWidget(self.l15)
-        self.c15 = QtWidgets.QComboBox()
+        self.c15 = AnimatedComboBox(self._ICON_CHEVRON)
         self.q15.addWidget(self.c15, 1)
-        self.h15 = QtWidgets.QLabel()
-        self.h15.setText("<u>?</u>")
-        self.h15.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h15 = self._hint("If not listed, add a new entry to the list.")
         self.q15.addWidget(self.h15)
         self.c15.currentTextChanged.connect(self.new_salt_type)
 
         # Salt Concentration
         self.q16 = QtWidgets.QHBoxLayout()
-        self.l16 = QtWidgets.QLabel()
-        self.l16.setText("Concentration\t=")
+        self.l16 = self._field_label("Concentration")
         self.q16.addWidget(self.l16)
-        self.t16 = QtWidgets.QLineEdit()
+        self.t16 = QATCHLineEdit()
         self.validSaltConcentration = QtGui.QDoubleValidator(0, 1000, 3)
         self.validSaltConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t16.setValidator(self.validSaltConcentration)
         self.q16.addWidget(self.t16)
-        self.h16 = QtWidgets.QLabel()
-        self.h16.setText("<u>mM</u>")
-        self.h16.setToolTip('<b>Hint:</b> For 100mM enter "100".')
+        self.h16 = self._hint('For 100mM enter "100".', text="mM")
         self.q16.addWidget(self.h16)
 
         # Salt Groupbox
-        self.groupSalt = QtWidgets.QGroupBox("Salt Information")
-        self.groupSalt.setCheckable(False)
-        self.vbox4 = QtWidgets.QVBoxLayout()
-        self.groupSalt.setLayout(self.vbox4)
+        self.groupSalt, self.vbox4 = self._panel("Salt Information")
         self.vbox4.addLayout(self.q15)
         self.vbox4.addLayout(self.q16)
 
         # Excipient Type
-        self.l17 = QtWidgets.QLabel()
         self.q17 = QtWidgets.QHBoxLayout()
-        self.l17.setText("Type\t\t=")
+        self.l17 = self._field_label("Type")
         self.q17.addWidget(self.l17)
-        self.c17 = QtWidgets.QComboBox()
+        self.c17 = AnimatedComboBox(self._ICON_CHEVRON)
         self.q17.addWidget(self.c17, 1)
-        self.h17 = QtWidgets.QLabel()
-        self.h17.setText("<u>?</u>")
-        self.h17.setToolTip("<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.h17 = self._hint("If not listed, add a new entry to the list.")
         self.q17.addWidget(self.h17)
         self.c17.currentTextChanged.connect(self.new_excipient_type)
 
         # Excipient Concentration
         self.q18 = QtWidgets.QHBoxLayout()
-        self.l18 = QtWidgets.QLabel()
-        self.l18.setText("Concentration\t=")
+        self.l18 = self._field_label("Concentration")
         self.q18.addWidget(self.l18)
-        self.t18 = QtWidgets.QLineEdit()
+        self.t18 = QATCHLineEdit()
         self.validExcipientConcentration = QtGui.QDoubleValidator(0, 1000, 3)
         self.validExcipientConcentration.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t18.setValidator(self.validExcipientConcentration)
         self.q18.addWidget(self.t18)
-        self.h18 = QtWidgets.QLabel()
-        self.h18.setText("<u>mM</u>")
-        self.h18.setToolTip('<b>Hint:</b> For 100mM enter "100".')
+        self.h18 = self._hint('For 100mM enter "100".', text="mM")
         self.q18.addWidget(self.h18)
 
         # Excipient Groupbox
-        self.groupExcipient = QtWidgets.QGroupBox("Excipient Information")
-        self.groupExcipient.setCheckable(False)
-        self.vbox5 = QtWidgets.QVBoxLayout()
-        self.groupExcipient.setLayout(self.vbox5)
+        self.groupExcipient, self.vbox5 = self._panel("Excipient Information")
         self.vbox5.addLayout(self.q17)
         self.vbox5.addLayout(self.q18)
 
@@ -487,59 +450,54 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.populate_excipients()
 
         self.r1 = QtWidgets.QHBoxLayout()
-        self.l6 = QtWidgets.QLabel()
-        self.l6.setText("Surface Tension\t=")
+        self.l6 = self._field_label("Surface Tension")
         self.r1.addWidget(self.l6)
-        self.t1 = QtWidgets.QLineEdit()
+        self.t1 = QATCHLineEdit()
         self.validSurfaceTension = QtGui.QDoubleValidator(1, 1000, 3)
         self.validSurfaceTension.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t1.setValidator(self.validSurfaceTension)
         self.r1.addWidget(self.t1)
-        self.h1 = QtWidgets.QLabel()
-        self.h1.setText("<u>mN/m</u>")
-        self.h1.setToolTip(
-            "<b>This field is auto-calculated.</b>\nYou can modify it to a custom value."
+        self.h1 = self._hint(
+            "This field is auto-calculated. You can modify it to a custom value.",
+            text="mN/m",
         )
         self.r1.addWidget(self.h1)
 
         self.r2 = QtWidgets.QHBoxLayout()
-        self.l7 = QtWidgets.QLabel()
-        self.l7.setText("Contact Angle\t=")
+        self.l7 = self._field_label("Contact Angle")
         self.r2.addWidget(self.l7)
-        self.t2 = QtWidgets.QLineEdit()
+        self.t2 = QATCHLineEdit()
         self.validContactAngle = QtGui.QDoubleValidator(10, 80, 1)
         self.validContactAngle.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t2.setValidator(self.validContactAngle)
         self.r2.addWidget(self.t2)
-        self.h2 = QtWidgets.QLabel()
-        self.h2.setText("<u>deg</u>")
-        self.h2.setToolTip(
-            "<b>This field is auto-calculated.</b>\nYou can modify it to a custom value."
+        self.h2 = self._hint(
+            "This field is auto-calculated. You can modify it to a custom value.",
+            text="deg",
         )
         self.r2.addWidget(self.h2)
 
         self.r3 = QtWidgets.QHBoxLayout()
-        self.l8 = QtWidgets.QLabel()
-        self.l8.setText("Density\t\t=")
+        self.l8 = self._field_label("Density")
         self.r3.addWidget(self.l8)
-        self.t5 = QtWidgets.QLineEdit()
+        self.t5 = QATCHLineEdit()
         self.validDensity = QtGui.QDoubleValidator(0.001, 25, 3)
         self.validDensity.setNotation(QtGui.QDoubleValidator.StandardNotation)
         self.t5.setValidator(self.validDensity)
         self.r3.addWidget(self.t5)
-        self.h5 = QtWidgets.QLabel()
-        self.h5.setText("<u>g/cm<sup>3</sup></u>")
-        self.h5.setToolTip(
-            "<b>This field is auto-calculated.</b>\nYou can modify it to a custom value."
+        self.h5 = self._hint(
+            "This field is auto-calculated. You can modify it to a custom value.",
+            text="g/cm<sup>3</sup>",
         )
         self.r3.addWidget(self.h5)
 
         # -------------- Number of Channels (Start) --------------
-        self.l_channels = QtWidgets.QLabel("Fill Channels\t=")
+        self.l_channels = self._field_label("Fill Channels")
         self.f_channels = QtWidgets.QFrame()
+        self.f_channels.setObjectName("fChannelsManualFrame")
         f_channels_layout = QtWidgets.QHBoxLayout()
         f_channels_layout.setContentsMargins(0, 0, 0, 0)
-        self.t_channels = QtWidgets.QSpinBox()
+        self.t_channels = AnimatedSpinBox(self._ICON_SPIN_UP, self._ICON_SPIN_DOWN)
         self.t_channels.setRange(0, 3)  # enforce 0–3
         # arrows increment/decrement by 1
         self.t_channels.setSingleStep(1)
@@ -548,10 +506,8 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         # NOTE: setting the value must be after XML recall
         f_channels_layout.addWidget(self.t_channels)
         self.f_channels.setLayout(f_channels_layout)
-        self.l_channels_hint = QtWidgets.QLabel()
-        self.l_channels_hint.setText("<u>?</u>")
-        self.l_channels_hint.setToolTip(
-            "<b>This field is auto-calculated.</b>\nYou can modify it to a custom value."
+        self.l_channels_hint = self._hint(
+            "This field is auto-calculated. You can modify it to a custom value."
         )
         h_channels = QtWidgets.QHBoxLayout()
         h_channels.addWidget(self.l_channels)
@@ -608,7 +564,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         layout_v.addLayout(self.r3)  # show Density
         # self.l_channels.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout_v.addLayout(h_channels)
-        self.q_recall = QtWidgets.QCheckBox("Remember for next run")
+        self.q_recall = LabeledToggle("Remember for next run", compact=True)
         self.q_recall.setChecked(True)
         self.q_recall.setEnabled(self.unsaved_changes)
         layout_v.addWidget(self.q_recall, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -638,15 +594,14 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.parent.signature_required = False
             self.parent.signature_received = False
 
-        self.btn = QtWidgets.QPushButton("Save")
+        self.btn = QATCHPushButton("Save", variant="primary")
         self.btn.pressed.connect(self.confirm)
         layout_v.addWidget(self.btn)
         layout_v.addStretch()
 
         self.setLayout(layout_v)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "info-circle.svg")
-        self.setWindowIcon(QtGui.QIcon(icon_path))  # .png
-        self.setWindowTitle("Enter Run Info")
+
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
         ###### scannow widget for batch number ######
         # note: this must be after self.setLayout() #
@@ -711,10 +666,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.reset_actions[-1].triggered.connect(self.clear_manual_entry)
                 # self.reset_actions[-1].hovered.connect(QtWidgets.QToolTip.showText(tb.pos(), "Clear manual entry", tb))
         self.t_channels.valueChanged.connect(self.highlight_channels_box)
-        self.highlight_manual_entry()  # run now
-        self.highlight_channels_box()  # run now
-        self.g1.buttonClicked.connect(self.detect_change)
-        self.q_recall.stateChanged.connect(self.detect_change)
+        self._apply_theme()  # also runs highlight_manual_entry/highlight_channels_box now
+        self.g1.toggled.connect(lambda _card, _checked: self.detect_change())
+        self.q_recall.toggled.connect(self.detect_change)
         self.notes.textChanged.connect(self.detect_change)
         self.t_channels.valueChanged.connect(self.detect_change)
 
@@ -742,6 +696,79 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         # Connect the clear action to the QComboBox's setCurrentIndex method
         clear_action.triggered.connect(lambda: combobox.setCurrentIndex(-1))
         menu.exec(combobox.mapToGlobal(point))
+
+    # ------------------------------------------------------------------
+    # Themed field/section helpers (mirrors UserPreferencesWidget's
+    # _caption/_desc/_field_label/_hairline convention so this form matches
+    # the rest of the app's flat control system).
+    # ------------------------------------------------------------------
+    def _caption(self, text: str) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(text.upper())
+        lbl.setStyleSheet(caption_label_qss())
+        self._captions.append(lbl)
+        return lbl
+
+    def _field_label(self, text: str) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(f"{text}\t=")
+        lbl.setStyleSheet(field_label_qss())
+        self._field_labels.append(lbl)
+        return lbl
+
+    def _hint(self, tooltip: str, *, text: str = "?") -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(f"<u>{text}</u>")
+        lbl.setStyleSheet(desc_label_qss())
+        lbl.setToolTip(f"<b>Hint:</b> {tooltip}")
+        self._hints.append(lbl)
+        return lbl
+
+    def _hairline(self) -> QtWidgets.QFrame:
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.HLine)
+        line.setStyleSheet(hairline_qss())
+        self._hairlines.append(line)
+        return line
+
+    def _panel(self, title: str) -> tuple:
+        """Builds a QATCHPanel card with a caption title - the themed
+        replacement for a plain `QGroupBox("...")` section. Returns
+        `(panel, content_vbox)`; add the section's rows to `content_vbox`."""
+        panel = QATCHPanel()
+        vbox = QtWidgets.QVBoxLayout(panel)
+        vbox.setContentsMargins(14, 12, 14, 12)
+        vbox.setSpacing(8)
+        vbox.addWidget(self._caption(title))
+        return panel, vbox
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        """Re-applies theme-token QSS to every tracked label/hairline (each
+        styled with a one-shot setStyleSheet() call rather than a
+        live-token paintEvent) plus the manual-override indicator frames."""
+        for lbl in self._captions:
+            lbl.setStyleSheet(caption_label_qss())
+        for lbl in self._field_labels:
+            lbl.setStyleSheet(field_label_qss())
+        for lbl in self._hints:
+            lbl.setStyleSheet(desc_label_qss())
+        for line in self._hairlines:
+            line.setStyleSheet(hairline_qss())
+        tok = ThemeManager.instance().tokens()
+        self.notes.setStyleSheet(
+            "QPlainTextEdit#runInfoNotes {"
+            f"  background: {tok_css(tok['flat_surface'])};"
+            f"  border: 1px solid {tok_css(tok['flat_border'])};"
+            "  border-radius: 7px;"
+            f"  color: {tok_css(tok['flat_text'])};"
+            "  padding: 8px 10px;"
+            "}"
+            "QPlainTextEdit#runInfoNotes:focus {"
+            f"  border: 1px solid {tok_css(tok['flat_accent'])};"
+            "}"
+        )
+        self.highlight_manual_entry()
+        self.highlight_channels_box()
 
     def resize_on_collapse_change(self):
         Log.d("Resizing Run Info on Advanced Information toggle...")
@@ -1147,15 +1174,10 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             manual_dn = (
                 float(self.t5.text()) != float(f"{self.auto_dn:1.3f}") if allow_reset else True
             )
-            self.t1.setStyleSheet(
-                "border: 2px solid black;" if manual_st else "background-color: #eee;"
-            )
-            self.t2.setStyleSheet(
-                "border: 2px solid black;" if manual_ca else "background-color: #eee;"
-            )
-            self.t5.setStyleSheet(
-                "border: 2px solid black;" if manual_dn else "background-color: #eee;"
-            )
+            # QATCHLineEdit paints its own border/fill from live theme tokens
+            # (see its paintEvent) and ignores an externally-set stylesheet,
+            # so the manual-vs-auto state is signalled by the trailing
+            # "reset to auto" action icon alone rather than a border color.
             self.reset_actions[0].setVisible(manual_st if allow_reset else False)
             self.reset_actions[1].setVisible(manual_ca if allow_reset else False)
             self.reset_actions[2].setVisible(manual_dn if allow_reset else False)
@@ -1165,14 +1187,19 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
     def highlight_channels_box(self):
         num_channels = int(self.t_channels.text()) if len(self.t_channels.text()) else 3
         manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
+        tok = ThemeManager.instance().tokens()
         if manual_nc:
-            self.t_channels.setPalette(QtWidgets.QApplication.palette())  # reset background
-            self.f_channels.setStyleSheet("QFrame { border: 1px solid black; }")  # set border
+            # AnimatedSpinBox paints its own chrome from theme tokens - only
+            # the wrapping (plain, non-custom-painted) QFrame's border is
+            # externally stylable, so that's what signals "manually edited".
+            self.f_channels.setStyleSheet(
+                "QFrame#fChannelsManualFrame {"
+                f"  border: 1.5px solid {tok_css(tok['flat_accent'])};"
+                "  border-radius: 7px;"
+                "}"
+            )
         else:
-            palette = self.t_channels.palette()
-            palette.setColor(QtGui.QPalette.Base, QtGui.QColor("#eeeeee"))
             self.f_channels.setStyleSheet("")  # reset border
-            self.t_channels.setPalette(palette)  # set background
 
     def _switch_user_for_signature(self) -> Optional[Tuple[str, str]]:
         """Callback passed to `SignatureDialog(on_switch_user=...)`. Performs
@@ -1239,38 +1266,6 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             return
         self.unsaved_changes = True
 
-    def show(self):
-        super(QueryRunInfoWidget, self).show()
-        min_width = 500
-        if not hasattr(self, "parent") or not hasattr(self.parent, "analyze_process"):
-            # Fallback to default positioning if parent window not available
-            self.resize(min_width, self.height())
-            return
-        winAnalyze = self.parent.analyze_process
-        if not hasattr(winAnalyze, "tBtn_Info") or not hasattr(winAnalyze, "tool_Cancel"):
-            self.resize(min_width, self.height())
-            return
-        btnInfo = winAnalyze.tBtn_Info
-        btnClose = winAnalyze.tool_Cancel
-        globalPos_Window = winAnalyze.mapToGlobal(QtCore.QPoint(0, 0))
-        globalPos_Info = btnInfo.mapToGlobal(QtCore.QPoint(0, 0))
-        globalPos_Close = btnClose.mapToGlobal(QtCore.QPoint(0, 0))
-        width = max(min_width, globalPos_Close.x() - globalPos_Info.x() - btnInfo.width() - 20)
-        if width == min_width:
-            width = max(
-                min_width,
-                globalPos_Window.x()
-                + winAnalyze.width()
-                - globalPos_Info.x()
-                - btnInfo.width()
-                - 30,
-            )
-        height = self.height()
-        # area = QtWidgets.QDesktopWidget().availableGeometry() # todo
-        left = globalPos_Info.x() + btnInfo.width() + 10
-        top = globalPos_Info.y() + 30
-        self.setGeometry(left, top, width, height)
-
     def new_protein_type(self, text: str):
         if text.casefold() == "add new...":
             # set current text if window is closed, not saved
@@ -1294,7 +1289,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.t12.setText("0")  # clear Protein Concentration
             self.t12.setEnabled(False)
             if len(text):
-                self.b2.click()  # check "no" to bioformulation question
+                self.b2.clicked.emit()  # check "no" to bioformulation question
         else:
             self.t12.setEnabled(True)
             pass  # do nothing if any other value was selected
@@ -1870,9 +1865,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         else:
             # set question mark to indicate batch is not known/found
             self.t_batchAction.setIcon(self.missingIcon)
-        self.t_batch.setStyleSheet(
-            "border: 1px solid black;" if not found else "background-color: #eee;"
-        )
+        # QATCHLineEdit paints its own themed border/fill and ignores an
+        # externally-set stylesheet - the trailing action icon above is the
+        # (found/missing/blank) state indicator instead of a border color.
         # detect when AUDIT says 'found = false' but now it is found
         if self.batch_found != found:
             self.batch_found = found
@@ -2016,6 +2011,12 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         error_details = ""
         input_warning = False
         input_error = False
+        # Reset the themed error ring before re-checking each field below.
+        for _tb in (
+            self.t3, self.t4, self.t1, self.t2, self.t5,
+            self.t12, self.t8, self.t14, self.t6, self.t16, self.t18,
+        ):
+            _tb.set_error(False)
         if self.t3.isEnabled() and not self.t3.hasAcceptableInput():
             msg = "Input Error: Surfactant must be between {} and {}.".format(
                 self.validSurfactant.bottom(), self.validSurfactant.top()
@@ -2023,6 +2024,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             Log.e(msg)
             error_details += msg + "\n"
             input_error = True
+            self.t3.set_error(True)
         if self.t4.isEnabled() and not self.t4.hasAcceptableInput():
             msg = "Input Error: Concentration must be between {} and {}.".format(
                 self.validConcentration.bottom(), self.validConcentration.top()
@@ -2030,6 +2032,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             Log.e(msg)
             error_details += msg + "\n"
             input_error = True
+            self.t4.set_error(True)
         if not self.t1.hasAcceptableInput():
             msg = "Input Error: Surface Tension must be between {} and {}.".format(
                 self.validSurfaceTension.bottom(), self.validSurfaceTension.top()
@@ -2037,6 +2040,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             Log.e(msg)
             error_details += msg + "\n"
             input_error = True
+            self.t1.set_error(True)
         if not self.t2.hasAcceptableInput():
             msg = "Input Error: Contact Angle must be between {} and {}.".format(
                 self.validContactAngle.bottom(), self.validContactAngle.top()
@@ -2044,6 +2048,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             Log.e(msg)
             error_details += msg + "\n"
             input_error = True
+            self.t2.set_error(True)
         if not self.t5.hasAcceptableInput():
             msg = "Input Error: Density must be between {} and {}.".format(
                 self.validDensity.bottom(), self.validDensity.top()
@@ -2051,6 +2056,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             Log.e(msg)
             error_details += msg + "\n"
             input_error = True
+            self.t5.set_error(True)
         if self.t12.isVisible() and not self.t12.hasAcceptableInput():
             msg = "Input Error: Protein Concentration must be between {} and {}.".format(
                 self.validProteinConcentration.bottom(),
@@ -2059,6 +2065,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             Log.e(msg)
             error_details += msg + "\n"
             input_error = True
+            self.t12.set_error(True)
         if self.t8.isVisible() and not self.t8.hasAcceptableInput():
             msg = "Input Error: Stabilizer Concentration must be between {} and {}.".format(
                 self.validStabilizerConcentration.bottom(),
@@ -2067,6 +2074,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             Log.e(msg)
             error_details += msg + "\n"
             input_error = True
+            self.t8.set_error(True)
         if not self.collapsibleBox.isCollapsed():  # only when Advanced Info visible
             if self.t14.isVisible() and not self.t14.hasAcceptableInput():
                 msg = "Input Error: Buffer Concentration must be between {} and {}.".format(
@@ -2076,6 +2084,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 Log.e(msg)
                 error_details += msg + "\n"
                 input_warning = True
+                self.t14.set_error(True)
             if self.t6.isVisible() and not self.t6.hasAcceptableInput():
                 msg = "Input Error: Surfactant Concentration must be between {} and {}.".format(
                     self.validSurfactantConcentration.bottom(),
@@ -2084,6 +2093,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 Log.e(msg)
                 error_details += msg + "\n"
                 input_warning = True
+                self.t6.set_error(True)
             if self.t16.isVisible() and not self.t16.hasAcceptableInput():
                 msg = "Input Error: Salt Concentration must be between {} and {}.".format(
                     self.validSaltConcentration.bottom(),
@@ -2092,6 +2102,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 Log.e(msg)
                 error_details += msg + "\n"
                 input_warning = True
+                self.t16.set_error(True)
             if self.t18.isVisible() and not self.t18.hasAcceptableInput():
                 msg = "Input Error: Excipient Concentration must be between {} and {}.".format(
                     self.validExcipientConcentration.bottom(),
@@ -2100,6 +2111,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 Log.e(msg)
                 error_details += msg + "\n"
                 input_warning = True
+                self.t18.set_error(True)
         if len(self.c10.currentText()) == 0 and self.c10.isEnabled() and self.c10.isVisible():
             msg = "Input Error: You must provide a Protein Type if this is a bioformulation."
             Log.e(msg)

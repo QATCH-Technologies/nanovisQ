@@ -54,6 +54,7 @@ from QATCH.processors.updater import (
     UpdaterTask_Git,
 )
 from QATCH.QModel import OnyxDropEpochSignal, VoltaDropEpochSignal
+from QATCH.ui.components.icon_utils import tinted_pixmap
 from QATCH.ui.components.plot_grid_item import PlotGridItem
 from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
 
@@ -69,7 +70,6 @@ from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.styles.typography import (
     FONT_SANS_STACK,
-    TYPE_DISPLAY,
     TYPE_TOOLTIP,
     TYPE_TOOLTIP_SUB,
     font_css,
@@ -653,16 +653,27 @@ class MainWindow(QtWidgets.QMainWindow):
             for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
                 self.data_devices = dirs  # show all available devices in logged data
                 break
-            self.analyze_window.hide()
             # The run list is kept current automatically by a filesystem
             # watcher (see UIAnalyze._ensure_watcher_armed/_rearm_watcher) -
             # a plain mode-switch no longer forces a full device/run
             # rescan. _ensure_watcher_armed() is a cheap no-op unless the
             # load-directory preference changed since it was last armed;
             # clear() still resets graph/session state on every entry.
+            #
+            # No .hide()/.showMaximized() here (removed) - analyze_window is
+            # a QMainWindow embedded inside UIMode's splitter (see
+            # UIMode._set_analyze_mode, whose `self.splitter.replaceWidget(0,
+            # target_widget)` runs right after this method returns), not an
+            # independent top-level window; those calls are what actually
+            # showed/hid it back when it was one. On the very first switch
+            # to Analyze mode, `self.analyze` (the QScrollArea wrapping it)
+            # hasn't been inserted into the splitter yet, so calling
+            # showMaximized() on the still-detached analyze_window made Qt
+            # briefly treat it as its own top-level window - the "empty
+            # popup that appears and vanishes" bug. Visibility is entirely
+            # the splitter's job now.
             self.analyze_window.ui._ensure_watcher_armed()
             self.analyze_window.ui.clear()
-            self.analyze_window.showMaximized()
             self.analyze_window.ui.check_user_info()
             if len(self.data_devices) > 0:
                 pass
@@ -719,7 +730,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.i("Selected data file = {}".format(self.data_file))
                 # continue analysis
                 self.analyze_data(self.data_device, self.data_folder, self.data_file)
-            elif "_3rd.csv" in self.data_files[0] or "_3rd.csv" in self.data_files[-1]:
+            elif self.data_files and (
+                "_3rd.csv" in self.data_files[0] or "_3rd.csv" in self.data_files[-1]
+            ):
                 if "_3rd.csv" in self.data_files[0]:
                     self.data_file = self.data_files[0]
                 else:
@@ -1688,21 +1701,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self._calib_ready_text[i] = None
 
     def _remove_welcome_text(self) -> None:
-        """Removes instructional text overlays and cleans up associated event trackers.
-
-        This method handles the teardown of the 'Welcome' UI state. It disconnects
-        the resize callback from the `ViewBox` to prevent background
-        calculations on hidden items and removes the `pg.TextItem` instances
-        (stored in `_text1`, `_text2`, and `_text3`) from the graphics
-        scene.
-
-        The cleanup handles items parented via `setParentItem` to ensure they
-        are properly detached from the `PlotItem`'s graphics hierarchy.
+        """Removes the welcome placeholder card (see `_annotate_welcome_text`)
+        and cleans up its event trackers.
 
         Side Effects:
-            - Disconnects `self._welcome_resize_cb` from the `ViewBox` signal.
-            - Nullifies `self._welcome_parent_vb` and `self._welcome_resize_cb`.
-            - Sets `self._text1`, `self._text2`, and `self._text3` to `None`.
+            - Disconnects `self._welcome_resize_cb` from the `ViewBox` signal
+              and `self._welcome_theme_cb` from `themeChanged`.
+            - Nullifies `self._welcome_parent_vb`, `self._welcome_resize_cb`,
+              `self._welcome_theme_cb`, and `self._welcome_proxy`.
         """
         # Disconnect resize tracker if one was wired up.
         vb = getattr(self, "_welcome_parent_vb", None)
@@ -1715,71 +1721,53 @@ class MainWindow(QtWidgets.QMainWindow):
         self._welcome_parent_vb = None
         self._welcome_resize_cb = None
 
-        # Remove each text item from its parent and scene.
-        for attr in ("_text1", "_text2", "_text3"):
-            item = getattr(self, attr, None)
-            if item is None:
-                continue
+        theme_cb = getattr(self, "_welcome_theme_cb", None)
+        if theme_cb is not None:
             try:
-                item.setParentItem(None)
-                scene = item.scene()
+                ThemeManager.instance().themeChanged.disconnect(theme_cb)
+            except (RuntimeError, TypeError):
+                pass
+        self._welcome_theme_cb = None
+
+        # Remove the card's proxy from its parent and scene.
+        proxy = getattr(self, "_welcome_proxy", None)
+        if proxy is not None:
+            try:
+                proxy.setParentItem(None)
+                scene = proxy.scene()
                 if scene is not None:
-                    scene.removeItem(item)
+                    scene.removeItem(proxy)
             except RuntimeError:
                 pass
-            setattr(self, attr, None)
+        self._welcome_proxy = None
 
     def _fade_out_welcome_text(self) -> None:
-        """Initiates a smooth opacity fade-out for all active welcome text items.
-
-        This method identifies currently visible instructional text items and
-        animates their opacity from the current value to 0.0 over 300ms. It
-        utilizes `QVariantAnimation` to handle the interpolation.
-
-        To ensure memory safety and proper cleanup, the final animation in the
-        sequence is linked to `self._remove_welcome_text`, which handles the
-        actual removal of the items from the scene and nullifies references.
+        """Fades the welcome placeholder card's opacity to 0.0 over 300ms
+        before tearing it down, instead of removing it abruptly.
 
         Side Effects:
-            - Populates `self._welcome_fade_anims` with active animation objects
+            - Populates `self._welcome_fade_anim` with the running animation
               to prevent premature garbage collection.
-            - Updates the opacity of `_text1`, `_text2`, and `_text3`
-              frame-by-frame.
             - Calls `self._remove_welcome_text()` upon animation completion.
 
         Note:
-            If no text items are visible or existing, the method falls back to
-            immediate cleanup via `_remove_welcome_text()`.
+            If no card is currently shown (or it's already fully transparent),
+            falls back to immediate cleanup via `_remove_welcome_text()`.
         """
-        texts_to_fade = []
-        for attr in ("_text1", "_text2", "_text3"):
-            t = getattr(self, attr, None)
-            if t is not None and t.isVisible() and t.opacity() > 0:
-                texts_to_fade.append(t)
-
-        if not texts_to_fade:
+        proxy = getattr(self, "_welcome_proxy", None)
+        if proxy is None or proxy.opacity() <= 0.0:
             self._remove_welcome_text()
             return
 
-        # Keep a reference to the animations so they aren't garbage collected
-        self._welcome_fade_anims = []
+        anim = QtCore.QVariantAnimation()
+        anim.setDuration(300)
+        anim.setStartValue(float(proxy.opacity()))
+        anim.setEndValue(0.0)
+        anim.valueChanged.connect(lambda val, item=proxy: item.setOpacity(val))
+        anim.finished.connect(self._remove_welcome_text)
 
-        for i, t in enumerate(texts_to_fade):
-            anim = QtCore.QVariantAnimation()
-            anim.setDuration(300)
-            anim.setStartValue(t.opacity())
-            anim.setEndValue(0.0)
-
-            anim.valueChanged.connect(lambda val, item=t: item.setOpacity(val))
-
-            # On the final item fading out, trigger the full memory teardown
-            if i == len(texts_to_fade) - 1:
-                anim.finished.connect(self._remove_welcome_text)
-            else:
-                anim.finished.connect(lambda item=t: item.setVisible(False))
-
-            self._welcome_fade_anims.append(anim)
-            anim.start()
+        self._welcome_fade_anim = anim
+        anim.start()
 
     def _fade_out_calibration_plot_overlay(self) -> None:
         """Smoothly reduces the opacity of calibration overlays before hiding them.
@@ -2291,116 +2279,124 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _annotate_welcome_text(self) -> None:
         """
-        Renders and positions the welcome text items on the main plot area.
-
-        This method handles the initialization, z-ordering, and responsive positioning
-        of the welcome text. It ensures the text remains visible when the plot is dimmed
-        but gets correctly occluded by higher-priority overlays (like calibration).
+        Shows a placeholder card over the amplitude/RF-Diss plot when no run
+        is active yet: an accent-tinted icon badge, a bold "Press Initialize
+        to begin measuring" title, and instructional subtext - the same
+        QGraphicsProxyWidget card styling and title/subtext format as
+        UIAnalyze's own "no run loaded" placeholder (see
+        UIAnalyze._show_no_run_overlay), so Run and Analyze mode's empty
+        states read as one visual family instead of Run's older plain
+        pg.TextItem trio.
 
         Z-Ordering Reference:
             - 997: Generic dimming rectangle
-            - 998: Welcome text (this method)
+            - 998: Welcome card (this method)
             - 999/1000: Calibration progress overlays
 
         Notes:
-            - Automatically adjusts font sizes based on the number of multiplex plots.
-            - Hides the main title (`_text1`) and shifts hints to the center if a
-            sign-in form is active (i.e., users exist).
-            - Binds a resize callback to maintain relative positioning when the window
-            is resized.
+            - Re-centers itself on every ViewBox resize.
         """
         # Guard: Prevent welcome text from reappearing if the calibration overlay is active.
         if getattr(self, "_calib_overlay_ready", False):
             return
 
-        # Tear down any existing welcome items to prevent layout duplicates
+        # Tear down any existing welcome card to prevent duplicates.
         self._remove_welcome_text()
 
         target = self._plt2_arr[1] or self._plt2_arr[0]
         if not target:
             return
 
-        # Determine responsive font sizes
-        font_size_pt = 11 if getattr(self, "multiplex_plots", 1) == 1 else 10
-        font_family = FONT_SANS_STACK
+        plot_item = target
+        view_box = plot_item.getViewBox()
+        graphics_item = plot_item.graphicsItem()
 
-        tok = ThemeManager.instance().tokens()
-        text_color_val = tok["plot_text_muted"]
-        icon_color_val = tok["plot_text_dim"]
-        accent_val = tok["accent"]
+        container = QtWidgets.QWidget()
+        # Same size as UIAnalyze._show_no_run_overlay's equivalent card, for
+        # visual consistency between Run and Analyze mode's empty states.
+        container.setFixedWidth(360)
+        # Transparent by default a plain QWidget hosted in a
+        # QGraphicsProxyWidget still paints an opaque palette background,
+        # which would otherwise show as a flat patch over the plot behind it
+        # (same reasoning as UIAnalyze._show_no_run_overlay's container).
+        container.setAutoFillBackground(False)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        container.setStyleSheet("background: transparent;")
 
-        # 1. Main Title
-        self._text1 = pg.TextItem("", anchor=(0.5, 0.5))
-        self._text1.setHtml(
-            f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; margin: 0;'>"
-            f"<span style='{font_css(TYPE_DISPLAY)}'>"
-            f"Welcome to nanovisQ&trade;</span></p>"
-        )
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(24, 28, 24, 28)
+        layout.setSpacing(8)
 
-        # 2. Instructions - Using <p align='center'> is the most reliable way to center multi-line text in Qt
-        self._text2 = pg.TextItem("", anchor=(0.5, 0.5))
-        self._text2.setHtml(
-            f"<p align='center' style='font-family: {font_family}; color: rgba{text_color_val}; line-height: 1.5; margin: 0;'>"
-            f"<span style='font-size: {font_size_pt}pt; font-weight: 400;'>"
-            f"Initialize quartz device in air <b style='color: rgba{accent_val};'>before</b> starting.<br>"
-            f"Apply sample drop <b style='color: rgba{accent_val};'>after</b> hitting Start."
-            f"</span></p>"
-        )
+        icon_badge = QtWidgets.QLabel()
+        icon_badge.setFixedSize(56, 56)
+        icon_badge.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "info-circle.svg")
 
-        # 3. Info Icon
-        self._text3 = pg.TextItem("", anchor=(0.5, 0.5))
-        self._text3.setHtml(
-            f"<p align='center' style='font-family: {font_family}; color: rgba{icon_color_val}; margin: 0;'>"
-            f"<span style='font-size: 60pt;'>&#9432;</span></p>"
-        )
+        icon_row = QtWidgets.QHBoxLayout()
+        icon_row.addStretch(1)
+        icon_row.addWidget(icon_badge)
+        icon_row.addStretch(1)
 
-        view_box = target.getViewBox()
-        graphics_item = target.graphicsItem()
+        title_label = QtWidgets.QLabel("Press Initialize to begin measuring")
+        title_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        title_label.setWordWrap(True)
 
-        # Group items for bulk property assignment
-        welcome_items = (self._text1, self._text2, self._text3)
+        subtext_label = QtWidgets.QLabel()
+        subtext_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        subtext_label.setWordWrap(True)
 
-        # Parent to graphicsItem (PlotItem level) so text overlays the plot space properly.
-        for item in welcome_items:
-            shadow = QtWidgets.QGraphicsDropShadowEffect()
-            shadow.setBlurRadius(10)
-            shadow.setXOffset(0)
-            shadow.setYOffset(1)
-            shadow.setColor(QtGui.QColor(255, 255, 255, 220))
-            item.setGraphicsEffect(shadow)
-            item.setParentItem(graphics_item)
-            item.setZValue(998)
+        layout.addLayout(icon_row)
+        layout.addWidget(title_label)
+        layout.addWidget(subtext_label)
 
-        # Visibility logic
-        no_users = UserProfiles.count() == 0
-        self._text1.setVisible(no_users)
+        proxy = QtWidgets.QGraphicsProxyWidget()
+        proxy.setWidget(container)
+        proxy.setParentItem(graphics_item)
+        proxy.setZValue(998)
 
-        def _welcome_resize_cb(*_args) -> None:
-            """Adjusts text positions dynamically when the ViewBox resizes."""
+        def _apply_theme(_mode: Optional[str] = None) -> None:
+            """Re-tints the card's icon/text colors to match the active
+            theme, same as UIAnalyze._show_no_run_overlay's own callback."""
+            tok = ThemeManager.instance().tokens()
+            text_color = tok_css(tok["flat_text"])
+            muted_color = tok_css(tok["flat_text_muted"])
+            accent_css = tok_css(tok["flat_accent"])
+            badge_bg = tok_css(tok["flat_accent_weak"])
+            accent = QtGui.QColor(*tok["flat_accent"])
+
+            icon_badge.setStyleSheet(f"background: {badge_bg}; border-radius: 14px;")
+            icon_badge.setPixmap(tinted_pixmap(icon_path, accent, size=24))
+            title_label.setStyleSheet(f"font-size: 12pt; font-weight: 600; color: {text_color};")
+            subtext_label.setStyleSheet(f"font-size: 9pt; color: {muted_color};")
+            subtext_label.setText(
+                "Be sure to initialize quartz device in air "
+                f"<b style='color: {accent_css};'>before</b> starting. "
+                f"Apply sample drop <b style='color: {accent_css};'>after</b> hitting Start."
+            )
+
+        _apply_theme()
+        ThemeManager.instance().themeChanged.connect(_apply_theme)
+
+        def _center() -> None:
             try:
-                # Map ViewBox bounds to the graphics item coordinate system
-                rect = view_box.mapRectToItem(graphics_item, view_box.boundingRect())
-                center_x = rect.x() + (rect.width() / 2.0)
-
-                def map_y(normalized_y: float) -> float:
-                    """Helper to map a normalized data-space Y (0=bottom, 1=top) to pixel Y"""
-                    return rect.y() + (rect.height() * (1.0 - normalized_y))
-
-                # Shift layout based on whether the main title is visible
-                if no_users:
-                    self._text3.setPos(center_x, map_y(0.70))  # Icon
-                    self._text1.setPos(center_x, map_y(0.55))  # Title
-                    self._text2.setPos(center_x, map_y(0.35))  # Instructions
-                else:
-                    self._text3.setPos(center_x, map_y(0.60))  # Icon
-                    self._text2.setPos(center_x, map_y(0.45))  # Instructions
-            except Exception:
+                full_rect = plot_item.boundingRect()
+                pw = proxy.boundingRect().width()
+                ph = proxy.boundingRect().height()
+                proxy.setPos(
+                    full_rect.x() + (full_rect.width() - pw) / 2.0,
+                    full_rect.y() + (full_rect.height() - ph) / 2.0,
+                )
+            except RuntimeError:
                 pass
 
-        view_box.sigResized.connect(_welcome_resize_cb)
-        self._welcome_resize_cb = _welcome_resize_cb
+        QtCore.QTimer.singleShot(0, _center)
+        view_box.sigResized.connect(_center)
+
+        self._welcome_proxy = proxy
         self._welcome_parent_vb = view_box
-        QtCore.QTimer.singleShot(0, _welcome_resize_cb)
+        self._welcome_resize_cb = _center
+        self._welcome_theme_cb = _apply_theme
 
     ###########################################################################
     # Configures phase-specific elements of the PyQtGraph plots
@@ -3442,7 +3438,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     # behind from some other styling pass.
                     ax.setPen(pg.mkPen(None))
 
-        if getattr(self, "_text1", None) is not None:
+        if getattr(self, "_welcome_proxy", None) is not None:
             self._annotate_welcome_text()
 
         tok = ThemeManager.instance().tokens()

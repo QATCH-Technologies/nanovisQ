@@ -1,5 +1,7 @@
 from PyQt5 import QtCore, QtWidgets
 
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+
 
 class CollapsibleBox(QtWidgets.QWidget):
     def __init__(self, title="", parent=None):
@@ -10,10 +12,10 @@ class CollapsibleBox(QtWidgets.QWidget):
             text=title, checkable=True, checked=False
         )
 
-        self.toggle_button.setStyleSheet("QToolButton { border: none; }")
         self.toggle_button.setToolButtonStyle(
             QtCore.Qt.ToolButtonTextBesideIcon
         )
+        self.toggle_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.toggle_button.setArrowType(QtCore.Qt.RightArrow)
         self.toggle_button.pressed.connect(self.toggle)
 
@@ -41,6 +43,29 @@ class CollapsibleBox(QtWidgets.QWidget):
         )
         self.toggle_animation.addAnimation(
             QtCore.QPropertyAnimation(self.content_area, b"maximumHeight")
+        )
+
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        """Tints the toggle button (text/arrow/hover) from the active
+        theme's flat_* tokens - this widget has no other chrome of its own."""
+        tok = ThemeManager.instance().tokens()
+        self.toggle_button.setStyleSheet(
+            "QToolButton {"
+            f"  color: {tok_css(tok['flat_text'])};"
+            "  border: none;"
+            "  background: transparent;"
+            "  font-weight: 600;"
+            "  font-size: 12px;"
+            "}"
+            "QToolButton:hover {"
+            f"  color: {tok_css(tok['flat_accent'])};"
+            "}"
         )
 
     def setCollapsed(self, checked):

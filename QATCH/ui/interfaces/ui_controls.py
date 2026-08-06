@@ -2642,8 +2642,6 @@ class UIControls:
         if hasattr(self, "controls_actionbar"):
             self.controls_actionbar.retint_icon_buttons()
 
-        self._refresh_user_button_icon()
-
     def _refresh_advanced_panel_icons(self) -> None:
         """Recolors the raw SVG glyphs inside the Advanced/Device panels.
 
@@ -3493,6 +3491,12 @@ class UIControls:
 
         Disables the Account toolbar button and closes any open account popup
         when the user is signed out. Re-enables the button when signed in.
+        Mirrors UIAnalyze._refresh_account_button_state - the Account
+        button's icon itself is left alone here (previously this drew a
+        custom initials-in-a-role-colored-circle glyph when signed in,
+        which Analyze's own Account button never did - the plain retinted
+        user-circle.svg icon from retint_icon_buttons() now applies in both
+        views for a consistent Account button).
         """
         signed_in = self._is_user_signed_in()
 
@@ -3500,7 +3504,6 @@ class UIControls:
         if tool_user is not None:
             tool_user.setEnabled(signed_in)
             tool_user.setChecked(False)
-            self._refresh_user_button_icon()
 
         # If user signed out, close any open account popup
         if signed_in:
@@ -3514,70 +3517,6 @@ class UIControls:
             popup.close()
         except Exception:
             pass
-
-    def _refresh_user_button_icon(self) -> None:
-        """Use signed-in initials as the Account toolbar glyph."""
-        tool_user = getattr(self, "tool_User", None)
-        if tool_user is None:
-            return
-
-        tok = ThemeManager.instance().tokens()
-        icon_size = (
-            self.tool_bar_2.iconSize() if hasattr(self, "tool_bar_2") else QtCore.QSize(50, 30)
-        )
-        signed_in = False
-        initials = ""
-        role_name = "NONE"
-
-        try:
-            signed_in, user_info = UserProfiles.session_info()
-            if signed_in and user_info:
-                initials = (user_info[1] or "").strip().upper()
-                role_name = user_info[2] or "NONE"
-        except Exception:
-            signed_in = False
-
-        if not signed_in or not initials:
-            icon_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
-            color = QtGui.QColor(*tok["plot_text_normal"])
-            tool_user.setIcon(self._tinted_icon(os.path.join(icon_dir, "user-circle.svg"), color))
-            return
-
-        pix = QtGui.QPixmap(icon_size)
-        pix.fill(QtCore.Qt.GlobalColor.transparent)
-
-        role_colors = {
-            "ADMIN": ((220, 53, 69), (200, 35, 51)),
-            "OPERATE": ((40, 167, 69), (30, 126, 52)),
-            "CAPTURE": ((255, 193, 7), (179, 134, 0)),
-            "ANALYZE": ((111, 66, 193), (111, 66, 193)),
-        }
-        base_rgb, text_rgb = role_colors.get(role_name, ((108, 117, 125), (73, 80, 87)))
-
-        p = QtGui.QPainter(pix)
-        p.setRenderHint(QtGui.QPainter.Antialiasing)
-        diameter = min(icon_size.width(), icon_size.height()) - 4
-        rect = QtCore.QRectF(
-            (icon_size.width() - diameter) / 2,
-            (icon_size.height() - diameter) / 2,
-            diameter,
-            diameter,
-        )
-        bg = QtGui.QColor(*base_rgb, 31)
-        border = QtGui.QColor(*base_rgb, 115)
-        p.setBrush(bg)
-        p.setPen(QtGui.QPen(border, 1.4))
-        p.drawEllipse(rect)
-
-        font = QtGui.QFont()
-        font.setBold(True)
-        font.setPointSize(10)
-        p.setFont(font)
-        p.setPen(QtGui.QColor(*text_rgb, 255))
-        p.drawText(rect.toRect(), QtCore.Qt.AlignmentFlag.AlignCenter, initials[:2])
-        p.end()
-
-        tool_user.setIcon(QtGui.QIcon(pix))
 
     def _toggle_account_popup(self) -> None:
         """Toggle the account popup anchored under the Account button.

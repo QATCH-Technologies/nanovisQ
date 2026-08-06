@@ -8,15 +8,17 @@ needed.
 
 Laid out as three zones - run selector / fit & analyze / app - separated
 by hairline dividers, per the "2a" task bar redesign: the run selector is
-a searchable, filterable field with the saved-state indicator inline
-beside it, and Back/Next stand adjacent (no step-position label between
-them) - both still built via the same `_tool_button()` helper as every
-other button in the bar, so they read as one family rather than a visually
-distinct control. Zones are uncaptioned (no `SectionHeader` row) - a
-caption line made this bar's height diverge from `ControlsActionBar`'s and
-from the plot panels' own header rhythm elsewhere in the app, for less
-benefit than the height cost; the divider alone still reads as "three
-groups" without it.
+a searchable, filterable field with the saved-state dot and the Run
+Info/Restore/Close actions inline beside it (all three act on the
+*currently loaded run*, not the bar/window as a whole, so they sit with
+the run selector rather than in the APP zone), and Back/Next stand
+adjacent (no step-position label between them) - both still built via the
+same `_tool_button()` helper as every other button in the bar, so they
+read as one family rather than a visually distinct control. Zones are
+uncaptioned (no `SectionHeader` row) - a caption line made this bar's
+height diverge from `ControlsActionBar`'s and from the plot panels' own
+header rhythm elsewhere in the app, for less benefit than the height cost;
+the divider alone still reads as "three groups" without it.
 
 Every toolbutton icon (and the search/filter/clear icons embedded in the
 run field) is tinted from the active theme's `flat_*` tokens at build time
@@ -42,35 +44,36 @@ from QATCH.common.architecture import Architecture
 from QATCH.ui.components import AnimatedComboBox
 from QATCH.ui.components.icon_utils import tinted_icon
 from QATCH.ui.components.task_bar_base import TaskBarBase, _icon_path
-from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
-from QATCH.ui.styles.typography import FONT_SANS_STACK
+from QATCH.ui.styles.theme_manager import ThemeManager
 from QATCH.ui.widgets.saved_state_dot import SavedStateDot
 
 
 class AnalyzeActionBar(TaskBarBase):
-    """Searchable run field + Auto-Fit/position-stepper/Modify/Analyze +
-    Advanced/Close/User, grouped into three uncaptioned zones, as one
-    themed card.
+    """Searchable run field + Run Info/Restore/Close + Auto-Fit/position-
+    stepper/Modify/Analyze + Advanced/User, grouped into three uncaptioned
+    zones, as one themed card.
 
     Public attributes (all plain Qt widgets - the caller wires their
     signals and owns their behavior):
         cBox_Runs: the searchable run selector. Typing filters the list via
             an attached QCompleter; `filter_action` is the trailing
             "filters" affordance embedded in the field.
-        saved_state_dot, saved_state_label, saved_state_widget: the
-            "Loaded & saved" status pill, shown inline in `run_zone` beside
-            cBox_Runs/run_info_bar.
+        saved_state_dot, saved_state_widget: the saved-state indicator dot,
+            shown inline in `run_zone` beside cBox_Runs/run_actions_bar -
+            dot only, no text label (see `UIAnalyze._set_saved_state`,
+            which sets a tooltip instead).
         text_Created: hidden internal-state label, not shown in the bar -
             see `_build_run_selector`.
-        tBtn_Predict, tBtn_Info: Auto-Fit/Run Info buttons - tBtn_Info sits
-            in its own `run_info_bar` toolbar so it picks up the same
-            CtrlToolBar theming as every other button in the bar.
+        tBtn_Predict: the Auto-Fit button.
+        tBtn_Info, tool_Restore, tool_Cancel: Run Info/Restore/Close - grouped
+            in their own `run_actions_bar` toolbar (matching this bar's other
+            CtrlToolBar rows) since all three act on the currently loaded
+            run specifically.
         tool_Back, tool_Next: the position-step buttons, built via the same
             `_tool_button()` helper as Auto-Fit/Modify/Analyze so they share
             identical chrome.
-        tool_Modify, tool_Analyze, tool_Advanced, tool_Cancel, tool_User:
-            the remaining action buttons (Close now lives in the APP zone
-            alongside Advanced/User, not beside Back/Next).
+        tool_Modify, tool_Analyze, tool_Advanced, tool_User: the remaining
+            action buttons.
     """
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
@@ -88,29 +91,24 @@ class AnalyzeActionBar(TaskBarBase):
         self.retint_icon_buttons()
         self._restyle_filter_icon()
         self._restyle_static_line_edit_icons()
-        self._restyle_saved_state_label()
         self.update()
 
     def _build_run_selector(self) -> None:
-        # Saved-state pill - sits in field_row beside cBox_Runs/run_info_bar.
-        # UIAnalyze drives its actual color/text (blank/unsaved/saved/error)
-        # and wires its click behavior (jump to step 1); this class only
-        # builds/positions it, and keeps the same `saved_state_widget`
-        # container so that wiring (mousePressEvent) keeps working
-        # unchanged regardless of where it sits in the layout.
+        # Saved-state dot - sits in field_row beside cBox_Runs/run_actions_bar.
+        # Dot only, no text label - UIAnalyze drives its actual color (see
+        # `set_state`) and sets a tooltip with the same descriptive text the
+        # label used to show (blank/unsaved/saved/error), and wires its
+        # click behavior (jump to step 1); this class only builds/positions
+        # it, and keeps the same `saved_state_widget` container so that
+        # wiring (mousePressEvent) keeps working unchanged regardless of
+        # where it sits in the layout.
         self.saved_state_dot = SavedStateDot()
-        self.saved_state_label = QtWidgets.QLabel("Loaded & saved")
-        # Explicitly sized/themed rather than left on the ambient default
-        # label font, which reads inconsistently next to every other themed
-        # small-text element in this bar.
-        self._restyle_saved_state_label()
         self.saved_state_widget = QtWidgets.QWidget()
         self.saved_state_widget.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         saved_state_layout = QtWidgets.QHBoxLayout(self.saved_state_widget)
         saved_state_layout.setContentsMargins(0, 0, 0, 0)
-        saved_state_layout.setSpacing(6)
+        saved_state_layout.setSpacing(0)
         saved_state_layout.addWidget(self.saved_state_dot)
-        saved_state_layout.addWidget(self.saved_state_label)
 
         # Searchable run field: an editable AnimatedComboBox with a
         # substring-filtering QCompleter sharing its own item model, so
@@ -140,7 +138,12 @@ class AnalyzeActionBar(TaskBarBase):
         self.cBox_Runs.style_completer_popup(completer)
 
         line_edit = self.cBox_Runs.lineEdit()
-        line_edit.setPlaceholderText("Find run…")
+        # Shows whenever nothing is selected (see UIAnalyze._refresh_cbox_
+        # runs, which lands on currentIndex(-1) rather than defaulting to
+        # the first run in the list) - doubles as "type to search" and "you
+        # need to pick one," rather than "Find run…" alone, which only
+        # communicated the former.
+        line_edit.setPlaceholderText("Select a run to load…")
         line_edit.setFrame(False)
         # Background/border/color/selection colors are all handled by
         # AnimatedComboBox itself (_apply_text_qss, re-run on every theme
@@ -174,19 +177,29 @@ class AnalyzeActionBar(TaskBarBase):
         self._filter_active = False
         self._restyle_filter_icon()
 
-        # Run Info gets its own CtrlToolBar-named toolbar (matching
-        # tBtn_Predict/tool_Modify/tool_Analyze's own wrapping toolbars)
-        # rather than sitting bare in this QHBoxLayout - objectName
-        # "CtrlToolBar" is what actually picks up the app-wide QSS that
-        # gives every other button in this bar its chrome, so without it
-        # Run Info would render unstyled next to a themed search field.
+        # Run Info / Restore / Close share one CtrlToolBar-named toolbar
+        # (matching tBtn_Predict/tool_Modify/tool_Analyze's own wrapping
+        # toolbars) rather than sitting bare in this QHBoxLayout -
+        # objectName "CtrlToolBar" is what actually picks up the app-wide
+        # QSS that gives every other button in this bar its chrome, so
+        # without it these would render unstyled next to a themed search
+        # field. Grouped here (not in the APP zone, where Close used to
+        # live) since all three act on the currently loaded run
+        # specifically: Restore discards in-memory edits and reloads the
+        # run exactly as last saved to disk (see
+        # UIAnalyze._restore_run_from_disk); Close exits back to no run
+        # loaded.
         self.tBtn_Info = self._tool_button("Run Info", "info-circle.svg")
-        self.run_info_bar = self._make_toolbar()
-        self.run_info_bar.addWidget(self.tBtn_Info)
+        self.tool_Restore = self._tool_button("Restore", "restore.svg")
+        self.tool_Cancel = self._tool_button("Close", "cancel.svg")
+        self.run_actions_bar = self._make_toolbar()
+        self.run_actions_bar.addWidget(self.tBtn_Info)
+        self.run_actions_bar.addWidget(self.tool_Restore)
+        self.run_actions_bar.addWidget(self.tool_Cancel)
 
         # AlignVCenter on all three: cBox_Runs (a fixed 30px field),
-        # saved_state_widget (a 14px dot + label), and run_info_bar (taller
-        # - icon-over-label) would otherwise be stretched to the row's full
+        # saved_state_widget (a bare dot), and run_actions_bar (taller -
+        # icon-over-label) would otherwise be stretched to the row's full
         # height by the layout and read as top-aligned relative to each
         # other.
         self.run_zone = QtWidgets.QHBoxLayout()
@@ -194,7 +207,7 @@ class AnalyzeActionBar(TaskBarBase):
         self.run_zone.setSpacing(8)
         self.run_zone.addWidget(self.cBox_Runs, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.run_zone.addWidget(self.saved_state_widget, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self.run_zone.addWidget(self.run_info_bar, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.run_zone.addWidget(self.run_actions_bar, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         # UIAnalyze/MainWindow track the current run's identity via this
         # label's text (see e.g. MainWindow.set_captured_data and
@@ -222,20 +235,6 @@ class AnalyzeActionBar(TaskBarBase):
             *(tok["flat_accent"] if self._filter_active else tok["flat_text_muted"])
         )
         self.filter_action.setIcon(tinted_icon(_icon_path("filter.svg"), color, 18))
-
-    def _restyle_saved_state_label(self) -> None:
-        """Sizes/tints "Loaded & saved" to match `SectionHeader`'s compact
-        10px caption font (muted color, normal case/weight - this is a
-        status message, not a section title, so it deliberately skips
-        `SectionHeader`'s uppercase/letter-spacing/600-weight treatment)
-        rather than the ambient default label font, which reads
-        inconsistently next to this bar's other themed small text."""
-        tok = ThemeManager.instance().tokens()
-        self.saved_state_label.setStyleSheet(
-            f"QLabel {{ color: {tok_css(tok['flat_text_muted'])}; "
-            f"font-family: {FONT_SANS_STACK}; font-size: 10px; font-weight: 400; "
-            "background: transparent; border: none; padding: 0px; }"
-        )
 
     def _restyle_static_line_edit_icons(self) -> None:
         """Retints the leading search icon and the quick-clear "x" - both
@@ -272,7 +271,6 @@ class AnalyzeActionBar(TaskBarBase):
 
     def _build_app_group(self) -> None:
         self.tool_Advanced = self._tool_button("Advanced", "gear.svg", checkable=True)
-        self.tool_Cancel = self._tool_button("Close", "cancel.svg")
         self.tool_User = self._tool_button("Anonymous", "user-circle.svg", checkable=True)
         # Starts disabled; UIAnalyze.setup_ui/check_user_info refresh this to
         # the real signed-in state (mirrors UIControls.refresh_user_button_state).
@@ -280,14 +278,13 @@ class AnalyzeActionBar(TaskBarBase):
 
         self.app_bar = self._make_toolbar()
         self.app_bar.addWidget(self.tool_Advanced)
-        self.app_bar.addWidget(self.tool_Cancel)
         self.app_bar.addWidget(self.tool_User)
 
     def _assemble(self) -> None:
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(*self.OUTER_MARGINS)
         layout.setSpacing(self.ZONE_SPACING)
-        # All three CtrlToolBar rows (run_info_bar/fit_bar/app_bar) share
+        # All three CtrlToolBar rows (run_actions_bar/fit_bar/app_bar) share
         # the same icon size/QSS, so they hint to the same height - use
         # that as the divider height rather than a guessed constant.
         toolbar_h = self.fit_bar.sizeHint().height()

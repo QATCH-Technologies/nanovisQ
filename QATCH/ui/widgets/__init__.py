@@ -18,7 +18,7 @@ from .query_run_info_widget import QueryRunInfoWidget
 from .recovery_filter_widget import RecoveryFilterWidget
 from .reset_password_widget import ResetPasswordWidget
 from .run_filter_popover import RunFilterPopover
-from .run_info_widget import RunInfoWindow
+from .run_info_overlay import RunInfoOverlay
 from .saved_state_dot import SavedStateDot
 from .sliding_panel import SlidingPanel
 from .splash_screen_widget import QatchSplashScreen
@@ -48,7 +48,7 @@ __all__ = [
     "RecoveryFilterWidget",
     "LoginCentralWidget",
     "ResetPasswordWidget",
-    "RunInfoWindow",
+    "RunInfoOverlay",
     "FloatingMessageBadgeWidget",
     "QatchSplashScreen",
     "TableView",

@@ -399,8 +399,11 @@ class RunControls(QWidget):
 
         # Left container is button and label.
         self.btn = StartStopButton()
-        # QSize taken from sizeHint() of tool_Initialize and/or tool_Reset
-        self.btn.setFixedSize(QtCore.QSize(60, 56))
+        # Height must match TaskBarBase.BUTTON_HEIGHT (see task_bar_base.py)
+        # so this button stays vertically aligned with the other toolbuttons
+        # in run_bar - it isn't built via TaskBarBase._tool_button() itself,
+        # so that constant can't just apply here automatically.
+        self.btn.setFixedSize(QtCore.QSize(60, 60))
         self.btn.setText("Start")
         self.btn.clicked.connect(self.toggle_state)
         self.layout.addWidget(self.btn)

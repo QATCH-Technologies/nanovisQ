@@ -50,6 +50,7 @@ from QATCH.ui.interfaces import UIControls
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.widgets import (
     DataManagementWidget,
+    RunInfoOverlay,
     UserPreferencesWidget,
     UserProfilesManagerWidget,
 )
@@ -99,6 +100,10 @@ class ControlsWindow(BaseWindow):
         # app window's central widget, which may not exist yet this early
         # in startup.
         self.ui_preferences: Optional[UserPreferencesWidget] = None
+        # Lazily created on first open (see _ensure_run_info_overlay()) -
+        # same reasoning as data_management_widget/ui_preferences: needs the
+        # full app window's central widget as its overlay parent.
+        self._run_info_overlay: Optional[RunInfoOverlay] = None
         self.current_timer: QtCore.QTimer = QtCore.QTimer()
 
         UserProfiles().session_end()
@@ -538,6 +543,24 @@ class ControlsWindow(BaseWindow):
     def preferences(self) -> None:
         """Displays the user preferences overlay, creating it on first use."""
         self._ensure_preferences_widget().showNormal(0)
+
+    def _ensure_run_info_overlay(self) -> RunInfoOverlay:
+        """Lazily creates (or re-parents) the Run Info overlay.
+
+        Mirrors `_ensure_preferences_widget()`'s lazy-create-and-cache
+        pattern so the overlay is parented to the full application window
+        and re-fitted to the current window size before use. Shared by
+        `UIAnalyze.getRunInfo()` (single-port, post-capture and edit-
+        existing-run flows) and `RenameOutputFilesWorker.run()` (single- and
+        multi-port post-capture flows) - both call `open_runs()` on the
+        returned overlay instead of constructing their own top-level window.
+        """
+        parent = self._data_overlay_parent()
+        if self._run_info_overlay is None or self._run_info_overlay.parent is not parent:
+            self._run_info_overlay = RunInfoOverlay(parent=parent)
+        with suppress(Exception):
+            self._run_info_overlay.setGeometry(parent.rect())
+        return self._run_info_overlay
 
     def scan_subnets(self) -> None:
         """Initiates a network scan for connected devices and refreshes the port list.

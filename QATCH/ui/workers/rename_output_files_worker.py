@@ -37,7 +37,6 @@ from QATCH.processors.InterpTemps import (
 )
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
-from QATCH.ui.widgets.run_info_widget import RunInfoWindow
 
 
 class RenameOutputFilesWorker(QtCore.QObject):
@@ -78,8 +77,6 @@ class RenameOutputFilesWorker(QtCore.QObject):
         self.main_window: Any = parent
 
         self.finished.connect(self.indicate_done)
-        self.DockingWidgets = []
-        self.bThread = []
         self.bWorker = []
 
         # Data queues for InterpTemps.
@@ -458,24 +455,18 @@ class RenameOutputFilesWorker(QtCore.QObject):
             )
 
             for r_dir, r_path, r_good in runs_to_query:
-                self.bThread.append(QtCore.QThread())
-
                 worker = QueryRunInfoWidget(
                     r_dir, r_path, r_good, user_name, parent=self.main_window
                 )
                 self.bWorker.append(worker)
-                self.bThread[-1].started.connect(worker.show)
-                worker.finished.connect(self.bThread[-1].quit)
                 worker.finished.connect(self.indicate_done)
 
-            num_runs_saved = len(self.bThread)
-            for i in range(num_runs_saved):
-                self.bWorker[i].setRuns(num_runs_saved, i)
-
-            if num_runs_saved == 1:
-                self.bThread[-1].start()
-            elif num_runs_saved > 1:
-                self.RunInfoWindow = RunInfoWindow(self.bWorker, self.bThread)
+            if self.bWorker:
+                if self.main_window:
+                    overlay = self.main_window.controls_window._ensure_run_info_overlay()
+                    overlay.open_runs(self.bWorker)
+                else:
+                    Log.e("Cannot open Run Info overlay: no main window reference.")
 
         except Exception as e:
             import traceback

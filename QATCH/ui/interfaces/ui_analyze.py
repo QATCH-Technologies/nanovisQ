@@ -713,12 +713,16 @@ class UIAnalyze(QtWidgets.QWidget):
         # margins push the action bar down/inward and wrap the plot area in
         # an unwanted border of empty space that Controls/Plots don't have.
         self.layout.setContentsMargins(0, 0, 0, 0)
-        # Explicit, matching PlotsUI's root_layout.setSpacing(6) - this was
-        # previously unset, falling back to Qt's platform-default QVBoxLayout
-        # spacing, which left the gap between the action bar and the plot
-        # area below it (self.graph_split) inconsistent with PlotsUI's own
-        # toolbar-to-plot buffer rather than an intentional, matching value.
-        self.layout.setSpacing(6)
+        # In Run mode, ControlsWindow's and PlotsWindow's centralwidgets are
+        # stacked with zero spacing (see UIMode.setup_ui's
+        # `runlayout.setSpacing(0)`) - the visible gap between the task bar
+        # and the plots there is entirely PlotsUI's own top content margin
+        # (`root_layout.setContentsMargins(0, 8, 0, 0)`), not inter-widget
+        # spacing. This is the single-window equivalent of that same gap
+        # (previously 6px, matching root_layout's unrelated *inter-splitter*
+        # spacing instead - a mismatched reference that left this bar-to-plot
+        # buffer visibly thinner than Run mode's).
+        self.layout.setSpacing(8)
 
         # Fixes #30
         self.text_Devices = QtWidgets.QLabel("Device")
@@ -760,10 +764,10 @@ class UIAnalyze(QtWidgets.QWidget):
         self.text_Created = self.actionbar.text_Created
         self.cBox_Runs = self.actionbar.cBox_Runs
         self.saved_state_dot = self.actionbar.saved_state_dot
-        self.saved_state_label = self.actionbar.saved_state_label
         self.saved_state_widget = self.actionbar.saved_state_widget
         self.tBtn_Predict = self.actionbar.tBtn_Predict
         self.tBtn_Info = self.actionbar.tBtn_Info
+        self.tool_Restore = self.actionbar.tool_Restore
         self.tool_Cancel = self.actionbar.tool_Cancel
         self.tool_Back = self.actionbar.tool_Back
         self.tool_Next = self.actionbar.tool_Next
@@ -774,6 +778,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
         self.tBtn_Info.clicked.connect(self.getRunInfo)
+        self.tool_Restore.clicked.connect(self.action_restore)
         self.saved_state_widget.mousePressEvent = lambda _evt: self.gotoStepNum(None, 1)
         self.actionbar.filter_action.triggered.connect(self._open_run_filter_popover)
         self.actionbar.clear_filter_action.triggered.connect(self._on_filter_clear)
@@ -2479,8 +2484,16 @@ class UIAnalyze(QtWidgets.QWidget):
         wrapper_layout.addWidget(self._stepper_plus_btn, 0, QtCore.Qt.AlignVCenter)
         self._stepper_overlay_wrapper = wrapper
 
-        self.stepper.show()
-        wrapper.show()
+        # No .show() here on either widget (unlike an ordinary layout, where
+        # that'd be harmless/redundant) - wrapper has no parent yet at this
+        # point, so calling .show() on it directly makes Qt briefly treat it
+        # as its own real top-level window before setWidget() below embeds
+        # it into the scene - a one-frame "empty popup" flash on the very
+        # first Analyze-mode entry (this method only ever runs once, see the
+        # showEvent guard). QGraphicsProxyWidget.setWidget() shows the
+        # embedded widget itself; matches every other proxy-overlay in this
+        # file (_show_no_run_overlay, etc.), none of which call .show() on
+        # their wrapper before embedding it.
         proxy = QtWidgets.QGraphicsProxyWidget()
         proxy.setWidget(wrapper)
         proxy.setParentItem(plot_item.graphicsItem())
@@ -3017,7 +3030,7 @@ class UIAnalyze(QtWidgets.QWidget):
     def _copy_custom_pois(self) -> None:
         """Copies the current (<=5) Custom POI values to the clipboard as a
         Python-list literal, e.g. "[8723, 8725, 12180]" - same clipboard
-        pattern as `run_info_widget.RunInfoWidget.copyText`."""
+        pattern as `run_info_overlay.RunInfoOverlay.copyText`."""
         values = self._poi_chip_field.values()
         try:
             cb = QtWidgets.QApplication.clipboard()
@@ -3236,6 +3249,77 @@ class UIAnalyze(QtWidgets.QWidget):
             # "or because you clicked \"Close\" while in the middle of processing the batch.")
 
         self.clear()  # calls self.enable_buttons()
+
+    def action_restore(self) -> None:
+        """Discards any unsaved in-memory changes (moved markers, model
+        overrides, etc.) and reloads the current run exactly as it's stored
+        on disk.
+
+        Goes through `MainWindow.analyze_data(device, folder, data_file)` -
+        the same pipeline `action_load_run` uses for a genuine "Load" -
+        rather than calling `self.analyze_data(data_path)` directly. That
+        shortcut skipped `MainWindow.analyze_data()`'s own setup
+        (`setXmlPath`, `text_Created`, ...) that a real load always does
+        first, and `self.xml_path`/`data_path` resolution deeper in the
+        pipeline depends on it - the direct call was silently dropping
+        several POIs instead of actually restoring the saved ones.
+
+        `data_file` is passed explicitly (`self.loaded_datapath`'s own
+        basename), not `None` - a run folder with more than one data file
+        (e.g. this same "_3rd.csv" naming) would otherwise make
+        `MainWindow.analyze_data()` re-resolve which file to load (its own
+        first-match/"_3rd.csv" heuristic, or an async file-picker dialog),
+        which can silently land on a *different* file than the one that
+        was actually loaded - not a restore of the run in front of the
+        user at all, which read as POI markers going missing.
+
+        Deliberately doesn't reuse `action_load_run()` itself: its batch-
+        processing branch would treat this as "advance to the next run in
+        the batch" rather than "reload the current one."
+        """
+        if self.xml_path is None or not getattr(self, "loaded_datapath", None):
+            return
+
+        if self.hasUnsavedChanges():
+            if not PopUp.question(
+                self,
+                Constants.app_title,
+                "This will discard your unsaved changes and restore the run "
+                "to its last-saved state.\n\nAre you sure you want to continue?",
+            ):
+                return
+
+        # _run_model_prediction (deep in the reload pipeline below) treats a
+        # non-empty self.poi_markers as "the user has manually started
+        # placing points mid-workflow" and truncates its result to just
+        # [start, end] so a re-prediction can't clobber their in-progress
+        # work. Every *other* path into analyze_data() already goes through
+        # action_cancel() -> clear() first, which resets this (and the
+        # related model_result/model_candidates/model_engine/channel-cache
+        # state) before reloading - Restore skipped that, so the run's own
+        # still-loaded 6 markers looked like "manual partial progress" and
+        # got truncated down to just the first/last marker.
+        self.poi_markers = []
+        self.model_result = -1
+        self.model_candidates = None
+        self.model_engine = "None"
+        self._channel_config_cache = {}
+        # _load_xml_pois (also deep in the reload pipeline) is a one-shot
+        # gate: it returns empty immediately once askForPOIs is False,
+        # which happens permanently the first time *any* full 6-POI set
+        # exists this session - including a fresh Auto-Fit prediction, not
+        # just a restored one. Without resetting it here, Restore after an
+        # Auto-Fit never even reads the run's saved <points> block back off
+        # disk - it skips straight past it into a brand new model
+        # prediction, which is why moved points after Auto-Fit appeared to
+        # survive "Restore" unchanged (loadRun() resets this same flag for
+        # every other load path - see its own `self.askForPOIs = True`).
+        self.askForPOIs = True
+
+        folder_name = self.get_folder_from_run(self.cBox_Runs.currentText())
+        device_name = self.cBox_Devices.currentText()
+        data_file = os.path.basename(self.loaded_datapath)
+        self.parent.analyze_data(device_name, folder_name, data_file)
 
     def action_back(self):
         try:
@@ -3685,6 +3769,7 @@ class UIAnalyze(QtWidgets.QWidget):
 
         # Apply button states
         self.tBtn_Info.setEnabled(enable_info)
+        self.tool_Restore.setEnabled(enable_info)
         self.tool_Cancel.setEnabled(enable_cancel)
         self.tool_Back.setEnabled(enable_back)
         self.tool_Next.setEnabled(enable_next)
@@ -4271,11 +4356,13 @@ class UIAnalyze(QtWidgets.QWidget):
         self._refresh_account_button_state()
 
     def _set_saved_state(self, state: str, text: str) -> None:
-        """Updates the "Loaded & saved" status pill's dot color and its text
-        readout together, so the label always matches what the dot means
-        instead of staying frozen on "Loaded & saved" regardless of state."""
+        """Updates the saved-state dot's color and its tooltip text together,
+        so the tooltip always matches what the dot's color means instead of
+        staying frozen on stale text regardless of state. The dot has no
+        visible text label (see AnalyzeActionBar._build_run_selector) -
+        `text` surfaces on hover instead."""
         self.saved_state_dot.set_state(state)
-        self.saved_state_label.setText(text)
+        self.saved_state_widget.setToolTip(text)
 
     def detect_change(self):
         if not self.unsaved_changes:
@@ -4975,6 +5062,14 @@ class UIAnalyze(QtWidgets.QWidget):
             self.cBox_Runs.setEnabled(True)
             if previous_selection and previous_selection in display_runs:
                 self.cBox_Runs.setCurrentText(previous_selection)
+            else:
+                # Qt's own default after addItems() is index 0 - the first
+                # run in the (sorted) list - which read as though that run
+                # were already loaded. Land on no selection instead, so the
+                # field falls back to its own placeholder text (see
+                # _build_run_selector's line_edit.setPlaceholderText) and
+                # makes clear a run still needs to be picked.
+                self.cBox_Runs.setCurrentIndex(-1)
         else:
             # Always leave at least one (placeholder) item in place, so
             # updateDev never sees a transiently/truly empty combo outside
@@ -7358,24 +7453,25 @@ class UIAnalyze(QtWidgets.QWidget):
 
     def getRunInfo(self):
         """
-        Load and display information about a run from an XML file, initializing
-        a GUI to view or edit the run's details.
+        Load and display information about a run from an XML file, opening
+        the Run Info overlay to view or edit the run's details.
 
         This method reads an XML file specified by `self.xml_path` to extract
         attributes such as the run's name, associated CSV file path, ruling
         (e.g., good or bad), and optionally, the username of the parent control.
-        It ensures that only one instance of the Run Info GUI is active, and
-        manages communication between the main thread and a worker thread for
-        GUI display and user interaction.
+        It ensures that only one Run Info session is active at a time (re-
+        raising the overlay instead of rebuilding it if one is already open),
+        and wires up the resulting `QueryRunInfoWidget` form's signals.
 
         If the XML path is invalid or not provided, the method does nothing.
 
         Attributes:
             self.xml_path (str): Path to the XML file containing the run information.
             self.parent: Reference to the parent object (if any), used to extract the
-                username for run metadata.
-            self.bThread (QtCore.QThread): Thread handling the Run Info GUI worker.
-            self.bWorker (QueryRunInfo): Worker object for the Run Info GUI.
+                username for run metadata and to reach the app's shared
+                `RunInfoOverlay` (via `self.parent.controls_window`).
+            self.bWorker (QueryRunInfoWidget): The Run Info form embedded in
+                the overlay for this run.
 
         Raises:
             Exception: If there are issues reading or parsing the XML file, or if
@@ -7410,17 +7506,16 @@ class UIAnalyze(QtWidgets.QWidget):
             user_name = (
                 None if self.parent == None else self.parent.controls_window.username.text()[6:]
             )
+
+            overlay = self.parent.controls_window._ensure_run_info_overlay()
+            if overlay.isVisible() and overlay is getattr(self, "_run_info_overlay", None):
+                Log.w("Run Info GUI already open. Re-showing instead.")
+                overlay.raise_()
+                return
+            self._run_info_overlay = overlay
+
             # check signatures of XML, render a new QueryRunInfo() and allow saving changes
             # (when editing runinfo, append to existing audit, not overwrite as new CAPTURE).
-            if hasattr(self, "bThread"):
-                if self.bThread.isRunning():
-                    Log.w("Run Info GUI already open. Re-showing instead.")
-                    self.bWorker.hide()
-                    self.bWorker.show()
-                    return
-
-            # Initialize the thread and worker for the Run Info GUI.
-            self.bThread = QtCore.QThread()
             self.bWorker = QueryRunInfoWidget(
                 run_name=run_name,
                 run_path=run_path,
@@ -7430,10 +7525,6 @@ class UIAnalyze(QtWidgets.QWidget):
                 parent=self.parent,
             )  # TODO: more secure to pass user_hash (filename)
 
-            # Configure the Run Info GUI worker.
-            self.bWorker.setRuns(1, 0)
-            self.bThread.started.connect(self.bWorker.show)
-            self.bWorker.finished.connect(self.bThread.quit)
             self.bWorker.finished.connect(self.update_run_names)
 
             # IPC signal to get the updated path name from the Run Info window on
@@ -7441,8 +7532,8 @@ class UIAnalyze(QtWidgets.QWidget):
             self.bWorker.updated_run.connect(self.update_current_run_info)
             self.bWorker.updated_xml_path.connect(self.setXmlPath)
 
-            # Start the thread to display the Run Info GUI
-            self.bThread.start()
+            # Open the Run Info overlay on this form.
+            overlay.open_runs([self.bWorker])
 
     def update_current_run_info(self, xml_path, new_name, old_name, date):
         """
@@ -9706,19 +9797,65 @@ class UIAnalyze(QtWidgets.QWidget):
                     poi_vals[i] = -1
             start_stop = poi_vals
 
+        last_idx = len(xs) - 1
         self.poi_markers = []
         marker_targets: List[Tuple["POIMarker", float]] = []
+        unused_marker_indices: set = set()
         for idx, pt in enumerate(start_stop):
             marker = self._make_poi_marker(xs[pt], xs, y0, y1)
             if idx == 2:
                 marker.setVisible(False)
+            elif pt == -1 or pt == last_idx:
+                # Not predicted, or predicted at the very last sample - the
+                # same "channel not present in this run" convention
+                # _on_remove_step_requested already uses. Leave it fully
+                # hidden/non-interactive from the start (skip its entrance
+                # reveal below) instead of animating in a marker the
+                # workflow is about to hide again anyway - see
+                # _auto_hide_unused_trailing_steps.
+                marker.setMovable(False)
+                marker.setRevealProgress(0.0)
+                unused_marker_indices.add(idx)
             ax.addItem(marker)
             marker.sigPositionChangeFinished.connect(self.markerMoveFinished)
             self.poi_markers.append(marker)
-            marker_targets.append((marker, xs[pt]))
+            if idx not in unused_marker_indices:
+                marker_targets.append((marker, xs[pt]))
 
         self._reveal_poi_markers(xs[0], xs[-1], marker_targets)
         self._reset_step_visibility()
+        self._auto_hide_unused_trailing_steps(unused_marker_indices)
+
+    def _auto_hide_unused_trailing_steps(self, unused_marker_indices: set) -> None:
+        """Collapses the stepper back past trailing intermediate steps (see
+        `_INTERMEDIATE_STEPS`, tail-to-head: Channel 3 first) whose marker
+        `_add_poi_markers` just left hidden/unused - either that POI was
+        never predicted, or it landed on the run's very last sample (the
+        same "channel not present" convention `_on_remove_step_requested`
+        relies on). Runs on every fresh set of markers - a run load or an
+        Auto-Fit, the only two paths into `_add_poi_markers` - so the
+        workflow only ever asks the user to review steps that actually
+        apply to this run, instead of requiring a manual "-" click (or
+        stepping all the way through via Back/Next) to notice a channel
+        was never there.
+
+        Uses the same `active_count`/`stepper.remove_step()` bookkeeping
+        `_on_remove_step_requested` uses (with no animation - these steps
+        were never shown to the user in the first place), so a later
+        manual "+" click still brings one back exactly as if the user had
+        removed it themselves.
+
+        Stops at the first step (scanning tail-to-head) whose marker *is*
+        used, so a genuine mid-run gap (e.g. Channel 2 detected but
+        Channel 3 not) can't hide a channel that precedes a used one.
+        """
+        while self.active_count > 0:
+            _, marker_idx = self._INTERMEDIATE_STEPS[self.active_count - 1]
+            if marker_idx not in unused_marker_indices:
+                break
+            self.active_count -= 1
+            self.stepper.remove_step()
+        self._update_step_buttons_enabled()
 
     def _reset_step_visibility(self) -> None:
         """Resets the +/- step-visibility state to "everything shown" -

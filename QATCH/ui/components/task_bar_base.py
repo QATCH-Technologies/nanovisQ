@@ -47,12 +47,14 @@ class TaskBarBase(QtWidgets.QWidget):
     """
 
     ICON_SIZE = QtCore.QSize(50, 30)
-    # Empirically today's natural CtrlToolBar QToolButton height (icon +
-    # text-under-icon + QSS padding) - see RunControls.btn's own
-    # QSize(60, 56), sized to match tool_Initialize/tool_Reset's sizeHint
-    # before either bar set an explicit height. Fixing it here is a
-    # lock-in of that existing reality, not a redesign.
-    BUTTON_HEIGHT = 56
+    # Was 56 (RunControls.btn's original QSize(60, 56), matching
+    # tool_Initialize/tool_Reset's pre-explicit-height sizeHint) - bumped by
+    # 4px because the text-under-icon label row was too tight for the QSS
+    # 12px font's descenders (g/y/p/j/q tails were getting clipped).
+    # RunControls.btn's own QSize must be kept in lockstep with this (see
+    # run_controls_button.py) or its Start/Stop button falls out of
+    # vertical alignment with the rest of run_bar again.
+    BUTTON_HEIGHT = 60
     _CARD_RADIUS = 12.0
     OUTER_MARGINS = (10, 1, 10, 1)
     ZONE_SPACING = 14
