@@ -32,4 +32,5 @@ class InjectionForceCalculatorModule(WebViewer):
         super().__init__(
             title="Injection Force Calculator",
             target_url="https://qatch-technologies.github.io/Injection-Force-Calculator/injection_force_calculator.html",
+            offline_url="QATCH/tools/offline_calcs/Injection Force Calculator - QATCH Technologies.html",
         )

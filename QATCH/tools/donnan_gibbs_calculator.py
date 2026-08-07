@@ -32,4 +32,5 @@ class DonnanCalculatorModule(WebViewer):
         super().__init__(
             title="Donnan Calculator",
             target_url="https://qatch-technologies.github.io/Donnan-Calculator/donnan_calculator.html",
+            offline_url="QATCH/tools/offline_calcs/Donnan UF_DF Calculator - QATCH Technologies.html",
         )

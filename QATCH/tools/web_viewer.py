@@ -58,7 +58,7 @@ class RestrictedPage(QWebEnginePage):
             navigation is refused, reset to ``False`` on allowed navigations.
     """
 
-    def __init__(self, allowed_url, *args, **kwargs):
+    def __init__(self, allowed_urls, *args, **kwargs):
         """Initialise the page and store the URL whitelist entry.
 
         Args:
@@ -68,8 +68,8 @@ class RestrictedPage(QWebEnginePage):
             **kwargs: Keyword arguments forwarded to ``QWebEnginePage``.
         """
         super().__init__(*args, **kwargs)
-        self.allowed_url = allowed_url
-        self._allowed_qurl = QUrl(allowed_url)
+        self.allowed_urls = allowed_urls
+        self._allowed_qurls = [QUrl(url) for url in allowed_urls]
         # Set True whenever we refuse a main-frame navigation, so the view can
         # distinguish a deliberate block from a real load failure.
         self.navigation_blocked = False
@@ -84,10 +84,15 @@ class RestrictedPage(QWebEnginePage):
             bool: ``True`` if *url* has the same scheme, host, and path as the
             allowed URL; ``False`` otherwise.
         """
-        return (
-            url.scheme() == self._allowed_qurl.scheme()
-            and url.host() == self._allowed_qurl.host()
-            and url.path() == self._allowed_qurl.path()
+        return any(
+            [
+                (
+                    url.scheme() == qurl.scheme()
+                    and url.host() == qurl.host()
+                    and url.path() == qurl.path()
+                )
+                for qurl in self._allowed_qurls
+            ]
         )
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
@@ -227,7 +232,9 @@ class RefreshButton(QPushButton):
         self.angle = (self.angle + speed) % 360
         transform = QTransform().rotate(self.angle)
 
-        rotated_pixmap = self.base_pixmap.transformed(transform, Qt.SmoothTransformation)
+        rotated_pixmap = self.base_pixmap.transformed(
+            transform, Qt.SmoothTransformation
+        )
         self.setIcon(QIcon(rotated_pixmap))
 
 
@@ -236,21 +243,23 @@ class OfflineViewer(QWebEngineView):
 
     On a load failure the view attempts up to ``_max_retries`` automatic
     retries with a 1.5-second delay between each attempt.  If all retries are
-    exhausted it renders a self-contained HTML offline/error page that
+    exhausted it first tries to pull a cached copy of the url; otherwise, if
+    unable to load, it renders a self-contained HTML offline/error page that
     auto-redirects back to the target URL every 5 seconds.  Failures caused by
     intentionally blocked navigations (as reported by :class:`RestrictedPage`)
     are silently ignored and do not trigger retries.
 
     Attributes:
         target_url (str): The URL string that the view is currently targeting.
+        offline_url (str): The file string that the view shows when offline.
         _retry_count (int): Number of retry attempts made for the current load.
         _max_retries (int): Maximum number of automatic retries before the
-            offline page is shown.
+            cache fallback and/or offline page is shown.
         _retry_timer (QTimer): Single-shot timer used to space out retry
             attempts.
     """
 
-    def __init__(self, url=None):
+    def __init__(self, target_url=None, offline_url=None):
         """Initialise the view, attach a RestrictedPage, and begin loading.
 
         The HTTP cache is cleared on startup so that stale cached content from
@@ -259,26 +268,45 @@ class OfflineViewer(QWebEngineView):
         so that the whitelist is enforced from the very first navigation.
 
         Args:
-            url (str, optional): The URL to load immediately. If ``None`` the
+            target_url (str, optional): The URL to load immediately. If ``None`` the
                 view is created in an empty state. Defaults to ``None``.
+            offline_url (str, optional): The URL to load when ``target_url`` fails to
+                load (i.e. offline). If ``None`` the view shows a "Connection Lost"
+                message (when offline). Defaults to ``None``.
         """
         super().__init__()
-        self.target_url = url if url else ""
+
+        if offline_url:
+            # Normalize file path to a fully qualified "file:///" URL string
+            offline_url = os.path.join(Architecture.get_path(), offline_url)
+            offline_url = QUrl.fromLocalFile(
+                str(offline_url).replace(os.sep, "/")
+            ).toString()
+
+        self.target_url = target_url if target_url else ""
+        self.offline_url = offline_url
         self._retry_count = 0
-        self._max_retries = 3
+        self._max_retries = 0
+
         self._retry_timer = QTimer(self)
         self._retry_timer.setSingleShot(True)
         self._retry_timer.timeout.connect(self._retry_load)
 
-        if url:
-            self.setPage(RestrictedPage(url, self))
+        self._offline = True
+        if target_url:
+            self.setPage(
+                RestrictedPage(allowed_urls=[target_url, offline_url], parent=self)
+            )
 
-        self.page().profile().clearHttpCache()
         self.loadStarted.connect(self._load_started)
         self.loadFinished.connect(self._load_finished)
 
-        if url:
-            self.setUrl(QUrl(url))
+        if target_url:
+            self.setUrl(QUrl(target_url))
+
+    def isOffline(self):
+        """Get flag indicating if web viewer is offline"""
+        return self._offline
 
     def setUrl(self, url):
         """Override setUrl to keep ``target_url`` in sync before delegating.
@@ -286,7 +314,9 @@ class OfflineViewer(QWebEngineView):
         Args:
             url (QUrl): The new URL to navigate to.
         """
-        self.target_url = url.toString()
+        self._offline = url.toString() == self.offline_url
+        if not self._offline:
+            self.target_url = url.toString()
         super().setUrl(url)
 
     def _load_started(self):
@@ -330,7 +360,11 @@ class OfflineViewer(QWebEngineView):
             self._retry_count += 1
             self._retry_timer.start(1500)  # 1.5s grace before retry
             return
-        self.show_offline_page()
+
+        if self.offline_url and self._retry_count == self._max_retries:
+            self.setUrl(QUrl(self.offline_url))
+        else:
+            self.show_offline_page()
 
     def show_offline_page(self):
         """Render a styled offline error page directly into the web view.
@@ -345,7 +379,9 @@ class OfflineViewer(QWebEngineView):
         icon ``src`` attribute is left empty; the rest of the page still
         renders correctly.
         """
-        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "offline.svg")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "offline.svg"
+        )
 
         # Safely read and encode the SVG
         try:
@@ -355,6 +391,28 @@ class OfflineViewer(QWebEngineView):
                 img_src = f"data:image/svg+xml;base64,{encoded_string}"
         except FileNotFoundError:
             img_src = ""
+
+        AUTO_RETRY = False
+        if AUTO_RETRY:
+            status_html = "Retrying automatically"
+            script_tag = f"""
+            <script>
+                // Attempt to reach the target URL every 5 seconds
+                setTimeout(function() {{
+                    window.location.href = '{self.target_url}';
+                }}, 5000);
+            </script>
+            """
+
+        else:
+            status_html = (
+                f'<br/><a href="{self.target_url}">Click here to try again</a>'
+            )
+            if self.offline_url:
+                status_html += (
+                    f'<br/><a href="{self.offline_url}">View Offline (cached copy)</a>'
+                )
+            script_tag = "<script></script>"
 
         html_template = f"""
         <!DOCTYPE html>
@@ -416,15 +474,11 @@ class OfflineViewer(QWebEngineView):
             <div class="error-card">
                 <img class="icon" src="{img_src}" alt="Connection Lost">
                 <h1>Connection Lost</h1>
-                <p>Unable to reach the calculator. Retrying automatically<span class="loading-dots"></span></p>
+                <p>Unable to reach the calculator. {status_html}
+                <span class="loading-dots"></span></p>
             </div>
-
-            <script>
-                // Attempt to reach the target URL every 5 seconds
-                setTimeout(function() {{
-                    window.location.href = '{self.target_url}';
-                }}, 5000);
-            </script>
+            
+            {script_tag}
         </body>
         </html>
         """
@@ -453,7 +507,7 @@ class WebViewer(QMainWindow):
             ~60 FPS.
     """
 
-    def __init__(self, title, target_url):
+    def __init__(self, title, target_url, offline_url=None):
         """Create and lay out the calculator window.
 
         Constructs the central widget hierarchy (browser + status bar),
@@ -463,7 +517,8 @@ class WebViewer(QMainWindow):
 
         Args:
             title (str): Window title text shown in the title bar.
-            target_url (str): The URL to load and restrict navigation to.
+            target_url (str): A whitelist URL to allow and restrict others.
+            offline_url (str): A whitelist URL to allow and restrict others.
         """
         super().__init__()
         self.loaded = False
@@ -480,7 +535,7 @@ class WebViewer(QMainWindow):
 
         # Set up the Chromium browser view WITH the restricted page installed.
         # Passing target_url ensures RestrictedPage is attached before any load.
-        self.browser = OfflineViewer(target_url)
+        self.browser = OfflineViewer(target_url, offline_url)
 
         # Set up the bottom status bar layout
         status_layout = QHBoxLayout()
@@ -552,20 +607,36 @@ class WebViewer(QMainWindow):
         Args:
             success (bool): ``True`` if the page loaded without error.
         """
+        status_text = ""
         self.refresh_btn.stop_spin()
         if success:
-            self.status_label.setText("Reload")
+            status_text = "Reload"
             self.loaded = True
             self.render_timer.start()
         elif getattr(self.browser.page(), "navigation_blocked", False):
-            self.status_label.setText("Reload")
+            status_text = "Reload"
+            status_text += self._add_status_label("BLOCKED", "#cc0000")
             self.loaded = True
             self.render_timer.start()
-        elif self.browser._retry_count < self.browser._max_retries:
+        elif self.browser._retry_count <= self.browser._max_retries:
             # Retry in progress — keep the spinner-style status, don't alarm.
-            self.status_label.setText("Connecting...")
+            status_text = "Connecting..."
+
+        if self.browser.isOffline():
+            status_text += self._add_status_label("OFFLINE", "#888888")
+            self.loaded = False
         else:
-            self.status_label.setText("No connection...")
+            status_text += self._add_status_label("ONLINE", "#008800")
+
+        self.status_label.setText(status_text)
+
+    def _add_status_label(self, text: str, color: str = "#000000") -> str:
+        html_text = (
+            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+            f"<span style='color:{color};'><b>{text}</b></span>"
+        )
+        return html_text
 
     def closeEvent(self, event):
         """Handle the window close event by stopping the render timer.
