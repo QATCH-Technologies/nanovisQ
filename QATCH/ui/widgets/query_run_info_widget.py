@@ -23,7 +23,9 @@ from QATCH.ui.components import (
     QATCHOptionCardGroup,
     QATCHPanel,
     QATCHPushButton,
+    SegmentedControl,
 )
+from QATCH.ui.components.stepper import Stepper
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,
@@ -103,6 +105,8 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self._field_labels: list[QtWidgets.QLabel] = []
         self._hints: list[QtWidgets.QLabel] = []
         self._hairlines: list[QtWidgets.QFrame] = []
+        self._unit_chips: list[QtWidgets.QLabel] = []  # populated only in wizard mode
+        self._wizard_mode = False
         self._ICON_CHEVRON = os.path.join(
             Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
         )
@@ -676,6 +680,17 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         for cb in cb_elems:
             self._init_combobox_menu(cb)
             cb.currentTextChanged.connect(self.detect_change)
+            # Some ingredient names (e.g. "Pembrolizumab") are long enough
+            # that the default size-adjust policy (grow to fit the widest
+            # item) forces the combo - and everything alongside it, e.g. the
+            # wizard's narrow composition grid - wider than it should need
+            # to be; cap it to a fixed content length and let the closed-box
+            # text truncate instead (full text is still visible in the
+            # open dropdown and via hover/tooltip-free reading of the value).
+            cb.setSizeAdjustPolicy(
+                QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
+            cb.setMinimumContentsLength(10)
 
         if self.post_run:
             self.t_batch.setFocus()
@@ -739,6 +754,366 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         vbox.addWidget(self._caption(title))
         return panel, vbox
 
+    # ------------------------------------------------------------------
+    # 3-step wizard (single-run only - see setRuns(); multi-port keeps the
+    # flat QATCHPanel layout built above, untouched).
+    #
+    # Field widgets (self.c10, self.t12, self.t0, self.q_recall, ...) are
+    # still built exactly once, above - entering wizard mode only moves them
+    # into new step-page layouts (QWidget.addWidget auto-detaches a widget
+    # from wherever it previously lived), so every existing signal
+    # connection (calc_params, show_hide_gui, recallFromXML, confirm, ...)
+    # keeps working unmodified.
+    # ------------------------------------------------------------------
+    _WIZARD_STEP_LABELS = ["Identify", "Composition", "Properties"]
+
+    def _unit_chip(self, text: str) -> QtWidgets.QLabel:
+        chip = QtWidgets.QLabel(text)
+        chip.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        chip.setStyleSheet(self._unit_chip_qss())
+        self._unit_chips.append(chip)
+        return chip
+
+    @staticmethod
+    def _unit_chip_qss() -> str:
+        tok = ThemeManager.instance().tokens()
+        return (
+            "QLabel {"
+            f"  background: {tok_css(tok['flat_surface2'])};"
+            f"  border: 1px solid {tok_css(tok['flat_border'])};"
+            "  border-radius: 6px;"
+            f"  color: {tok_css(tok['flat_text_muted'])};"
+            "  font-size: 11px; font-weight: 700; padding: 6px 8px;"
+            "}"
+        )
+
+    def _enter_wizard_mode(self) -> None:
+        """Restructures this form from the flat (multi-port) layout above
+        into the 3-step wizard - single-run only, called once from
+        `setRuns(1, 0)`."""
+        if self._wizard_mode:
+            return
+        self._wizard_mode = True
+
+        page_identify = self._build_identify_page()
+        page_composition = self._build_composition_page()
+        page_properties = self._build_properties_page()
+
+        # Whatever's left in the flat layout after the pages above pulled
+        # out the widgets they need (the QATCHPanel wrapper shells,
+        # self.b1/self.b2, self.t3/self.t4, old per-row labels/hints, ...)
+        # is parked on a hidden host instead of being discarded outright -
+        # confirm()/recallFromXML()/calc_params()/show_hide_gui() (all
+        # unchanged) still read some of those widgets directly, so they
+        # must stay alive even though the wizard never displays them.
+        old_layout = self.layout()
+        self._legacy_flat_host = QtWidgets.QWidget(self)
+        self._legacy_flat_host.setVisible(False)
+        if old_layout is not None:
+            self._legacy_flat_host.setLayout(old_layout)
+
+        root = QtWidgets.QVBoxLayout()
+        root.setContentsMargins(4, 4, 4, 4)
+        root.setSpacing(14)
+
+        self.stepper = Stepper(self._WIZARD_STEP_LABELS, compact=True)
+        self.stepper.stepClicked.connect(self._go_to_step)
+        root.addWidget(self.stepper)
+
+        self.step_stack = QtWidgets.QStackedWidget()
+        for page in (page_identify, page_composition, page_properties):
+            self.step_stack.addWidget(page)
+        root.addWidget(self.step_stack, 1)
+
+        footer = QtWidgets.QHBoxLayout()
+        self.btn_wizard_back = QATCHPushButton("Back", variant="secondary")
+        self.btn_wizard_back.clicked.connect(self._go_back)
+        footer.addWidget(self.btn_wizard_back, 0)
+        footer.addStretch(1)
+        self.btn_wizard_next = QATCHPushButton("Next", variant="primary")
+        self.btn_wizard_next.clicked.connect(self._on_wizard_primary_clicked)
+        footer.addWidget(self.btn_wizard_next, 0)
+        root.addLayout(footer)
+
+        self.setLayout(root)
+
+        # Bioformulation state stays authoritative on self.b1/self.b2 (still
+        # read everywhere else, unchanged) - the segmented control built in
+        # _build_composition_page() is a synced visual proxy, driven by/
+        # driving them via .clicked.emit(), not a second source of truth.
+        self.segmented_bio.set_active("yes" if self.b1.isChecked() else "no")
+        self.g1.toggled.connect(
+            lambda card, _checked: self.segmented_bio.set_active("yes" if card is self.b1 else "no")
+        )
+        self.g1.toggled.connect(lambda _card, _checked: self._rebuild_composition_table(self.b1.isChecked()))
+        self.c13.currentTextChanged.connect(lambda _t: self._update_ph_row_visibility())
+        self._rebuild_composition_table(self.b1.isChecked())
+
+        self._wizard_step = 0
+        self.stepper.set_current(0)
+        self._sync_wizard_footer()
+        self._apply_theme()
+
+    # -- Step 1: Identify -------------------------------------------------
+    def _build_identify_page(self) -> QtWidgets.QWidget:
+        host = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(host)
+        lay.setContentsMargins(2, 2, 2, 2)
+        lay.setSpacing(16)
+
+        row1 = QtWidgets.QHBoxLayout()
+        row1.addWidget(self.l_runname)
+        row1.addWidget(self.t_runname)
+        row1.addWidget(self.h_runname)
+        lay.addLayout(row1)
+
+        row2 = QtWidgets.QHBoxLayout()
+        row2.addWidget(self.l_batch)
+        row2.addWidget(self.t_batch)
+        row2.addWidget(self.h_batch)
+        lay.addLayout(row2)
+
+        lay.addWidget(self._caption("Notes"))
+        lay.addWidget(self.notes)
+        lay.addStretch(1)
+        return host
+
+    # -- Step 2: Composition -----------------------------------------------
+    def _build_composition_page(self) -> QtWidgets.QWidget:
+        host = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(host)
+        lay.setContentsMargins(2, 2, 2, 2)
+        lay.setSpacing(10)
+
+        lay.addWidget(self._field_label("Is this a bioformulation?"))
+        self.segmented_bio = SegmentedControl(
+            [("yes", "Yes"), ("no", "No")], orientation=QtCore.Qt.Orientation.Horizontal
+        )
+        self.segmented_bio.modeChanged.connect(self._on_segmented_bio_changed)
+        lay.addWidget(self.segmented_bio)
+
+        lay.addWidget(self._caption("Composition"))
+
+        # A QGridLayout styled to read as a table, not a real QTableWidget:
+        # QTableWidget's setCellWidget()/removeCellWidget() take ownership
+        # of whatever widget occupies a cell and delete it once that cell is
+        # cleared, even if the widget was reparented away first - fatal for
+        # this table, whose cell widgets (self.c10, self.t0, ...) are shared,
+        # persistent fields that must survive repeated Yes<->No swaps.
+        # QGridLayout has no such ownership: removeWidget()/addWidget() only
+        # ever change which layout positions a widget, never delete it.
+        self.composition_frame = QtWidgets.QFrame()
+        self.composition_frame.setObjectName("compositionTable")
+        self.composition_grid = QtWidgets.QGridLayout(self.composition_frame)
+        self.composition_grid.setContentsMargins(8, 8, 8, 8)
+        self.composition_grid.setHorizontalSpacing(6)
+        self.composition_grid.setVerticalSpacing(6)
+        self.composition_grid.setColumnStretch(1, 1)
+        self._composition_headers = []
+        for col, text in enumerate(("Ingredient", "Type", "Conc.", "Unit")):
+            hdr = QtWidgets.QLabel(text.upper())
+            hdr.setStyleSheet(caption_label_qss())
+            self.composition_grid.addWidget(hdr, 0, col)
+            self._composition_headers.append(hdr)
+        self._composition_row_widgets = []  # [(ing_label, type_w, conc_w_or_None, unit_chip_or_None), ...]
+        lay.addWidget(self.composition_frame)
+
+        # Buffer pH - a standalone row below the table (not a table row
+        # itself, matching the wireframe), shown only while a Buffer type
+        # is actually selected.
+        self.ph_row_widget = QtWidgets.QWidget()
+        ph_row = QtWidgets.QHBoxLayout(self.ph_row_widget)
+        ph_row.setContentsMargins(4, 0, 4, 0)
+        ph_row.setSpacing(8)
+        ph_row.addWidget(self._field_label("Buffer pH"))
+        self.t20.setFixedWidth(70)
+        ph_row.addWidget(self.t20)
+        ph_row.addWidget(self.h20)
+        ph_row.addStretch(1)
+        lay.addWidget(self.ph_row_widget)
+
+        return host
+
+    def _on_segmented_bio_changed(self, key: str) -> None:
+        (self.b1 if key == "yes" else self.b2).clicked.emit()
+
+    def _refresh_composition_table_theme(self) -> None:
+        """Re-applies header/required-ingredient styling on theme change."""
+        for hdr in getattr(self, "_composition_headers", []):
+            hdr.setStyleSheet(caption_label_qss())
+        for ing_label, _type_w, _conc_w, _unit_chip in getattr(self, "_composition_row_widgets", []):
+            required = ing_label.property("required") is True
+            ing_label.setStyleSheet(self._ingredient_label_qss(required))
+
+    @staticmethod
+    def _ingredient_label_qss(required: bool) -> str:
+        tok = ThemeManager.instance().tokens()
+        color = tok_css(tok["flat_accent"] if required else tok["flat_text"])
+        return f"QLabel {{ color: {color}; font-weight: 700; font-size: 13px; background: transparent; }}"
+
+    def _rebuild_composition_table(self, is_bio: bool) -> None:
+        """Swaps the composition grid's rows between the 6-ingredient
+        bioformulation set and the single Solvent row, without leaving the
+        Composition step - the wireframe's "Yes/No branch swaps only the
+        table body" behavior.
+
+        Every outgoing cell widget (self.c10, self.t0, ...) is a shared,
+        persistent field also read by confirm()/recallFromXML(), so it must
+        survive a Yes<->No swap - `QGridLayout.removeWidget()` (unlike
+        `QTableWidget.removeCellWidget()`) never deletes a widget, only
+        detaches it from this layout, so re-parenting them onto the legacy
+        host below is purely defensive bookkeeping, not what keeps them
+        alive."""
+        grid = self.composition_grid
+        for ing_label, type_w, conc_w, unit_chip in self._composition_row_widgets:
+            # ing_label/unit_chip are rebuilt fresh every call - just delete
+            # them. type_w/conc_w are the shared, persistent field widgets -
+            # only detach (park on the legacy host), never delete.
+            grid.removeWidget(ing_label)
+            ing_label.deleteLater()
+            grid.removeWidget(type_w)
+            type_w.setParent(self._legacy_flat_host)
+            if conc_w is not None:
+                grid.removeWidget(conc_w)
+                conc_w.setParent(self._legacy_flat_host)
+            if unit_chip is not None:
+                grid.removeWidget(unit_chip)
+                self._unit_chips.remove(unit_chip)
+                unit_chip.deleteLater()
+        self._composition_row_widgets = []
+
+        if is_bio:
+            rows = [
+                ("Protein", True, self.c10, self.t12, "mg/mL"),
+                ("Buffer", False, self.c13, self.t14, "mM"),
+                ("Stabilizer", False, self.c11, self.t8, "M"),
+                ("Surfactant", False, self.c9, self.t6, "%w"),
+                ("Salt", False, self.c15, self.t16, "mM"),
+                ("Excipient", False, self.c17, self.t18, "mM"),
+            ]
+        else:
+            rows = [("Solvent", False, self.t0, None, None)]
+
+        for r, (label, required, type_w, conc_w, unit_text) in enumerate(rows, start=1):
+            ing_label = QtWidgets.QLabel(f"● {label}" if required else label)
+            ing_label.setProperty("required", required)
+            ing_label.setStyleSheet(self._ingredient_label_qss(required))
+            ing_label.setMaximumWidth(80)
+            self.composition_grid.addWidget(ing_label, r, 0)
+            # Belt-and-suspenders alongside the AdjustToMinimumContentsLength
+            # policy set on the ingredient combos earlier - caps the Type
+            # column to a fixed pixel bound regardless of what a given
+            # platform's font metrics compute minimumContentsLength out to,
+            # so the Unit column can never get pushed off the panel edge.
+            type_w.setMaximumWidth(200)
+            self.composition_grid.addWidget(type_w, r, 1)
+            if conc_w is not None:
+                # Concentration fields have no natural width cap of their
+                # own (unconstrained QLineEdit sizing) - without one, this
+                # narrow numeric column ends up as wide as a text field,
+                # pushing the Unit column off the edge of the wizard panel.
+                conc_w.setMaximumWidth(80)
+                self.composition_grid.addWidget(conc_w, r, 2)
+            unit_chip = self._unit_chip(unit_text) if unit_text else None
+            if unit_chip is not None:
+                self.composition_grid.addWidget(unit_chip, r, 3)
+            self._composition_row_widgets.append((ing_label, type_w, conc_w, unit_chip))
+
+        self._update_ph_row_visibility()
+
+    def _update_ph_row_visibility(self) -> None:
+        is_bio = self.b1.isChecked()
+        buffer_selected = is_bio and self.c13.currentText().strip().casefold() not in ("", "none")
+        self.ph_row_widget.setVisible(buffer_selected)
+
+    # -- Step 3: Properties -------------------------------------------------
+    def _build_properties_page(self) -> QtWidgets.QWidget:
+        host = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(host)
+        lay.setContentsMargins(2, 2, 2, 2)
+        lay.setSpacing(14)
+
+        lay.addWidget(self._caption("Estimated Parameters"))
+
+        row_st = QtWidgets.QHBoxLayout()
+        row_st.addWidget(self.l6)
+        row_st.addWidget(self.t1)
+        row_st.addWidget(self.h1)
+        lay.addLayout(row_st)
+
+        row_ca = QtWidgets.QHBoxLayout()
+        row_ca.addWidget(self.l7)
+        row_ca.addWidget(self.t2)
+        row_ca.addWidget(self.h2)
+        lay.addLayout(row_ca)
+
+        row_dn = QtWidgets.QHBoxLayout()
+        row_dn.addWidget(self.l8)
+        row_dn.addWidget(self.t5)
+        row_dn.addWidget(self.h5)
+        lay.addLayout(row_dn)
+
+        row_ch = QtWidgets.QHBoxLayout()
+        row_ch.addWidget(self.l_channels)
+        row_ch.addWidget(self.f_channels, 1)
+        row_ch.addWidget(self.l_channels_hint)
+        lay.addLayout(row_ch)
+
+        lay.addStretch(1)
+        lay.addWidget(self.q_recall, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        return host
+
+    # -- Navigation ---------------------------------------------------------
+    def _sync_wizard_footer(self) -> None:
+        last = len(self._WIZARD_STEP_LABELS) - 1
+        self.btn_wizard_back.setEnabled(self._wizard_step > 0)
+        self.btn_wizard_next.setText("Save" if self._wizard_step == last else "Next →")
+
+    def _go_to_step(self, index: int) -> None:
+        if index == self._wizard_step:
+            return
+        self._wizard_step = index
+        self.stepper.set_current(index)
+        self.step_stack.setCurrentIndex(index)
+        self._sync_wizard_footer()
+
+    def _go_back(self) -> None:
+        if self._wizard_step > 0:
+            self._go_to_step(self._wizard_step - 1)
+
+    def _on_wizard_primary_clicked(self) -> None:
+        if self._wizard_step == len(self._WIZARD_STEP_LABELS) - 1:
+            self.confirm()
+        else:
+            self._go_next()
+
+    def _go_next(self) -> None:
+        """Light, step-boundary-only validation - the same two checks
+        confirm() already enforces at Save time, just surfaced a step
+        earlier since that's the step each one belongs to. Everything else
+        (numeric ranges, signature, ...) is still only checked at Save."""
+        if self._wizard_step == 0:
+            name_ok = bool(self.t_runname.text().strip())
+            batch_ok = bool(self.t_batch.text().strip())
+            self.t_runname.set_error(not name_ok)
+            self.t_batch.set_error(not batch_ok)
+            if not (name_ok and batch_ok):
+                PopUp.warning(
+                    self,
+                    Constants.app_title,
+                    "Enter a Run Name and Batch Number before continuing.",
+                )
+                return
+        elif self._wizard_step == 1:
+            if self.b1.isChecked() and len(self.c10.currentText().strip()) == 0:
+                PopUp.warning(
+                    self,
+                    Constants.app_title,
+                    'Select a Protein Type, or choose "No" for "Is this a bioformulation?".',
+                )
+                return
+        self._go_to_step(self._wizard_step + 1)
+
     def _on_theme_changed(self, _mode: str) -> None:
         self._apply_theme()
 
@@ -754,6 +1129,10 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             lbl.setStyleSheet(desc_label_qss())
         for line in self._hairlines:
             line.setStyleSheet(hairline_qss())
+        for chip in self._unit_chips:
+            chip.setStyleSheet(self._unit_chip_qss())
+        if getattr(self, "_wizard_mode", False):
+            self._refresh_composition_table_theme()
         tok = ThemeManager.instance().tokens()
         self.notes.setStyleSheet(
             "QPlainTextEdit#runInfoNotes {"
@@ -837,6 +1216,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.notes.setVisible(show_single_fields)
         self.q_recall.setVisible(show_single_fields)
         self.btn.setVisible(show_single_fields)
+
+        if self.run_count == 1:
+            # Single-run only - see _enter_wizard_mode()'s docstring. Multi-
+            # port keeps the flat layout built above untouched; the
+            # visibility calls above are harmless no-ops for it once its
+            # widgets are re-homed into the wizard's step pages.
+            self._enter_wizard_mode()
 
     def getRunParams(self):
         run_name = self.run_name

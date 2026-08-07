@@ -40,7 +40,6 @@ from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.styles.theme_manager import (
     ThemeManager,
     caption_label_qss,
-    desc_label_qss,
     field_label_qss,
     glass_panel_qss,
     tok_css,
@@ -279,6 +278,35 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
         border = 1.5 * p
         radius = 12.0 * p
         self.glass_frame.setStyleSheet(glass_panel_qss("runinfoview", alpha, border, radius))
+
+    # Single-run "wizard" sessions (see QueryRunInfoWidget._enter_wizard_mode)
+    # are designed as a narrow, centered, tall-ish card rather than the wide
+    # percentage-inset panel every other overlay (and this overlay's own
+    # multi-port grid) uses - each step is meant to fit without scrolling,
+    # which only reads right at a phone/dialog-like width. Multi-port keeps
+    # the inherited percentage-inset behavior untouched.
+    _WIZARD_TARGET_WIDTH = 620
+    _WIZARD_TARGET_HEIGHT = 640
+    _WIZARD_MIN_MARGIN = 24
+
+    def _apply_margin_frac(self, frac: float) -> None:
+        if len(self._forms) != 1:
+            super()._apply_margin_frac(frac)
+            return
+        w, h = self.width(), self.height()
+        # Blend between the wizard's fixed-size-centered margin (p=1, i.e.
+        # not fullscreen) and 0 (p=0, fullscreen) on the same curve
+        # _apply_panel_appearance already uses for alpha/border/radius, so
+        # the fullscreen-toggle animation interpolates smoothly instead of
+        # snapping between two unrelated margin models.
+        p = 0.0 if self._default_margin_pct <= 0 else min(1.0, frac / self._default_margin_pct)
+        target_mx = max(self._WIZARD_MIN_MARGIN, (w - self._WIZARD_TARGET_WIDTH) // 2)
+        target_my = max(self._WIZARD_MIN_MARGIN, (h - self._WIZARD_TARGET_HEIGHT) // 2)
+        mx = int(target_mx * p)
+        my = int(target_my * p)
+        self.base_layout.setContentsMargins(mx, my, mx, my)
+        self._apply_panel_appearance(frac)
+        self._position_overlay_buttons(mx, my)
 
     def toggle_fullscreen(self) -> None:
         self._is_fullscreen = not self._is_fullscreen
