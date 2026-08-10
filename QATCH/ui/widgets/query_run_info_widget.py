@@ -107,6 +107,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self._hairlines: list[QtWidgets.QFrame] = []
         self._unit_chips: list[QtWidgets.QLabel] = []  # populated only in wizard mode
         self._wizard_mode = False
+        self._wizard_step_kinds: list[str] = []  # populated by _enter_wizard_mode()
         self._ICON_CHEVRON = os.path.join(
             Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
         )
@@ -755,8 +756,11 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         return panel, vbox
 
     # ------------------------------------------------------------------
-    # 3-step wizard (single-run only - see setRuns(); multi-port keeps the
-    # flat QATCHPanel layout built above, untouched).
+    # Wizard (used for every session, single- or multi-port - see
+    # setRuns()). Single-port sessions get all three steps; multi-port
+    # sessions skip Identify (run name/batch/notes/recall are entered once,
+    # in the overlay's shared common row, not per port - see
+    # setHiddenFields()) and start at Composition.
     #
     # Field widgets (self.c10, self.t12, self.t0, self.q_recall, ...) are
     # still built exactly once, above - entering wizard mode only moves them
@@ -765,7 +769,6 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
     # connection (calc_params, show_hide_gui, recallFromXML, confirm, ...)
     # keeps working unmodified.
     # ------------------------------------------------------------------
-    _WIZARD_STEP_LABELS = ["Identify", "Composition", "Properties"]
 
     def _unit_chip(self, text: str) -> QtWidgets.QLabel:
         chip = QtWidgets.QLabel(text)
@@ -788,9 +791,18 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         )
 
     def _enter_wizard_mode(self) -> None:
-        """Restructures this form from the flat (multi-port) layout above
-        into the 3-step wizard - single-run only, called once from
-        `setRuns(1, 0)`."""
+        """Restructures this form from the flat legacy layout above into
+        the step wizard - called once from `setRuns()`, for both single-
+        and multi-port sessions (see `_WIZARD_STEP_LABELS`' comment above).
+
+        NOTE: this only runs once per form instance (guarded below). If a
+        second capture batch later merges into an already-open single-port
+        session (see `RunInfoOverlay.open_runs()`'s merge path), the
+        surviving form's `setRuns()` is called again with `run_count > 1`,
+        but its stepper was already built for the single-port case and
+        won't collapse down to skip Identify - accepted as a narrow edge
+        case (two batches finishing before the first is saved/closed).
+        """
         if self._wizard_mode:
             return
         self._wizard_mode = True
@@ -816,12 +828,28 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(14)
 
+        # Multi-port sessions skip Identify - its fields (run name/batch/
+        # notes/recall) are already hidden by setRuns()'s show_single_fields
+        # toggle and driven instead from the overlay's shared common row.
+        # page_identify is still built above (its child widgets need a
+        # layout to live in either way) but only wired into the stepper
+        # when this port is the sole one in the session.
+        if self.run_count == 1:
+            self._WIZARD_STEP_LABELS = ["Identify", "Composition", "Properties"]
+            self._wizard_step_kinds = ["identify", "composition", "properties"]
+            wizard_pages = (page_identify, page_composition, page_properties)
+        else:
+            self._WIZARD_STEP_LABELS = ["Composition", "Properties"]
+            self._wizard_step_kinds = ["composition", "properties"]
+            wizard_pages = (page_composition, page_properties)
+            self._legacy_flat_host.layout().addWidget(page_identify)
+
         self.stepper = Stepper(self._WIZARD_STEP_LABELS, compact=True)
         self.stepper.stepClicked.connect(self._go_to_step)
         root.addWidget(self.stepper)
 
         self.step_stack = QtWidgets.QStackedWidget()
-        for page in (page_identify, page_composition, page_properties):
+        for page in wizard_pages:
             self.step_stack.addWidget(page)
         root.addWidget(self.step_stack, 1)
 
@@ -1091,8 +1119,14 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         """Light, step-boundary-only validation - the same two checks
         confirm() already enforces at Save time, just surfaced a step
         earlier since that's the step each one belongs to. Everything else
-        (numeric ranges, signature, ...) is still only checked at Save."""
-        if self._wizard_step == 0:
+        (numeric ranges, signature, ...) is still only checked at Save.
+
+        Keyed off `_wizard_step_kinds` rather than a raw step index, since
+        multi-port sessions skip the Identify step (see
+        `_enter_wizard_mode()`), shifting Composition/Properties down to
+        different indices than the single-port case."""
+        step_kind = self._wizard_step_kinds[self._wizard_step]
+        if step_kind == "identify":
             name_ok = bool(self.t_runname.text().strip())
             batch_ok = bool(self.t_batch.text().strip())
             self.t_runname.set_error(not name_ok)
@@ -1104,7 +1138,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                     "Enter a Run Name and Batch Number before continuing.",
                 )
                 return
-        elif self._wizard_step == 1:
+        elif step_kind == "composition":
             if self.b1.isChecked() and len(self.c10.currentText().strip()) == 0:
                 PopUp.warning(
                     self,
@@ -1217,12 +1251,12 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q_recall.setVisible(show_single_fields)
         self.btn.setVisible(show_single_fields)
 
-        if self.run_count == 1:
-            # Single-run only - see _enter_wizard_mode()'s docstring. Multi-
-            # port keeps the flat layout built above untouched; the
-            # visibility calls above are harmless no-ops for it once its
-            # widgets are re-homed into the wizard's step pages.
-            self._enter_wizard_mode()
+        # Every session enters the wizard - see _enter_wizard_mode()'s
+        # docstring for how single- vs multi-port sessions differ (Identify
+        # step included or skipped). The visibility calls above must run
+        # first since _enter_wizard_mode() only moves widgets into new
+        # step-page layouts; it doesn't change their shown/hidden state.
+        self._enter_wizard_mode()
 
     def getRunParams(self):
         run_name = self.run_name
@@ -1606,9 +1640,19 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.parent.controls_window.userrole = UserRoles(new_userrole)
                 self.parent.controls_window.signinout.setText("&Sign Out")
                 self.parent.controls_window.ui.tool_User.setText(new_username)
-                self.parent.analyze_process.tool_User.setText(new_username)
+                self.parent.analyze_window.ui.tool_User.setText(new_username)
                 if self.parent.controls_window.userrole != UserRoles.ADMIN:
                     self.parent.controls_window.manage.setText("&Change Password...")
+                # UserProfiles.change() above already ran session_create()
+                # for new_username, so UserProfiles.user_preferences now
+                # resolves to their file - re-apply their remembered UI
+                # preferences (theme, plot colors/visibility/grid, Advanced
+                # toggles), same as the normal sign-in path - see
+                # MainWindow.reload_persisted_user_preferences().
+                try:
+                    self.parent.reload_persisted_user_preferences()
+                except Exception as e:
+                    Log.e(f"Failed to apply switched-user preferences: {e}")
                 return new_username, new_initials
             else:
                 Log.d("User switched users to the same user profile. Nothing to change.")
@@ -1623,7 +1667,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.parent.controls_window.signinout.setText("&Sign In")
                 self.parent.controls_window.manage.setText("&Manage Users...")
                 self.parent.controls_window.ui.tool_User.setText("Anonymous")
-                self.parent.analyze_process.tool_User.setText("Anonymous")
+                self.parent.analyze_window.ui.tool_User.setText("Anonymous")
                 PopUp.warning(
                     self,
                     Constants.app_title,
@@ -1635,7 +1679,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 self.parent.controls_window.userrole = UserRoles(new_userrole)
                 self.parent.controls_window.signinout.setText("&Sign Out")
                 self.parent.controls_window.ui.tool_User.setText(new_username)
-                self.parent.analyze_process.tool_User.setText(new_username)
+                self.parent.analyze_window.ui.tool_User.setText(new_username)
                 if self.parent.controls_window.userrole != UserRoles.ADMIN:
                     self.parent.controls_window.manage.setText("&Change Password...")
                 PopUp.warning(
@@ -2461,43 +2505,48 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             error_details += msg + "\n"
             input_error = True
             self.t8.set_error(True)
-        if not self.collapsibleBox.isCollapsed():  # only when Advanced Info visible
-            if self.t14.isVisible() and not self.t14.hasAcceptableInput():
-                msg = "Input Error: Buffer Concentration must be between {} and {}.".format(
-                    self.validBufferConcentration.bottom(),
-                    self.validBufferConcentration.top(),
-                )
-                Log.e(msg)
-                error_details += msg + "\n"
-                input_warning = True
-                self.t14.set_error(True)
-            if self.t6.isVisible() and not self.t6.hasAcceptableInput():
-                msg = "Input Error: Surfactant Concentration must be between {} and {}.".format(
-                    self.validSurfactantConcentration.bottom(),
-                    self.validSurfactantConcentration.top(),
-                )
-                Log.e(msg)
-                error_details += msg + "\n"
-                input_warning = True
-                self.t6.set_error(True)
-            if self.t16.isVisible() and not self.t16.hasAcceptableInput():
-                msg = "Input Error: Salt Concentration must be between {} and {}.".format(
-                    self.validSaltConcentration.bottom(),
-                    self.validSaltConcentration.top(),
-                )
-                Log.e(msg)
-                error_details += msg + "\n"
-                input_warning = True
-                self.t16.set_error(True)
-            if self.t18.isVisible() and not self.t18.hasAcceptableInput():
-                msg = "Input Error: Excipient Concentration must be between {} and {}.".format(
-                    self.validExcipientConcentration.bottom(),
-                    self.validExcipientConcentration.top(),
-                )
-                Log.e(msg)
-                error_details += msg + "\n"
-                input_warning = True
-                self.t18.set_error(True)
+        # NOTE: not gated on self.collapsibleBox.isCollapsed() - that widget
+        # is orphaned onto the hidden _legacy_flat_host by the wizard (see
+        # _enter_wizard_mode()) and never toggled again, so it would always
+        # read "collapsed" and silently skip these checks. Each field's own
+        # .isVisible() below already reflects whether it's an active
+        # composition-table row (see _rebuild_composition_table()).
+        if self.t14.isVisible() and not self.t14.hasAcceptableInput():
+            msg = "Input Error: Buffer Concentration must be between {} and {}.".format(
+                self.validBufferConcentration.bottom(),
+                self.validBufferConcentration.top(),
+            )
+            Log.e(msg)
+            error_details += msg + "\n"
+            input_warning = True
+            self.t14.set_error(True)
+        if self.t6.isVisible() and not self.t6.hasAcceptableInput():
+            msg = "Input Error: Surfactant Concentration must be between {} and {}.".format(
+                self.validSurfactantConcentration.bottom(),
+                self.validSurfactantConcentration.top(),
+            )
+            Log.e(msg)
+            error_details += msg + "\n"
+            input_warning = True
+            self.t6.set_error(True)
+        if self.t16.isVisible() and not self.t16.hasAcceptableInput():
+            msg = "Input Error: Salt Concentration must be between {} and {}.".format(
+                self.validSaltConcentration.bottom(),
+                self.validSaltConcentration.top(),
+            )
+            Log.e(msg)
+            error_details += msg + "\n"
+            input_warning = True
+            self.t16.set_error(True)
+        if self.t18.isVisible() and not self.t18.hasAcceptableInput():
+            msg = "Input Error: Excipient Concentration must be between {} and {}.".format(
+                self.validExcipientConcentration.bottom(),
+                self.validExcipientConcentration.top(),
+            )
+            Log.e(msg)
+            error_details += msg + "\n"
+            input_warning = True
+            self.t18.set_error(True)
         if len(self.c10.currentText()) == 0 and self.c10.isEnabled() and self.c10.isVisible():
             msg = "Input Error: You must provide a Protein Type if this is a bioformulation."
             Log.e(msg)
@@ -2516,42 +2565,47 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             Log.e(msg)
             error_details += msg + "\n"
             input_error = True
-        if not self.collapsibleBox.isCollapsed():  # only when Advanced Info visible
-            if self.t14.text() == "0" and self.t14.isEnabled() and self.t14.isVisible():
-                msg = 'Input Error: Buffer Concentration should be non-zero when Buffer Type is not "none".'
+        # NOTE: not gated on self.collapsibleBox.isCollapsed() - see the
+        # matching note above the acceptable-input checks. Each field's own
+        # .isEnabled()/.isVisible() below already reflects whether its
+        # ingredient type is currently selected as something other than
+        # "none" (see new_buffer_type() et al.) and shown as a composition-
+        # table row.
+        if self.t14.text() == "0" and self.t14.isEnabled() and self.t14.isVisible():
+            msg = 'Input Error: Buffer Concentration should be non-zero when Buffer Type is not "none".'
+            Log.e(msg)
+            error_details += msg + "\n"
+            input_warning = True
+        if self.t20.isEnabled() and self.t20.isVisible():
+            valid_ph = False
+            parse_ph = -1
+            if len(self.t20.text()):
+                try:
+                    parse_ph = float(self.t20.text())
+                    if 0 <= parse_ph <= 14:
+                        valid_ph = True
+                except ValueError:
+                    pass
+            if not valid_ph:
+                msg = 'Input Error: Buffer pH must be in range 0-14 when Buffer Type is not "none".'
                 Log.e(msg)
                 error_details += msg + "\n"
-                input_warning = True
-            if self.t20.isEnabled() and self.t20.isVisible():
-                valid_ph = False
-                parse_ph = -1
-                if len(self.t20.text()):
-                    try:
-                        parse_ph = float(self.t20.text())
-                        if 0 <= parse_ph <= 14:
-                            valid_ph = True
-                    except ValueError:
-                        pass
-                if not valid_ph:
-                    msg = 'Input Error: Buffer pH must be in range 0-14 when Buffer Type is not "none".'
-                    Log.e(msg)
-                    error_details += msg + "\n"
-                    input_error = True
-            if self.t6.text() == "0" and self.t6.isEnabled() and self.t6.isVisible():
-                msg = 'Input Error: Surfactant Concentration should be non-zero when Surfactant Type is not "none".'
-                Log.e(msg)
-                error_details += msg + "\n"
-                input_warning = True
-            if self.t16.text() == "0" and self.t16.isEnabled() and self.t16.isVisible():
-                msg = 'Input Error: Salt Concentration should be non-zero when Salt Type is not "none".'
-                Log.e(msg)
-                error_details += msg + "\n"
-                input_warning = True
-            if self.t18.text() == "0" and self.t18.isEnabled() and self.t18.isVisible():
-                msg = 'Input Error: Excipient Concentration should be non-zero when Excipient Type is not "none".'
-                Log.e(msg)
-                error_details += msg + "\n"
-                input_warning = True
+                input_error = True
+        if self.t6.text() == "0" and self.t6.isEnabled() and self.t6.isVisible():
+            msg = 'Input Error: Surfactant Concentration should be non-zero when Surfactant Type is not "none".'
+            Log.e(msg)
+            error_details += msg + "\n"
+            input_warning = True
+        if self.t16.text() == "0" and self.t16.isEnabled() and self.t16.isVisible():
+            msg = 'Input Error: Salt Concentration should be non-zero when Salt Type is not "none".'
+            Log.e(msg)
+            error_details += msg + "\n"
+            input_warning = True
+        if self.t18.text() == "0" and self.t18.isEnabled() and self.t18.isVisible():
+            msg = 'Input Error: Excipient Concentration should be non-zero when Excipient Type is not "none".'
+            Log.e(msg)
+            error_details += msg + "\n"
+            input_warning = True
         # User Warning Popup Dialog when Advanced Information has missing fields
         if input_warning and not input_error:
             if PopUp.critical(

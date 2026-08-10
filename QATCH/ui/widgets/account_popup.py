@@ -5,28 +5,10 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
 from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.components.icon_utils import tinted_icon
 from QATCH.ui.components.qatch_push_button import QATCHPushButton
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 from QATCH.ui.styles.typography import FONT_SANS_STACK
-
-
-def _tinted_icon(path: str, color: QtGui.QColor, size: int = 16) -> QtGui.QIcon:
-    """Returns a copy of the icon at *path* fully painted in *color*.
-
-    Uses SourceAtop composition so the tint respects the original alpha
-    channel - transparent SVG areas stay transparent. Mirrors the
-    established pattern in glass_dialog._tinted_icon /
-    user_profiles_manager_widget._tinted_icon.
-    """
-    src = QtGui.QIcon(path).pixmap(size, size)
-    dst = QtGui.QPixmap(src.size())
-    dst.fill(QtCore.Qt.GlobalColor.transparent)
-    p = QtGui.QPainter(dst)
-    p.drawPixmap(0, 0, src)
-    p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
-    p.fillRect(dst.rect(), color)
-    p.end()
-    return QtGui.QIcon(dst)
 
 
 class AvatarLabel(QtWidgets.QWidget):
@@ -46,7 +28,7 @@ class AvatarLabel(QtWidgets.QWidget):
     def _on_theme_changed(self, _mode: str) -> None:
         self.update()
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing)
@@ -396,21 +378,21 @@ class AccountPopup(QtWidgets.QWidget):
             icon_path = os.path.join(icons_dir, "preferences.svg")
             if os.path.exists(icon_path):
                 self._preferences_btn.setIcon(
-                    _tinted_icon(icon_path, QtGui.QColor(*tok["flat_accent"][:3]))
+                    tinted_icon(icon_path, QtGui.QColor(*tok["flat_accent"][:3]))
                 )
 
         if self._manage_btn is not None:
             icon_path = os.path.join(icons_dir, "manage_users.svg")
             if os.path.exists(icon_path):
                 self._manage_btn.setIcon(
-                    _tinted_icon(icon_path, QtGui.QColor(*tok["flat_accent"][:3]))
+                    tinted_icon(icon_path, QtGui.QColor(*tok["flat_accent"][:3]))
                 )
 
         if self._sign_out_btn is not None:
             icon_path = os.path.join(icons_dir, "sign-out.svg")
             if os.path.exists(icon_path):
                 self._sign_out_btn.setIcon(
-                    _tinted_icon(icon_path, QtGui.QColor(*tok["flat_error"][:3]))
+                    tinted_icon(icon_path, QtGui.QColor(*tok["flat_error"][:3]))
                 )
 
     # -- public API -----------------------------------------------------------

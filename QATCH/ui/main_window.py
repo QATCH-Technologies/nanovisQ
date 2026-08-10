@@ -67,7 +67,7 @@ from QATCH.ui.components.qatch_axis_item import (
     suppress_axis_ticks,
 )
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
-from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
+from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode, tok_css
 from QATCH.ui.styles.typography import (
     FONT_SANS_STACK,
     TYPE_TOOLTIP,
@@ -449,6 +449,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Reference variables
         self._section_colors: dict[str, QtGui.QColor] = {}
+        # Visibility/grid state for the Run-tab plots - kept as plain
+        # serializable dicts (string keys, not QWidget/ViewBox identity) so
+        # they can be persisted per signed-in user - see
+        # _save_run_plot_prefs()/_load_persisted_run_plot_prefs(). Visible
+        # is keyed by channel ("amplitude"/"resonance_freq"/"dissipation"/
+        # "temperature"); grid is keyed by gear-menu/container
+        # ("left_pane"/"amp_glass"/"temp_glass") since left_pane's single
+        # Major/Minor pair applies to both its overlaid resonance_freq and
+        # dissipation ViewBoxes at once - see _on_left_pane_grid_changed.
+        self._section_visible: dict[str, bool] = {}
+        self._grid_flags: dict[str, dict[str, bool]] = {}
         self._last_unit_rf: str = "Hz"
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
@@ -2487,12 +2498,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plots_window.ui.left_pane.grid_changed.connect(self._on_left_pane_grid_changed)
         self.plots_window.ui.amp_glass.grid_changed.connect(
             lambda key, vis: self._on_grid_changed(
-                key, vis, [p for p in self._plt0_arr if p is not None]
+                key, vis, [p for p in self._plt0_arr if p is not None], container="amp_glass"
             )
         )
         self.plots_window.ui.temp_glass.grid_changed.connect(
             lambda key, vis: self._on_grid_changed(
-                key, vis, [self._plt4] if self._plt4 is not None else []
+                key, vis, [self._plt4] if self._plt4 is not None else [], container="temp_glass"
             )
         )
 
@@ -3928,6 +3939,136 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self._ci_amp_combined = ci_combined
 
+        # Re-seed colors/visibility/grid from this signed-in user's
+        # remembered preferences every time plots are (re)built - unlike
+        # UIAnalyze's fixed graphWidget/1/2/3 (built once, alive for the
+        # tab's whole lifetime), _configure_plot() runs again on every
+        # multiplex reconfigure/new run (see its callers), tearing down and
+        # recreating self._plt0_arr/_plt2_arr/_plt4 - a preference applied
+        # only once at MainWindow construction would be lost the first time
+        # this method re-runs with fresh (unstyled) plot items. Colors are
+        # already re-read from self._section_colors at several of those
+        # rebuild sites independently of this call; this call is what makes
+        # grid (which has no other re-apply hook) and visibility persist
+        # the same way.
+        self._load_persisted_run_plot_prefs()
+
+    # ------------------------------------------------------------------
+    #  Persisted Run-tab plot preferences (colors/visibility/grid) -
+    #  remembered per signed-in user (or the global fallback when nobody's
+    #  signed in) via QATCH.common.userProfiles.UserPreferences, the same
+    #  store date/path/naming-format preferences already use. Mirrors
+    #  UIAnalyze's _save_analyze_plot_prefs()/_load_persisted_plot_prefs().
+    # ------------------------------------------------------------------
+    def _save_run_plot_prefs(self) -> None:
+        """Persists the current colors/visibility/grid state. Called from
+        every gear-menu mutation slot below - writes the whole current
+        state each time, matching how UserPreferences already treats every
+        other preference category."""
+        if getattr(self, "_loading_run_plot_prefs", False):
+            return  # _load_persisted_run_plot_prefs() is replaying saved state
+        prefs = UserProfiles.user_preferences
+        if prefs is None:
+            return  # nobody's signed in this session yet - nothing to save to
+        try:
+            prefs._set_run_plot_prefs(
+                {
+                    "colors": {k: v.name() for k, v in self._section_colors.items()},
+                    "visible": dict(self._section_visible),
+                    "grid": {name: dict(flags) for name, flags in self._grid_flags.items()},
+                }
+            )
+            prefs.write_user_preferences()
+        except Exception as e:
+            Log.e(f"Failed to save Run plot preferences: {e}")
+
+    def _load_persisted_run_plot_prefs(self) -> None:
+        """Seeds colors/visibility/grid from this signed-in user's
+        remembered preferences (or the global fallback), applying each one
+        through the same real handler a user interaction would trigger.
+
+        Note: a gear-menu popup the user hasn't opened yet may still show
+        its swatch icon / checkbox at the hardcoded construction-time
+        default until interacted with (which self-corrects) - only the
+        closed-popup icon can lag, never the actual plotted state.
+        """
+        prefs = UserProfiles.user_preferences
+        if prefs is None:
+            return  # nobody's signed in this session yet - keep the hardcoded defaults
+        try:
+            saved = prefs._get_run_plot_prefs()
+        except Exception as e:
+            Log.e(f"Failed to load Run plot preferences: {e}")
+            return
+
+        self._loading_run_plot_prefs = True
+        try:
+            for key, hex_color in saved.get("colors", {}).items():
+                self._on_plot_color_changed(key, QtGui.QColor(hex_color))
+            for key, visible in saved.get("visible", {}).items():
+                self._on_plot_visibility_changed(key, visible)
+            grid = saved.get("grid", {})
+            for grid_key, grid_visible in grid.get("left_pane", {}).items():
+                self._on_left_pane_grid_changed(grid_key, grid_visible)
+            for grid_key, grid_visible in grid.get("amp_glass", {}).items():
+                self._on_grid_changed(
+                    grid_key,
+                    grid_visible,
+                    [p for p in self._plt0_arr if p is not None],
+                    container="amp_glass",
+                )
+            for grid_key, grid_visible in grid.get("temp_glass", {}).items():
+                self._on_grid_changed(
+                    grid_key,
+                    grid_visible,
+                    [self._plt4] if self._plt4 is not None else [],
+                    container="temp_glass",
+                )
+        finally:
+            self._loading_run_plot_prefs = False
+
+    def reload_persisted_user_preferences(self) -> None:
+        """Re-applies every persisted UI preference (theme, Analyze/Run plot
+        prefs, Advanced toggles) for whoever is now signed in.
+
+        Call this from every place `UserProfiles.user_preferences` gets
+        (re)bound to a real, signed-in user's file - currently
+        `UILogin.action_sign_in()`'s success path and
+        `QueryRunInfoWidget._switch_user_for_signature()`'s user-switch
+        path. It's NOT enough to seed this state once at `MainWindow`/
+        `ControlsWindow`/`AnalyzeWindow` construction time: those are all
+        built once, eagerly, at app startup - before the login screen has
+        even been shown, let alone before anyone has signed in (and
+        `ControlsWindow.__init__` explicitly force-ends any leftover
+        session right after building its widgets) - so `UserProfiles.
+        user_preferences` is always still `None` at that point and every
+        one of those construction-time load calls was silently a no-op.
+        This method is the actual fix: it re-runs the same load logic once
+        a real per-user (or global-fallback) preferences object exists.
+        """
+        prefs = UserProfiles.user_preferences
+        if prefs is None:
+            return
+        try:
+            saved_mode = prefs._get_theme_mode()
+            if saved_mode:
+                ThemeManager.instance().set_mode(ThemeMode(saved_mode))
+        except Exception as e:
+            Log.e(f"Failed to apply signed-in user's theme preference: {e}")
+
+        self._load_persisted_run_plot_prefs()
+
+        analyze_ui = getattr(getattr(self, "analyze_window", None), "ui", None)
+        if analyze_ui is not None:
+            if hasattr(analyze_ui, "_load_persisted_plot_prefs"):
+                analyze_ui._load_persisted_plot_prefs()
+            if hasattr(analyze_ui, "_load_analyze_advanced_toggles"):
+                analyze_ui._load_analyze_advanced_toggles()
+
+        controls_ui = getattr(getattr(self, "controls_window", None), "ui", None)
+        if controls_ui is not None and hasattr(controls_ui, "_load_advanced_run_toggles"):
+            controls_ui._load_advanced_run_toggles()
+
     def _on_plot_color_changed(self, key: str, color: QtGui.QColor) -> None:
         """Updates the active curve color for the named plot section."""
         self._section_colors[key] = color
@@ -3979,8 +4120,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._ci_temp.setPen(pen)
                 self._ci_temp.setBrush(brush)
 
+        self._save_run_plot_prefs()
+
     def _on_plot_visibility_changed(self, key: str, visible: bool) -> None:
         """Shows or hides the curve items for the named plot section."""
+        self._section_visible[key] = visible
         if key == "amplitude":
             for ci in self._ci_amp:
                 if ci is not None:
@@ -4003,8 +4147,20 @@ class MainWindow(QtWidgets.QMainWindow):
             if self._ci_temp is not None:
                 self._ci_temp.setVisible(visible)
 
-    def _on_grid_changed(self, key: str, visible: bool, plot_items: list) -> None:
-        """Toggles major or minor grid lines on a set of PlotItems via GridItem."""
+        self._save_run_plot_prefs()
+
+    def _on_grid_changed(
+        self, key: str, visible: bool, plot_items: list, container: str | None = None
+    ) -> None:
+        """Toggles major or minor grid lines on a set of PlotItems via GridItem.
+
+        Args:
+            container: The gear-menu identity this toggle belongs to
+                ("amp_glass"/"temp_glass") - recorded into `self._grid_flags`
+                for persistence when given. `_on_left_pane_grid_changed`
+                covers the third container ("left_pane") separately, since
+                it doesn't route through this shared method.
+        """
         for pi in plot_items:
             if pi is None:
                 continue
@@ -4015,6 +4171,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 x_axis=pi.getAxis("bottom"),
                 y_axis=pi.getAxis("left"),
             )
+        if container:
+            self._grid_flags.setdefault(container, {})[key] = visible
+            self._save_run_plot_prefs()
 
     def _reposition_rf_diss_titles(self, pi) -> None:
         """Keeps the RF/Dissipation title labels pinned in the header strip
@@ -4074,6 +4233,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     x_axis=pi.getAxis("bottom"),
                     y_axis=pi.getAxis("left"),
                 )
+        self._grid_flags.setdefault("left_pane", {})[key] = visible
+        self._save_run_plot_prefs()
 
     # Fixed line alpha (0-255) for grid levels, applied via ThemedGridItem.
     # Deliberately below the token's own alpha (plot_text_muted is ~155) -

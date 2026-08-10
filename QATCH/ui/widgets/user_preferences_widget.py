@@ -627,8 +627,22 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         Unlike the other sections, this isn't staged behind "Save
         Preferences" - ThemeManager applies and persists the change itself
         the moment a theme card is selected.
+
+        Also records this signed-in user's choice into UserPreferences, as
+        a per-user layer on top of ThemeManager's own machine-wide file
+        (untouched, still the pre-login-screen default) - see
+        MainWindow._apply_signed_in_user_theme(), called on sign-in, for
+        where this gets re-applied.
         """
-        ThemeManager.instance().set_mode(ThemeMode(theme_text.lower()))
+        mode = ThemeMode(theme_text.lower())
+        ThemeManager.instance().set_mode(mode)
+        prefs = UserProfiles.user_preferences
+        if prefs is not None:
+            try:
+                prefs._set_theme_mode(mode.value)
+                prefs.write_user_preferences()
+            except Exception as e:
+                Log.e(f"Failed to save theme preference: {e}")
 
     def toggle_folder_sync(self, checked: bool):
         is_synced = bool(checked)

@@ -504,6 +504,7 @@ class UIControls:
         self.chBox_freqHop.setEnabled(True)
         self.chBox_freqHop.setChecked(False)
         self.chBox_freqHop.setObjectName("chBox_freqHop")
+        self.chBox_freqHop.toggled.connect(self._save_advanced_run_toggles)
         self.Layout_controls.addWidget(self.chBox_freqHop, 4, 2, 1, 2)
 
         # Noise correction toggle
@@ -514,6 +515,7 @@ class UIControls:
         self.chBox_correctNoise.setEnabled(True)
         self.chBox_correctNoise.setChecked(True)
         self.chBox_correctNoise.setObjectName("chBox_correctNoise")
+        self.chBox_correctNoise.toggled.connect(self._save_advanced_run_toggles)
         self.Layout_controls.addWidget(self.chBox_correctNoise, 5, 1, 1, 3)
 
         # Auto-Stop toggle
@@ -607,6 +609,7 @@ class UIControls:
             "<b>Plot Mode</b><br/>Off: Absolute &nbsp;|&nbsp; On: Reference"
         )
         self.toggle_PlotMode.setChecked(False)  # default: Absolute
+        self.toggle_PlotMode.toggled.connect(self._save_advanced_run_toggles)
 
         self.lbl_plot_absolute = QtWidgets.QLabel("Absolute")
         self.lbl_plot_reference = QtWidgets.QLabel("Reference")
@@ -815,7 +818,16 @@ class UIControls:
         self.chBox_MultiAuto.setEnabled(True)
         self.chBox_MultiAuto.setChecked(True)
         self.chBox_MultiAuto.setObjectName("chBox_MultiAuto")
+        self.chBox_MultiAuto.toggled.connect(self._save_advanced_run_toggles)
         self.Layout_controls.addWidget(self.chBox_MultiAuto, 5, 0, 1, 1)
+
+        # Seed the four Advanced toggles above from this signed-in user's
+        # remembered preferences (falls back to the hardcoded defaults just
+        # set above if nothing's been saved yet) - see
+        # _load_advanced_run_toggles(). cBox_MultiMode (physical channel
+        # count) and chBox_AutoStop/toggle_Cartridge (hardware auto-lock)
+        # are deliberately not included - see that method's docstring.
+        self._load_advanced_run_toggles()
 
         # Progressbar
         self.run_progress_bar = QtWidgets.QProgressBar()
@@ -3710,6 +3722,70 @@ class UIControls:
         text = re.sub(r"^infobar[:\s-]*", "", text, flags=re.IGNORECASE)
 
         return text
+
+    # ------------------------------------------------------------------
+    #  Persisted Advanced-panel toggles - remembered per signed-in user (or
+    #  the global fallback when nobody's signed in) via
+    #  QATCH.common.userProfiles.UserPreferences, the same store date/path/
+    #  naming-format preferences already use.
+    #
+    #  Only the four toggles below are persisted: cBox_MultiMode (physical
+    #  channel count) is tied to whatever device is actually connected, and
+    #  chBox_AutoStop/toggle_Cartridge are hardware auto-stop/auto-lock
+    #  behavior - none of the three are pure UI display preferences, so
+    #  blindly carrying them over between sessions (possibly onto different
+    #  physical hardware) would be surprising rather than helpful. They stay
+    #  session-only, defaulting fresh every launch.
+    # ------------------------------------------------------------------
+    def _save_advanced_run_toggles(self, *_args) -> None:
+        """Persists the four Advanced-panel toggles. Connected to each
+        widget's own `toggled` signal (accepts and ignores whatever bool
+        that signal passes) - see _load_advanced_run_toggles() for the
+        matching load."""
+        if getattr(self, "_loading_advanced_run_toggles", False):
+            return  # _load_advanced_run_toggles() is replaying saved state
+        prefs = UserProfiles.user_preferences
+        if prefs is None:
+            return
+        try:
+            toggles = prefs._get_advanced_toggles()
+            toggles["run"] = {
+                "show_amplitude_curve": self.chBox_correctNoise.isChecked(),
+                "auto_detect_channels": self.chBox_MultiAuto.isChecked(),
+                "plot_mode_reference": self.toggle_PlotMode.isChecked(),
+                "mode_hop": self.chBox_freqHop.isChecked(),
+            }
+            prefs._set_advanced_toggles(toggles)
+            prefs.write_user_preferences()
+        except Exception as e:
+            Log.e(f"Failed to save Advanced Run toggle preferences: {e}")
+
+    def _load_advanced_run_toggles(self) -> None:
+        """Seeds the four Advanced-panel toggles from this signed-in user's
+        remembered preferences (or the global fallback), leaving the
+        hardcoded defaults set just above in place if nothing's been saved
+        yet or no user is signed in."""
+        prefs = UserProfiles.user_preferences
+        if prefs is None:
+            return
+        try:
+            run_toggles = prefs._get_advanced_toggles().get("run", {})
+        except Exception as e:
+            Log.e(f"Failed to load Advanced Run toggle preferences: {e}")
+            return
+
+        self._loading_advanced_run_toggles = True
+        try:
+            if "show_amplitude_curve" in run_toggles:
+                self.chBox_correctNoise.setChecked(run_toggles["show_amplitude_curve"])
+            if "auto_detect_channels" in run_toggles:
+                self.chBox_MultiAuto.setChecked(run_toggles["auto_detect_channels"])
+            if "plot_mode_reference" in run_toggles:
+                self.toggle_PlotMode.setChecked(run_toggles["plot_mode_reference"])
+            if "mode_hop" in run_toggles:
+                self.chBox_freqHop.setChecked(run_toggles["mode_hop"])
+        finally:
+            self._loading_advanced_run_toggles = False
 
     def _update_plate_config_enabled(self, *args) -> None:
         """Enable Plate Config only when multi-channel mode is available.

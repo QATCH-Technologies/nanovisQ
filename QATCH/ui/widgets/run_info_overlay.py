@@ -399,7 +399,14 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
                 vbox.setSpacing(6)
                 vbox.addWidget(self._caption(f"Port {self._portIDfromIndex(i + 1)}"))
                 vbox.addWidget(form)
-                row, col = divmod(i, 4)
+                # Each port card now hosts a full wizard (stepper +
+                # composition table, ~620px designed width - see
+                # QueryRunInfoWidget._enter_wizard_mode()), which needs more
+                # room than the old compact flat card did at 4-wide. 2
+                # columns gives a 2x2 grid for the common 4-port case
+                # (matches the 1-4 port clamp in main_window.py's multiplex
+                # handling) without cramping any one card.
+                row, col = divmod(i, 2)
                 self.ports_layout.addWidget(card, row, col)
                 self._port_cards.append(card)
                 self._port_card_layouts.append(vbox)

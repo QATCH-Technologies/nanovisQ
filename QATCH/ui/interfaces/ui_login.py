@@ -549,6 +549,14 @@ class UILogin:
 
         Log.i(f"Welcome, {params[0]}! Role: {params[2].name}.")
 
+        # Re-apply this user's remembered UI preferences (theme, Analyze/
+        # Run plot colors/visibility/grid, Advanced toggles) now that
+        # UserProfiles.auth() above has run session_create() and
+        # UserProfiles.user_preferences resolves to this user's file - see
+        # MainWindow.reload_persisted_user_preferences()'s docstring for
+        # why this can't just happen once at startup.
+        self.parent.reload_persisted_user_preferences()
+
         # Post-login UI setup
         controls = self.parent.controls_window
 

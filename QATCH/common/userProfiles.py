@@ -866,7 +866,16 @@ class UserPreferences:
             Log.e(TAG, f"Unexpected error loading preferences: {e}")
             raise
 
-        # Validate required keys in the JSON data
+        # Validate required keys in the JSON data. Only the original,
+        # long-standing fields are hard-required here - a missing one means
+        # a genuinely malformed file. The UI-preference fields added later
+        # (theme_mode/analyze_plot_prefs/run_plot_prefs/advanced_toggles)
+        # are deliberately NOT required: an existing user's preferences
+        # file predates them, and session_create() calls set_preferences()
+        # with no surrounding try/except, so raising KeyError here would
+        # break sign-in entirely for every pre-existing user until their
+        # file happened to get rewritten. They're backfilled from
+        # Constants.default_preferences via .get() below instead.
         required_keys = [
             "load_data_path",
             "write_data_path",
@@ -902,6 +911,22 @@ class UserPreferences:
             self._set_file_format_pattern(file_tag_format)
             self._set_date_format(date_format)
             self._set_time_format(time_format)
+            self._set_theme_mode(preferences_data.get("theme_mode"))
+            self._set_analyze_plot_prefs(
+                preferences_data.get(
+                    "analyze_plot_prefs", Constants.default_preferences["analyze_plot_prefs"]
+                )
+            )
+            self._set_run_plot_prefs(
+                preferences_data.get(
+                    "run_plot_prefs", Constants.default_preferences["run_plot_prefs"]
+                )
+            )
+            self._set_advanced_toggles(
+                preferences_data.get(
+                    "advanced_toggles", Constants.default_preferences["advanced_toggles"]
+                )
+            )
         except Exception as e:
             Log.e(TAG, f"Error applying preferences: {e}")
             raise
@@ -924,6 +949,10 @@ class UserPreferences:
                 - filename_format_delimiter
                 - date_format
                 - time_format
+                - theme_mode
+                - analyze_plot_prefs
+                - run_plot_prefs
+                - advanced_toggles
 
         Raises:
             Exception: If an error occurs while retrieving any of the preferences.
@@ -938,6 +967,10 @@ class UserPreferences:
                 "filename_format_delimiter": self._get_file_delimiter(),
                 "date_format": self._get_date_format(),
                 "time_format": self._get_time_format(),
+                "theme_mode": self._get_theme_mode(),
+                "analyze_plot_prefs": self._get_analyze_plot_prefs(),
+                "run_plot_prefs": self._get_run_plot_prefs(),
+                "advanced_toggles": self._get_advanced_toggles(),
             }
         except Exception as e:
             Log.e(TAG, f"Error retrieving preferences: {e}")
@@ -1299,6 +1332,18 @@ class UserPreferences:
     def _set_write_data_path(self, write_data_path: str) -> None:
         self._write_data_path = write_data_path
 
+    def _set_theme_mode(self, theme_mode: str | None) -> None:
+        self._theme_mode = theme_mode
+
+    def _set_analyze_plot_prefs(self, analyze_plot_prefs: dict) -> None:
+        self._analyze_plot_prefs = analyze_plot_prefs
+
+    def _set_run_plot_prefs(self, run_plot_prefs: dict) -> None:
+        self._run_plot_prefs = run_plot_prefs
+
+    def _set_advanced_toggles(self, advanced_toggles: dict) -> None:
+        self._advanced_toggles = advanced_toggles
+
     # -- MUTATOR METHODS -- #
 
     def _get_user_session(self) -> UserProfiles:
@@ -1345,3 +1390,27 @@ class UserPreferences:
 
     def _get_write_data_path(self) -> str:
         return self._write_data_path
+
+    def _get_theme_mode(self) -> str | None:
+        return getattr(self, "_theme_mode", None)
+
+    def _get_analyze_plot_prefs(self) -> dict:
+        import copy
+
+        return copy.deepcopy(
+            getattr(self, "_analyze_plot_prefs", Constants.default_preferences["analyze_plot_prefs"])
+        )
+
+    def _get_run_plot_prefs(self) -> dict:
+        import copy
+
+        return copy.deepcopy(
+            getattr(self, "_run_plot_prefs", Constants.default_preferences["run_plot_prefs"])
+        )
+
+    def _get_advanced_toggles(self) -> dict:
+        import copy
+
+        return copy.deepcopy(
+            getattr(self, "_advanced_toggles", Constants.default_preferences["advanced_toggles"])
+        )

@@ -317,6 +317,67 @@ class Constants:
         "filename_format_delimiter": path_delimiters[0],
         "date_format": date_formats[0],
         "time_format": time_formats[0],
+        # -- UI preferences (colors/toggles/etc.), remembered per signed-in
+        # user - see QATCH.common.userProfiles.UserPreferences. None of
+        # these values are load-bearing on first run; they only seed a
+        # brand-new preferences file until the user customizes something,
+        # at which point their own choice overwrites it in their JSON.
+        "theme_mode": None,  # None = no per-user override; fall back to the machine-wide theme
+        "analyze_plot_prefs": {
+            "colors": {"resonance": "#2e9e46", "difference": "#2f7fd1", "dissipation": "#d43f3f"},
+            "visible": {"resonance": True, "difference": True, "dissipation": True},
+            "grid": {
+                "overview": {"grid_major": False, "grid_minor": False},
+                "resonance": {"grid_major": False, "grid_minor": False},
+                "difference": {"grid_major": False, "grid_minor": False},
+                "dissipation": {"grid_major": False, "grid_minor": False},
+            },
+            "point_to_point": {
+                "overview": False,
+                "resonance": True,
+                "difference": True,
+                "dissipation": True,
+            },
+        },
+        "run_plot_prefs": {
+            "colors": {
+                "amplitude": "#ff0000",
+                "resonance_freq": "#2e9bda",
+                "dissipation": "#0072bd",
+                "temperature": "#9463d2",
+            },
+            "visible": {
+                "amplitude": True,
+                "resonance_freq": True,
+                "dissipation": True,
+                "temperature": True,
+            },
+            # Keyed by gear-menu/container, not channel - unlike colors/
+            # visible above, grid toggles aren't independent per channel:
+            # left_pane's single Major/Minor pair applies to both its
+            # overlaid resonance_freq and dissipation ViewBoxes at once
+            # (see MainWindow._on_left_pane_grid_changed), so there's no
+            # such thing as an independent resonance_freq-only grid state.
+            "grid": {
+                "left_pane": {"grid_major": False, "grid_minor": False},
+                "amp_glass": {"grid_major": False, "grid_minor": False},
+                "temp_glass": {"grid_major": False, "grid_minor": False},
+            },
+        },
+        "advanced_toggles": {
+            "run": {
+                "show_amplitude_curve": True,
+                "auto_detect_channels": True,
+                "plot_mode_reference": False,
+                "mode_hop": False,
+            },
+            "analyze": {
+                "diff_factor_auto_calculate": False,
+                "drop_effect_correction": True,
+                "enable_partial_fills": False,
+                "auto_fit_model": "",  # "" = no override; fall back to the existing default-model logic
+            },
+        },
     }
     ##################
     # Calibration: baseline correction (READ for @5MHz and @10MHz QCS) path: 'common\'

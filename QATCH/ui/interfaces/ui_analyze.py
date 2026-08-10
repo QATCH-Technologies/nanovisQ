@@ -875,6 +875,9 @@ class UIAnalyze(QtWidgets.QWidget):
         self.difference_factor_optimizer_checkbox.clicked.connect(
             self.use_difference_factor_optimizer
         )
+        self.difference_factor_optimizer_checkbox.clicked.connect(
+            self._save_analyze_advanced_toggles
+        )
 
         self.drop_effect_cancelation_checkbox = LabeledToggle("Drop effect correction")
         self.drop_effect_cancelation_checkbox.setToolTip(
@@ -883,6 +886,7 @@ class UIAnalyze(QtWidgets.QWidget):
         )
         self.drop_effect_cancelation_checkbox.setChecked(True)
         self.drop_effect_cancelation_checkbox.clicked.connect(self.use_drop_effect_cancelation)
+        self.drop_effect_cancelation_checkbox.clicked.connect(self._save_analyze_advanced_toggles)
 
         self.partial_fills_checkbox = LabeledToggle("Enable Partial-Fills")
         self.partial_fills_checkbox.setToolTip(
@@ -890,6 +894,7 @@ class UIAnalyze(QtWidgets.QWidget):
             "completely filled."
         )
         self.partial_fills_checkbox.setChecked(False)
+        self.partial_fills_checkbox.clicked.connect(self._save_analyze_advanced_toggles)
 
         # Predict Model ------------------------------------------------------
         self.cBox_Models = AnimatedComboBox(
@@ -909,6 +914,12 @@ class UIAnalyze(QtWidgets.QWidget):
         elif Constants.qmodel_tweed_predict:
             self.cBox_Models.setCurrentIndex(0)
         self.cBox_Models.currentTextChanged.connect(self.set_new_prediction_model)
+        self.cBox_Models.currentTextChanged.connect(self._save_analyze_advanced_toggles)
+
+        # Seed the four widgets above from this signed-in user's remembered
+        # preferences (falls back to the hardcoded defaults just set above
+        # if nothing's been saved yet) - see _load_analyze_advanced_toggles.
+        self._load_analyze_advanced_toggles()
 
         # Advanced Settings popup - anchored/animated flat popup shared with
         # UIControls (see AdvancedMainWidget/_build_advanced_layout), replacing
@@ -1109,6 +1120,15 @@ class UIAnalyze(QtWidgets.QWidget):
             "difference": True,
             "dissipation": True,
         }
+        # String identity for each fixed plot widget, used only to make
+        # _grid_flags (keyed by QWidget, not serializable) persistable - see
+        # _save_analyze_plot_prefs()/_load_persisted_plot_prefs().
+        self._grid_widget_names: Dict[QtWidgets.QWidget, str] = {
+            self.graphWidget: "overview",
+            self.graphWidget1: "resonance",
+            self.graphWidget2: "difference",
+            self.graphWidget3: "dissipation",
+        }
         for card, plot_widget in (
             (self.overview_card, self.graphWidget),
             (self.resonance_card, self.graphWidget1),
@@ -1128,6 +1148,11 @@ class UIAnalyze(QtWidgets.QWidget):
         # point_cloud_state) since no run's wizard has reached a Channel
         # step yet; getPoints() keeps this in sync as the step changes.
         self._update_detail_point_cloud_state()
+
+        # Seed the state above from this signed-in user's remembered
+        # preferences (falls back to the defaults already set above if
+        # nothing's been saved yet) - see _load_persisted_plot_prefs().
+        self._load_persisted_plot_prefs()
 
         # Same visible/draggable gap as lowerGraphs and PlotsUI's own
         # splitters (main_splitter/right_splitter in ui_plots.py), so the
@@ -1734,6 +1759,142 @@ class UIAnalyze(QtWidgets.QWidget):
             except Exception:
                 continue
 
+    # ------------------------------------------------------------------
+    #  Persisted plot preferences (colors/visibility/grid/point-to-point) -
+    #  remembered per signed-in user (or the global fallback when nobody's
+    #  signed in) via QATCH.common.userProfiles.UserPreferences, the same
+    #  store date/path/naming-format preferences already use.
+    # ------------------------------------------------------------------
+    def _save_analyze_plot_prefs(self) -> None:
+        """Persists the current colors/visibility/grid/point-to-point state.
+
+        Called from every gear-menu mutation slot below - writes the whole
+        current state each time (matching how UserPreferences already
+        treats every other preference category: get_preferences()/write_
+        user_preferences() always operate on the full record, never a
+        partial patch), so it's restored on the next sign-in/launch by
+        _load_persisted_plot_prefs().
+        """
+        if getattr(self, "_loading_analyze_plot_prefs", False):
+            return  # _load_persisted_plot_prefs() is replaying saved state - nothing new to save
+        prefs = UserProfiles.user_preferences
+        if prefs is None:
+            return  # nobody's signed in this session yet - nothing to save to
+        try:
+            grid = {
+                name: dict(self._grid_flags.get(widget, {}))
+                for widget, name in self._grid_widget_names.items()
+            }
+            prefs._set_analyze_plot_prefs(
+                {
+                    "colors": {k: v.name() for k, v in self._series_colors.items()},
+                    "visible": dict(self._series_visible),
+                    "grid": grid,
+                    "point_to_point": {
+                        "overview": self._overview_point_to_point,
+                        **self._detail_point_to_point,
+                    },
+                }
+            )
+            prefs.write_user_preferences()
+        except Exception as e:
+            Log.e(f"Failed to save Analyze plot preferences: {e}")
+
+    def _load_persisted_plot_prefs(self) -> None:
+        """Seeds colors/visibility/grid/point-to-point from this signed-in
+        user's remembered preferences (or the global fallback), applying
+        each one through the same real handler a user interaction would
+        trigger - so the actual plotted state (curve colors, visibility,
+        grid items, point clouds) and the always-visible legend/title chips
+        are correct from the first frame.
+
+        Note: a gear-menu popup the user hasn't opened yet may still show
+        its swatch icon / checkbox at the hardcoded construction-time
+        default until interacted with (which self-corrects) - only the
+        closed-popup icon can lag, never the actual plotted state.
+        """
+        prefs = UserProfiles.user_preferences
+        if prefs is None:
+            return  # nobody's signed in this session yet - keep the hardcoded defaults
+        try:
+            saved = prefs._get_analyze_plot_prefs()
+        except Exception as e:
+            Log.e(f"Failed to load Analyze plot preferences: {e}")
+            return
+
+        self._loading_analyze_plot_prefs = True
+        try:
+            for key, hex_color in saved.get("colors", {}).items():
+                if key in self._series_colors:
+                    self._on_analyze_section_color_changed(key, QtGui.QColor(hex_color))
+            for key, visible in saved.get("visible", {}).items():
+                if key in self._series_visible:
+                    self._on_analyze_section_visibility_changed(key, visible)
+            grid = saved.get("grid", {})
+            for widget, name in self._grid_widget_names.items():
+                for grid_key, grid_visible in grid.get(name, {}).items():
+                    self._on_grid_toggle(widget, grid_key, grid_visible)
+            point_to_point = saved.get("point_to_point", {})
+            if "overview" in point_to_point:
+                self._set_overview_point_to_point(point_to_point["overview"])
+            for key in ("resonance", "difference", "dissipation"):
+                if key in point_to_point:
+                    self._set_detail_point_to_point(key, point_to_point[key])
+        finally:
+            self._loading_analyze_plot_prefs = False
+
+    def _save_analyze_advanced_toggles(self, *_args) -> None:
+        """Persists the Advanced Settings checkboxes + selected auto-fit
+        model. Connected to each widget's own change signal (accepts and
+        ignores whatever argument that signal passes, e.g. the checkbox's
+        new checked state or the combo's new text) - see
+        _load_analyze_advanced_toggles() for the matching load.
+        """
+        prefs = UserProfiles.user_preferences
+        if prefs is None:
+            return
+        try:
+            toggles = prefs._get_advanced_toggles()
+            toggles["analyze"] = {
+                "diff_factor_auto_calculate": self.difference_factor_optimizer_checkbox.isChecked(),
+                "drop_effect_correction": self.drop_effect_cancelation_checkbox.isChecked(),
+                "enable_partial_fills": self.partial_fills_checkbox.isChecked(),
+                "auto_fit_model": self.cBox_Models.currentText(),
+            }
+            prefs._set_advanced_toggles(toggles)
+            prefs.write_user_preferences()
+        except Exception as e:
+            Log.e(f"Failed to save Analyze advanced-toggle preferences: {e}")
+
+    def _load_analyze_advanced_toggles(self) -> None:
+        """Seeds the Advanced Settings checkboxes + auto-fit model combo
+        from this signed-in user's remembered preferences (or the global
+        fallback), leaving the hardcoded defaults set just above in place
+        if nothing's been saved yet or no user is signed in."""
+        prefs = UserProfiles.user_preferences
+        if prefs is None:
+            return
+        try:
+            analyze_toggles = prefs._get_advanced_toggles().get("analyze", {})
+        except Exception as e:
+            Log.e(f"Failed to load Analyze advanced-toggle preferences: {e}")
+            return
+        if "diff_factor_auto_calculate" in analyze_toggles:
+            self.difference_factor_optimizer_checkbox.setChecked(
+                analyze_toggles["diff_factor_auto_calculate"]
+            )
+        if "drop_effect_correction" in analyze_toggles:
+            self.drop_effect_cancelation_checkbox.setChecked(
+                analyze_toggles["drop_effect_correction"]
+            )
+        if "enable_partial_fills" in analyze_toggles:
+            self.partial_fills_checkbox.setChecked(analyze_toggles["enable_partial_fills"])
+        saved_model = analyze_toggles.get("auto_fit_model")
+        if saved_model:
+            index = self.cBox_Models.findText(saved_model)
+            if index >= 0:
+                self.cBox_Models.setCurrentIndex(index)
+
     def _on_grid_toggle(self, plot_widget: pg.PlotWidget, key: str, visible: bool) -> None:
         """Handles a gear-menu grid checkbox toggle for one plot widget.
 
@@ -1745,6 +1906,7 @@ class UIAnalyze(QtWidgets.QWidget):
         flags = self._grid_flags.setdefault(plot_widget, {})
         flags[key] = visible
         self._apply_grid_item(plot_widget, key, visible)
+        self._save_analyze_plot_prefs()
 
     def _apply_grid_item(self, plot_widget: pg.PlotWidget, key: str, visible: bool) -> None:
         """Add or toggle a `ThemedGridItem` on a plot's ViewBox for major or
@@ -1827,6 +1989,7 @@ class UIAnalyze(QtWidgets.QWidget):
             self.dissipation_card,
         ):
             card.set_section_color(key, color)
+        self._save_analyze_plot_prefs()
 
     def _on_analyze_section_visibility_changed(self, key: str, visible: bool) -> None:
         """Shows or hides the real curve/marker items for one series, hides
@@ -1877,6 +2040,7 @@ class UIAnalyze(QtWidgets.QWidget):
         if detail_card is not None:
             self._animate_detail_card_visibility(detail_card, visible)
         self._update_overview_fullscreen_enabled()
+        self._save_analyze_plot_prefs()
 
     def _show_analyze_plot_overlay(self) -> None:
         """Creates and displays a progress overlay on the analysis plot.
@@ -9378,6 +9542,7 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         self._overview_point_to_point = enabled
         self._apply_overview_point_cloud_visibility()
+        self._save_analyze_plot_prefs()
 
     def _apply_overview_point_cloud_visibility(self) -> None:
         """Shows/hides each of scat1/scat2/scat3 (the overview graph's raw-
@@ -9421,6 +9586,7 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         self._detail_point_to_point[key] = enabled
         self._apply_detail_point_cloud_visibility(key)
+        self._save_analyze_plot_prefs()
 
     def _apply_detail_point_cloud_visibility(self, key: str) -> None:
         """Shows/hides one detail sub-graph's raw-data point cloud
