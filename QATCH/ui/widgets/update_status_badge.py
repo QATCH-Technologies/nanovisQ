@@ -286,12 +286,37 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
             self._badge = UpdateNotificationBadge(self, text=self._badge_text)
             self._badge.action_requested.connect(self._on_clicked)
             self._badge.dismissed.connect(self._on_badge_dismissed)
-        if not self.isVisible():
+        # Also gated on isEnabled(): a caller suppressing the badge for the
+        # duration of some blocking activity (see dismiss_badge/resync_badge)
+        # disables the icon for that same span, so any _sync_badge() call
+        # that sneaks in during it (e.g. a firmware status update arriving
+        # mid-run) can't pop the badge back up early.
+        if not self.isVisible() or not self.isEnabled():
             return
         self._badge.show_below()
 
     def _on_badge_dismissed(self) -> None:
         self._badge_dismissed = True
+
+    def dismiss_badge(self) -> None:
+        """Hides the notification badge for now, WITHOUT marking it
+        permanently dismissed - unlike a real user-initiated dismiss (click
+        the badge's own ✕), which stays hidden for the rest of this update
+        cycle regardless of anything else. Meant for a caller that needs to
+        suppress the popup for the duration of some other blocking activity
+        (a run in progress) and bring it back afterward via
+        `resync_badge()` - the icon's underlying state is left untouched
+        either way."""
+        if self._badge and self._badge.isVisible():
+            self._badge.hide()
+
+    def resync_badge(self) -> None:
+        """Re-applies the current state's badge visibility.
+
+        Call after `dismiss_badge()`'s suppression ends (e.g. once the icon
+        is re-enabled) so the popup reappears if it's still relevant and the
+        user never actually dismissed it themselves."""
+        self._sync_badge()
 
     def _mark_icon_dirty(self) -> None:
         """Marks the icon for rebuild on the next paint and requests one.
@@ -313,9 +338,15 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
 
     # ── Icon rendering ────────────────────────────────────────────────────────
 
-    def _tinted_icon(self, color: QtGui.QColor, alpha_f: float = 1.0) -> QtGui.QIcon:
+    # Applied on top of the state's own alpha when the button is disabled -
+    # keeps the same status color (still reads as "green"/"yellow"/"red")
+    # instead of Qt's default auto-generated Disabled-mode icon, which
+    # desaturates to gray and loses that meaning entirely.
+    _DISABLED_ALPHA_SCALE = 0.4
+
+    def _tinted_pixmap(self, color: QtGui.QColor, alpha_f: float = 1.0) -> QtGui.QPixmap:
         if self._base_pixmap.isNull():
-            return QtGui.QIcon()
+            return QtGui.QPixmap()
         base = self._base_pixmap.scaled(
             self._size,
             self._size,
@@ -325,24 +356,58 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         dst = QtGui.QPixmap(base.size())
         dst.fill(QtCore.Qt.GlobalColor.transparent)
         p = QtGui.QPainter(dst)
-        p.setOpacity(alpha_f)
         p.drawPixmap(0, 0, base)
         p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceAtop)
         p.fillRect(dst.rect(), color)
         p.end()
-        return QtGui.QIcon(dst)
+
+        if alpha_f >= 1.0:
+            return dst
+
+        # Applying `alpha_f` via painter opacity in the pass above (the
+        # original approach) left it in effect for the SourceAtop fillRect
+        # too - at low alpha_f that let the source SVG's own baked-in
+        # color bleed back through the recolor instead of cleanly tinting
+        # it, producing a muddy, hue-shifted result rather than a dimmer
+        # version of `color`. Locking in the pure tint first, then scaling
+        # the whole already-tinted pixmap's alpha as a separate pass,
+        # keeps the hue exact at any alpha_f.
+        dimmed = QtGui.QPixmap(dst.size())
+        dimmed.fill(QtCore.Qt.GlobalColor.transparent)
+        dp = QtGui.QPainter(dimmed)
+        dp.setOpacity(alpha_f)
+        dp.drawPixmap(0, 0, dst)
+        dp.end()
+        return dimmed
+
+    def _tinted_icon(self, color: QtGui.QColor, alpha_f: float = 1.0) -> QtGui.QIcon:
+        pix = self._tinted_pixmap(color, alpha_f)
+        return QtGui.QIcon(pix) if not pix.isNull() else QtGui.QIcon()
 
     def _refresh_icon(self) -> None:
         """Renders the icon as a solid tint for the current state - no
         pulsing/flashing. UNKNOWN (no info yet) renders dimmed since it
         isn't one of the three status colors; every other state is full
         opacity.
+
+        Explicitly supplies a Disabled-mode pixmap (same hue, dimmer alpha)
+        rather than leaving it to QIcon's own auto-generated Disabled
+        variant - a plain single-pixmap QIcon would otherwise render
+        desaturated/gray the instant `setEnabled(False)` is called, which
+        reads as "status unknown" rather than "still yellow, just inert".
         """
         mode = ThemeManager.instance().mode().value
         colors = self._COLORS.get(mode, self._COLORS["light"])
         color = colors.get(self._state, colors[self.State.UNKNOWN])
         alpha = 0.5 if self._state == self.State.UNKNOWN else 1.0
-        self.setIcon(self._tinted_icon(color, alpha))
+
+        icon = QtGui.QIcon()
+        normal_pix = self._tinted_pixmap(color, alpha)
+        if not normal_pix.isNull():
+            icon.addPixmap(normal_pix, QtGui.QIcon.Mode.Normal)
+            disabled_pix = self._tinted_pixmap(color, alpha * self._DISABLED_ALPHA_SCALE)
+            icon.addPixmap(disabled_pix, QtGui.QIcon.Mode.Disabled)
+        self.setIcon(icon)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
         """Rebuilds the icon (if dirty) immediately before painting, then

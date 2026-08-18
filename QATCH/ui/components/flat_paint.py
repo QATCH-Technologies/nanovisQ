@@ -1,24 +1,7 @@
 """
-QATCH.ui.components.flat_paint
+QATCH.ui.components.flat_paint.py
 
-Shared flat-surface paint recipe: fill + border + optional focus ring.
-
-This is the flat-design sibling of QATCH.ui.components.glass_paint - it
-backs the six "flat control system" components (Pushbutton, Line Edit,
-Combo Box, Spin Box, Toggle, Option Card) rather than the frosted-glass
-family. Unlike glass_paint's multi-layer shimmer/vignette/rim recipe, this
-is a pure geometry+stroke primitive with no state logic: fill a rounded
-rect, stroke its border, and optionally stroke a third, concentric rounded
-rect inset from the widget's own edge as a focus ring.
-
-The ring is the flat-language stand-in for a CSS `box-shadow: 0 0 0 3px
-<ring-color>` - Qt Style Sheets have no box-shadow support, so a hard-edged
-translucent stroke at the ring color's own alpha is the cheapest close
-approximation (Qt has no cheap blur to spend on a soft glow here). It is
-inset rather than protruding past `widget.rect()`: a widget's paintEvent
-cannot paint outside its own backing-store rect, so an outward-facing ring
-gets silently clipped flat at every corner instead of curving away,
-regardless of how round the body underneath is.
+Shared flat-surface paint recipe
 
 Typical use inside a widget's `paintEvent`::
 
@@ -35,13 +18,14 @@ Typical use inside a widget's `paintEvent`::
             ring=QtGui.QColor(*tok["flat_accent_ring"]) if self._focused else None,
         )
 
-Author:
+Author (s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-18
 """
 
 from __future__ import annotations
-
-from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -53,32 +37,45 @@ def paint_flat_surface(
     fill: QtGui.QColor,
     border: QtGui.QColor,
     border_width: float = 1.0,
-    ring: Optional[QtGui.QColor] = None,
+    ring: QtGui.QColor | None = None,
     ring_width: float = 3.0,
-    painter: Optional[QtGui.QPainter] = None,
+    painter: QtGui.QPainter | None = None,
 ) -> None:
-    """Paints a flat rounded-rect surface into `widget`: fill, border, and an
-    optional focus ring inset from the widget's own edge.
+    """Paint a flat rounded-rectangle surface onto a widget.
+
+    The surface consists of a filled rounded rectangle with an optional
+    border. A focus ring may also be drawn inside the widget's bounds,
+    allowing the ring to remain fully rounded without extending beyond or
+    being clipped by the widget.
 
     Args:
-        widget: The widget being painted (its `rect()` is used).
-        radius: Corner radius of the fill/border rounded rect, in px.
-        fill: Background fill color.
-        border: Border stroke color.
-        border_width: Border stroke width, in px.
-        ring: If not None, a translucent stroke is drawn `ring_width` px
-            inset from the widget's own edge, on top of the fill/border -
-            the flat equivalent of a CSS focus-ring box-shadow, kept
-            on-widget so it stays fully rounded at every corner instead of
-            clipping flat. Pass None to omit it entirely.
-        ring_width: Width in px of the ring stroke.
-        painter: An active `QPainter` to draw with. If `None`, one is
-            created on `widget` and ended before returning.
+        widget: Widget whose rectangle defines the area to be painted.
+        radius: Corner radius of the rounded fill and border, in pixels.
+        fill: Background color used to fill the rounded rectangle.
+        border: Color used for the rounded-rectangle border.
+        border_width: Width of the border stroke, in pixels. Set to `0` or
+            a negative value to omit the border.
+        ring: Optional color for the focus ring. When provided, a ring is
+            drawn inside the widget's bounds on top of the fill and border.
+            Pass `None` to omit the focus ring.
+        ring_width: Width of the focus ring stroke, in pixels.
+        painter: Optional active `QPainter` to use for rendering. If
+            `None`, a new painter is created for `widget` and ended
+            before the function returns.
+
+    Returns:
+        None.
+
+    Note:
+        The focus-ring parameters are currently part of the public painting
+        interface, but the ring is only rendered when its drawing logic is
+        enabled. The function configures antialiasing to ensure smooth
+        rounded corners.
     """
     owns_painter = painter is None
     p = painter or QtGui.QPainter(widget)
     p.setRenderHint(QtGui.QPainter.Antialiasing)
-    p.setPen(QtCore.Qt.NoPen)
+    p.setPen(QtCore.Qt.PenStyle.NoPen)
 
     rect = QtCore.QRectF(widget.rect())
 
@@ -91,23 +88,15 @@ def paint_flat_surface(
     if border_width > 0:
         p.setPen(QtGui.QPen(border, border_width))
         p.drawRoundedRect(fill_rect, radius, radius)
-        p.setPen(QtCore.Qt.NoPen)
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
 
     if ring is not None:
-        # Stroked *inset* from the widget's own edge, on top of the fill/
-        # border, rather than protruding past it. A widget's paintEvent
-        # can't paint outside its own backing-store rect, so a ring
-        # stroked outward from `rect` (the previous approach) got clipped
-        # flat right at every corner instead of curving away - it read as
-        # a squared-off highlight no matter how round the body underneath
-        # was. Insetting keeps the whole stroke, corners included, on the
-        # widget where it can actually be painted.
         half_rw = ring_width / 2.0
         ring_rect = rect.adjusted(half_rw, half_rw, -half_rw, -half_rw)
         ring_radius = max(radius - half_rw, 0.0)
         p.setPen(QtGui.QPen(ring, ring_width))
         p.drawRoundedRect(ring_rect, ring_radius, ring_radius)
-        p.setPen(QtCore.Qt.NoPen)
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
 
     if owns_painter:
         p.end()

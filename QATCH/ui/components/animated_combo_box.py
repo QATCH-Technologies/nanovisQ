@@ -179,8 +179,8 @@ class _RoundedPopup(QtWidgets.QFrame):
     border with QPainter writes into the widget's own raster buffer
     directly and doesn't depend on that compositing path, matching how
     every other themed control in this app already paints its chrome (see
-    QATCH.ui.components.flat_paint / glass_paint) rather than trusting QSS
-    for anything color-critical. `WA_TranslucentBackground` is kept only
+    QATCH.ui.components.flat_paint) rather than trusting QSS for anything
+    color-critical. `WA_TranslucentBackground` is kept only
     for antialiasing the *outside* of the rounded corners where the
     platform does support it; the visible fill no longer depends on it.
     """

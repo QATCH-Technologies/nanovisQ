@@ -1,4 +1,5 @@
-"""Connected navigation rail and content surface for QATCH UIs.
+"""
+QATCH.ui.components.connected_tab_rail.py
 
 This module provides :class:`ConnectedTabRail`, a vertical navigation rail
 whose active-row highlight visually joins the adjacent content pane into one

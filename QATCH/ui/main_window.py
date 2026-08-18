@@ -1670,6 +1670,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.controls_window.ui.tool_TempControl.setEnabled(enable_temp)
         # self.controls_window.ui.tool_Advanced.setEnabled(enabled)
 
+        # Firmware update icon: don't let a user accidentally stall an
+        # in-progress run by triggering a firmware update mid-run. Dismiss
+        # its "update available" popup and disable the icon for the run's
+        # duration - its underlying status (color/tooltip) is left alone,
+        # so it reads correctly again the moment it's re-enabled.
+        fw_status_icon = self.plots_window.ui.left_pane._fw_status_icon
+        fw_status_icon.setEnabled(enabled)
+        if not enabled:
+            fw_status_icon.dismiss_badge()
+        else:
+            fw_status_icon.resync_badge()
+
         # macOS immediate 'repaint()' to force visual state changes
         # (like button highlighting or disabling) main thread is
         # about to enter a intensive block. http://stackoverflow.com/a/60074600

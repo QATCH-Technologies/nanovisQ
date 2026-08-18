@@ -73,6 +73,14 @@ class ScanNowOverlay(QtWidgets.QFrame):
     sitting on top of it. Shared by `QueryRunInfoWidget` (single-port) and
     `RunInfoOverlay` (multi-port common row) so both scan-now prompts read
     as the same control.
+
+    Purely a paint-time decoration, not an input blocker: every widget here
+    carries `WA_TransparentForMouseEvents`, so clicks/hover pass straight
+    through to the real `QLineEdit` underneath (a barcode scanner types
+    into it exactly like a keyboard would) - a scan or manual entry both
+    still land in the field this sits on top of. Qt's cursor resolution
+    also respects that flag, so hovering shows the line edit's own I-beam
+    cursor rather than this overlay's default arrow.
     """
 
     _RADIUS = 7.0
@@ -81,6 +89,7 @@ class ScanNowOverlay(QtWidgets.QFrame):
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._pulse_t = 0.0
         self._icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "barcode.svg")
         if not os.path.exists(self._icon_path):
@@ -99,9 +108,11 @@ class ScanNowOverlay(QtWidgets.QFrame):
         lay.setContentsMargins(12, 0, 10, 0)
         lay.setSpacing(6)
         self.label = QtWidgets.QLabel("Scan or enter now!")
+        self.label.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         lay.addWidget(self.label)
         lay.addStretch(1)
         self.icon = QtWidgets.QLabel()
+        self.icon.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         lay.addWidget(self.icon)
 
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)

@@ -1,11 +1,11 @@
 """QATCH.ui.components.qatch_dialog.py
 
-Modal dialog that matches the app's frosted aesthetic.
+Modal dialog that matches the app's flat control system.
 Replaces QMessageBox across all PopUp static methods.
 
 Renders a semi-transparent dim overlay over the root window with a centred
-frosted card containing title, body text, optional expandable details,
-and QATCHPushButton actions.
+card containing title, body text, optional expandable details, and
+QATCHPushButton actions.
 
 Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
@@ -22,7 +22,7 @@ from typing import List, Optional, Tuple
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
-from QATCH.ui.components.glass_paint import paint_glass_surface
+from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.components.qatch_push_button import QATCHPushButton
 from QATCH.ui.components.window_utils import find_app_window
 from QATCH.ui.styles.theme_manager import (
@@ -72,8 +72,8 @@ def tinted_icon(path: str, color: QtGui.QColor, size: int = 22) -> QtGui.QPixmap
 
 
 class DialogCard(QtWidgets.QFrame):
-    """Frosted glass card: paints via the shared glass-paint helper so it
-    stays identical to PlotContainer and the other glass surfaces.
+    """Flat card: paints via the shared flat-paint helper so it stays
+    identical to every other flat control (QATCHLineEdit, QATCHPanel, ...).
 
     Shared by every modal built on `DialogBase` (QATCHDialog,
     SignatureDialog, ...) so they all render the exact same card chrome.
@@ -93,15 +93,20 @@ class DialogCard(QtWidgets.QFrame):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        paint_glass_surface(
+        tok = ThemeManager.instance().tokens()
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        paint_flat_surface(
             self,
             radius=self._radius,
-            tokens=ThemeManager.instance().tokens(),
-            shimmer_height=50.0,
-            draw_vignette=True,
-            header_line_y=self._header_line_y,
-            opaque_base=True,
+            fill=QtGui.QColor(*tok["flat_surface"]),
+            border=QtGui.QColor(*tok["flat_border"]),
+            painter=p,
         )
+        if self._header_line_y is not None:
+            p.setPen(QtGui.QPen(QtGui.QColor(*tok["flat_border"]), 1.0))
+            p.drawLine(0, int(self._header_line_y), self.width(), int(self._header_line_y))
+        p.end()
 
 
 class DialogBase(QtWidgets.QDialog):
