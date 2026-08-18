@@ -10,6 +10,7 @@ from .qatch_line_edit import QATCHLineEdit
 from .qatch_option_card import QATCHOptionCard, QATCHOptionCardGroup
 from .qatch_panel import QATCHPanel
 from .qatch_push_button import QATCHPushButton
+from .qatch_spin_box import QATCHSpinBox
 from .qatch_toggle import LabeledToggle, QATCHToggle
 from .qatch_warning_label import QATCHWarningLabel
 from .run_controls_button import RunControls
@@ -21,21 +22,22 @@ __all__ = [
     "AnimatedDoubleSpinBox",
     "AnimatedSpinBox",
     "ConnectedTabRail",
-    "TabbedRailPanel",
+    "FLUXControl",
+    "LabeledToggle",
+    "NumberIconButton",
+    "POIChipField",
+    "PlotStatusBanner",
+    "QATCHCard",
+    "QATCHDialog",
     "QATCHLineEdit",
     "QATCHOptionCard",
     "QATCHOptionCardGroup",
     "QATCHPanel",
     "QATCHPushButton",
+    "QATCHSpinBox",
     "QATCHToggle",
-    "LabeledToggle",
     "QATCHWarningLabel",
-    "NumberIconButton",
-    "QATCHCard",
-    "QATCHDialog",
     "RunControls",
     "SegmentedControl",
-    "FLUXControl",
-    "PlotStatusBanner",
-    "POIChipField",
+    "TabbedRailPanel",
 ]

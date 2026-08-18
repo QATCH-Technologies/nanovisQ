@@ -1,42 +1,24 @@
-"""Themed top action bar for AnalyzeUI.
+"""
+QATCH.ui.components.analyze_action_bar.py
 
-Replaces AnalyzeUI's old flat #DDDDDD toolbar with a themed card matching
-the PlotsUI/ControlsUI visual language. The internal toolbars use
-objectName "CtrlToolBar" so they pick up the exact same app-wide QSS that
-already themes ControlsUI's toolbar (see app_theme.qss) - no new QSS rules
-needed.
+This module defines the task-bar widget used by the Analyze UI.  The bar
+replaces the legacy flat toolbar with a themed card that follows the same
+visual language as the application's PlotsUI and ControlsUI components.
 
-Laid out as three zones - run selector / fit & analyze / app - separated
-by hairline dividers, per the "2a" task bar redesign: the run selector is
-a searchable, filterable field with the saved-state dot and the Run
-Info/Restore/Close actions inline beside it (all three act on the
-*currently loaded run*, not the bar/window as a whole, so they sit with
-the run selector rather than in the APP zone), and Back/Next stand
-adjacent (no step-position label between them) - both still built via the
-same `_tool_button()` helper as every other button in the bar, so they
-read as one family rather than a visually distinct control. Zones are
-uncaptioned (no `SectionHeader` row) - a caption line made this bar's
-height diverge from `ControlsActionBar`'s and from the plot panels' own
-header rhythm elsewhere in the app, for less benefit than the height cost;
-the divider alone still reads as "three groups" without it.
+Tool buttons are created through :class:`TaskBarBase` so they share the
+application-wide `CtrlToolBar` styling.  Icons are tinted from the active
+theme and re-tinted whenever the theme changes.
 
-Every toolbutton icon (and the search/filter/clear icons embedded in the
-run field) is tinted from the active theme's `flat_*` tokens at build time
-and re-tinted on every theme change - the source SVGs are plain dark line
-art with no light/dark variants of their own, so painting them untinted
-would read fine in light mode and go nearly invisible in dark mode.
+Author(s):
+    Paul MacNichol  (paul.macnichol@qatchtech.com)
 
-This widget only constructs and lays out buttons/labels; it does not wire
-their signals. All the callbacks (load_run, action_back, action_next, ...)
-live on UIAnalyze, not here, so UIAnalyze.setup_ui connects them after
-construction - the same "wrap, don't own" pattern PlotContainer uses for
-its wrapped plot_widget.
+Date:
+    2026-08-18
 """
 
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -53,8 +35,7 @@ class AnalyzeActionBar(TaskBarBase):
     stepper/Modify/Analyze + Advanced/User, grouped into three uncaptioned
     zones, as one themed card.
 
-    Public attributes (all plain Qt widgets - the caller wires their
-    signals and owns their behavior):
+    Attributes:
         cBox_Runs: the searchable run selector. Typing filters the list via
             an attached QCompleter; `filter_action` is the trailing
             "filters" affordance embedded in the field.
@@ -76,7 +57,17 @@ class AnalyzeActionBar(TaskBarBase):
             action buttons.
     """
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        """Initialize the Analyze action bar.
+
+        The constructor builds each control group, assembles the groups into
+        the task-bar layout, applies the current theme to icons, and registers
+        a listener so icon styling follows subsequent theme changes.
+
+        Args:
+            parent (QtWidgets.QWidget | None): Parent widget that owns this
+                action bar. Defaults to `None`.
+        """
         super().__init__(parent)
 
         self._build_run_selector()
@@ -88,20 +79,32 @@ class AnalyzeActionBar(TaskBarBase):
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh icon styling after the application theme changes.
+
+        Re-tints toolbar icons and the embedded line-edit icons using the
+        current theme tokens, then requests a repaint of the action bar.
+
+        Args:
+            _mode (str): Theme mode reported by `ThemeManager`. The value is
+                intentionally unused because the current token set is queried
+                directly from the theme manager.
+        """
         self.retint_icon_buttons()
         self._restyle_filter_icon()
         self._restyle_static_line_edit_icons()
         self.update()
 
     def _build_run_selector(self) -> None:
-        # Saved-state dot - sits in field_row beside cBox_Runs/run_actions_bar.
-        # Dot only, no text label - UIAnalyze drives its actual color (see
-        # `set_state`) and sets a tooltip with the same descriptive text the
-        # label used to show (blank/unsaved/saved/error), and wires its
-        # click behavior (jump to step 1); this class only builds/positions
-        # it, and keeps the same `saved_state_widget` container so that
-        # wiring (mousePressEvent) keeps working unchanged regardless of
-        # where it sits in the layout.
+        """Build the run-selection zone and its associated actions.
+
+        Creates the searchable run combo box, saved-state indicator, inline
+        filter controls, and Run Info/Restore/Close toolbar.  The controls are
+        constructed here but their signals remain unconnected so `UIAnalyze`
+        can retain ownership of application behavior.
+
+        The hidden `text_Created` label is also preserved for compatibility
+        with existing code that uses it to track the current run identity.
+        """
         self.saved_state_dot = SavedStateDot()
         self.saved_state_widget = QtWidgets.QWidget()
         self.saved_state_widget.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
@@ -110,85 +113,42 @@ class AnalyzeActionBar(TaskBarBase):
         saved_state_layout.setSpacing(0)
         saved_state_layout.addWidget(self.saved_state_dot)
 
-        # Searchable run field: an editable AnimatedComboBox with a
-        # substring-filtering QCompleter sharing its own item model, so
-        # every existing cBox_Runs call site (addItems/clear/currentText/
-        # findText/currentIndexChanged/activated/...) keeps working
-        # unchanged - only typed input gains live filtering.
+        # Searchable run field
         self.cBox_Runs = AnimatedComboBox(
             icon_path=os.path.join(Architecture.get_path(), "QATCH", "icons", "down-chevron.svg")
         )
         self.cBox_Runs.setFixedHeight(30)
-        # Fixed, not content-driven: _refresh_cbox_runs used to call
-        # setFixedWidth(sizeHint()) on every rebuild, which made the whole
-        # bar visibly jump/reflow depending on which run happened to be
-        # widest/first/selected at that moment.
         self.cBox_Runs.setFixedWidth(260)
         self.cBox_Runs.setEditable(True)
         self.cBox_Runs.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
 
         completer = QtWidgets.QCompleter(self.cBox_Runs.model(), self.cBox_Runs)
-        completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
-        completer.setFilterMode(QtCore.Qt.MatchContains)
-        completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
+        completer.setCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QtWidgets.QCompleter.CompletionMode.PopupCompletion)
         self.cBox_Runs.setCompleter(completer)
-        # Otherwise the type-to-filter suggestion list falls back to Qt's
-        # bare default popup chrome, which reads as a different dropdown
-        # style from cBox_Runs's own rounded/flat-token-driven popup.
         self.cBox_Runs.style_completer_popup(completer)
 
         line_edit = self.cBox_Runs.lineEdit()
-        # Shows whenever nothing is selected (see UIAnalyze._refresh_cbox_
-        # runs, which lands on currentIndex(-1) rather than defaulting to
-        # the first run in the list) - doubles as "type to search" and "you
-        # need to pick one," rather than "Find run…" alone, which only
-        # communicated the former.
+        # Shows whenever nothing is selected
+        assert line_edit is not None, "Run combo box has no line edit"
         line_edit.setPlaceholderText("Select a run to load…")
         line_edit.setFrame(False)
-        # Background/border/color/selection colors are all handled by
-        # AnimatedComboBox itself (_apply_text_qss, re-run on every theme
-        # change/setEditable) - setting a stylesheet here too would win
-        # (last-applied wins) and silently drop back to unstyled default
-        # (near-black, invisible in dark mode) text the next time this
-        # widget's own theming runs without this line also re-running.
-
         self.search_action = line_edit.addAction(QtGui.QIcon(), QtWidgets.QLineEdit.LeadingPosition)
-        # Quick-clear "x" - only shown once a filter is actually active (see
-        # set_filter_active), sitting just before the filter icon so a
-        # filter can be cleared right from the field without opening the
-        # popover. UIAnalyze.setup_ui connects its `triggered` straight to
-        # the same clear handler the popover's own "Clear" link uses.
         self.clear_filter_action = line_edit.addAction(
             QtGui.QIcon(), QtWidgets.QLineEdit.TrailingPosition
         )
+        assert self.clear_filter_action is not None, "Run combo box has no clear filter action"
         self.clear_filter_action.setToolTip("Clear filter")
         self.clear_filter_action.setVisible(False)
-        self._restyle_static_line_edit_icons()  # sets the two icons above from theme tokens
-
-        # "▾ filters" affordance embedded in the field - UIAnalyze.setup_ui
-        # connects `filter_action.triggered` to open the filter popover
-        # (this class only builds it, per the module's wrap-don't-own rule).
-        # Its icon switches to an accent tint (see set_filter_active) so an
-        # active filter is visible without opening the popover.
+        self._restyle_static_line_edit_icons()
         self.filter_action = line_edit.addAction(
             QtGui.QIcon(), QtWidgets.QLineEdit.TrailingPosition
         )
+        assert self.filter_action is not None, "Run combo box has no filter action"
         self.filter_action.setToolTip("Filter runs…")
         self._filter_active = False
         self._restyle_filter_icon()
-
-        # Run Info / Restore / Close share one CtrlToolBar-named toolbar
-        # (matching tBtn_Predict/tool_Modify/tool_Analyze's own wrapping
-        # toolbars) rather than sitting bare in this QHBoxLayout -
-        # objectName "CtrlToolBar" is what actually picks up the app-wide
-        # QSS that gives every other button in this bar its chrome, so
-        # without it these would render unstyled next to a themed search
-        # field. Grouped here (not in the APP zone, where Close used to
-        # live) since all three act on the currently loaded run
-        # specifically: Restore discards in-memory edits and reloads the
-        # run exactly as last saved to disk (see
-        # UIAnalyze._restore_run_from_disk); Close exits back to no run
-        # loaded.
         self.tBtn_Info = self._tool_button("Run Info", "info-circle.svg")
         self.tool_Restore = self._tool_button("Restore", "restore.svg")
         self.tool_Cancel = self._tool_button("Close", "cancel.svg")
@@ -196,12 +156,6 @@ class AnalyzeActionBar(TaskBarBase):
         self.run_actions_bar.addWidget(self.tBtn_Info)
         self.run_actions_bar.addWidget(self.tool_Restore)
         self.run_actions_bar.addWidget(self.tool_Cancel)
-
-        # AlignVCenter on all three: cBox_Runs (a fixed 30px field),
-        # saved_state_widget (a bare dot), and run_actions_bar (taller -
-        # icon-over-label) would otherwise be stretched to the row's full
-        # height by the layout and read as top-aligned relative to each
-        # other.
         self.run_zone = QtWidgets.QHBoxLayout()
         self.run_zone.setContentsMargins(0, 0, 0, 0)
         self.run_zone.setSpacing(8)
@@ -210,55 +164,63 @@ class AnalyzeActionBar(TaskBarBase):
         self.run_zone.addWidget(self.run_actions_bar, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         # UIAnalyze/MainWindow track the current run's identity via this
-        # label's text (see e.g. MainWindow.set_captured_data and
-        # UIAnalyze._current_run) instead of a plain attribute, so it has to
-        # keep existing even though the task bar no longer displays it.
+        # label's text
         self.text_Created = QtWidgets.QLabel("[NONE]", self)
         self.text_Created.hide()
 
     def set_filter_active(self, active: bool) -> None:
-        """Reflects whether any run filter is currently applied.
+        """Update the visual state of the run-filter controls.
 
-        Tints the filter icon accent-color instead of muted, and reveals
-        the inline quick-clear "x" action beside it, so an active filter is
-        visible - and clearable - right from the search field without
-        opening the popover. UIAnalyze calls this after every filter
-        change (device/date/new-only/sort/clear) and once at startup.
+        An active filter changes the filter icon to the theme accent color and
+        reveals the inline clear action.  An inactive filter restores the
+        muted icon and hides the clear action.
+
+        Args:
+            active (bool): Whether one or more run filters are currently
+                applied.
         """
         self._filter_active = active
+        assert self.clear_filter_action is not None, "Run combo box has no clear filter action"
         self.clear_filter_action.setVisible(active)
         self._restyle_filter_icon()
 
     def _restyle_filter_icon(self) -> None:
+        """Apply the current theme color to the filter icon.
+
+        The icon uses the accent token while filtering is active and the
+        muted text token otherwise.
+        """
         tok = ThemeManager.instance().tokens()
         color = QtGui.QColor(
             *(tok["flat_accent"] if self._filter_active else tok["flat_text_muted"])
         )
+        assert self.filter_action is not None, "Run combo box has no filter action"
         self.filter_action.setIcon(tinted_icon(_icon_path("filter.svg"), color, 18))
 
     def _restyle_static_line_edit_icons(self) -> None:
-        """Retints the leading search icon and the quick-clear "x" - both
-        always-muted, unlike the filter icon's active/inactive states."""
+        """Refresh the search and clear icons embedded in the run field.
+
+        Both icons remain muted regardless of filter state.  This keeps their
+        visual role distinct from the filter icon, which uses the accent color
+        when a filter is active.
+        """
         tok = ThemeManager.instance().tokens()
         color = QtGui.QColor(*tok["flat_text_muted"])
+        assert self.search_action is not None, "Run combo box has no search action"
         self.search_action.setIcon(tinted_icon(_icon_path("search.svg"), color, 16))
+        assert self.clear_filter_action is not None, "Run combo box has no clear filter action"
         self.clear_filter_action.setIcon(tinted_icon(_icon_path("clear.svg"), color, 14))
 
     def _build_fit_group(self) -> None:
-        # The Load button was removed - loading now happens by picking a run
-        # from cBox_Runs above (auto-loads on selection) or, when no run is
-        # loaded yet, via the Signal Overview plot's own placeholder card
-        # (see UIAnalyze._show_no_run_overlay), which owns "Load from
-        # folder..." instead.
-        self.tBtn_Predict = self._tool_button("Auto-Fit", "stars.svg")
+        """Build the fit and analysis action group.
 
-        # Back/Next - same _tool_button() helper (and so the same chrome)
-        # as Auto-Fit/Modify/Analyze, now with the dedicated previous/next
-        # icon files instead of a native arrow glyph. Standing adjacent
-        # (the "pos N/6" label that used to sit between them was removed).
+        Creates the Auto-Fit, previous/next position, Modify, and Analyze
+        controls and places them in a shared themed toolbar.  Loading is not
+        handled here; run selection is performed by the searchable run field.
+        """
+        self.tBtn_Predict = self._tool_button("Auto-Fit", "stars.svg")
         self.tool_Back = self._tool_button("Back", "previous.svg")
         self.tool_Next = self._tool_button("Next", "next.svg")
-
         self.tool_Modify = self._tool_button("Modify", "modify.svg", checkable=True)
         self.tool_Analyze = self._tool_button("Analyze", "play-circle.svg")
 
@@ -270,10 +232,15 @@ class AnalyzeActionBar(TaskBarBase):
         self.fit_bar.addWidget(self.tool_Analyze)
 
     def _build_app_group(self) -> None:
+        """Build the application-level action group.
+
+        Creates the Advanced and User controls, places them in the application
+        toolbar, and initially disables the User control until the owning UI
+        has refreshed the actual signed-in state.
+        """
         self.tool_Advanced = self._tool_button("Advanced", "gear.svg", checkable=True)
         self.tool_User = self._tool_button("Anonymous", "user-circle.svg", checkable=True)
-        # Starts disabled; UIAnalyze.setup_ui/check_user_info refresh this to
-        # the real signed-in state (mirrors UIControls.refresh_user_button_state).
+        # Starts disabled
         self.tool_User.setEnabled(False)
 
         self.app_bar = self._make_toolbar()
@@ -281,12 +248,16 @@ class AnalyzeActionBar(TaskBarBase):
         self.app_bar.addWidget(self.tool_User)
 
     def _assemble(self) -> None:
+        """Assemble the three action-bar zones into the final layout.
+
+        The run, fit/analyze, and application toolbars are separated with
+        dividers whose height is derived from the fit toolbar's size hint.
+        This keeps divider geometry aligned with the themed toolbar controls
+        without relying on a hard-coded height.
+        """
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(*self.OUTER_MARGINS)
         layout.setSpacing(self.ZONE_SPACING)
-        # All three CtrlToolBar rows (run_actions_bar/fit_bar/app_bar) share
-        # the same icon size/QSS, so they hint to the same height - use
-        # that as the divider height rather than a guessed constant.
         toolbar_h = self.fit_bar.sizeHint().height()
         layout.addLayout(self.run_zone)
         layout.addWidget(self._make_divider(toolbar_h), 0, QtCore.Qt.AlignmentFlag.AlignVCenter)

@@ -44,7 +44,7 @@ from QATCH.ui.styles.theme_manager import (
     glass_panel_qss,
     tok_css,
 )
-from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget
+from QATCH.ui.widgets.query_run_info_widget import QueryRunInfoWidget, ScanNowOverlay
 
 TAG = "[RunInfoOverlay]"
 
@@ -184,9 +184,12 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
         self.btn_save_all.pressed.connect(self._confirm_all)
         outer.addWidget(self.btn_save_all)
 
-        # scannow highlight widget for the common batch field
-        self.l_scannow = QtWidgets.QWidget(self.common_row)
+        # scannow highlight widget for the common batch field - same
+        # pulsing-chrome overlay QueryRunInfoWidget uses for its own (single
+        # -port) batch field, so both scan-now prompts read as one control.
+        self.l_scannow = ScanNowOverlay(self.common_row)
         self.l_scannow.setVisible(False)
+        self._scan_now_wired = False  # guards a one-time textEdited connect
 
         QtWidgets.QShortcut(
             QtGui.QKeySequence(QtCore.Qt.Key_Enter), self.common_row, activated=self._confirm_all
@@ -232,7 +235,7 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
         return lbl
 
     def _field_label(self, text: str) -> QtWidgets.QLabel:
-        lbl = QtWidgets.QLabel(f"{text}\t=")
+        lbl = QtWidgets.QLabel(text)
         lbl.setStyleSheet(field_label_qss())
         self._field_labels.append(lbl)
         return lbl
@@ -413,7 +416,6 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
 
             self._update_hidden_child_fields()
             QtCore.QTimer.singleShot(500, self.showScanNow)
-            QtCore.QTimer.singleShot(1000, self.flashScanNow)
             self.t_batch.setFocus()
 
         self.setVisible(True)
@@ -482,40 +484,31 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
             self._detect_change()
 
     def showScanNow(self) -> None:
+        """Wires the scan-now prompt to the batch field's emptiness and
+        reveals it if the field is still empty right now. Tracked by
+        content, not focus: the prompt stays up (pulsing continuously via
+        ScanNowOverlay's own looping animation - see its class docstring)
+        for as long as no batch number has been entered, and comes right
+        back if the user clears the field again after typing - not a
+        one-shot flash that disappears the moment focus moves away."""
         if len(self._forms) <= 1:
+            return
+        if not self._scan_now_wired:
+            self._scan_now_wired = True
+            self.t_batch.textEdited.connect(self._sync_scan_now)
+        self._sync_scan_now()
+
+    def _sync_scan_now(self) -> None:
+        if len(self.t_batch.text().strip()) != 0:
+            self.l_scannow.hide()
             return
         self.l_scannow.resize(self.t_batch.size())
         self.l_scannow.move(self.t_batch.pos())
-        self.l_scannow.setObjectName("scannow")
-        self.l_scannow.setStyleSheet(
-            "#scannow { background-color: #F5FE49; border: 1px solid #7A7A7A; }"
-        )
-        h_scannow = QtWidgets.QHBoxLayout()
-        h_scannow.setContentsMargins(3, 0, 6, 0)
-        self.t_scannow = QtWidgets.QLabel("Scan or enter now!")
-        h_scannow.addWidget(self.t_scannow)
-        h_scannow.addStretch()
-        i_scannow = QtWidgets.QLabel()
-        i_scannow.setPixmap(
-            QtGui.QPixmap(os.path.join(_ICONS_DIR, "barcode.svg")).scaledToHeight(
-                max(1, self.l_scannow.height() - 2)
-            )
-        )
-        h_scannow.addWidget(i_scannow)
-        self.l_scannow.setLayout(h_scannow)
+        self.l_scannow.raise_()
+        # ScanNowOverlay paints/animates its own chrome (see its class
+        # docstring in query_run_info_widget.py) and starts its pulse
+        # automatically on setVisible(True) (QWidget.showEvent).
         self.l_scannow.setVisible(True)
-        self.t_batch.textEdited.connect(self.l_scannow.hide)
-
-    def flashScanNow(self) -> None:
-        if self.l_scannow.isVisible():
-            if not self.t_batch.hasFocus():
-                self.l_scannow.hide()
-            elif self.t_scannow.styleSheet() == "":
-                self.t_scannow.setStyleSheet("color: #F5FE49;")
-                QtCore.QTimer.singleShot(250, self.flashScanNow)
-            else:
-                self.t_scannow.setStyleSheet("")
-                QtCore.QTimer.singleShot(500, self.flashScanNow)
 
     def copyText(self, _event) -> None:
         try:

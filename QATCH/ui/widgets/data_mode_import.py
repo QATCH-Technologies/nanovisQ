@@ -38,7 +38,6 @@ from QATCH.core.constants import Constants
 from QATCH.ui.components import (
     QATCHOptionCard,
     QATCHOptionCardGroup,
-    QATCHPanel,
     QATCHPushButton,
 )
 from QATCH.ui.components.icon_utils import tinted_pixmap
@@ -46,6 +45,7 @@ from QATCH.ui.styles.theme_manager import (
     ThemeManager,
     caption_label_qss,
     desc_label_qss,
+    hairline_qss,
     tok_css,
 )
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
@@ -446,8 +446,14 @@ class ImportMode(DataModeWidget):
         self._policy_wide = None
         src_lay.addWidget(self.policy_host)
 
-        # ---- Preview card ---------------------------------------------
-        prev_card = QATCHPanel()
+        # ---- Preview section --------------------------------------------
+        # Borderless - sits on the tab rail's own content-pane surface
+        # (see ConnectedTabRail) rather than nesting another bordered panel
+        # inside it; separated from the source section above by a hairline
+        # (see content.addWidget(self._src_prev_hairline) below).
+        prev_card = QtWidgets.QFrame()
+        prev_card.setObjectName("dataCard")
+        prev_card.setStyleSheet("QFrame#dataCard { background: transparent; border: none; }")
         prev_lay = QtWidgets.QVBoxLayout(prev_card)
         prev_lay.setContentsMargins(14, 12, 14, 12)
         prev_lay.setSpacing(8)
@@ -532,6 +538,8 @@ class ImportMode(DataModeWidget):
         content.setContentsMargins(2, 2, 6, 2)  # right pad = room for scrollbar
         content.setSpacing(12)
         content.addWidget(src_card)
+        self._src_prev_hairline = self._hairline()
+        content.addWidget(self._src_prev_hairline)
         content.addWidget(prev_card, 1)
 
         self.scroll.setWidget(self.scroll_host)
@@ -647,6 +655,7 @@ class ImportMode(DataModeWidget):
         """)
         self._set_status_tint(self._status_tint)
         self._restyle_card(self._src_card)
+        self._src_prev_hairline.setStyleSheet(hairline_qss())
         for chip in self._chip_widgets.values():
             self._restyle_chip(chip)
 
@@ -1742,7 +1751,14 @@ class ImportMode(DataModeWidget):
         return QtGui.QIcon()
 
     def _card(self, title, subtitle=""):
-        card = QATCHPanel()
+        """A borderless content section - no background/border of its own,
+        since it already sits on the tab rail's own content-pane surface
+        (see ConnectedTabRail). A second bordered panel here would just
+        nest one border inside another (the same fix applied to
+        UserPreferencesWidget's section wells)."""
+        card = QtWidgets.QFrame()
+        card.setObjectName("dataCard")
+        card.setStyleSheet("QFrame#dataCard { background: transparent; border: none; }")
         lay = QtWidgets.QVBoxLayout(card)
         lay.setContentsMargins(14, 12, 14, 12)
         lay.setSpacing(8)
@@ -1768,3 +1784,13 @@ class ImportMode(DataModeWidget):
         )
         if card._sub_lbl is not None:
             card._sub_lbl.setStyleSheet(desc_label_qss())
+
+    @staticmethod
+    def _hairline():
+        """A subtle 1px divider between stacked borderless sections -
+        mirrors UserPreferencesWidget's section separators."""
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.HLine)
+        line.setFixedHeight(1)
+        line.setStyleSheet(hairline_qss())
+        return line

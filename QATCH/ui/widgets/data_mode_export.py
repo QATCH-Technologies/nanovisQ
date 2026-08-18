@@ -66,7 +66,6 @@ from QATCH.ui.components import (
     QATCHLineEdit,
     QATCHOptionCard,
     QATCHOptionCardGroup,
-    QATCHPanel,
     QATCHPushButton,
 )
 from QATCH.ui.components.icon_utils import tinted_icon
@@ -75,6 +74,7 @@ from QATCH.ui.styles.theme_manager import (
     ThemeManager,
     caption_label_qss,
     desc_label_qss,
+    hairline_qss,
     tok_css,
 )
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
@@ -330,6 +330,8 @@ class ExportMode(DataModeWidget):
 
         for card in self._cards:
             self._restyle_card(card)
+        if hasattr(self, "_fields_hairline"):
+            self._fields_hairline.setStyleSheet(hairline_qss())
 
         self._review_heading.setStyleSheet(
             f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 14px; "
@@ -701,6 +703,9 @@ class ExportMode(DataModeWidget):
         self._update_csv_count()
         outer.addWidget(self.csv_card)
 
+        self._fields_hairline = self._hairline()
+        outer.addWidget(self._fields_hairline)
+
         # --- Existing-files policy: Merge / Replace / Skip -------------
         policy_card = self._card("Existing Files")
         policy_card.body.addWidget(self._caption("When a file already exists"))
@@ -847,7 +852,9 @@ class ExportMode(DataModeWidget):
             ),
         ]
 
-        for heading, step_index, rows in sections:
+        for i, (heading, step_index, rows) in enumerate(sections):
+            if i > 0:
+                self.review_cards_lay.addWidget(self._hairline())
             self.review_cards_lay.addWidget(self._build_review_card(heading, step_index, rows))
 
         fmt_phrase = {0: "one CSV report", 1: "a ZIP archive", 2: "a folder of files"}.get(
@@ -860,9 +867,16 @@ class ExportMode(DataModeWidget):
         )
 
     def _build_review_card(self, title, step_index, rows):
-        """One grouped review card: a small caption + "Edit" link (jumps
-        back to the step that owns this data) above a 2-column field grid."""
-        card = QATCHPanel()
+        """One grouped review section: a small caption + "Edit" link (jumps
+        back to the step that owns this data) above a 2-column field grid.
+
+        Borderless - the review list separates its entries with hairlines
+        (see _refresh_review) rather than nesting another bordered panel
+        inside the step's own content pane.
+        """
+        card = QtWidgets.QFrame()
+        card.setObjectName("reviewCard")
+        card.setStyleSheet("QFrame#reviewCard { background: transparent; border: none; }")
         clay = QtWidgets.QVBoxLayout(card)
         clay.setContentsMargins(14, 12, 14, 12)
         clay.setSpacing(8)
@@ -2322,6 +2336,16 @@ class ExportMode(DataModeWidget):
         return w
 
     @staticmethod
+    def _hairline():
+        """A subtle 1px divider between stacked borderless sections -
+        mirrors UserPreferencesWidget's section separators."""
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.HLine)
+        line.setFixedHeight(1)
+        line.setStyleSheet(hairline_qss())
+        return line
+
+    @staticmethod
     def _radio_qss():
         tok = ThemeManager.instance().tokens()
         return (
@@ -2417,15 +2441,23 @@ class ExportMode(DataModeWidget):
         return ""
 
     def _card(self, title, subtitle="", header_right=None):
-        """A frosted glass panel. Returns the GlassPanel with a `.body`
+        """A borderless content section. Returns the frame with a `.body`
         QVBoxLayout for callers to populate (header + optional subtitle are
         pre-added).
+
+        No background/border of its own - the step stack already sits on
+        the tab rail's own content-pane surface (see ConnectedTabRail),
+        so a second bordered panel here would just nest one border inside
+        another (the same fix applied to UserPreferencesWidget's section
+        wells). Only the object name + padding-via-layout role remain.
 
         `header_right` is an optional widget or layout (e.g. "Select all /
         Clear" actions, an "Edit" link) docked to the right of the title,
         on the same line.
         """
-        card = QATCHPanel()
+        card = QtWidgets.QFrame()
+        card.setObjectName("dataCard")
+        card.setStyleSheet("QFrame#dataCard { background: transparent; border: none; }")
         outer = QtWidgets.QVBoxLayout(card)
         outer.setContentsMargins(14, 12, 14, 12)
         outer.setSpacing(8)

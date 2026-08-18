@@ -16,15 +16,17 @@ from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants, UserRoles
 from QATCH.ui.components import (
     AnimatedComboBox,
-    AnimatedSpinBox,
     LabeledToggle,
     QATCHLineEdit,
     QATCHOptionCard,
     QATCHOptionCardGroup,
     QATCHPanel,
     QATCHPushButton,
+    QATCHSpinBox,
     SegmentedControl,
 )
+from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.components.icon_utils import tinted_pixmap
 from QATCH.ui.components.stepper import Stepper
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
@@ -54,6 +56,102 @@ from QATCH.VisQAI.src.models.ingredient import (
 from QATCH.VisQAI.src.utils.list_utils import ListUtils
 
 TAG = "[QueryRunInfoWidget]"
+
+
+class ScanNowOverlay(QtWidgets.QFrame):
+    """Overlay drawn on top of the Batch Number field right after a run
+    finishes, prompting the user to scan (or type) a batch number.
+
+    Painted with the same flat rounded chrome as `QATCHLineEdit`/
+    `QATCHSpinBox` (see `flat_paint.paint_flat_surface`, same 7px radius)
+    instead of a hardcoded flat-yellow rectangle with a square border, so it
+    reads as this app's own control being urgently highlighted rather than
+    a foreign-looking sticky note. The urgency comes from the whole box's
+    fill looping between the theme's normal surface color and its warning/
+    amber wash (`flat_warning_weak`, bordered in `flat_warning`) - not a
+    flashing text color - so the entire field pulses, not just the label
+    sitting on top of it. Shared by `QueryRunInfoWidget` (single-port) and
+    `RunInfoOverlay` (multi-port common row) so both scan-now prompts read
+    as the same control.
+    """
+
+    _RADIUS = 7.0
+    _PULSE_DURATION_MS = 1600
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._pulse_t = 0.0
+        self._icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "barcode.svg")
+        if not os.path.exists(self._icon_path):
+            self._icon_path = None
+
+        self._anim = QtCore.QVariantAnimation(self)
+        self._anim.setStartValue(0.0)
+        self._anim.setKeyValueAt(0.5, 1.0)
+        self._anim.setEndValue(0.0)
+        self._anim.setDuration(self._PULSE_DURATION_MS)
+        self._anim.setEasingCurve(QtCore.QEasingCurve.InOutSine)
+        self._anim.setLoopCount(-1)
+        self._anim.valueChanged.connect(self._on_pulse)
+
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(12, 0, 10, 0)
+        lay.setSpacing(6)
+        self.label = QtWidgets.QLabel("Scan or enter now!")
+        lay.addWidget(self.label)
+        lay.addStretch(1)
+        self.icon = QtWidgets.QLabel()
+        lay.addWidget(self.icon)
+
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+        self._on_theme_changed()
+
+    def _on_theme_changed(self, _mode: Optional[str] = None) -> None:
+        tok = ThemeManager.instance().tokens()
+        self.label.setStyleSheet(
+            "QLabel { background: transparent; border: none; font-weight: 600; "
+            f"color: {tok_css(tok['flat_text'])}; }}"
+        )
+        self.icon.setStyleSheet("background: transparent; border: none;")
+        if self._icon_path:
+            self.icon.setPixmap(tinted_pixmap(self._icon_path, QtGui.QColor(*tok["flat_text"]), 18))
+        self.update()
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        super().showEvent(event)
+        self._anim.stop()
+        self._anim.start()
+
+    def hideEvent(self, event: QtGui.QHideEvent) -> None:
+        super().hideEvent(event)
+        self._anim.stop()
+
+    def _on_pulse(self, value) -> None:
+        self._pulse_t = float(value)
+        self.update()
+
+    @staticmethod
+    def _lerp(a: QtGui.QColor, b: QtGui.QColor, t: float) -> QtGui.QColor:
+        return QtGui.QColor(
+            int(a.red() + (b.red() - a.red()) * t),
+            int(a.green() + (b.green() - a.green()) * t),
+            int(a.blue() + (b.blue() - a.blue()) * t),
+            int(a.alpha() + (b.alpha() - a.alpha()) * t),
+        )
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        tok = ThemeManager.instance().tokens()
+        base = QtGui.QColor(*tok["flat_surface"])
+        warm = QtGui.QColor(*tok["flat_warning_weak"])
+        fill = self._lerp(base, warm, self._pulse_t)
+        border = QtGui.QColor(*tok["flat_warning"])
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        paint_flat_surface(
+            self, radius=self._RADIUS, fill=fill, border=border, border_width=1.5, ring=None, painter=p
+        )
+        p.end()
 
 
 class QueryRunInfoWidget(QtWidgets.QWidget):
@@ -109,10 +207,6 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self._wizard_mode = False
         self._wizard_step_kinds: list[str] = []  # populated by _enter_wizard_mode()
         self._ICON_CHEVRON = os.path.join(
-            Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
-        )
-        self._ICON_SPIN_UP = os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg")
-        self._ICON_SPIN_DOWN = os.path.join(
             Architecture.get_path(), "QATCH", "icons", "down-chevron.svg"
         )
 
@@ -174,7 +268,11 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q2 = QtWidgets.QHBoxLayout()
         self.l2 = self._field_label("Type")  # solvent type
         self.q2.addWidget(self.l2)
-        self.t0 = QATCHLineEdit()
+        # Editable AnimatedComboBox, not a plain line edit: gives Solvent
+        # the same animated, rounded dropdown as every other ingredient
+        # Type field, while staying free-text/searchable via its completer.
+        self.t0 = AnimatedComboBox(self._ICON_CHEVRON)
+        self.t0.setEditable(True)
 
         self.fluids = []
         self.surface_tensions = []
@@ -212,6 +310,8 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             self.surface_tensions = self.surface_tensions[idxs].tolist()
             self.densities = self.densities[idxs].tolist()
             Log.d("SUCCESS: Loaded solvents list @ 'lookup_by_solvent.csv'")
+            self.t0.addItems(self.fluids)
+            self.t0.setCurrentIndex(-1)
             completer = QtWidgets.QCompleter(self)
             completer_model = QtCore.QStringListModel(self.fluids, completer)
             completer.setModel(completer_model)
@@ -221,17 +321,19 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             completer.setFilterMode(QtCore.Qt.MatchContains)
             completer.setMaxVisibleItems(3)
             self.t0.setCompleter(completer)
-            self.t0.setClearButtonEnabled(True)
+            self.t0.style_completer_popup(completer)
+            self.t0.lineEdit().setClearButtonEnabled(True)
         except Exception as e:
             Log.e("ERROR:", e)
             Log.w("WARNING: Failed to load solvents list @ 'lookup_by_solvent.csv'")
             Log.w("You will need to enter your solvent run parameters manually.")
 
-        self.q2.addWidget(self.t0)
+        self.q2.addWidget(self.t0, 1)
         self.h0 = self._hint("If not listed, enter parameters manually.")
         self.q2.addWidget(self.h0)
-        self.t0.textChanged.connect(self.lookup_completer)
-        self.t0.editingFinished.connect(self.enforce_completer)
+        self.t0.editTextChanged.connect(self.lookup_completer)
+        self.t0.editTextChanged.connect(self.detect_change)
+        self.t0.lineEdit().editingFinished.connect(self.enforce_completer)
 
         # Solvent Groupbox
         self.groupSolvent, self.vbox0 = self._panel("Solvent Information")
@@ -502,12 +604,18 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.f_channels.setObjectName("fChannelsManualFrame")
         f_channels_layout = QtWidgets.QHBoxLayout()
         f_channels_layout.setContentsMargins(0, 0, 0, 0)
-        self.t_channels = AnimatedSpinBox(self._ICON_SPIN_UP, self._ICON_SPIN_DOWN)
+        self.t_channels = QATCHSpinBox()
         self.t_channels.setRange(0, 3)  # enforce 0–3
         # arrows increment/decrement by 1
         self.t_channels.setSingleStep(1)
         # if you want units, you could add " channels"
         self.t_channels.setSuffix("")
+        # QATCHSpinBox's own natural sizeHint is noticeably shorter than
+        # QATCHLineEdit's (37px, e.g. Density right above it on this same
+        # page) - pin both to the same height so Fill Channels doesn't read
+        # as a visibly smaller control among its neighbors.
+        self.t_channels.setFixedHeight(37)
+        self.f_channels.setFixedHeight(37)
         # NOTE: setting the value must be after XML recall
         f_channels_layout.addWidget(self.t_channels)
         self.f_channels.setLayout(f_channels_layout)
@@ -610,8 +718,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
         ###### scannow widget for batch number ######
         # note: this must be after self.setLayout() #
-        self.l_scannow = QtWidgets.QWidget(self)  #
+        self.l_scannow = ScanNowOverlay(self)  #
         self.l_scannow.setVisible(False)  #
+        self._scan_now_wired = False  # guards a one-time textEdited connect
         #############################################
 
         QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Enter), self, activated=self.confirm)
@@ -639,7 +748,6 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         tb_elems = [
             self.t_runname,
             self.t_batch,
-            self.t0,
             self.t1,
             self.t2,
             self.t3,
@@ -724,9 +832,21 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self._captions.append(lbl)
         return lbl
 
-    def _field_label(self, text: str) -> QtWidgets.QLabel:
-        lbl = QtWidgets.QLabel(f"{text}\t=")
+    # Shared column width for every field_label that precedes an input box,
+    # across every wizard step (Identify/Composition/Properties) - sized to
+    # comfortably fit the longest of them ("Surface Tension") without
+    # wrapping. Every row's input then starts at the same X and, given an
+    # equal amount of row width available on every step, ends up the same
+    # width too - see _rebuild_composition_table for the Solvent row's
+    # matching treatment (composition_grid's column 0 / the Type column's
+    # max-width cap).
+    _FIELD_LABEL_WIDTH = 140
+
+    def _field_label(self, text: str, *, fixed_width: bool = True) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(text)
         lbl.setStyleSheet(field_label_qss())
+        if fixed_width:
+            lbl.setFixedWidth(self._FIELD_LABEL_WIDTH)
         self._field_labels.append(lbl)
         return lbl
 
@@ -734,6 +854,14 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         lbl = QtWidgets.QLabel(f"<u>{text}</u>")
         lbl.setStyleSheet(desc_label_qss())
         lbl.setToolTip(f"<b>Hint:</b> {tooltip}")
+        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        # A bare "?" glyph's natural sizeHint is only a few pixels wide (its
+        # own char width at this font size) - too thin a hit-region to
+        # reliably hover/click. Padding the layout box out to a real target
+        # size, plus a cursor that visibly changes on approach, is what
+        # actually makes the hint interactive rather than just present.
+        lbl.setMinimumWidth(20)
+        lbl.setCursor(QtCore.Qt.CursorShape.WhatsThisCursor)
         self._hints.append(lbl)
         return lbl
 
@@ -913,12 +1041,21 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         lay.setContentsMargins(2, 2, 2, 2)
         lay.setSpacing(10)
 
-        lay.addWidget(self._field_label("Is this a bioformulation?"))
+        bio_row = QtWidgets.QHBoxLayout()
+        # Not fixed-width: this question is long enough ("Is this a
+        # bioformulation?") that forcing it into the same column as the
+        # input-row labels would make every other row's label column
+        # needlessly wide. It has no trailing input box to align with
+        # anyway (a segmented Yes/No control, not a box) - see
+        # _FIELD_LABEL_WIDTH.
+        bio_row.addWidget(self._field_label("Is this a bioformulation?", fixed_width=False))
         self.segmented_bio = SegmentedControl(
             [("yes", "Yes"), ("no", "No")], orientation=QtCore.Qt.Orientation.Horizontal
         )
         self.segmented_bio.modeChanged.connect(self._on_segmented_bio_changed)
-        lay.addWidget(self.segmented_bio)
+        bio_row.addWidget(self.segmented_bio)
+        bio_row.addStretch(1)
+        lay.addLayout(bio_row)
 
         lay.addWidget(self._caption("Composition"))
 
@@ -959,6 +1096,16 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         ph_row.addWidget(self.h20)
         ph_row.addStretch(1)
         lay.addWidget(self.ph_row_widget)
+
+        # Without this, every step page is forced to the same height (they
+        # share one QStackedWidget - see _enter_wizard_mode), and Identify/
+        # Properties each absorb that surplus into their own trailing
+        # stretch (see the bottom of those two builders) while this page
+        # has none - the surplus height lands on composition_frame instead,
+        # which then centers its one real row (e.g. Solvent, when
+        # bioformulation is "No") inside itself instead of keeping it
+        # flush under "Is this a bioformulation?".
+        lay.addStretch(1)
 
         return host
 
@@ -1026,14 +1173,29 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             ing_label = QtWidgets.QLabel(f"● {label}" if required else label)
             ing_label.setProperty("required", required)
             ing_label.setStyleSheet(self._ingredient_label_qss(required))
-            ing_label.setMaximumWidth(80)
+            if is_bio:
+                # Keep the original tight cap for the 6-row table - Conc./
+                # Unit still need the room, and no ingredient name here
+                # ("Excipient" is the longest) needs more than this anyway.
+                ing_label.setMaximumWidth(80)
+            else:
+                # Solvent is the table's only row here - fix its label to
+                # the same column width every other step's field_label
+                # uses, so its input box starts at the same X as Run Name/
+                # Surface Tension/etc. (see _FIELD_LABEL_WIDTH).
+                ing_label.setFixedWidth(self._FIELD_LABEL_WIDTH)
             self.composition_grid.addWidget(ing_label, r, 0)
-            # Belt-and-suspenders alongside the AdjustToMinimumContentsLength
-            # policy set on the ingredient combos earlier - caps the Type
-            # column to a fixed pixel bound regardless of what a given
-            # platform's font metrics compute minimumContentsLength out to,
-            # so the Unit column can never get pushed off the panel edge.
-            type_w.setMaximumWidth(200)
+            if is_bio:
+                # Belt-and-suspenders alongside the AdjustToMinimumContentsLength
+                # policy set on the ingredient combos earlier - caps the Type
+                # column to a fixed pixel bound regardless of what a given
+                # platform's font metrics compute minimumContentsLength out to,
+                # so the Unit column can never get pushed off the panel edge.
+                # Solvent (the "No" case) has no Conc./Unit columns to
+                # protect, so it's left uncapped - like every other step's
+                # input, it just stretches to fill the row (composition_grid
+                # already gives column 1 the stretch priority, below).
+                type_w.setMaximumWidth(200)
             self.composition_grid.addWidget(type_w, r, 1)
             if conc_w is not None:
                 # Concentration fields have no natural width cap of their
@@ -1046,6 +1208,14 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             if unit_chip is not None:
                 self.composition_grid.addWidget(unit_chip, r, 3)
             self._composition_row_widgets.append((ing_label, type_w, conc_w, unit_chip))
+
+        # The Conc./Unit columns (and the "Ingredient" header, since the
+        # single Solvent row's own left-hand label already says as much)
+        # only mean anything for the 6-ingredient bioformulation table -
+        # a bare header row over one Type-only row reads as broken, not
+        # just unused.
+        for hdr in self._composition_headers:
+            hdr.setVisible(is_bio)
 
         self._update_ph_row_visibility()
 
@@ -1192,38 +1362,39 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         super(QueryRunInfoWidget, self).resize(self.width(), self.sizeHint().height())
 
     def showScanNow(self):
-        self.l_scannow.resize(self.t_batch.size())
-        self.l_scannow.move(self.t_batch.pos())
-        self.l_scannow.setObjectName("scannow")
-        self.l_scannow.setStyleSheet(
-            "#scannow { background-color: #F5FE49; border: 1px solid #7A7A7A; }"
-        )
-        self.h_scannow = QtWidgets.QHBoxLayout()
-        self.h_scannow.setContentsMargins(3, 0, 6, 0)
-        self.t_scannow = QtWidgets.QLabel("Scan or enter now!")
-        self.h_scannow.addWidget(self.t_scannow)
-        self.h_scannow.addStretch()
-        self.i_scannow = QtWidgets.QLabel()
-        self.i_scannow.setPixmap(
-            QtGui.QPixmap(
-                os.path.join(Architecture.get_path(), "QATCH", "icons", "barcode.svg")
-            ).scaledToHeight(self.l_scannow.height() - 2)
-        )
-        self.h_scannow.addWidget(self.i_scannow)
-        self.l_scannow.setLayout(self.h_scannow)
-        self.l_scannow.setVisible(True)
-        self.t_batch.textEdited.connect(self.l_scannow.hide)
+        """Wires the scan-now prompt to the batch field's emptiness and
+        reveals it if the field is still empty right now. Tracked by
+        content, not focus: the prompt stays up (pulsing continuously via
+        ScanNowOverlay's own looping animation - see its class docstring)
+        for as long as no batch number has been entered, and comes right
+        back if the user clears the field again after typing - not a
+        one-shot flash that disappears the moment focus moves away."""
+        if not self._scan_now_wired:
+            self._scan_now_wired = True
+            self.t_batch.textEdited.connect(self._sync_scan_now)
+        self._sync_scan_now()
 
-    def flashScanNow(self):
-        if self.l_scannow.isVisible():
-            if not self.t_batch.hasFocus():
-                self.l_scannow.hide()
-            elif self.t_scannow.styleSheet() == "":
-                self.t_scannow.setStyleSheet("color: #F5FE49;")
-                QtCore.QTimer.singleShot(250, self.flashScanNow)
-            else:
-                self.t_scannow.setStyleSheet("")
-                QtCore.QTimer.singleShot(500, self.flashScanNow)
+    def _sync_scan_now(self):
+        if len(self.t_batch.text().strip()) != 0:
+            self.l_scannow.hide()
+            return
+        self.l_scannow.resize(self.t_batch.size())
+        # `t_batch.pos()` is relative to its own immediate parent, which in
+        # wizard mode is the Identify step's page (nested inside
+        # step_stack), not `self` - `l_scannow`'s actual parent. Using it
+        # directly here placed the highlight at the wrong coordinates
+        # entirely. mapTo() converts into l_scannow's parent's coordinate
+        # space regardless of how deep t_batch is nested.
+        self.l_scannow.move(self.t_batch.mapTo(self, QtCore.QPoint(0, 0)))
+        # l_scannow is an early-constructed sibling of the (later-built)
+        # wizard step_stack - without an explicit raise, the step_stack's
+        # content paints on top of it, so the highlight rendered behind the
+        # batch number field instead of over it.
+        self.l_scannow.raise_()
+        # ScanNowOverlay paints/animates its own chrome (see its class
+        # docstring) and starts its pulse automatically on setVisible(True)
+        # (QWidget.showEvent) - nothing left to build here.
+        self.l_scannow.setVisible(True)
 
     def setRuns(self, count, idx):
         self.run_count = count
@@ -1232,7 +1403,6 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         if self.run_count == 1:
             if self.post_run:
                 QtCore.QTimer.singleShot(500, self.showScanNow)
-                QtCore.QTimer.singleShot(1000, self.flashScanNow)
             show_single_fields = True
         else:
             run_name = self.t_runname.text()
@@ -1382,7 +1552,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                             except Exception as e:
                                 Log.e("ERROR:", e)
                     if name == "solvent":
-                        self.t0.setText(value)
+                        self.t0.setCurrentText(value)
                         self.lookup_completer()  # store auto_st, auto_ca, auto_dn
                         auto_st = float(self.t1.text())
                         auto_ca = float(self.t2.text())
@@ -1566,7 +1736,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
                 if len(self.t3.text()) == 0 or len(self.t4.text()) == 0:
                     allow_reset = False
             elif self.b2.isChecked():
-                if len(self.t0.text()) == 0:
+                if len(self.t0.currentText()) == 0:
                     allow_reset = False
             else:
                 allow_reset = False
@@ -1609,7 +1779,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
         tok = ThemeManager.instance().tokens()
         if manual_nc:
-            # AnimatedSpinBox paints its own chrome from theme tokens - only
+            # QATCHSpinBox paints its own chrome from theme tokens - only
             # the wrapping (plain, non-custom-painted) QFrame's border is
             # externally stylable, so that's what signals "manually edited".
             self.f_channels.setStyleSheet(
@@ -2178,7 +2348,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
 
     def lookup_completer(self):
         try:
-            solvent = self.t0.text()
+            solvent = self.t0.currentText()
             if solvent in self.fluids:
                 idx = self.fluids.index(solvent)
                 surface_tension = 72  # self.surface_tensions[idx]
@@ -2203,17 +2373,17 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e(
-                f"Failed to lookup parametres for solvent '{self.t0.text()}'.\nPlease try again, or enter parameters manually."
+                f"Failed to lookup parametres for solvent '{self.t0.currentText()}'.\nPlease try again, or enter parameters manually."
             )
 
     def enforce_completer(self):
-        solvent = self.t0.text()
+        solvent = self.t0.currentText()
         if len(solvent.strip()) < 3:  # length of shortest valid solvent string in list
-            self.t0.clear()
+            self.t0.lineEdit().clear()
             return
         if not solvent in self.fluids:
             Log.w(
-                f"Unknown solvent '{self.t0.text()}' entered.\nPlease try again, or enter parameters manually."
+                f"Unknown solvent '{self.t0.currentText()}' entered.\nPlease try again, or enter parameters manually."
             )
             # self.t0.clear()
 
@@ -2909,8 +3079,8 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         if self.b2.isChecked():  # is NOT bioformulation
             param2 = run.createElement("param")
             param2.setAttribute("name", "solvent")
-            param2.setAttribute("value", self.t0.text())
-            param2.setAttribute("input", "auto" if self.t0.text() in self.fluids else "manual")
+            param2.setAttribute("value", self.t0.currentText())
+            param2.setAttribute("input", "auto" if self.t0.currentText() in self.fluids else "manual")
             params.appendChild(param2)
 
         if self.b1.isChecked():  # IS bioformulation
