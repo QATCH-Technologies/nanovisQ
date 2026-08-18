@@ -1,5 +1,28 @@
 """
 QATCH.ui.components.overlay_shell
+
+Shared infrastructure for constructing, styling, positioning, animating, and
+managing application overlays.
+
+This module centralizes the common visual and lifecycle behavior used by
+QATCH overlay widgets, including themed headers, floating corner controls,
+fullscreen icons, fade transitions, scrim rendering, parent-relative geometry,
+and reveal/close sequencing. The shared helpers ensure that overlays use
+consistent sizing, spacing, theme colors, button placement, and animation
+behavior without duplicating implementation details across individual
+widgets.
+
+The module is intentionally focused on reusable overlay mechanics rather than
+specific application content. Individual overlay widgets are responsible for
+building their own content layouts and, where necessary, overriding the
+provided hooks for custom panel appearance, fullscreen transitions, button
+placement, and close-time teardown.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-18
 """
 
 from __future__ import annotations
