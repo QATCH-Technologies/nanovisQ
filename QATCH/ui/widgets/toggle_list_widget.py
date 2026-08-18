@@ -1,12 +1,11 @@
-from PyQt5.QtWidgets import (
-    QListWidget,
-)
-
 from PyQt5.QtCore import (
     Qt,
 )
 from PyQt5.QtGui import (
     QMouseEvent,
+)
+from PyQt5.QtWidgets import (
+    QListWidget,
 )
 
 
@@ -18,7 +17,7 @@ class ToggleListWidget(QListWidget):
     only item currently selected.
     """
 
-    def mousePressEvent(self, event: QMouseEvent):  # noqa: N802
+    def mousePressEvent(self, event: QMouseEvent):
         """Overrides the mouse press event to handle selection toggling.
 
         If a user left-clicks a single item that is already selected (without

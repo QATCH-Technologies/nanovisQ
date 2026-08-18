@@ -17,8 +17,8 @@ the well-plate configuration dialog launcher, and all associated action
 handlers, signal wiring, and helper widgets.
 
 Author(s):
-    Alexander Ross  <alexander.ross@qatchtech.com>
-    Paul MacNichol  <paul.macnichol@qatchtech.com>
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol  (paul.macnichol@qatchtech.com)
 
 Date:
     2026-06-30

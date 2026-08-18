@@ -29,7 +29,12 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from QATCH.ui.components import LabeledToggle, QATCHLineEdit, QATCHPanel, QATCHPushButton
+from QATCH.ui.components import (
+    LabeledToggle,
+    QATCHLineEdit,
+    QATCHPanel,
+    QATCHPushButton,
+)
 from QATCH.ui.components.overlay_shell import (
     FULLSCREEN_ANIM_EASING,
     OverlayLifecycleMixin,
@@ -100,9 +105,6 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
 
         self._finish_overlay_shell()
 
-    # ------------------------------------------------------------------
-    #  Build: common-fields row (shared run name/batch/notes for multi-port)
-    # ------------------------------------------------------------------
     def _build_common_row(self) -> None:
         self.common_row = QATCHPanel()
         outer = QtWidgets.QVBoxLayout(self.common_row)
@@ -198,9 +200,6 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
             QtGui.QKeySequence(QtCore.Qt.Key_Return), self.common_row, activated=self._confirm_all
         )
 
-    # ------------------------------------------------------------------
-    #  Build: ports area (grid of port cards, or a single embedded form)
-    # ------------------------------------------------------------------
     def _build_ports_area(self) -> None:
         self.ports_scroll = QtWidgets.QScrollArea()
         self.ports_scroll.setObjectName("runInfoPortsScroll")
@@ -225,9 +224,6 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
         self.ports_layout.setSpacing(12)
         self.ports_scroll.setWidget(self.ports_container)
 
-    # ------------------------------------------------------------------
-    #  Themed label helpers (mirrors QueryRunInfoWidget's convention)
-    # ------------------------------------------------------------------
     def _caption(self, text: str) -> QtWidgets.QLabel:
         lbl = QtWidgets.QLabel(text.upper())
         lbl.setStyleSheet(caption_label_qss())
@@ -250,7 +246,10 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
         for lbl in self._field_labels:
             lbl.setStyleSheet(field_label_qss())
         tok = ThemeManager.instance().tokens()
-        for name, obj in (("runInfoOverlayPath", self.t_runpath), ("runInfoOverlayNotes", self.notes)):
+        for name, obj in (
+            ("runInfoOverlayPath", self.t_runpath),
+            ("runInfoOverlayNotes", self.notes),
+        ):
             obj.setStyleSheet(
                 f"QPlainTextEdit#{name} {{"
                 f"  background: {tok_css(tok['flat_surface'])};"
@@ -324,9 +323,6 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
             self, "_fs_anim", duration=240, easing=FULLSCREEN_ANIM_EASING, on_step=_step
         )
 
-    # ------------------------------------------------------------------
-    #  Public entry point
-    # ------------------------------------------------------------------
     def open_runs(self, forms: list) -> None:
         """Populates the overlay with `forms` (one `QueryRunInfoWidget` per
         captured port) and reveals it.
@@ -384,9 +380,7 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
             self.notes.setPlainText("")
             self.q_recall.setChecked(True)
 
-            all_run_paths = [
-                os.path.join(os.getcwd(), f.getRunParams()[1]) for f in self._forms
-            ]
+            all_run_paths = [os.path.join(os.getcwd(), f.getRunParams()[1]) for f in self._forms]
             try:
                 common_path = os.path.commonpath(all_run_paths)
             except ValueError:
@@ -443,9 +437,6 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
         self._port_cards = []
         self._port_card_layouts = []
 
-    # ------------------------------------------------------------------
-    #  Common-row behavior (ported from the old RunInfoWindow)
-    # ------------------------------------------------------------------
     def _detect_change(self, *_args) -> None:
         self._unsaved_changes = True
 
@@ -521,9 +512,6 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
         self.cpy_runpath.show()
         QtCore.QTimer.singleShot(3000, self.cpy_runpath.hide)
 
-    # ------------------------------------------------------------------
-    #  Save / close
-    # ------------------------------------------------------------------
     def _mark_port_saved(self, i: int) -> None:
         if i >= len(self._port_card_layouts):
             return

@@ -57,13 +57,13 @@ from QATCH.ui.components.analyze_plot_cards import (
     DetailPlotCard,
     SignalOverviewCard,
 )
+from QATCH.ui.components.pill_stepper import PillCellButton, PillStepper
+from QATCH.ui.components.plot_grid_item import PlotGridItem
 from QATCH.ui.components.qatch_axis_item import (
     QATCHAxisItem,
     apply_glass_plot_style,
     glass_curve_pen,
 )
-from QATCH.ui.components.pill_stepper import PillCellButton, PillStepper
-from QATCH.ui.components.plot_grid_item import PlotGridItem
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
     SignatureDialog,

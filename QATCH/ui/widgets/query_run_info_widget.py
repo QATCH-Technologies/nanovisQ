@@ -160,7 +160,13 @@ class ScanNowOverlay(QtWidgets.QFrame):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
         paint_flat_surface(
-            self, radius=self._RADIUS, fill=fill, border=border, border_width=1.5, ring=None, painter=p
+            self,
+            radius=self._RADIUS,
+            fill=fill,
+            border=border,
+            border_width=1.5,
+            ring=None,
+            painter=p,
         )
         p.end()
 
@@ -1012,7 +1018,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.g1.toggled.connect(
             lambda card, _checked: self.segmented_bio.set_active("yes" if card is self.b1 else "no")
         )
-        self.g1.toggled.connect(lambda _card, _checked: self._rebuild_composition_table(self.b1.isChecked()))
+        self.g1.toggled.connect(
+            lambda _card, _checked: self._rebuild_composition_table(self.b1.isChecked())
+        )
         self.c13.currentTextChanged.connect(lambda _t: self._update_ph_row_visibility())
         self._rebuild_composition_table(self.b1.isChecked())
 
@@ -1091,7 +1099,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             hdr.setStyleSheet(caption_label_qss())
             self.composition_grid.addWidget(hdr, 0, col)
             self._composition_headers.append(hdr)
-        self._composition_row_widgets = []  # [(ing_label, type_w, conc_w_or_None, unit_chip_or_None), ...]
+        self._composition_row_widgets = (
+            []
+        )  # [(ing_label, type_w, conc_w_or_None, unit_chip_or_None), ...]
         lay.addWidget(self.composition_frame)
 
         # Buffer pH - a standalone row below the table (not a table row
@@ -1127,7 +1137,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         """Re-applies header/required-ingredient styling on theme change."""
         for hdr in getattr(self, "_composition_headers", []):
             hdr.setStyleSheet(caption_label_qss())
-        for ing_label, _type_w, _conc_w, _unit_chip in getattr(self, "_composition_row_widgets", []):
+        for ing_label, _type_w, _conc_w, _unit_chip in getattr(
+            self, "_composition_row_widgets", []
+        ):
             required = ing_label.property("required") is True
             ing_label.setStyleSheet(self._ingredient_label_qss(required))
 
@@ -2624,8 +2636,17 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         input_error = False
         # Reset the themed error ring before re-checking each field below.
         for _tb in (
-            self.t3, self.t4, self.t1, self.t2, self.t5,
-            self.t12, self.t8, self.t14, self.t6, self.t16, self.t18,
+            self.t3,
+            self.t4,
+            self.t1,
+            self.t2,
+            self.t5,
+            self.t12,
+            self.t8,
+            self.t14,
+            self.t6,
+            self.t16,
+            self.t18,
         ):
             _tb.set_error(False)
         if self.t3.isEnabled() and not self.t3.hasAcceptableInput():
@@ -3091,7 +3112,9 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             param2 = run.createElement("param")
             param2.setAttribute("name", "solvent")
             param2.setAttribute("value", self.t0.currentText())
-            param2.setAttribute("input", "auto" if self.t0.currentText() in self.fluids else "manual")
+            param2.setAttribute(
+                "input", "auto" if self.t0.currentText() in self.fluids else "manual"
+            )
             params.appendChild(param2)
 
         if self.b1.isChecked():  # IS bioformulation

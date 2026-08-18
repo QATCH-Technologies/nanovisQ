@@ -18,11 +18,12 @@ UIAnalyze) decides what to do with it and owns the actual run-list state.
 from __future__ import annotations
 
 import os
-from typing import Callable, List, Optional
+from typing import Callable
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
+from QATCH.common.logger import Logger as Log
 from QATCH.ui.components import AnimatedComboBox
 from QATCH.ui.components.flat_paint import paint_flat_surface
 from QATCH.ui.components.qatch_push_button import QATCHPushButton
@@ -34,12 +35,14 @@ _ANY_DEVICE = "All devices"
 _SORT_ITEMS = (
     ("Date (newest)", 1),
     ("Date (oldest)", 3),
-    ("Name (A–Z)", 0),
-    ("Name (Z–A)", 4),
+    ("Name (A-Z)", 0),
+    ("Name (Z-A)", 4),
 )  # label -> sort_order
 
+TAG = "[RunFilterPopover]"
 
-def _animated_combo(items: List[str]) -> AnimatedComboBox:
+
+def _animated_combo(items: list[str]) -> AnimatedComboBox:
     """The same rounded/animated combo box used everywhere else in the app
     (cBox_Runs, cBox_Speed, cBox_Port, ...) - kept consistent here rather
     than a bespoke stock QComboBox, per the "filter dropdowns should be the
@@ -64,8 +67,7 @@ def _flat_date_edit() -> QtWidgets.QDateEdit:
     edit.setSpecialValueText("Any")
     edit.setDate(edit.minimumDate())
     tok = ThemeManager.instance().tokens()
-    edit.setStyleSheet(
-        f"""
+    edit.setStyleSheet(f"""
         QDateEdit {{
             background: {tok_css(tok["flat_surface2"])};
             border: 1px solid {tok_css(tok["flat_border"])};
@@ -76,8 +78,7 @@ def _flat_date_edit() -> QtWidgets.QDateEdit:
             font-size: 11.5px;
         }}
         QDateEdit::drop-down {{ border: none; width: 16px; }}
-        """
-    )
+        """)
     return edit
 
 
@@ -86,7 +87,7 @@ class _FilterInnerPanel(QtWidgets.QWidget):
 
     _RADIUS = 12.0
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
@@ -95,7 +96,7 @@ class _FilterInnerPanel(QtWidgets.QWidget):
     def _on_theme_changed(self, _mode: str) -> None:
         self.update()
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
@@ -126,19 +127,19 @@ class RunFilterPopover(QtWidgets.QWidget):
 
     def __init__(
         self,
-        devices: List[str],
-        current_device: Optional[str],
+        devices: list[str],
+        current_device: str | None,
         show_all: bool,
-        date_from: Optional[str],
-        date_to: Optional[str],
+        date_from: str | None,
+        date_to: str | None,
         new_only: bool,
         sort_order: int,
-        on_device_changed: Callable[[Optional[str]], None],
-        on_date_range_changed: Callable[[Optional[str], Optional[str]], None],
+        on_device_changed: Callable[[str | None], None],
+        on_date_range_changed: Callable[[str | None, str | None], None],
         on_new_only_changed: Callable[[bool], None],
         on_sort_changed: Callable[[int], None],
         on_clear: Callable[[], None],
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         super().__init__(
             parent,
@@ -155,14 +156,17 @@ class RunFilterPopover(QtWidgets.QWidget):
         self._on_new_only_changed = on_new_only_changed
         self._on_sort_changed = on_sort_changed
         self._on_clear = on_clear
-        self._main_window: Optional[QtWidgets.QWidget] = None
+        self._main_window: QtWidgets.QWidget | None = None
         self._suspend_callbacks = True  # guard while pre-selecting initial state below
 
         self._panel = _FilterInnerPanel(self)
 
         outer_layout = QtWidgets.QVBoxLayout(self)
         outer_layout.setContentsMargins(
-            self._SHADOW_MARGIN_L, self._SHADOW_MARGIN_T, self._SHADOW_MARGIN_R, self._SHADOW_MARGIN_B
+            self._SHADOW_MARGIN_L,
+            self._SHADOW_MARGIN_T,
+            self._SHADOW_MARGIN_R,
+            self._SHADOW_MARGIN_B,
         )
         outer_layout.setSpacing(0)
         outer_layout.addWidget(self._panel)
@@ -174,13 +178,15 @@ class RunFilterPopover(QtWidgets.QWidget):
         self._panel.setGraphicsEffect(shadow)
 
         self._title = QtWidgets.QLabel("FILTER RUNS")
-        self._field_labels: List[QtWidgets.QLabel] = []
+        self._field_labels: list[QtWidgets.QLabel] = []
 
         row = QtWidgets.QHBoxLayout()
         row.setSpacing(14)
 
         self._device_combo = _animated_combo([_ANY_DEVICE, *devices])
-        self._device_combo.setCurrentText(_ANY_DEVICE if show_all else (current_device or _ANY_DEVICE))
+        self._device_combo.setCurrentText(
+            _ANY_DEVICE if show_all else (current_device or _ANY_DEVICE)
+        )
         self._device_combo.currentTextChanged.connect(self._device_selected)
         row.addLayout(self._field("Device", self._device_combo))
 
@@ -236,8 +242,6 @@ class RunFilterPopover(QtWidgets.QWidget):
         self._apply_theme()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
-    # -- theming ----------------------------------------------------------
-
     def _on_theme_changed(self, _mode: str) -> None:
         self._apply_theme()
 
@@ -268,8 +272,6 @@ class RunFilterPopover(QtWidgets.QWidget):
         group.addWidget(label)
         group.addWidget(control)
         return group
-
-    # -- change handlers ----------------------------------------------------
 
     def _device_selected(self, text: str) -> None:
         if self._suspend_callbacks:
@@ -306,12 +308,10 @@ class RunFilterPopover(QtWidgets.QWidget):
         self._suspend_callbacks = False
         self._on_clear()
 
-    # -- public API -----------------------------------------------------------
-
     def show_anchored_to(
         self,
         anchor: QtWidgets.QWidget,
-        main_window: Optional[QtWidgets.QWidget] = None,
+        main_window: QtWidgets.QWidget | None = None,
     ) -> None:
         """Show the popover pinned under `anchor`, clamped to `main_window`.
 
@@ -351,8 +351,6 @@ class RunFilterPopover(QtWidgets.QWidget):
             fade.start()
 
         QtCore.QTimer.singleShot(0, _start)
-
-    # -- positioning helpers --------------------------------------------------
 
     def _visible_rect_for(self, x: int, y: int, w: int, h: int) -> QtCore.QRect:
         return QtCore.QRect(
@@ -397,9 +395,7 @@ class RunFilterPopover(QtWidgets.QWidget):
 
         return x, y
 
-    # -- event handling -------------------------------------------------------
-
-    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
         if watched is self._main_window and event.type() in (
             QtCore.QEvent.Type.Resize,
             QtCore.QEvent.Type.Move,
@@ -408,12 +404,12 @@ class RunFilterPopover(QtWidgets.QWidget):
             self.close()
         return super().eventFilter(watched, event)
 
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         if self._main_window is not None:
             try:
                 self._main_window.removeEventFilter(self)
-            except Exception:
-                pass
+            except Exception as e:
+                Log.e(TAG, f"Error occurred while removing event filter: {e}")
             self._main_window = None
         super().closeEvent(event)
         self.closed.emit()

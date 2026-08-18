@@ -13,8 +13,9 @@ Date:
     2026-06-19
 """
 
-import os
 import contextlib
+import os
+
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets

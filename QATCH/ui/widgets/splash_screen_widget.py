@@ -69,7 +69,9 @@ _TICK_MS = 33  # ~30fps, same cadence used elsewhere in this app's hand-rolled a
 _LOGO_SIZE = 240.0  # rendered logo diameter, matches the design's own preview size
 _GLOW_SIZE = 280.0  # matches the design's glow layer size
 _MIN_WINDOW_SIZE = 320  # floor size (also the old window's fixed size) in case the text below is narrower than the glow
-_TOP_CLEARANCE = (_MIN_WINDOW_SIZE - _GLOW_SIZE) / 2  # space above the glow's resting radius; unchanged from the old fixed-size window so the mark itself isn't affected by the text added below it
+_TOP_CLEARANCE = (
+    _MIN_WINDOW_SIZE - _GLOW_SIZE
+) / 2  # space above the glow's resting radius; unchanged from the old fixed-size window so the mark itself isn't affected by the text added below it
 
 # Wordmark ("QATCH" + "Technologies"): geometry and color straight from the
 # design file's wordmarkStyle/-Strong/-Light for the transparent/light
@@ -220,7 +222,10 @@ class QatchSplashScreen(QtWidgets.QWidget):
         build_line2_width = fm_build.horizontalAdvance(build_line2)
         build_line_height = fm_build.height()
 
-        content_width = max(_GLOW_SIZE, wordmark_width, build_line1_width, build_line2_width) + _SIDE_PADDING * 2
+        content_width = (
+            max(_GLOW_SIZE, wordmark_width, build_line1_width, build_line2_width)
+            + _SIDE_PADDING * 2
+        )
         width = max(_MIN_WINDOW_SIZE, content_width)
         cx = width / 2.0
 
@@ -352,16 +357,16 @@ class QatchSplashScreen(QtWidgets.QWidget):
         offset_x = cx - _CIRCLE_CX * scale
         offset_y = cy - _CIRCLE_CY * scale
 
-        circle_center = QtCore.QPointF(
-            _CIRCLE_CX * scale + offset_x, _CIRCLE_CY * scale + offset_y
-        )
+        circle_center = QtCore.QPointF(_CIRCLE_CX * scale + offset_x, _CIRCLE_CY * scale + offset_y)
         circle_radius = _CIRCLE_R * scale
 
         # Base circle: vertical linear gradient, unclipped (it defines its
         # own circular shape already).
         base_gradient = QtGui.QLinearGradient(
-            circle_center.x(), circle_center.y() - circle_radius,
-            circle_center.x(), circle_center.y() + circle_radius,
+            circle_center.x(),
+            circle_center.y() - circle_radius,
+            circle_center.x(),
+            circle_center.y() + circle_radius,
         )
         base_gradient.setColorAt(0.0, _GRADIENT_TOP)
         base_gradient.setColorAt(1.0, _GRADIENT_BOTTOM)
@@ -381,9 +386,7 @@ class QatchSplashScreen(QtWidgets.QWidget):
         tile_radius = _TILE_RADIUS * scale
         for x, y, base_hex, row, col in _TILES:
             fill = self._shimmer_color(base_hex, row, col)
-            rect = QtCore.QRectF(
-                x * scale + offset_x, y * scale + offset_y, tile_size, tile_size
-            )
+            rect = QtCore.QRectF(x * scale + offset_x, y * scale + offset_y, tile_size, tile_size)
             painter.setBrush(QtGui.QBrush(fill))
             painter.drawRoundedRect(rect, tile_radius, tile_radius)
 

@@ -1,4 +1,5 @@
-"""QATCH.ui.components.plot_grid_item.py
+"""
+QATCH.ui.components.plot_grid_item.py
 
 A :class:`pyqtgraph.GridItem` subclass that draws grid lines aligned to a plot's real
 axis tick positions, with a fixed caller-specified alpha per level. Shared

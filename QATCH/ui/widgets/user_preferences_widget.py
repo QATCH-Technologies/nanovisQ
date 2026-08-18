@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtCore, QtWidgets
 
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileStorage import FileStorage
@@ -58,7 +58,6 @@ from QATCH.ui.styles.theme_manager import (
     hairline_qss,
     info_wash_card_qss,
     mono_preview_qss,
-    tok_css,
 )
 
 TAG = "[Preferences]"
@@ -236,9 +235,7 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
         lay.addWidget(self._hairline())
 
         lay.addWidget(self._caption("Folder Name Format"))
-        lay.addWidget(
-            self._desc("Choose the tags used to build the destination subfolder path.")
-        )
+        lay.addWidget(self._desc("Choose the tags used to build the destination subfolder path."))
 
         self.folder_format_container = QtWidgets.QHBoxLayout()
         self.folder_format_container.setSpacing(8)
@@ -349,12 +346,8 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
 
         cards_row = QtWidgets.QHBoxLayout()
         cards_row.setSpacing(12)
-        light_card = QATCHOptionCard(
-            "Light", "Bright canvas for well-lit rooms.", show_radio=True
-        )
-        dark_card = QATCHOptionCard(
-            "Dark", "Low-glare canvas for dim rooms.", show_radio=True
-        )
+        light_card = QATCHOptionCard("Light", "Bright canvas for well-lit rooms.", show_radio=True)
+        dark_card = QATCHOptionCard("Dark", "Low-glare canvas for dim rooms.", show_radio=True)
         cards_row.addWidget(light_card, 1)
         cards_row.addWidget(dark_card, 1)
         lay.addLayout(cards_row)
@@ -527,7 +520,11 @@ class UserPreferencesWidget(OverlayLifecycleMixin, QtWidgets.QWidget):
             self._apply_margin_frac(frac)
 
         run_variant_animation(
-            self, "_fs_anim", duration=240, easing=FULLSCREEN_ANIM_EASING, on_step=_step,
+            self,
+            "_fs_anim",
+            duration=240,
+            easing=FULLSCREEN_ANIM_EASING,
+            on_step=_step,
         )
 
     def _animate_close(self) -> None:

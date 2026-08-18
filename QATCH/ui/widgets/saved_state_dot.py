@@ -58,7 +58,7 @@ class SavedStateDot(QtWidgets.QWidget):
     _STEADY_GLOW: tuple = ("saved", "error")
     _SIZE: int = 14
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         """Initializes the animation controllers and visual state."""
         super().__init__(parent)
         self.setFixedSize(self._SIZE, self._SIZE)
@@ -126,7 +126,7 @@ class SavedStateDot(QtWidgets.QWidget):
         self._flash = v
         self.update()
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Renders the status dot with dynamic glow and flash overlays."""
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing, True)

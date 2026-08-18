@@ -33,17 +33,20 @@ _SEVERITY_TOKENS = {
 
 
 class QATCHWarningLabel(QtWidgets.QWidget):
-    """Calm informational banner for inline messaging.
+    """Display a compact informational banner with severity-based styling.
 
-    Renders as a soft glass strip tinted per `severity`, with an optional
-    leading icon. Keeps a QLabel-like `setText` so existing call sites still
-    work.
+    The widget provides a soft, style inline message with an optional
+    leading icon. Its appearance is controlled by a severity level, which
+    selects the corresponding color tokens from the application's theme.
+
+    The class provides a QLabel-like interface through methods such as
+    `setText` while retaining a composite widget structure for the icon,
+    text, and themed background.
 
     Attributes:
-        icon_lbl (QtWidgets.QLabel): The label widget responsible for displaying
-            the optional leading icon.
-        text_lbl (QtWidgets.QLabel): The label widget containing the main
-            informational text.
+        icon_lbl: QLabel used to display the optional leading icon. The label
+            is hidden when no icon is configured.
+        text_lbl: QLabel containing the informational message text.
     """
 
     _RADIUS: float = 6.0
@@ -56,15 +59,16 @@ class QATCHWarningLabel(QtWidgets.QWidget):
         *,
         severity: str = "info",
     ) -> None:
-        """Initializes the QATCHWarningLabel.
+        """Initialize the warning label.
 
         Args:
-            text: The informational text to display in the banner.
-            icon_path: The file path to the leading icon. If provided, the
-                icon is loaded and displayed.
-            parent: The parent widget.
-            severity: One of "info" (default), "warning", or "danger" -
-                selects which `flat_*` token pair colors the banner.
+            text: Informational text to display in the banner.
+            icon_path: Path to the optional leading icon. If provided, the
+                icon is loaded and displayed in the icon slot.
+            parent: Optional parent widget.
+            severity: Severity level used to determine the banner's theme
+                colors. Supported values are `"info"`, `"warning"`, and
+                `"danger"`. Invalid values default to `"info"`.
         """
         super().__init__(parent)
         self._severity = severity if severity in _SEVERITY_TOKENS else "info"
@@ -96,7 +100,19 @@ class QATCHWarningLabel(QtWidgets.QWidget):
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def set_severity(self, severity: str) -> None:
-        """Switches the banner's color scheme at runtime."""
+        """Update the banner's severity and corresponding color scheme.
+
+        Invalid severity values are normalized to `"info"`. If the normalized
+        severity differs from the current value, the banner's text styling is
+        refreshed and the widget is scheduled for repainting.
+
+        Args:
+            severity: Severity level to apply. Supported values are defined by
+                `_SEVERITY_TOKENS`. Invalid values default to `"info"`.
+
+        Returns:
+            None.
+        """
         severity = severity if severity in _SEVERITY_TOKENS else "info"
         if severity != self._severity:
             self._severity = severity
@@ -104,10 +120,17 @@ class QATCHWarningLabel(QtWidgets.QWidget):
             self.update()
 
     def set_icon(self, icon_path: str) -> None:
-        """Sets the leading icon for the warning label.
+        """Set the leading icon displayed by the warning label.
+
+        The icon is loaded from the specified file path. If the image can be
+        loaded successfully, it is assigned to the leading icon label and the
+        label is made visible. Invalid or unreadable image paths are ignored.
 
         Args:
-            icon_path: The file path to the icon image to be displayed.
+            icon_path: File path to the icon image to display.
+
+        Returns:
+            None.
         """
         pix = QtGui.QPixmap(icon_path)
         if not pix.isNull():
@@ -115,18 +138,57 @@ class QATCHWarningLabel(QtWidgets.QWidget):
             self.icon_lbl.show()
 
     def setText(self, text: str) -> None:
-        """Sets the informational text of the banner (QLabel-API parity)."""
+        """Set the informational text displayed by the banner.
+
+        Provides QLabel-compatible `setText` behavior by forwarding the
+        supplied text to the internal text label.
+
+        Args:
+            text: Informational text to display in the banner.
+
+        Returns:
+            None.
+        """
         self.text_lbl.setText(text)
 
     def text(self) -> str:
-        """Returns the current informational text (QLabel-API parity)."""
+        """Return the current informational text displayed by the banner.
+
+        Provides QLabel-compatible `text` behavior by returning the text from
+        the internal text label.
+
+        Returns:
+            The informational text currently displayed in the banner.
+        """
         return self.text_lbl.text()
 
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the banner styling after a theme change.
+
+        Reapplies the text and severity-dependent styling using the newly
+        selected theme and schedules the widget for repainting.
+
+        Args:
+            _mode: Theme mode identifier supplied by the `themeChanged` signal.
+                The value is not otherwise used by this handler.
+
+        Returns:
+            None.
+        """
         self._apply_text_style()
         self.update()
 
     def _apply_text_style(self) -> None:
+        """Apply the current theme and severity styling to the text label.
+
+        Retrieves the active theme tokens and uses the color associated with the
+        current severity level to style the banner's text. The text is rendered
+        with a transparent background, no border, an 11-pixel font size, and
+        normal font weight.
+
+        Returns:
+            None.
+        """
         tok = ThemeManager.instance().tokens()
         text_key, _ = _SEVERITY_TOKENS[self._severity]
         r, g, b, a = tok[text_key]
@@ -136,9 +198,22 @@ class QATCHWarningLabel(QtWidgets.QWidget):
         )
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Renders the glass background: a rounded shape tinted per
-        `severity`, a subtle top shimmer, and a hairline border - all
-        resolved fresh from the active theme's tokens.
+        """Render the severity-tinted background and border.
+
+        Paints the banner using the currently active theme tokens and severity
+        level. The background consists of a vertically graduated translucent
+        severity tint with a subtle white top shimmer. A thin, semi-transparent
+        border is then drawn around the rounded perimeter.
+
+        The painting is clipped to the widget's rounded rectangle so that the
+        background gradients remain contained within the banner's corners.
+
+        Args:
+            event: Qt paint event provided by Qt when the widget needs to be
+                repainted. The event is not otherwise used by this implementation.
+
+        Returns:
+            None.
         """
         tok = ThemeManager.instance().tokens()
         text_key, weak_key = _SEVERITY_TOKENS[self._severity]

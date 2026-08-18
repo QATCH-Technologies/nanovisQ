@@ -1,33 +1,32 @@
 """
-qatch_toggle.py
+QATCH.ui.components.qatch_toggle.py
 
-Animated toggle switch matching the app's flat control system (see
-QATCH.ui.components.flat_paint).
+Animated toggle switch component.
 
-Track color interpolates from a neutral grey (off) to the accent color
-(on) - both driven by the "flat_*" tokens in QATCH.ui.styles.tokens so the
-toggle stays in sync with light/dark theme changes. A knob slides left /
-right with an OutCubic easing over 150 ms.
+Provides the :class:`QATCHToggle` widget, an animated pill-shaped toggle
+switch designed to match the application's flat control system. The toggle
+uses theme-defined `flat_*` tokens from
+`QATCH.ui.styles.tokens` so its appearance remains synchronized with both
+light and dark themes.
 
-Usage
------
-    toggle = QATCHToggle(parent)
-    toggle.setChecked(True)           # set initial state (no animation)
-    toggle.toggled.connect(handler)   # bool signal, same as QCheckBox
+The track color smoothly interpolates between the neutral `flat_track` color
+when the toggle is off and the `flat_accent` color when it is on. The thumb
+slides between the left and right positions using an `OutCubic` easing curve
+over 150 milliseconds.
 
-    # For silent initialisation (avoid triggering the handler):
-    toggle.setChecked(value)          # connect signal AFTER this call
-    toggle.toggled.connect(handler)
+The widget inherits from `QAbstractButton` and exposes the standard checked
+state and `toggled(bool)` signal, making it suitable as a drop-in
+replacement for checkbox-style controls where only the checked state is
+required.
 
-    # Smaller footprint (34x19 track / 15px thumb instead of the default
-    # 42x23 / 18px) for inline compact rows, e.g. a sub-row's
-    # "Auto-calculate" affordance sitting next to its own field:
-    small = QATCHToggle(parent, compact=True)
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-18
 """
 
 from __future__ import annotations
-
-from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -36,40 +35,47 @@ from QATCH.ui.styles.theme_manager import ThemeManager
 
 
 class QATCHToggle(QtWidgets.QAbstractButton):
-    """Pill-shaped animated toggle switch.
+    """Display an animated, pill-shaped toggle switch.
 
-    Inherits `toggled(bool)` from `QAbstractButton` - a drop-in
-    replacement for `QCheckBox` wherever only the checked state matters.
+    The toggle provides a compact alternative to `QCheckBox` while
+    retaining the standard `QAbstractButton` checked-state API, including
+    the `toggled(bool)` signal. The thumb smoothly animates between the
+    off and on positions when the checked state changes.
+
+    The widget supports a compact geometry variant for secondary or
+    space-constrained controls. Its appearance is resolved from the active
+    application theme and automatically refreshed when the theme changes.
 
     Attributes:
-        _anim_t (float): Thumb position 0.0 (off / left) → 1.0 (on / right).
+        _anim_t: Normalized animated thumb position, where `0.0` represents
+            the off state and `1.0` represents the on state.
+        _anim: QVariantAnimation responsible for animating the thumb between
+            its off and on positions.
     """
 
-    # ── Geometry ──────────────────────────────────────────────────────
+    # Geometry
     _TRACK_W: int = 42
     _TRACK_H: int = 23
-    _THUMB_D: int = 18  # diameter; margin = (_TRACK_H - _THUMB_D) / 2 = 2.5 px
-
-    # Smaller footprint used when `compact=True` is passed to __init__ -
-    # shadows the class-level geometry above with instance attributes of
-    # the same name, so paintEvent()/sizeHint() (which already read
-    # self._TRACK_W/_TRACK_H/_THUMB_D dynamically) need no changes at all.
+    _THUMB_D: int = 18
+    # Smaller footprint used when `compact=True` is passed to __init__
     _COMPACT_TRACK_W: int = 34
     _COMPACT_TRACK_H: int = 19
     _COMPACT_THUMB_D: int = 15
 
     def __init__(
-        self, parent: Optional[QtWidgets.QWidget] = None, *, compact: bool = False
+        self,
+        parent: QtWidgets.QWidget | None = None,
+        *,
+        compact: bool = False,
     ) -> None:
-        """Initializes the toggle.
+        """Initialize the toggle switch.
 
         Args:
-            parent: The parent widget, if any.
-            compact: If True, uses the smaller `_COMPACT_*` geometry instead
-                of the default `_TRACK_W`/`_TRACK_H`/`_THUMB_D` - for inline
-                sub-row affordances that need to read as visually secondary
-                to the main pill toggles. Every existing call site keeps its
-                current (non-compact) size since this defaults to False.
+            parent: Optional parent widget.
+            compact: If `True`, use the smaller compact track and thumb
+                geometry. This variant is intended for inline or secondary
+                controls where a reduced visual footprint is desirable.
+                Defaults to `False`, preserving the standard toggle size.
         """
         super().__init__(parent)
         if compact:
@@ -87,46 +93,115 @@ class QATCHToggle(QtWidgets.QAbstractButton):
         self._anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         self._anim.valueChanged.connect(self._on_anim_step)
 
-        # toggled fires after the internal checked state flips, so
-        # _anim_t correctly approaches the new target.
         self.toggled.connect(self._start_anim)
 
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the toggle after the application theme changes.
+
+        Schedules the widget for repainting so its track and thumb are rendered
+        using the newly active theme tokens.
+
+        Args:
+            _mode: Theme mode identifier emitted by the `themeChanged` signal.
+                The value is not otherwise used by this handler.
+
+        Returns:
+            None.
+        """
         self.update()
 
-    # ------------------------------------------------------------------
-    # Animation
-    # ------------------------------------------------------------------
     def _start_anim(self, checked: bool) -> None:
+        """Start the thumb animation toward the new checked state.
+
+        Stops any currently running animation and starts a new animation from
+        the thumb's current interpolated position. This allows rapid state
+        changes to transition smoothly without jumping back to the previous
+        endpoint.
+
+        Args:
+            checked: Whether the toggle is transitioning to the checked (on)
+                state. A checked state targets `1.0`; an unchecked state targets
+                `0.0`.
+
+        Returns:
+            None.
+        """
         self._anim.stop()
         self._anim.setStartValue(float(self._anim_t))
         self._anim.setEndValue(1.0 if checked else 0.0)
         self._anim.start()
 
     def _on_anim_step(self, v: float) -> None:
+        """Update the animated thumb position and repaint the toggle.
+
+        Args:
+            v: Current interpolated animation value, where `0.0` represents
+                the off position and `1.0` represents the on position.
+
+        Returns:
+            None.
+        """
         self._anim_t = v
         self.update()
 
-    # ------------------------------------------------------------------
-    # Override setChecked to snap the thumb without animation when the
-    # initial state is set programmatically (before any signal fires).
-    # ------------------------------------------------------------------
     def setChecked(self, checked: bool) -> None:
-        # Snap anim_t so the thumb appears in the correct position
-        # immediately - avoids a jarring mid-paint initial frame.
+        """Set the toggle's checked state and synchronize its thumb position.
+
+        The animated thumb position is snapped immediately to the requested
+        checked state before delegating to `QAbstractButton.setChecked`. This
+        prevents an intermediate animation frame from being rendered when the
+        checked state is changed programmatically.
+
+        Args:
+            checked: `True` to set the toggle to the checked (on) state, or
+                `False` to set it to the unchecked (off) state.
+
+        Returns:
+            None.
+        """
         self._anim_t = 1.0 if checked else 0.0
         super().setChecked(checked)
 
-    # ------------------------------------------------------------------
-    # Painting
-    # ------------------------------------------------------------------
     @staticmethod
     def _lerp(a: int, b: int, t: float) -> int:
+        """Linearly interpolate between two integer values.
+
+        Args:
+            a: Starting integer value.
+            b: Ending integer value.
+            t: Interpolation factor. A value of `0.0` returns `a` and a
+                value of `1.0` returns `b`. Intermediate values produce
+                proportional values between the two endpoints.
+
+        Returns:
+            The interpolated value converted to an integer.
+        """
         return int(a + (b - a) * t)
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        """Render the toggle track, focus ring, shadow, and animated thumb.
+
+        Draws the toggle using the active theme's flat-control tokens. The track
+        color is linearly interpolated between the inactive track and active
+        accent colors based on the current animation position. When focused, a
+        theme-defined focus ring is rendered around the track.
+
+        The thumb is positioned between the left and right track endpoints using
+        the same animation value. A subtle drop shadow is drawn beneath the thumb,
+        followed by the thumb face, which uses the theme's knob color when off and
+        white when on.
+
+        Disabled toggles are rendered with reduced opacity.
+
+        Args:
+            event: Qt paint event provided by Qt when the widget needs to be
+                repainted. The event is not otherwise used by this implementation.
+
+        Returns:
+            None.
+        """
         t = self._anim_t
         w, h = self.width(), self.height()
         r = h / 2.0  # track corner radius - full pill
@@ -138,7 +213,7 @@ class QATCHToggle(QtWidgets.QAbstractButton):
         if not self.isEnabled():
             p.setOpacity(0.45)
 
-        # ── Track fill (interpolated colour, no border per spec) ──────
+        # Track fill
         lo, hi = tok["flat_track"], tok["flat_accent"]
         track_color = QtGui.QColor(
             self._lerp(lo[0], hi[0], t),
@@ -156,22 +231,18 @@ class QATCHToggle(QtWidgets.QAbstractButton):
             ring=ring,
             painter=p,
         )
-
-        # ── Thumb ────────────────────────────────────────────────────
+        # Thumb
         margin = (h - self._THUMB_D) / 2.0
         x_left = margin
         x_right = w - margin - self._THUMB_D
         thumb_x = x_left + (x_right - x_left) * t
         thumb = QtCore.QRectF(thumb_x, margin, self._THUMB_D, self._THUMB_D)
 
-        # Soft drop shadow (offset 1 px down, flat_shadow token)
+        # Drop shadow
         p.setPen(QtCore.Qt.NoPen)
         p.setBrush(QtGui.QBrush(QtGui.QColor(*tok["flat_shadow"])))
         p.drawEllipse(thumb.adjusted(0.0, 1.0, 0.0, 1.0))
 
-        # Thumb face: knob token when off, literal white when on (spec's
-        # "on" knob is always white in both themes; the "off" knob follows
-        # the flat_knob token, which differs subtly between themes).
         knob_color = (
             QtGui.QColor(255, 255, 255) if self.isChecked() else QtGui.QColor(*tok["flat_knob"])
         )
@@ -181,22 +252,39 @@ class QATCHToggle(QtWidgets.QAbstractButton):
         p.end()
 
     def sizeHint(self) -> QtCore.QSize:
+        """Return the preferred size of the toggle.
+
+        The returned dimensions reflect the toggle's active track geometry,
+        including the compact dimensions when the widget was initialized with
+        `compact=True`.
+
+        Returns:
+            A `QSize` containing the toggle's preferred width and height.
+        """
         return QtCore.QSize(self._TRACK_W, self._TRACK_H)
 
 
 class LabeledToggle(QtWidgets.QWidget):
-    """A QATCHToggle paired with a text label in a horizontal row.
+    """Display a QATCHToggle with an adjacent text label.
 
-    Exposes the subset of the QCheckBox API used by the rest of the app
-    (`isChecked`, `setChecked`, `setEnabled`, `setText`, `toggled`,
-    `clicked`) so it can stand in for a checkbox without touching call
-    sites.
+    Combines a :class:`QATCHToggle` and `QLabel` in a horizontal layout
+    while exposing the subset of the `QCheckBox` API used by the
+    application. This allows the composite widget to serve as a drop-in
+    replacement for checkbox-style controls without requiring changes to
+    existing call sites.
+
+    The label can be positioned on either side of the toggle, and the entire
+    control supports a compact presentation for secondary or space-constrained
+    UI elements.
 
     Attributes:
-        toggled (pyqtSignal): A signal forwarded from the internal QATCHToggle
-            that is emitted when the toggle state changes.
-        clicked (pyqtSignal): A signal forwarded from the internal QATCHToggle
-            that is emitted on every user click (same as QCheckBox.clicked).
+        toggle: The internal :class:`QATCHToggle` that provides the toggle
+            behavior and checked state.
+        label: The `QLabel` displaying the control's descriptive text.
+        toggled: Signal forwarded from `toggle` that is emitted whenever
+            the toggle's checked state changes.
+        clicked: Signal forwarded from `toggle` that is emitted whenever
+            the toggle is clicked by the user.
     """
 
     def __init__(
@@ -207,18 +295,17 @@ class LabeledToggle(QtWidgets.QWidget):
         label_left: bool = False,
         compact: bool = False,
     ) -> None:
-        """Initializes the LabeledToggle.
+        """Initialize the labeled toggle.
 
         Args:
-            text: The label text to display next to the toggle.
-            parent: The parent widget, if any.
-            label_left: If True, positions the label to the left of the toggle;
-                otherwise, positions it to the right.
-            compact: If True, uses a smaller `QATCHToggle(compact=True)` and a
-                slightly smaller label font - for inline sub-row affordances
-                (e.g. "Auto-calculate" beside its own field) that should read
-                as visually secondary to the main pill toggles. Defaults to
-                False so every existing call site is unaffected.
+            text: Text to display next to the toggle.
+            parent: Optional parent widget.
+            label_left: If `True`, place the label to the left of the
+                toggle. If `False`, place the label to the right.
+            compact: If `True`, use the compact geometry of
+                :class:`QATCHToggle` and a smaller label font. This is
+                intended for secondary or inline controls. Defaults to
+                `False`.
         """
         super().__init__(parent)
         self.toggle = QATCHToggle(self, compact=compact)
@@ -243,34 +330,64 @@ class LabeledToggle(QtWidgets.QWidget):
         self.clicked = self.toggle.clicked
 
     def isChecked(self) -> bool:
-        """Returns the current checked state of the toggle."""
+        """Return the current checked state of the toggle.
+
+        Provides `QCheckBox`-compatible API behavior by forwarding the query
+        to the internal :class:`QATCHToggle`.
+
+        Returns:
+            `True` if the toggle is checked; otherwise, `False`.
+        """
         return self.toggle.isChecked()
 
     def setChecked(self, checked: bool) -> None:
-        """Sets the checked state of the toggle.
+        """Set the checked state of the toggle.
+
+        Provides `QCheckBox`-compatible API behavior by forwarding the requested
+        state to the internal :class:`QATCHToggle`.
 
         Args:
-            checked: The boolean state to apply.
+            checked: `True` to check the toggle, or `False` to uncheck it.
+
+        Returns:
+            None.
         """
         self.toggle.setChecked(checked)
 
     def setText(self, text: str) -> None:
-        """Sets the text for the label.
+        """Set the text displayed beside the toggle.
+
+        Provides `QCheckBox`-compatible API behavior by forwarding the supplied
+        text to the internal label widget.
 
         Args:
-            text: The new label string.
+            text: New text to display next to the toggle.
+
+        Returns:
+            None.
         """
         self.label.setText(text)
 
     def text(self) -> str:
-        """Returns the current label text."""
+        """Return the current text displayed beside the toggle.
+
+        Returns:
+            The text currently displayed by the internal label.
+        """
         return self.label.text()
 
     def setEnabled(self, enabled: bool) -> None:
-        """Sets the enabled state for the widget and its children.
+        """Set the enabled state of the toggle and its label.
+
+        Applies the requested enabled state to the composite widget and explicitly
+        propagates it to both child widgets.
 
         Args:
-            enabled: The boolean state to apply to the entire widget and children.
+            enabled: `True` to enable the widget and its children, or `False`
+                to disable them.
+
+        Returns:
+            None.
         """
         super().setEnabled(enabled)
         self.toggle.setEnabled(enabled)

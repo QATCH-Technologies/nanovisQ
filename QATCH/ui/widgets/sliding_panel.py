@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from PyQt5 import QtCore, QtWidgets
 
 
@@ -20,7 +18,7 @@ class SlidingPanel(QtWidgets.QWidget):
         _inner: Internal container widget that holds all pages.
     """
 
-    def __init__(self, page_width: int, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, page_width: int, parent: QtWidgets.QWidget | None = None) -> None:
         """Initializes the sliding panel with a fixed page width.
 
         Args:
@@ -30,8 +28,8 @@ class SlidingPanel(QtWidgets.QWidget):
         super().__init__(parent)
 
         self._pw = page_width
-        self._anim: Optional[QtCore.QPropertyAnimation] = None
-        self._pages: List[QtWidgets.QWidget] = []
+        self._anim: QtCore.QPropertyAnimation | None = None
+        self._pages: list[QtWidgets.QWidget] = []
 
         self.setFixedWidth(page_width)
         self.setContentsMargins(0, 0, 0, 0)
