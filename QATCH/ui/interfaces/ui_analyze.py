@@ -61,8 +61,8 @@ from QATCH.ui.components.pill_stepper import PillCellButton, PillStepper
 from QATCH.ui.components.plot_grid_item import PlotGridItem
 from QATCH.ui.components.qatch_axis_item import (
     QATCHAxisItem,
+    _curve_pen,
     apply_glass_plot_style,
-    glass_curve_pen,
 )
 from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.dialogs.signature_dialog import (
@@ -1975,7 +1975,7 @@ class UIAnalyze(QtWidgets.QWidget):
             if item is None:
                 continue
             if attr.startswith("fit"):
-                item.setPen(glass_curve_pen(color))
+                item.setPen(_curve_pen(color))
             else:
                 item.setSymbolBrush(color)
 
@@ -9249,7 +9249,7 @@ class UIAnalyze(QtWidgets.QWidget):
             ax.plot(
                 xs[mask],
                 ys_freq_fit[mask],
-                pen=glass_curve_pen(res_color),
+                pen=_curve_pen(res_color),
                 antialias=True,
                 name="Resonance",
             )
@@ -9258,7 +9258,7 @@ class UIAnalyze(QtWidgets.QWidget):
             ax.plot(
                 xs[mask],
                 ys_diff_fit[mask],
-                pen=glass_curve_pen(diff_color),
+                pen=_curve_pen(diff_color),
                 antialias=True,
                 name="Difference",
             )
@@ -9267,7 +9267,7 @@ class UIAnalyze(QtWidgets.QWidget):
             ax.plot(
                 xs[mask],
                 ys_fit[mask],
-                pen=glass_curve_pen(diss_color),
+                pen=_curve_pen(diss_color),
                 antialias=True,
                 name="Dissipation",
             )
@@ -9368,7 +9368,7 @@ class UIAnalyze(QtWidgets.QWidget):
             ax1.plot(
                 xs[mask],
                 ys_freq_fit[mask],
-                pen=glass_curve_pen(res_color),
+                pen=_curve_pen(res_color),
                 antialias=True,
                 name="Resonance",
             )
@@ -9377,7 +9377,7 @@ class UIAnalyze(QtWidgets.QWidget):
             ax2.plot(
                 xs[mask],
                 ys_diff_fit[mask],
-                pen=glass_curve_pen(diff_color),
+                pen=_curve_pen(diff_color),
                 antialias=True,
                 name="Difference",
             )
@@ -9386,7 +9386,7 @@ class UIAnalyze(QtWidgets.QWidget):
             ax3.plot(
                 xs[mask],
                 ys_fit[mask],
-                pen=glass_curve_pen(diss_color),
+                pen=_curve_pen(diss_color),
                 antialias=True,
                 name="Dissipation",
             )

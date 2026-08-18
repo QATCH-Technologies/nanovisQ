@@ -1,6 +1,7 @@
-"""QATCH.ui.components.glass_axis_item
+"""
+QATCH.ui.components.qatch_axis_item.py
 
-The "glass" pyqtgraph axis look (no visible spine, no tick marks, muted
+The pyqtgraph axis look (no visible spine, no tick marks, muted
 theme-derived text) shared by PlotsUI (`QATCH.ui.main_window`) and AnalyzeUI
 (`QATCH.ui.interfaces.ui_analyze`), so both windows' plots read as the same
 family.
@@ -15,8 +16,8 @@ from pyqtgraph import AxisItem
 from QATCH.ui.styles.typography import make_qfont
 
 
-def glass_curve_pen(base_color, width: float = 2.0) -> QtGui.QPen:
-    """Builds the "glass" curve pen PlotsUI's real-time plots draw their
+def _curve_pen(base_color, width: float = 2.0) -> QtGui.QPen:
+    """Builds the curve pen PlotsUI's real-time plots draw their
     lines with - `base_color` at ~84% opacity (alpha 215/255) rather than
     a flat fully-opaque stroke, giving every line a slight translucency.
 
@@ -91,7 +92,7 @@ def suppress_axis_ticks(axis: AxisItem | None) -> None:
     design (only text labels, and optionally a separate `ThemedGridItem`
     grid overlay), so there's no loss.
 
-    Safe to call on any `AxisItem` (a `GlassAxisItem`, `GlassDateAxis`, or a
+    Safe to call on any `AxisItem` (a `QATCHAxisItem`, `GlassDateAxis`, or a
     plain auto-created one, e.g. a linked "right" axis) and safe to call
     more than once on the same instance.
 

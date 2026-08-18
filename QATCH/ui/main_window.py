@@ -62,8 +62,8 @@ from QATCH.ui.components.plot_status_banner import PlotStatusBanner, _shade
 # from QATCH.qmodel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.ui.components.qatch_axis_item import (
     QATCHAxisItem,
+    _curve_pen,
     apply_glass_plot_style,
-    glass_curve_pen,
     suppress_axis_ticks,
 )
 from QATCH.ui.dialogs.pop_up_dialog import PopUp, QueryComboBox
@@ -3425,7 +3425,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Pen: vivid edge with slight translucency - shared with AnalyzeUI
         # (see QATCH.ui.components.glass_axis_item.glass_curve_pen) so both
         # windows' curves read as the same family.
-        pen = glass_curve_pen(base_color, width=width)
+        pen = _curve_pen(base_color, width=width)
 
         # Fill brush: frosted area under the curve - PlotsUI-only, AnalyzeUI's
         # plots don't fill an area under their lines.
