@@ -3,7 +3,7 @@ QATCH.ui.components.qatch_panel.py
 
 Reusable content panel.
 
-This module provides :class:`QATCHPanel`, a lightweight ``QFrame`` that renders
+This module provides :class:`QATCHPanel`, a lightweight `QFrame` that renders
 a static flat surface - the same fill/border recipe as the rest of the app's
 flat control system (see :mod:`QATCH.ui.components.flat_paint`), so a panel
 reads as the same kind of surface as a QATCHLineEdit or QATCHOptionCard
@@ -58,7 +58,7 @@ class QATCHPanel(QtWidgets.QFrame):
 
         Args:
             parent: Optional parent widget.
-            danger: If ``True``, the panel is tinted toward the theme's error
+            danger: If `True`, the panel is tinted toward the theme's error
                 color while retaining the standard appearance.
         """
         super().__init__(parent)
@@ -79,7 +79,7 @@ class QATCHPanel(QtWidgets.QFrame):
         """Paints the flat panel.
 
         Retrieves the current theme tokens and delegates rendering to the
-        shared ``paint_flat_surface()`` helper - the same fill/border/radius
+        shared `paint_flat_surface()` helper - the same fill/border/radius
         recipe every other flat control uses. The panel is rendered with an
         opaque fill to ensure child widgets remain visually isolated from
         the background.

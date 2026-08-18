@@ -1,52 +1,81 @@
 """
-qatch_push_button.py
+QATCH.ui.compoinents.qatch_push_button.py
 
-A QPushButton subclass matching the app's flat control system (see
-QATCH.ui.components.flat_paint). Also the single home for what used to be
-two separate classes - the old `GlassPushButton` (glass-morphism, pill
-radius) and `BorderlessActionButton` (flat text-link buttons) - since the
-new design spec defines one button family with a `ghost` variant covering
-the old borderless-link use case.
+Flat-styled push button controls for the QATCH application.
 
-Variants
---------
-  "primary"             Solid accent fill - primary CTA (Initialize, Save).
-  "secondary"           Transparent fill, border_strong outline - default
-                         action (Advanced, Refresh, Cancel, Back...).
-  "ghost"                Transparent, accent-colored text, no border - quiet
-                         inline links (Forgot Password?, per-field
-                         Save/Reset/Default actions).
-  "destructive"          Solid error fill, white text - hard-confirm delete.
-  "destructive_outline"  Transparent, error-colored text + border - softer
-                         labelled destructive action before confirmation.
-  "ghost_danger"          Transparent, error-colored text, no border - quiet
-                         destructive links (Sign Out).
-  "icon_toolbar"          Vertical icon-above-label stack (not yet wired to
-                         any call site - available for future toolbar work).
+Provides a `QPushButton` subclass that follows the application's flat
+control system, as defined by `QATCH.ui.components.flat_paint`. The module
+consolidates the functionality formerly provided by the separate
+`GlassPushButton` and `BorderlessActionButton` classes into a single
+button family with configurable visual variants.
 
-Old variant names ("default", "neutral", "danger", "danger_confirm") are
-accepted as aliases and resolve to the canonical names above, so existing
-call sites keep working unchanged. "warning" (unused anywhere in the app)
-is not carried forward; an unrecognized variant name falls back to
-"secondary".
+All button surface colors, borders, focus rings, hover states, and interaction
+states are resolved from the application's `flat_*` theme tokens. This
+allows buttons to remain synchronized with light and dark themes without
+maintaining separate theme-specific color definitions.
 
-Usage
------
-    btn = QATCHPushButton(" Add", variant="primary")
-    btn.setIcon(QtGui.QIcon(path))
-    btn.setIconSize(QtCore.QSize(18, 18))
-    btn.setFixedHeight(34)
+Variants:
+    primary: Solid accent-colored fill for primary call-to-action controls
+        such as Initialize and Save.
+    secondary: Transparent fill with a strong border for standard actions
+        such as Advanced, Refresh, Cancel, and Back. This is the default
+        variant and the fallback for unrecognized variant names.
+    ghost: Transparent button with accent-colored text and no border for
+        quiet inline actions such as Forgot Password? and per-field
+        Save/Reset/Default controls.
+    destructive: Solid error-colored fill with white text for destructive
+        actions requiring explicit confirmation, such as permanent deletion.
+    destructive_outline: Transparent button with an error-colored border and
+        text for softer destructive actions shown before confirmation.
+    ghost_danger: Transparent button with error-colored text and no border
+        for quiet destructive actions such as Sign Out.
+    icon_toolbar: Vertical icon-above-label layout intended for toolbar
+        controls. The variant is available for future toolbar use but is not
+        currently wired to application call sites.
 
-    btn_link = QATCHPushButton("Reset", variant="ghost")   # was BorderlessActionButton
+Legacy variant aliases are supported for backwards compatibility. The old
+`default`, `neutral`, `danger`, and `danger_confirm` names resolve to
+their corresponding canonical variants. The obsolete `warning` variant is
+not supported. Any unrecognized variant name falls back to `secondary`.
 
-    # Switch state at runtime (e.g. delete -> confirmation mode):
-    btn_del.set_variant("destructive")
-    btn_del.set_variant("destructive_outline")   # restore
+The module also supports specialized button layouts, including left-aligned
+icons with centered text and full-width menu-row buttons with a leading icon.
+These layouts are rendered manually where Qt's standard button label
+pipeline cannot provide the required positioning reliably.
+
+Example:
+    Create a primary action button::
+
+        btn = QATCHPushButton("Add", variant="primary")
+        btn.setIcon(QtGui.QIcon(path))
+        btn.setIconSize(QtCore.QSize(18, 18))
+        btn.setFixedHeight(34)
+
+    Create a quiet inline action using the `ghost` variant::
+
+        btn_link = QATCHPushButton("Reset", variant="ghost")
+
+    Change a destructive action into a confirmation state at runtime::
+
+        btn_del.set_variant("destructive")
+        btn_del.set_variant("destructive_outline")
+
+    Configure a button with a leading icon while keeping its text centered::
+
+        btn.set_icon_left(True)
+
+    Configure a button as a full-width menu row::
+
+        btn.set_menu_row(True)
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-18
 """
 
 from __future__ import annotations
-
-from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -57,8 +86,7 @@ from QATCH.ui.styles.typography import FONT_SANS_STACK, make_qfont
 _RADIUS = 7.0
 _RADIUS_ICON_TOOLBAR = 8.0
 
-# Old variant name -> canonical variant name. Unknown names (including the
-# retired "warning") fall through to "secondary" at resolve time.
+# Old variant name -> canonical variant name.
 _VARIANT_ALIASES: dict[str, str] = {
     "default": "secondary",
     "neutral": "secondary",
@@ -80,29 +108,52 @@ _CANONICAL_VARIANTS = frozenset(
 
 
 class QATCHPushButton(QtWidgets.QPushButton):
-    """QPushButton with flat-design rendering, matching the app's flat
-    control system.
+    """Provide a themed push button with token-driven rendering.
 
-    All fill, border, and focus-ring colors are resolved fresh at paint
-    time from the active `flat_*` tokens (light/dark aware automatically -
-    no separate light/dark palette table needed). A minimal QSS string
-    (padding and font only) is applied so Qt's standard icon/text pipeline
-    can render on top unimpeded.
+    Extends `QPushButton` with custom flat-control rendering that matches
+    the application's shared flat control system. Fill, border, and focus-ring
+    colors are resolved from the active `flat_*` theme tokens at paint time,
+    allowing the button to respond automatically to light and dark theme
+    changes without maintaining separate palette definitions.
+
+    A minimal stylesheet is used only for layout-related properties such as
+    padding and font configuration. Qt's native icon and text rendering
+    pipeline remains responsible for drawing the button content.
+
+    The button supports configurable visual variants and tracks hover and
+    pressed states internally so that the appropriate surface styling can be
+    rendered during `paintEvent`.
 
     Attributes:
-        _variant (str): Requested variant name (alias or canonical).
-        _hovered (bool): True while the cursor is inside the widget.
-        _pressed_state (bool): True while a mouse button is held down.
-        _border_visible (bool): False suppresses the border stroke.
+        _variant: Requested button variant name. May be an alias or canonical
+            variant name recognized by the button's styling system.
+        _hovered: Whether the mouse cursor is currently inside the widget.
+        _pressed_state: Whether a mouse button is currently held over the
+            button.
+        _border_visible: Whether the button's border stroke should be drawn.
+        _icon_left: Whether the button icon should be positioned on the left
+            side of its content.
+        _menu_row: Whether the button is being rendered as a menu-row control.
     """
 
     def __init__(
         self,
         text: str = "",
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
         *,
         variant: str = "secondary",
     ) -> None:
+        """Initialize the flat-styled push button.
+
+        Args:
+            text: Text to display on the button.
+            parent: Optional parent widget.
+            variant: Visual variant used to determine the button's theme and
+                interaction styling. Defaults to `"secondary"`.
+
+        Returns:
+            None.
+        """
         super().__init__(text, parent)
         self._variant: str = variant
         self._hovered: bool = False
@@ -119,25 +170,55 @@ class QATCHPushButton(QtWidgets.QPushButton):
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the button after the application theme changes.
+
+        Schedules the widget for repainting so its fill, border, focus ring, and
+        other token-driven visual properties are rendered using the newly active
+        theme.
+
+        Args:
+            _mode: Theme mode identifier emitted by the `themeChanged` signal.
+                The value is not otherwise used by this handler.
+
+        Returns:
+            None.
+        """
         self.update()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
     def set_icon_left(self, on: bool = True) -> None:
-        """Left-align the icon while keeping the label text centered.
+        """Configure the button to display its icon on the left.
 
-        Padding accounts for the corner radius so the icon clears the
-        curve. Use for labelled control buttons that want a leading glyph.
+        The icon is positioned toward the leading side of the button while the
+        label text remains centered. Additional padding is applied by the button's
+        layout styling to keep the icon clear of the rounded corners.
+
+        Args:
+            on: `True` to enable left-aligned icon placement, or `False` to
+                restore the default icon positioning.
+
+        Returns:
+            None.
         """
         self._icon_left = on
         self.update()
 
     def set_menu_row(self, on: bool = True) -> None:
-        """Lays the button out as a full-width, left-aligned menu row: icon
-        at a fixed inset, text immediately after it (not centered) - for
-        borderless popup menu items (e.g. the account dropdown's "Manage
-        Users" / "Sign Out" rows). Implies `set_icon_left(True)`.
+        """Configure the button as a full-width, left-aligned menu row.
+
+        Menu-row mode positions the icon at a fixed leading inset and places the
+        text immediately after it rather than centering the text. This layout is
+        intended for borderless popup menu items such as account or navigation
+        actions.
+
+        Enabling menu-row mode also enables left-aligned icon placement. The
+        button's stylesheet is reapplied so the layout changes take effect
+        immediately.
+
+        Args:
+            on: `True` to enable menu-row layout, or `False` to disable it.
+
+        Returns:
+            None.
         """
         self._menu_row = on
         if on:
@@ -146,33 +227,63 @@ class QATCHPushButton(QtWidgets.QPushButton):
         self.update()
 
     def set_variant(self, variant: str) -> None:
-        """Switch the visual variant at runtime.
+        """Change the button's visual variant at runtime.
 
-        Useful for transient state changes such as the delete button morphing
-        into a confirmation state::
+        Updates the requested variant and schedules the button for repainting so
+        the new variant styling is applied immediately. This can be used for
+        transient state changes where a button changes appearance based on the
+        current action or workflow state.
 
-            btn.set_variant("destructive")
-            btn.set_variant("destructive_outline")   # restore
+        Example:
+            Change a delete action into a destructive confirmation state::
+
+                btn.set_variant("destructive")
+                btn.set_variant("destructive_outline")
+
+        Args:
+            variant: Name of the visual variant to apply.
+
+        Returns:
+            None.
         """
         self._variant = variant
         self.update()
 
     def set_border_visible(self, visible: bool) -> None:
-        """Hide the border entirely while keeping the fill + hover effect -
-        for compact actions that sit inside an already-bordered container
-        (e.g. the USB picker box), where drawing a border around the button
-        too would be one border too many.
+        """Control whether the button's border and focus ring are displayed.
 
-        Also drops keyboard focus when borderless: the focus ring this
-        widget would otherwise draw needs a border to sit outside of, and a
-        borderless button living inside another bordered container should
-        not introduce its own focus outline."""
+        When the border is hidden, keyboard focus is also disabled to prevent the
+        button from drawing a focus ring that would otherwise extend beyond the
+        borderless control. This is useful for compact actions placed inside
+        another bordered container, where an additional button border would be
+        visually redundant.
+
+        Args:
+            visible: `True` to display the button border, or `False` to hide
+                the border and disable keyboard focus.
+
+        Returns:
+            None.
+        """
         self._border_visible = visible
         if not visible:
             self.setFocusPolicy(QtCore.Qt.NoFocus)
         self.update()
 
-    def setEnabled(self, enabled: bool) -> None:  # noqa: N802
+    def setEnabled(self, enabled: bool) -> None:
+        """Set the button's enabled state and update its cursor.
+
+        Disabled buttons use a forbidden cursor to communicate that the control
+        cannot currently be activated. Enabled buttons restore the standard
+        pointing-hand cursor. The button is then scheduled for repainting so its
+        disabled or enabled visual styling is updated.
+
+        Args:
+            enabled: `True` to enable the button, or `False` to disable it.
+
+        Returns:
+            None.
+        """
         super().setEnabled(enabled)
         self.setCursor(
             QtGui.QCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
@@ -181,14 +292,39 @@ class QATCHPushButton(QtWidgets.QPushButton):
         )
         self.update()
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
     def _canonical_variant(self) -> str:
+        """Resolve the configured variant to a canonical variant name.
+
+        Variant aliases are translated using `_VARIANT_ALIASES`. If the
+        resulting name is not recognized as a canonical variant, `"secondary"`
+        is returned as the safe default.
+
+        Returns:
+            The canonical variant name used by the button's rendering and
+            stylesheet logic.
+        """
         v = _VARIANT_ALIASES.get(self._variant, self._variant)
         return v if v in _CANONICAL_VARIANTS else "secondary"
 
     def _apply_qss(self, text: str) -> None:
+        """Apply the minimal stylesheet required for button content layout.
+
+        Configures transparent backgrounds and borders while providing
+        variant-aware padding, font family, font size, and font weight. The
+        button's fill, border, focus ring, and other visual chrome are rendered
+        separately by `paintEvent`.
+
+        Icon-toolbar buttons use reduced horizontal padding. Other buttons use
+        standard padding when text is present and remove padding for textless
+        controls.
+
+        Args:
+            text: Current button text, used to determine whether content padding
+                should be applied.
+
+        Returns:
+            None.
+        """
         variant = self._canonical_variant()
         if variant == "icon_toolbar":
             h_pad, v_pad = 4, 8
@@ -208,11 +344,48 @@ class QATCHPushButton(QtWidgets.QPushButton):
 
     @staticmethod
     def _lighten(color: QtGui.QColor, percent: int) -> QtGui.QColor:
+        """Lighten a color by the specified percentage.
+
+        Uses Qt's `QColor.lighter` operation to increase the color's lightness
+        relative to its original value.
+
+        Args:
+            color: Base color to lighten.
+            percent: Percentage by which to increase the color's lightness.
+                A value of `0` leaves the color unchanged.
+
+        Returns:
+            A new `QColor` with the requested increase in lightness.
+        """
         return color.lighter(100 + percent)
 
     def _resolve_colors(self) -> dict:
-        """Resolves fill/text/border/ring colors for the current variant and
-        interaction state, read fresh from the active theme's flat_* tokens."""
+        """Resolve colors and rendering properties for the current button state.
+
+        Determines the button's fill, text, border, focus-ring, border width, and
+        shadow configuration from the active theme tokens. The result is based on
+        the canonical button variant and the current interaction state, including
+        hover, pressed, enabled, and keyboard-focus states.
+
+        The color configuration is resolved at paint time so theme changes are
+        reflected immediately without maintaining separate light and dark color
+        tables.
+
+        Supported variants include `"primary"`, `"destructive"`,
+        `"destructive_outline"`, `"ghost"`, `"ghost_danger"`,
+        `"icon_toolbar"`, and `"secondary"`. Unrecognized variants fall back
+        to the `"secondary"` styling.
+
+        Returns:
+            A dictionary containing the resolved rendering properties:
+
+            * `fill`: `QColor` used for the button background.
+            * `text`: `QColor` used for button text and content.
+            * `border`: `QColor` used for the button border.
+            * `border_width`: Width of the button border in pixels.
+            * `ring`: Optional `QColor` used for the keyboard focus ring.
+            * `shadow`: Whether the button should render a drop shadow.
+        """
         tok = ThemeManager.instance().tokens()
         variant = self._canonical_variant()
         hovered = self._hovered
@@ -342,47 +515,131 @@ class QATCHPushButton(QtWidgets.QPushButton):
             "shadow": False,
         }
 
-    # ------------------------------------------------------------------
-    # Event overrides
-    # ------------------------------------------------------------------
     def enterEvent(self, event) -> None:
+        """Handle the mouse cursor entering the button.
+
+        Updates the internal hover state and schedules the button for repainting
+        so the hover-specific visual styling can be rendered.
+
+        Args:
+            event: Qt event generated when the mouse cursor enters the widget.
+
+        Returns:
+            None.
+        """
         super().enterEvent(event)
         self._hovered = True
         self.update()
 
     def leaveEvent(self, event) -> None:
+        """Handle the mouse cursor leaving the button.
+
+        Clears the internal hover state and schedules the button for repainting so
+        the normal visual styling can be restored.
+
+        Args:
+            event: Qt event generated when the mouse cursor leaves the widget.
+
+        Returns:
+            None.
+        """
         super().leaveEvent(event)
         self._hovered = False
         self.update()
 
     def mousePressEvent(self, event) -> None:
+        """Handle a mouse press on the button.
+
+        Delegates the event to `QPushButton` and records the pressed state so
+        the appropriate pressed-state styling can be rendered.
+
+        Args:
+            event: Mouse event generated when a mouse button is pressed over the
+                widget.
+
+        Returns:
+            None.
+        """
         super().mousePressEvent(event)
         self._pressed_state = True
         self.update()
 
     def mouseReleaseEvent(self, event) -> None:
+        """Handle a mouse release on the button.
+
+        Delegates the event to `QPushButton` and clears the internal pressed
+        state before scheduling a repaint.
+
+        Args:
+            event: Mouse event generated when a mouse button is released.
+
+        Returns:
+            None.
+        """
         super().mouseReleaseEvent(event)
         self._pressed_state = False
         self.update()
 
     def focusInEvent(self, event) -> None:
+        """Handle the button receiving keyboard focus.
+
+        Delegates focus handling to the base class and schedules the button for
+        repainting so its focus-ring styling can be displayed.
+
+        Args:
+            event: Qt focus event generated when the widget receives focus.
+
+        Returns:
+            None.
+        """
         super().focusInEvent(event)
         self.update()
 
     def focusOutEvent(self, event) -> None:
+        """Handle the button losing keyboard focus.
+
+        Delegates focus handling to the base class and schedules the button for
+        repainting so any active focus-ring styling is removed.
+
+        Args:
+            event: Qt focus event generated when the widget loses focus.
+
+        Returns:
+            None.
+        """
         super().focusOutEvent(event)
         self.update()
 
-    # ------------------------------------------------------------------
-    # Painting
-    # ------------------------------------------------------------------
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
-        """Paints the flat fill/border/focus-ring, then delegates icon/text
-        rendering to Qt's standard CE_PushButtonLabel pipeline (or a manual
-        vertical icon-above-label layout for the icon_toolbar variant).
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        """Paint the button surface and delegate content rendering to Qt.
 
-        Guard against zero-height during size animations (cancel buttons
-        start at 0x0 and expand).
+        Renders the button's flat fill, border, focus ring, and optional drop
+        shadow using the resolved variant and interaction-state colors. Standard
+        Qt text and icon rendering is then used for normal buttons, while
+        specialized layouts are handled manually for icon-toolbar and menu-row
+        variants.
+
+        Solid-fill variants such as `primary` and `destructive` receive a
+        manually offset translucent shadow. A graphics effect is intentionally
+        avoided because continuously repainted widgets can exhibit pixmap-cache
+        ghosting when wrapped in `QGraphicsDropShadowEffect`.
+
+        The method also handles buttons that temporarily have negligible height,
+        such as controls during size animations, by delegating directly to the
+        base implementation when the height is below the minimum rendering
+        threshold.
+
+        For buttons configured with `set_icon_left(True)`, the icon is rendered
+        manually at a leading inset while Qt renders the text centered across the
+        full button width.
+
+        Args:
+            event: Qt paint event provided when the widget needs to be repainted.
+                The event is passed to the base implementation when the widget is
+                too small to render its custom surface.
+
+        Returns:
+            None.
         """
         w, h = self.width(), self.height()
         if h < 4:
@@ -396,12 +653,7 @@ class QATCHPushButton(QtWidgets.QPushButton):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
 
-        # Subtle drop shadow under solid-fill variants (primary/destructive),
-        # drawn as a manually-offset translucent duplicate shape rather than
-        # a QGraphicsDropShadowEffect - this widget is hover-repainted, and
-        # wrapping it in a graphics effect risks the pixmap-caching ghosting
-        # documented for other continuously-repainted custom widgets in this
-        # app (see advanced_main_widget.py's _PerspectiveAnimator docstring).
+        # Subtle drop shadow under solid-fill variants
         if colors["shadow"]:
             tok = ThemeManager.instance().tokens()
             shadow_rect = QtCore.QRectF(0.0, 1.0, float(w), float(h))
@@ -422,8 +674,7 @@ class QATCHPushButton(QtWidgets.QPushButton):
         )
         p.end()
 
-        # Apply the resolved text color to the palette so Qt's own label
-        # drawing (below) picks it up.
+        # Apply the resolved text color to the palette
         pal = self.palette()
         pal.setColor(QtGui.QPalette.ButtonText, colors["text"])
         self.setPalette(pal)
@@ -437,10 +688,7 @@ class QATCHPushButton(QtWidgets.QPushButton):
             return
 
         if self._icon_left and not self.icon().isNull():
-            # Left-aligned icon, centered text. The icon is inset from the
-            # left edge by a padding that accounts for the corner radius so
-            # it doesn't collide with the curve; the text stays centered
-            # across the full button width.
+            # Left-aligned icon, centered text.
             isz = self.iconSize()
             icon_pad = max(int(radius * 0.6), 12)
             icon_y = (h - isz.height()) // 2
@@ -467,11 +715,25 @@ class QATCHPushButton(QtWidgets.QPushButton):
             sp.end()
 
     def _paint_icon_toolbar_label(self, text_color: QtGui.QColor) -> None:
-        """Manual vertical icon-above-label layout for variant="icon_toolbar".
+        """Paint the icon-toolbar button's vertically stacked content.
 
-        Qt's native CE_PushButtonLabel lays icon and text out horizontally;
-        the flat spec's toolbar buttons stack them vertically, so this is
-        drawn by hand instead of delegated.
+        Draws the button icon above its text label to provide the vertical
+        icon-over-label layout required by the `"icon_toolbar"` variant. This
+        layout is rendered manually because Qt's standard
+        `CE_PushButtonLabel` style draws button icons and text horizontally.
+
+        The icon is centered horizontally with a fixed top inset. The text is
+        positioned below the icon with a small configurable gap. If no icon is
+        configured, the label is drawn using the same top inset without reserving
+        space for an icon.
+
+        Disabled buttons are rendered with reduced opacity.
+
+        Args:
+            text_color: `QColor` used to render the button's text label.
+
+        Returns:
+            None.
         """
         w = self.width()
         p = QtGui.QPainter(self)
@@ -498,13 +760,25 @@ class QATCHPushButton(QtWidgets.QPushButton):
         p.end()
 
     def _paint_menu_row_label(self, text_color: QtGui.QColor) -> None:
-        """Left-aligned icon + left-aligned text for variant=set_menu_row(True).
+        """Paint the icon and text for a left-aligned menu row.
 
-        Hand-painted rather than delegated to CE_PushButtonLabel + QSS
-        text-align: Qt's stylesheet engine does not reliably resolve a
-        shorthand `padding` against a differing effective left inset for
-        icon-suppressed text the way this needs, so direct drawing is used
-        instead - the same reasoning as `_paint_icon_toolbar_label`.
+        Renders the menu-row content manually rather than delegating to Qt's
+        `CE_PushButtonLabel` pipeline. Direct painting provides precise control
+        over the leading icon inset and text position, avoiding inconsistencies
+        caused by the global stylesheet's handling of padding and icon-suppressed
+        button labels.
+
+        The icon is vertically centered at a fixed leading inset, followed by the
+        label text with a defined gap. The text is vertically centered and
+        left-aligned within the remaining button width.
+
+        Disabled buttons are rendered with reduced opacity.
+
+        Args:
+            text_color: `QColor` used to render the menu-row text.
+
+        Returns:
+            None.
         """
         w, h = self.width(), self.height()
         p = QtGui.QPainter(self)
