@@ -1,4 +1,7 @@
-"""Shared themed chrome and button construction for task bars.
+"""
+QATCH.ui.components.task_bar_base.py
+
+Shared themed chrome and button construction for task bars.
 
 Provides the common Python-side styling and behavior used by the application's
 `CtrlToolBar`-styled task bars, including the Analyze and Controls action

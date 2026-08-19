@@ -1016,7 +1016,7 @@ class OverlayLifecycleMixin(OverlayFadeMixin):
             self._on_before_reveal()
             self._scrim_alpha = 0
             self._panel_alpha = 0
-            self._frame.hide()
+            self.glass_frame.hide()
             self._refit_to_parent()
 
             def _reveal():

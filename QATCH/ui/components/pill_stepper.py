@@ -183,6 +183,18 @@ class PillStepper(QtWidgets.QWidget):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
+        # Every other widget in the stepper overlay's row (_embed_stepper_
+        # overlay's +/- buttons) is a Fixed-policy PillCellButton, so a
+        # QBoxLayout with no addStretch() hands *all* of the row's leftover
+        # slack to this widget - the only one left with the default
+        # Preferred policy - stretching it past its own sizeHint(). That
+        # surplus then lands inside self's own `outer` layout, which
+        # distributes it as gaps between the pills/connector line instead
+        # of leaving them flush. Locking to Fixed keeps this widget's own
+        # width pinned to sizeHint() (updated via _on_width_tick/
+        # _apply_current_instant below), regardless of how much extra room
+        # a parent row layout has to offer.
+        self.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
 
         self._labels = list(labels)
         self._current = 0
@@ -216,13 +228,34 @@ class PillStepper(QtWidgets.QWidget):
             anim = QtCore.QVariantAnimation(self)
             anim.setDuration(self._ANIM_MS)
             anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-            anim.valueChanged.connect(lambda v, b=btn: b.setFixedWidth(int(v)))
+            anim.valueChanged.connect(lambda v, b=btn: self._on_width_tick(b, v))
             self._anims.append(anim)
 
         self._rewire_click_handlers()
         self._apply_current_instant()
         self._restyle()
         ThemeManager.instance().themeChanged.connect(lambda _: self._restyle())
+
+    def _on_width_tick(self, widget: QtWidgets.QWidget, value) -> None:
+        """Applies one animation frame's width, then flags `self`'s own
+        `sizeHint()` as stale so the enclosing row layout re-measures it.
+
+        Without the :meth:`updateGeometry` call, a parent layout (the
+        stepper overlay row built in `_embed_stepper_overlay`) keeps using
+        whatever `sizeHint()` it last measured for `self` and never
+        notices this pill/line resized - see :meth:`__init__`'s
+        `setSizePolicy(Fixed, Fixed)` call for why that staleness is
+        visible at all (a `Preferred`-policy `self` would otherwise get
+        silently stretched to fill the row's leftover slack, and that
+        surplus would render as dead gaps between the pills/connector
+        line instead of them staying flush).
+
+        Args:
+            widget (QtWidgets.QWidget): The pill/line being animated this frame.
+            value: This frame's target width (from :class:`QtCore.QVariantAnimation`).
+        """
+        widget.setFixedWidth(int(value))
+        self.updateGeometry()
 
     def _expanded_width_for(self, label: str) -> int:
         """Calculates expanded pill pixel width required to fit a text caption.
@@ -319,14 +352,14 @@ class PillStepper(QtWidgets.QWidget):
         anim = QtCore.QVariantAnimation(self)
         anim.setDuration(self._ANIM_MS)
         anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        anim.valueChanged.connect(lambda v, b=btn: b.setFixedWidth(int(v)))
+        anim.valueChanged.connect(lambda v, b=btn: self._on_width_tick(b, v))
 
         line_anim = QtCore.QVariantAnimation(self)
         line_anim.setDuration(self._ANIM_MS)
         line_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         line_anim.setStartValue(0)
         line_anim.setEndValue(self._LINE_LEN)
-        line_anim.valueChanged.connect(lambda v, ln=line: ln.setFixedWidth(int(v)))
+        line_anim.valueChanged.connect(lambda v, ln=line: self._on_width_tick(ln, v))
 
         self._labels.insert(pos, label)
         self._buttons.insert(pos, btn)
@@ -369,7 +402,7 @@ class PillStepper(QtWidgets.QWidget):
         line_anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         line_anim.setStartValue(line.width())
         line_anim.setEndValue(0)
-        line_anim.valueChanged.connect(lambda v, ln=line: ln.setFixedWidth(int(v)))
+        line_anim.valueChanged.connect(lambda v, ln=line: self._on_width_tick(ln, v))
         line_anim.start()
 
         def _finish(btn=btn, line=line) -> None:
@@ -397,6 +430,7 @@ class PillStepper(QtWidgets.QWidget):
             else:
                 btn.setFixedWidth(self._CIRCLE)
                 btn.setText(str(i + 1))
+        self.updateGeometry()
 
     def _animate_to(self, index: int, target_width: int, start_width: int | None = None) -> None:
         """Applies current step width and text layout instantly without animation."""
