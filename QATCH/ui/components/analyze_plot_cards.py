@@ -12,7 +12,7 @@ Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-08-19
+    2026-08
 """
 
 from __future__ import annotations
