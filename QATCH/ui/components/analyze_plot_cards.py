@@ -1,9 +1,18 @@
-"""Themed plot-card widgets for AnalyzeUI.
+"""
+QATCH.ui.components.analyze_plot_cards.py
+
+Analyze plot-card widgets for AnalyzeUI.
 
 Wraps AnalyzeUI's pyqtgraph plot widgets in the same rounded-card chrome
 used by PlotsUI (`QATCH.ui.interfaces.ui_plots.PlotContainer`), plus a
 small colored-dot "legend chip" widget used both in the Signal Overview
 card's header legend and each detail plot card's title.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-19
 """
 
 from __future__ import annotations
@@ -17,11 +26,6 @@ from QATCH.ui.interfaces.ui_plots import GridMenuRow, PlotContainer
 from QATCH.ui.styles.theme_manager import ThemeManager, ThemeMode
 from QATCH.ui.styles.tokens import PALETTES
 
-# The three analyzed signal series get one fixed color each, used
-# consistently for: legend chips, detail-plot-card title dots, and the
-# pyqtgraph curve pens/axis titles drawn in ui_analyze.py. These are
-# data-semantic (not theme chrome), so they stay literal rather than
-# deriving from light/dark tokens.
 SIGNAL_COLORS = {
     "resonance": QtGui.QColor("#2e9e46"),
     "difference": QtGui.QColor("#2f7fd1"),
@@ -30,14 +34,39 @@ SIGNAL_COLORS = {
 
 
 class _ColorDot(QtWidgets.QWidget):
-    """Fixed-size solid-filled circle used as a legend swatch."""
+    """Display a fixed-size solid-colored circular legend swatch.
 
-    def __init__(self, color: QtGui.QColor, size: int, parent=None) -> None:
+    The widget renders a single anti-aliased filled circle using the supplied
+    color. It is intended for use as a compact visual indicator alongside
+    signal names in legends and plot-card headers.
+    """
+
+    def __init__(
+        self,
+        color: QtGui.QColor,
+        size: int,
+        parent=None,
+    ) -> None:
+        """Initialize the colored-dot widget.
+
+        Args:
+            color: Initial color used to fill the dot.
+            size: Width and height of the widget in pixels.
+            parent: Optional parent Qt widget.
+        """
         super().__init__(parent)
         self._color = QtGui.QColor(color)
         self.setFixedSize(size, size)
 
-    def paintEvent(self, _event) -> None:  # noqa: N802 (Qt override)
+    def paintEvent(self, _event) -> None:
+        """Paint the colored circular swatch.
+
+        The dot is rendered with anti-aliasing and without an outline so that
+        it appears as a clean, solid legend marker.
+
+        Args:
+            _event: Qt paint event supplied by the widget system.
+        """
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
         painter.setPen(QtCore.Qt.NoPen)
@@ -46,14 +75,44 @@ class _ColorDot(QtWidgets.QWidget):
         painter.end()
 
     def set_color(self, color: QtGui.QColor) -> None:
+        """Update the dot color and schedule the widget for repainting.
+
+        Args:
+            color: New color to use when rendering the dot.
+        """
         self._color = QtGui.QColor(color)
         self.update()
 
 
 class LegendChip(QtWidgets.QWidget):
-    """A small colored dot + label, e.g. "● Resonance"."""
+    """Display a compact colored signal indicator with a text label.
 
-    def __init__(self, text: str, color: QtGui.QColor, dot_size: int = 8, parent=None) -> None:
+    The widget combines a small circular color swatch with a vertically
+    centered label, making it suitable for plot legends and plot-card
+    headers.
+
+    Args:
+        text: Text displayed next to the colored dot.
+        color: Initial color of the legend dot.
+        dot_size: Diameter of the circular dot in pixels.
+        parent: Optional parent Qt widget.
+    """
+
+    def __init__(
+        self,
+        text: str,
+        color: QtGui.QColor,
+        dot_size: int = 8,
+        parent=None,
+    ) -> None:
+        """Initialize the legend chip.
+
+        Args:
+            text: Text displayed next to the colored dot.
+            color: Initial color of the legend dot.
+            dot_size: Diameter of the circular dot in pixels.
+            parent: Optional parent Qt widget.
+        """
         super().__init__(parent)
         self._color = QtGui.QColor(color)
         self._dot_size = dot_size
@@ -70,18 +129,30 @@ class LegendChip(QtWidgets.QWidget):
         layout.addWidget(self._label, 0, QtCore.Qt.AlignVCenter)
 
     def set_color(self, color: QtGui.QColor) -> None:
+        """Update the legend dot color.
+
+        Args:
+            color: New color to use for the legend dot.
+        """
         self._color = QtGui.QColor(color)
         self._dot.set_color(self._color)
 
 
 class _DualArrowControl(QtWidgets.QWidget):
-    """Two small adjacent icon buttons sharing one control footprint, e.g.
-    a "Zoom" control (up/down) or a "Move point" control (left/right).
+    """Display two compact directional buttons as a single control.
 
-    The mockup shows one bidirectional icon per control; since a single
-    QToolButton can't have two independently-clickable halves, this pairs
-    two small buttons (btn_a/btn_b) so each direction is still a distinct,
-    unambiguous click while reading visually as one compact unit.
+    The control combines two small :class:`QToolButton` instances into a
+    shared visual footprint. It is useful for bidirectional controls such as
+    zooming or moving a point, where each direction needs to remain an
+    independently clickable action while visually appearing as one compact
+    control.
+
+    The buttons can be arranged horizontally or vertically and use themed
+    icons tinted to the requested color.
+
+    Attributes:
+        btn_a: First directional tool button.
+        btn_b: Second directional tool button.
     """
 
     def __init__(
@@ -93,6 +164,18 @@ class _DualArrowControl(QtWidgets.QWidget):
         tooltip_b: str,
         parent=None,
     ) -> None:
+        """Initialize the dual directional control.
+
+        Args:
+            icon_a: Filename of the icon displayed on the first button.
+            icon_b: Filename of the icon displayed on the second button.
+            orientation: Layout orientation. Use `"vertical"` to stack the
+                buttons vertically; any other value creates a horizontal
+                layout.
+            tooltip_a: Tooltip displayed for the first button.
+            tooltip_b: Tooltip displayed for the second button.
+            parent: Optional parent Qt widget.
+        """
         super().__init__(parent)
         self._icon_a = icon_a
         self._icon_b = icon_b
@@ -113,6 +196,14 @@ class _DualArrowControl(QtWidgets.QWidget):
             layout.addWidget(btn)
 
     def set_icon_color(self, color: QtGui.QColor) -> None:
+        """Apply a tint color to both directional button icons.
+
+        Icons are loaded from the application's shared icon directory and
+        tinted using :meth:`PlotContainer._tinted_icon`.
+
+        Args:
+            color: Color used to tint both button icons.
+        """
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
         self.btn_a.setIcon(
             PlotContainer._tinted_icon(os.path.join(icons_dir, self._icon_a), color, 10)
@@ -123,26 +214,46 @@ class _DualArrowControl(QtWidgets.QWidget):
 
 
 class SignalOverviewCard(PlotContainer):
-    """The large "Signal Overview" plot card: title + inline colored
-    legend + Zoom/Move-point controls in the header, wrapping the same
-    overview pg.PlotWidget AnalyzeUI already owns.
+    """Display the AnalyzeUI signal overview plot in a themed card.
 
-    Exposes btn_zoom_in/btn_zoom_out/btn_move_left/btn_move_right for the
-    caller to wire to zoomFinderPlots/moveCurrentMarker (those callbacks
-    live on UIAnalyze, not here).
+    Extends :class:`PlotContainer` with an inline signal legend and compact
+    zoom and marker-navigation controls. The card wraps the existing
+    AnalyzeUI `pyqtgraph` plot widget rather than creating or owning the
+    underlying plot.
+
+    The directional controls are exposed individually so the owning
+    `UIAnalyze` instance can connect them to its existing plot-navigation
+    callbacks.
 
     Attributes:
-        point_to_point_toggled (QtCore.pyqtSignal): Emitted when the gear
-            menu's "Point-to-Point Rendering" row is toggled. Controls the
-            raw-data "point cloud" - the near-invisible scatter dots the
-            solid fit lines are a smoothed average through - not the fit
-            lines themselves. True shows it, False hides it. UIAnalyze owns
-            applying this to the actual plotted curves.
+        point_to_point_toggled: Signal emitted when the gear menu's
+            `"Point-to-Point Rendering"` option is toggled. The emitted
+            boolean indicates whether raw-data point rendering should be
+            enabled. The signal does not directly modify the plotted curves;
+            `UIAnalyze` is responsible for applying the requested state.
+        zoom_control: Vertical dual-arrow control containing the zoom-in and
+            zoom-out buttons.
+        move_control: Horizontal dual-arrow control containing the
+            left and right marker-navigation buttons.
+        btn_zoom_in: Button used to request zooming in.
+        btn_zoom_out: Button used to request zooming out.
+        btn_move_left: Button used to move the current point to the left.
+        btn_move_right: Button used to move the current point to the right.
     """
 
     point_to_point_toggled = QtCore.pyqtSignal(bool)
 
-    def __init__(self, plot_widget: QtWidgets.QWidget, parent=None) -> None:
+    def __init__(
+        self,
+        plot_widget: QtWidgets.QWidget,
+        parent=None,
+    ) -> None:
+        """Initialize the signal overview card.
+
+        Args:
+            plot_widget: Existing AnalyzeUI plot widget to wrap in the card.
+            parent: Optional parent Qt widget.
+        """
         super().__init__(
             plot_widget,
             title="Signal Overview",
@@ -158,6 +269,14 @@ class SignalOverviewCard(PlotContainer):
         self._refresh_control_icons()
 
     def _add_legend_and_controls(self) -> None:
+        """Add the signal legend and navigation controls to the header.
+
+        Creates a legend chip for each supported signal and adds compact
+        controls for zooming and moving the current plot marker. The
+        fullscreen and gear-menu controls created by the base
+        :class:`PlotContainer` are moved to the end of the header so they
+        remain right-aligned.
+        """
         header_layout = self.header.layout()
         title_label = header_layout.itemAt(0).widget()
         header_layout.setStretchFactor(title_label, 0)
@@ -191,31 +310,44 @@ class SignalOverviewCard(PlotContainer):
         header_layout.addSpacing(6)
         header_layout.addWidget(self.move_control)
 
-        # PlotContainer._create_header() (show_menu=True) already placed
-        # btn_fs/gear right after the title, before any of the legend/zoom/
-        # move content just added above - re-append them so fullscreen+gear
-        # end up rightmost, matching PlotContainer's own header order.
         for ctrl in (getattr(self, "btn_fs", None), getattr(self, "_menu_btn", None)):
             if ctrl is not None:
                 header_layout.removeWidget(ctrl)
                 header_layout.addWidget(ctrl)
 
     def set_section_color(self, key: str, color: QtGui.QColor) -> None:
-        """Recolors this card's legend chip dot for `key`, if it has one.
+        """Update the legend color for a signal section.
 
-        Called for every plot card whenever any card's gear menu changes a
-        series color, so the Signal Overview legend and the matching detail
-        card's title dot (see DetailPlotCard.set_section_color) stay in sync
-        regardless of which card's menu was actually used.
+        If a legend chip exists for the specified section key, its color is
+        updated to keep the Signal Overview legend synchronized with the
+        corresponding detail plot card.
+
+        Args:
+            key: Signal section identifier whose legend color should be
+                updated.
+            color: New color for the signal's legend indicator.
         """
         chip = self._legend_chips.get(key)
         if chip is not None:
             chip.set_color(color)
 
     def _refresh_control_icons(self, _mode: str | None = None) -> None:
+        """Refresh navigation-control icon colors for the active theme.
+
+        Determines the current application theme and applies the corresponding
+        plot-text color to the zoom and marker-navigation controls.
+
+        This method may be invoked by :class:`PlotContainer` during
+        initialization before the custom controls have been created. In that
+        case, it safely returns without attempting to update them.
+
+        Args:
+            _mode: Optional theme-mode value supplied by the theme-change
+                callback. The current theme is queried directly from
+                :class:`ThemeManager`, so this argument is intentionally
+                unused.
+        """
         if not hasattr(self, "zoom_control"):
-            # PlotContainer.__init__ calls _apply_icon_theme() (which
-            # dispatches here) before _add_legend_and_controls() has run.
             return
         dark = ThemeManager.instance().mode() == ThemeMode.DARK
         tint = QtGui.QColor(*PALETTES["dark" if dark else "light"]["plot_text_normal"][:3])
@@ -223,22 +355,40 @@ class SignalOverviewCard(PlotContainer):
         self.move_control.set_icon_color(tint)
 
     def _apply_icon_theme(self, _mode: str | None = None) -> None:
+        """Apply the base and custom icon theme to the overview card.
+
+        Delegates the standard icon-theme update to :class:`PlotContainer`
+        and then refreshes the colors of the Signal Overview zoom and
+        marker-navigation controls.
+
+        Args:
+            _mode: Optional theme-mode value supplied by the theme-change
+                callback.
+        """
         super()._apply_icon_theme(_mode)
         self._refresh_control_icons(_mode)
 
     def _build_extra_menu_rows(self, menu: QtWidgets.QMenu) -> None:
-        """Adds a "Point-to-Point Rendering" toggle to this card's gear
-        menu - the only card with a raw-data point cloud to show/hide in
-        the first place. Reuses `GridMenuRow` (same compact checkbox-row
-        widget as the Major/Minor gridline toggles above it) rather than
-        introducing a new row type for a single boolean.
+        """Add the point-to-point rendering toggle to the gear menu.
 
-        Starts unchecked (point cloud hidden by default) - the overview
-        graph plots a whole run's raw sample count at once, so its point
-        cloud is the more expensive one to leave on by default; the detail
-        cards' equivalent toggle (see `DetailPlotCard._build_extra_menu_
-        rows`) starts checked instead, since each only covers one series'
-        narrower POI window.
+        Adds a compact checkbox row for controlling visibility of the raw-data
+        point cloud in the Signal Overview plot. The row reuses
+        :class:`GridMenuRow` to maintain the same appearance and interaction
+        behavior as the major and minor gridline controls.
+
+        Point-to-point rendering is disabled by default for the overview plot
+        because it can contain the full raw sample count for an entire run,
+        making the point cloud more expensive to render. Detail plot cards use
+        a separate implementation with the toggle enabled by default because
+        they display narrower POI-specific windows.
+
+        When the toggle changes, the emitted state is forwarded through
+        :attr:`point_to_point_toggled`. The card does not directly modify the
+        plotted data; the owning `UIAnalyze` instance is responsible for
+        applying the setting.
+
+        Args:
+            menu: Gear-menu instance to which the toggle row should be added.
         """
         menu.addSeparator()
         row = GridMenuRow("point_to_point", "Point-to-Point Rendering", checked=False)
@@ -250,21 +400,43 @@ class SignalOverviewCard(PlotContainer):
 
 
 class DetailPlotCard(PlotContainer):
-    """One of the three small detail plot cards (Resonance/Difference/
-    Dissipation) - a colored-dot LegendChip header instead of a plain
-    title, wrapping one of AnalyzeUI's graphWidget1/2/3.
+    """Display an individual AnalyzeUI signal as a themed detail plot card.
+
+    Represents one of the three detail plot cards for Resonance, Difference,
+    or Dissipation. The card wraps one of AnalyzeUI's existing
+    `graphWidget1`, `graphWidget2`, or `graphWidget3` instances and
+    replaces the standard title label with a :class:`LegendChip` containing
+    the signal's color indicator.
 
     Attributes:
-        point_to_point_toggled (QtCore.pyqtSignal): Emitted when the gear
-            menu's "Point-to-Point Rendering" row is toggled. Controls this
-            card's own raw-data point cloud, independent of the overview
-            card's equivalent toggle. UIAnalyze owns applying this to the
-            actual plotted curves.
+        point_to_point_toggled: Signal emitted when the gear menu's
+            `"Point-to-Point Rendering"` option is toggled. The emitted
+            boolean controls visibility of this card's raw-data point cloud
+            independently of the Signal Overview card. The owning
+            `UIAnalyze` instance is responsible for applying the setting
+            to the plotted curves.
+        _color_key: Signal identifier associated with this detail plot.
+        _title_chip: Legend chip displayed in place of the standard plot
+            title, or `None` before the chip has been created.
     """
 
     point_to_point_toggled = QtCore.pyqtSignal(bool)
 
-    def __init__(self, plot_widget: QtWidgets.QWidget, label: str, color_key: str, parent=None) -> None:
+    def __init__(
+        self,
+        plot_widget: QtWidgets.QWidget,
+        label: str,
+        color_key: str,
+        parent=None,
+    ) -> None:
+        """Initialize a detail plot card.
+
+        Args:
+            plot_widget: Existing AnalyzeUI plot widget to wrap in the card.
+            label: Human-readable signal name displayed in the card header.
+            color_key: Signal identifier used to select the signal color.
+            parent: Optional parent Qt widget.
+        """
         super().__init__(
             plot_widget,
             title=label,
@@ -277,6 +449,16 @@ class DetailPlotCard(PlotContainer):
         self._replace_title_with_chip(label, SIGNAL_COLORS[color_key])
 
     def _replace_title_with_chip(self, label: str, color: QtGui.QColor) -> None:
+        """Replace the standard header title with a colored legend chip.
+
+        Removes the title label created by :class:`PlotContainer` and inserts
+        a :class:`LegendChip` in its original position. The resulting chip
+        provides both the signal name and its associated color indicator.
+
+        Args:
+            label: Text displayed by the replacement legend chip.
+            color: Color used for the chip's signal indicator.
+        """
         header_layout = self.header.layout()
         old_label = header_layout.itemAt(0).widget()
         header_layout.removeWidget(old_label)
@@ -286,25 +468,40 @@ class DetailPlotCard(PlotContainer):
         header_layout.insertWidget(0, chip, 1)
 
     def set_section_color(self, key: str, color: QtGui.QColor) -> None:
-        """Recolors this card's title chip dot if `key` matches its own
-        series - see SignalOverviewCard.set_section_color for why every
-        card gets called regardless of which one's menu changed the color.
+        """Update this card's title color when its signal color changes.
+
+        Only updates the title chip when `key` matches the signal associated
+        with this detail card. The method may be called on every plot card
+        when a color is changed from any card's gear menu, allowing all
+        corresponding visual indicators to remain synchronized.
+
+        Args:
+            key: Signal identifier whose color was changed.
+            color: New color for the signal indicator.
         """
         if key == self._color_key and self._title_chip is not None:
             self._title_chip.set_color(color)
 
     def _build_extra_menu_rows(self, menu: QtWidgets.QMenu) -> None:
-        """Adds this card's own "Point-to-Point Rendering" toggle - see
-        `SignalOverviewCard._build_extra_menu_rows`, its counterpart there.
+        """Add this card's point-to-point rendering toggle to the gear menu.
 
-        Starts checked (point cloud shown) - unlike the overview card's
-        toggle, which starts unchecked: this card only ever plots one
-        series' data within a narrow POI window, not a whole run's raw
-        sample count, so there's much less reason to default it off.
+        Adds a :class:`GridMenuRow` for controlling visibility of this card's
+        raw-data point cloud. The toggle is enabled by default because detail
+        cards display only a single signal over a relatively narrow POI window,
+        making the point cloud substantially less expensive to render than the
+        full-run point cloud shown by the Signal Overview card.
 
-        Kept as `self._point_to_point_row` so `set_point_to_point_available`
-        can disable it outside the Channel 1/2/3 workflow steps - see that
-        method.
+        The row is stored as `_point_to_point_row` so that
+        :meth:`set_point_to_point_available` can enable or disable the control
+        based on the current AnalyzeUI workflow state.
+
+        When the toggle changes, the resulting state is forwarded through
+        :attr:`point_to_point_toggled`. The card itself does not modify the
+        plotted curves; the owning `UIAnalyze` instance is responsible for
+        applying the setting.
+
+        Args:
+            menu: Gear-menu instance to which the toggle row should be added.
         """
         menu.addSeparator()
         row = GridMenuRow("point_to_point", "Point-to-Point Rendering", checked=True)
@@ -316,13 +513,19 @@ class DetailPlotCard(PlotContainer):
         menu.addAction(wa)
 
     def set_point_to_point_available(self, available: bool) -> None:
-        """Enables/disables this card's "Point-to-Point Rendering" row -
-        UIAnalyze calls this with `available=False` outside the Channel
-        1/2/3 workflow steps, where this sub-graph's fit line is invisible
-        and its raw-data point cloud is the only thing actually plotted
-        (see `getPoints()`'s `show_fits`/`show_scat`), so hiding the point
-        cloud there would leave nothing to look at. Doesn't touch the
-        row's checked state - re-enabling it later restores whatever it
-        was last set to.
+        """Enable or disable the point-to-point rendering control.
+
+        Disables the rendering toggle outside the Channel 1/2/3 workflow steps,
+        where the associated fit line is not visible and the raw-data point cloud
+        may be the only plotted content. Disabling the control prevents the user
+        from hiding that content when it is needed for the current workflow.
+
+        The checked state is preserved when the control is disabled. If the
+        control is subsequently re-enabled, its previous checked state is
+        restored.
+
+        Args:
+            available: `True` to enable the point-to-point rendering control;
+                `False` to disable it.
         """
         self._point_to_point_row.setEnabled(available)
