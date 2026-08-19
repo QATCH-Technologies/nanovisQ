@@ -1,23 +1,36 @@
-"""
-QATCH.ui.components.task_bar_base
+"""Shared themed chrome and button construction for task bars.
 
-Shared chrome for the app's "CtrlToolBar"-styled task bars (AnalyzeActionBar,
-ControlsActionBar): icon size, themed toolbutton construction (with a fixed
-button height), icon retinting, a QSS checked-state repolish fix, and the
-rounded-card shape both bars paint. Both bars already share
-`app_theme.qss`'s `QToolBar#CtrlToolBar QToolButton` rules (hover/pressed/
-checked/disabled, separators) - this centralizes the *Python* that builds
-and behaves around those buttons, which had drifted between the two bars
-(see module docstring history in analyze_action_bar.py / controls_action_bar.py).
+Provides the common Python-side styling and behavior used by the application's
+`CtrlToolBar`-styled task bars, including the Analyze and Controls action
+bars. The module centralizes toolbar construction, tool-button configuration,
+icon management, checked-state repaint behavior, layout constants, and the
+rounded task-bar surface so individual task bars do not need to duplicate
+these details.
 
-Author:
+The shared implementation complements the application's
+`app_theme.qss` rules for `QToolBar#CtrlToolBar` and its
+`QToolButton` children. QSS remains responsible for state-dependent button
+styling such as hover, pressed, checked, and disabled states, while this
+module handles the Python-side configuration required for those rules to
+behave consistently.
+
+Subclasses are expected to construct their own toolbar zones and layouts while
+using :meth:`TaskBarBase._make_toolbar` and the corresponding tool-button
+helper for shared controls. Subclasses that maintain additional
+theme-dependent state should handle their own `themeChanged` processing and
+call the provided icon-retinting helper as appropriate.
+
+The module intentionally keeps task-bar-specific layout and behavior in the
+individual action-bar subclasses. `TaskBarBase` supplies only the shared
+visual chrome and infrastructure needed to keep those bars consistent.
+
+Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 """
 
 from __future__ import annotations
 
 import os
-from typing import List, Optional, Tuple
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -32,76 +45,137 @@ def _icon_path(icon_name: str) -> str:
 
 
 class TaskBarBase(QtWidgets.QWidget):
-    """Base class for the app's themed top task bars.
+    """Base widget providing shared chrome for themed task bars.
 
-    Subclasses build their own zones/layout in `__init__`, but should
-    construct every `QToolBar` via `_make_toolbar()` and every
-    `QToolButton` via `_tool_button()` so icon size, button height, cursor,
-    and checked-state repaint behavior stay identical across bars; read
-    `OUTER_MARGINS`/`ZONE_SPACING` in their own `_assemble()` rather than
-    repeating those literals; and call `retint_icon_buttons()` from the
-    subclass's own `themeChanged` handler if it has one (subclasses
-    typically have additional theme-driven state of their own, so this
-    base does not wire icon retinting to `themeChanged` itself - only the
-    card background, which every subclass needs regardless).
+    Supplies the common configuration and infrastructure used by the
+    application's top-level task bars, including toolbar construction,
+    tool-button sizing, icon tracking, theme-aware background rendering, and
+    shared layout constants.
+
+    Subclasses are responsible for constructing their own toolbar zones and
+    layouts. They should use :meth:`_make_toolbar` for every toolbar and the
+    class's tool-button helper for every tool button so icon sizing, button
+    dimensions, cursor behavior, and checked-state repaint handling remain
+    consistent across task bars.
+
+    Subclasses should use :attr:`OUTER_MARGINS` and :attr:`ZONE_SPACING`
+    when assembling their layouts rather than duplicating the corresponding
+    values. If a subclass has its own `themeChanged` handler, it should
+    explicitly call :meth:`retint_icon_buttons` as needed because this base
+    class does not automatically retint tracked icons on theme changes.
+    Background repainting is handled here because it is common to every
+    subclass.
+
+    Attributes:
+        _icon_buttons: List of `(button, icon_name)` pairs registered by
+            the tool-button construction helper. These are used for batch icon
+            retinting when the theme changes.
+        _bg_cache: Cached rendered task-bar background pixmap, or `None` if
+            no cached background is currently available.
+        _bg_cache_mode: Theme mode corresponding to `_bg_cache`, or
+            `None` when no background cache exists.
+
+    Class Attributes:
+        ICON_SIZE: Standard icon size applied to task-bar toolbars.
+        BUTTON_HEIGHT: Standard height of task-bar tool buttons.
+        _CARD_RADIUS: Corner radius of the task-bar background surface.
+        OUTER_MARGINS: Left, top, right, and bottom margins used when
+            assembling task-bar layouts.
+        ZONE_SPACING: Horizontal spacing between task-bar zones.
+        DIVIDER_INSET: Vertical inset applied to zone dividers so they read as
+            floating accents rather than full-height rules.
     """
 
     ICON_SIZE = QtCore.QSize(50, 30)
-    # Was 56 (RunControls.btn's original QSize(60, 56), matching
-    # tool_Initialize/tool_Reset's pre-explicit-height sizeHint) - bumped by
-    # 4px because the text-under-icon label row was too tight for the QSS
-    # 12px font's descenders (g/y/p/j/q tails were getting clipped).
-    # RunControls.btn's own QSize must be kept in lockstep with this (see
-    # run_controls_button.py) or its Start/Stop button falls out of
-    # vertical alignment with the rest of run_bar again.
     BUTTON_HEIGHT = 60
     _CARD_RADIUS = 12.0
     OUTER_MARGINS = (10, 1, 10, 1)
     ZONE_SPACING = 14
-    # Shaved off a zone divider's height (top+bottom combined) relative to
-    # the toolbar row it's measured from. Without this, a divider sized to
-    # the full toolbar row height reads as a full-bleed rule spanning the
-    # bar's entire height - fine when a caption line above the toolbar
-    # made the row shorter than the zone's own bounding box, but both bars
-    # dropped their captions (see analyze_action_bar.py/
-    # controls_action_bar.py), so the toolbar row height now *is* the
-    # bar's full height and needs this explicit inset to still read as a
-    # floating accent.
     DIVIDER_INSET = 16
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        """Initialize the shared task-bar state.
+
+        Disables automatic background filling so the task bar can render its
+        own themed surface, initializes icon tracking and background caching,
+        and connects theme changes to a background repaint.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         # (button, icon_name) pairs built via _tool_button(), retinted as a
         # batch by retint_icon_buttons().
-        self._icon_buttons: List[Tuple[QtWidgets.QAbstractButton, str]] = []
-        self._bg_cache: Optional[QtGui.QPixmap] = None
-        self._bg_cache_mode: Optional[ThemeMode] = None
+        self._icon_buttons: list[tuple[QtWidgets.QAbstractButton, str]] = []
+        self._bg_cache: QtGui.QPixmap | None = None
+        self._bg_cache_mode: ThemeMode | None = None
         ThemeManager.instance().themeChanged.connect(lambda _: self.update())
 
     def _make_toolbar(self) -> QtWidgets.QToolBar:
-        """A `QToolBar` pre-wired for `app_theme.qss`'s `CtrlToolBar` rules
-        and this bar's icon size."""
+        """Create a toolbar configured for the task-bar visual system.
+
+        Creates a `QToolBar` with the `CtrlToolBar` object name expected
+        by the application's theme stylesheet and applies the shared task-bar
+        icon size.
+
+        Returns:
+            A configured :class:`QToolBar` ready to be added to a task-bar
+            layout.
+        """
         bar = QtWidgets.QToolBar()
         bar.setObjectName("CtrlToolBar")
         bar.setIconSize(self.ICON_SIZE)
         return bar
 
-    def _make_divider(self, toolbar_h: int) -> "TaskBarDivider":
-        """A `TaskBarDivider` inset from `toolbar_h` by `DIVIDER_INSET`, so
-        it reads as a floating accent between zones rather than a
-        full-bleed rule - shared so both bars' dividers are sized by
-        identical logic instead of each `_assemble()` picking its own."""
+    def _make_divider(self, toolbar_h: int) -> TaskBarDivider:
+        """Create a standardized divider between task-bar zones.
+
+        Sizes the divider from the supplied toolbar height while applying the
+        shared :attr:`DIVIDER_INSET` so the divider appears as a floating accent
+        rather than spanning the full height of the task bar.
+
+        Args:
+            toolbar_h: Height of the toolbar row used as the divider's reference
+                height.
+
+        Returns:
+            A :class:`TaskBarDivider` sized according to the shared task-bar
+            divider geometry.
+        """
         return TaskBarDivider(max(toolbar_h - self.DIVIDER_INSET, 1))
 
     def _tool_button(
-        self, text: str, icon_name: Optional[str] = None, checkable: bool = False
+        self,
+        text: str,
+        icon_name: str | None = None,
+        checkable: bool = False,
     ) -> QtWidgets.QToolButton:
-        """Builds a themed toolbutton - text-under-icon, fixed height, hand
-        cursor, auto-repolished on toggle (see `_repolish`) so a checked
-        highlight set programmatically (not just by a user click) repaints
-        immediately."""
+        """Create a consistently configured task-bar tool button.
+
+        Configures the button with the shared text-under-icon presentation,
+        standard button height, pointing-hand cursor, and optional checkable
+        behavior. Checkable buttons are automatically repolished when their
+        checked state changes so programmatic state changes immediately trigger
+        the corresponding QSS styling.
+
+        When an icon name is supplied, the button and icon name are registered in
+        the task bar's icon-button collection for later batch retinting.
+
+        Args:
+            text: Text displayed beneath the button icon.
+            icon_name: Optional filename of the icon associated with the button.
+                When provided, the button is registered for theme-aware icon
+                retinting.
+            checkable: Whether the button should maintain a checked state.
+
+        Returns:
+            A configured :class:`QToolButton`.
+        """
         btn = QtWidgets.QToolButton()
         btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         btn.setText(text)
@@ -116,28 +190,29 @@ class TaskBarBase(QtWidgets.QWidget):
 
     @staticmethod
     def _repolish(widget: QtWidgets.QWidget) -> None:
-        """Forces an immediate QSS re-evaluation of `widget`.
+        """Force Qt to immediately re-evaluate a widget's stylesheet state.
 
-        Qt doesn't always repaint a `:checked`/`:disabled` pseudo-state
-        change when it's triggered by `setChecked()`/`setEnabled()` rather
-        than an actual user click - only unpolish+polish forces the style
-        to re-evaluate right away.
+        Explicitly unpolishes and reapplies the widget's style before requesting
+        a repaint. This ensures QSS pseudo-states such as `:checked` and
+        `:disabled` are refreshed immediately when their state changes
+        programmatically rather than through a native user interaction.
+
+        Args:
+            widget: Widget whose active Qt style should be reapplied.
         """
         widget.style().unpolish(widget)
         widget.style().polish(widget)
         widget.update()
 
     def retint_icon_buttons(self) -> None:
-        """Retints every `_tool_button()`-registered icon to the active
-        theme's `flat_text` token.
+        """Retint all registered task-bar icons using the active theme.
 
-        Public (unlike `_tool_button`/`_make_toolbar`, only ever called from
-        a subclass's own construction code): `ControlsActionBar` is retinted
-        from `UIControls`'s existing single `themeChanged` fan-out
-        (`_refresh_toolbar_icons`) rather than subscribing itself, so this
-        needs to be callable across that wrap boundary. Call from the
-        subclass's own `themeChanged` handler if it has one (like
-        `AnalyzeActionBar` does).
+        Applies the current theme's `flat_text` color to every icon registered
+        through :meth:`_tool_button`. This method is intentionally public so
+        task-bar subclasses or their owning UI controllers can invoke it from
+        existing theme-change handling without requiring `TaskBarBase` to
+        subscribe independently to the theme signal.
+
         """
         tok = ThemeManager.instance().tokens()
         color = QtGui.QColor(*tok["flat_text"])
@@ -145,16 +220,18 @@ class TaskBarBase(QtWidgets.QWidget):
             btn.setIcon(tinted_icon(_icon_path(icon_name), color, self.ICON_SIZE.height()))
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Paints the shared rounded-card background behind the bar.
+        """Paint the task bar's shared rounded-card background.
 
-        Ported from the now-retired `QATCH.ui.widgets.controls_widget
-        .ControlsWidget` (same radius/tokens `AnalyzeActionBar` already
-        painted its own copy of) rather than a naive per-paint redraw:
-        `ControlsActionBar`'s temp/PID readouts repaint on every ~100ms
-        plot tick during a run, forcing this to repaint just as often, so
-        the fill/border - which only actually changes on resize or theme
-        switch - is rendered once into an offscreen pixmap and blitted on
-        every other call.
+        Renders a cached themed background pixmap behind the task-bar contents.
+        The background is regenerated only when the widget size or active theme
+        changes; subsequent paint events simply blit the cached pixmap.
+
+        Caching avoids repeatedly rendering the rounded fill and border during
+        high-frequency UI updates, such as the approximately 100 ms refreshes
+        used by live temperature and PID readouts.
+
+        Args:
+            event: Qt paint event generated when the task bar requires repainting.
         """
         mode = ThemeManager.instance().mode()
         size = self.size()
@@ -167,6 +244,20 @@ class TaskBarBase(QtWidgets.QWidget):
         p.end()
 
     def _render_background(self, size: QtCore.QSize) -> QtGui.QPixmap:
+        """Render the task bar's themed rounded background into a pixmap.
+
+        Creates a transparent offscreen pixmap and paints the shared flat surface
+        recipe into it using the active theme's surface and border tokens. The
+        resulting pixmap is cached by :meth:`paintEvent` for reuse until the task
+        bar is resized or the theme changes.
+
+        Args:
+            size: Dimensions of the background pixmap to render.
+
+        Returns:
+            A transparent pixmap containing the fully rendered task-bar
+            background.
+        """
         tok = ThemeManager.instance().tokens()
         pm = QtGui.QPixmap(size)
         pm.fill(QtCore.Qt.GlobalColor.transparent)
@@ -185,18 +276,34 @@ class TaskBarBase(QtWidgets.QWidget):
 
 
 class TaskBarDivider(QtWidgets.QFrame):
-    """A hairline vertical divider between task-bar zones, themed from
-    `flat_border` so it stays correct across light/dark switches.
+    """Themed vertical divider separating task-bar zones.
 
-    Sized to `height` (the zones' own CtrlToolBar row height) and meant to
-    be added with `AlignVCenter` - not left to stretch to the full zone
-    height (reads as a full edge-to-edge rule spanning a caption line too,
-    if the bar has one), and not an arbitrary short fixed height either
-    (reads stubbier than `CtrlToolBar`'s own QSS separators, whose
-    `margin: 5px 4px` makes them nearly as tall as their row).
+    Renders as a one-pixel-wide vertical rule whose height is explicitly
+    controlled by the caller. The divider uses the active theme's
+    `flat_border` token and automatically updates when the application
+    theme changes.
+
+    The intended height is the task-bar toolbar row height with the shared
+    :attr:`TaskBarBase.DIVIDER_INSET` applied. Callers should add the divider
+    with `Qt.AlignVCenter` so it reads as a floating accent between zones
+    rather than a full-height edge-to-edge rule.
+
+    Args:
+        height: Height of the divider in pixels.
+        parent: Optional parent widget.
     """
 
-    def __init__(self, height: int, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self,
+        height: int,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        """Initialize the divider with the requested height.
+
+        Args:
+            height: Vertical height of the divider in pixels.
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.setFixedWidth(1)
@@ -205,8 +312,21 @@ class TaskBarDivider(QtWidgets.QFrame):
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the divider styling after a theme change.
+
+        Args:
+            _mode: Theme mode supplied by the ``themeChanged`` signal.
+                The value is not used directly because the current theme
+                tokens are retrieved from :class:`ThemeManager`.
+        """
         self._apply_theme()
 
     def _apply_theme(self) -> None:
+        """Apply the current theme's divider color.
+
+        Uses the ``flat_border`` theme token as the divider's background
+        color and removes the frame border so the widget renders as a
+        single-pixel flat rule.
+        """
         tok = ThemeManager.instance().tokens()
         self.setStyleSheet(f"background-color: {tok_css(tok['flat_border'])}; border: none;")
