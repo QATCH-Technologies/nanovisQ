@@ -1557,7 +1557,14 @@ class ExportMode(DataModeWidget):
             self._csv_card_opacity.setOpacity(0.5)
             self.csv_card.setGraphicsEffect(self._csv_card_opacity)
         else:
+            # QWidget.setGraphicsEffect() deletes the widget's *previous*
+            # effect (including when clearing it with None), leaving
+            # self._csv_card_opacity a dangling reference to a destroyed
+            # C++ object. Drop the Python-side reference too so the next
+            # non-CSV toggle's `is None` check above lazily creates a fresh
+            # effect instead of calling setOpacity() on the deleted one.
             self.csv_card.setGraphicsEffect(None)
+            self._csv_card_opacity = None
         # CSV relabels the merge/skip policy to Append/Cancel (semantics differ).
         if is_csv:
             self.rb_merge.setText("Append")

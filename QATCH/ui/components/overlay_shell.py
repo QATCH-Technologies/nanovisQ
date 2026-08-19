@@ -101,7 +101,7 @@ def build_overlay_title(
         )
         title_label.setStyleSheet(
             f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-weight: bold; "
-            "font-size: 13px; background: transparent; }}"
+            "font-size: 13px; background: transparent; }"
         )
 
     _refresh()

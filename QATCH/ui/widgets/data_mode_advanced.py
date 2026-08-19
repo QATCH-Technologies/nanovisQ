@@ -1,8 +1,33 @@
+"""
+QATCH.ui.widgets.data_mode_advanced_widget.py
+
+Advanced data-management controls and supporting widgets.
+
+Provides the :class:`AdvancedMode` data-management view for managing
+removable USB storage, monitoring local storage usage, and erasing locally
+stored run data.
+
+The module also defines the private :class:`_UsageBar` widget, which displays
+local storage utilization as a compact progress indicator and updates its
+appearance when the application theme changes.
+
+USB detection, ejection, and local data operations are coordinated through
+the shared :class:`DataServices` instance provided by the parent data
+management container.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-19
+"""
+
 import os
 import shutil
 import subprocess
 import time
 
+from optree.ops import NONE_IS_LEAF
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
@@ -19,29 +44,63 @@ from QATCH.ui.styles.theme_manager import (
 )
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
+TAG = "[DataAdvanced]"
+
 try:
     import send2trash
-except Exception:  # pragma: no cover - optional dependency
+except Exception as e:  # pragma: no cover - optional dependency
+    Log.e(TAG, f"Send to trash is not available: {e}")
     send2trash = None
-
-TAG = "[DataAdvanced]"
 
 
 class _UsageBar(QtWidgets.QWidget):
-    """A thin rounded usage bar: a single coloured fill over a neutral track."""
+    """Compact progress bar for displaying resource usage.
 
-    def __init__(self, parent=None):
+    Renders a rounded track with a colored fill whose width represents the
+    current usage fraction. The bar updates its appearance when the active
+    theme changes.
+
+    Attributes:
+        _fraction (float): Current usage fraction, clamped to the range
+            `0.0` to `1.0`.
+    """
+
+    def __init__(self, parent=None) -> None:
+        """Initialize the usage bar.
+
+        Args:
+            parent (QtWidgets.QWidget, optional): Parent widget. Defaults to
+                None.
+        """
         super().__init__(parent)
         self._fraction = 0.0
         self.setFixedHeight(8)
         self.setMinimumWidth(80)
         ThemeManager.instance().themeChanged.connect(lambda _: self.update())
 
-    def set_fraction(self, fraction):
+    def set_fraction(self, fraction) -> None:
+        """Set the current usage fraction.
+
+        The supplied value is clamped to the inclusive range from `0.0` to
+        `1.0` before the bar is redrawn.
+
+        Args:
+            fraction (float): Usage fraction, where `0.0` represents no
+                usage and `1.0` represents full usage.
+        """
         self._fraction = max(0.0, min(1.0, fraction))
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event) -> None:
+        """Paint the usage track and current usage fill.
+
+        Draws a rounded neutral track followed by a colored rounded fill whose
+        width corresponds to the current usage fraction.
+
+        Args:
+            event (QtGui.QPaintEvent): Paint event requesting the widget to
+                redraw.
+        """
         tok = ThemeManager.instance().tokens()
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
@@ -61,14 +120,50 @@ class _UsageBar(QtWidgets.QWidget):
 
 
 class AdvancedMode(DataModeWidget):
+    """Data-management mode for removable drives and local storage.
+
+    Provides controls for detecting and safely ejecting removable USB
+    storage, displays local storage usage, and provides a destructive action
+    for erasing locally logged run data.
+
+    Attributes:
+        MODE_KEY (str): Unique key identifying this mode.
+        MODE_LABEL (str): Display label used by the mode navigation.
+        _exported (bool): Whether an export has occurred during the current
+            session.
+        usb_status_pill (QtWidgets.QLabel): Displays the current USB drive
+            status.
+        usb_desc (QtWidgets.QLabel): Displays descriptive USB drive
+            information.
+        btn_detect (QATCHPushButton): Button used to re-detect connected USB
+            storage.
+        btn_eject (QATCHPushButton): Button used to safely eject the active
+            USB drive.
+        storage_summary_label (QtWidgets.QLabel): Displays a summary of local
+            storage usage.
+        storage_bar (_UsageBar): Displays local storage usage as a fraction.
+        storage_legend_label (QtWidgets.QLabel): Describes the storage usage
+            shown by the usage bar.
+        btn_erase (QATCHPushButton): Button used to initiate local data
+            deletion.
+        status_label (QtWidgets.QLabel): Displays status or progress messages
+            for operations performed by the mode.
+    """
+
     MODE_KEY = "advanced"
     MODE_LABEL = "Advanced"
 
-    # ------------------------------------------------------------------
-    #  Build
-    # ------------------------------------------------------------------
-    def build(self):
-        # Whether export happened this session - drives the erase prompt wording.
+    def build(self) -> NONE_IS_LEAF:
+        """Build the advanced data-management interface.
+
+        Creates the interface for USB drive management, local storage
+        monitoring, and local data deletion. Configures the associated
+        controls, signal connections, status displays, and theme handling.
+
+        The method also connects USB device events from the shared services
+        object so the displayed USB status remains synchronized with device
+        changes.
+        """
         self._exported = False
 
         heading = QtWidgets.QLabel("Advanced")
@@ -79,7 +174,7 @@ class AdvancedMode(DataModeWidget):
         self.root.addWidget(heading)
         self.root.addWidget(subtitle)
 
-        # ---- USB Drive card --------------------------------------------
+        # USB Drive card
         usb_card = QATCHPanel()
         ulay = QtWidgets.QVBoxLayout(usb_card)
         ulay.setContentsMargins(14, 12, 14, 12)
@@ -119,7 +214,7 @@ class AdvancedMode(DataModeWidget):
         usb_row.addStretch(1)
         ulay.addLayout(usb_row)
 
-        # ---- Local storage card ----------------------------------------
+        # Local storage card
         storage_card = QATCHPanel()
         slay = QtWidgets.QVBoxLayout(storage_card)
         slay.setContentsMargins(14, 12, 14, 12)
@@ -151,7 +246,7 @@ class AdvancedMode(DataModeWidget):
         slay.addLayout(legend_row)
         self._legend_label = self.storage_legend_label
 
-        # ---- Danger zone --------------------------------------------------
+        # Danger zone
         danger_caption = QtWidgets.QLabel("DANGER ZONE")
         self._danger_caption = danger_caption
 
@@ -186,7 +281,7 @@ class AdvancedMode(DataModeWidget):
         drow.addWidget(self.btn_erase, 0, QtCore.Qt.AlignVCenter)
         dlay.addLayout(drow)
 
-        # ---- Progress display -----------------------------------------
+        # Progress display
         self.status_label = QtWidgets.QLabel("")
         self.status_label.setWordWrap(True)
         self.status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -202,20 +297,27 @@ class AdvancedMode(DataModeWidget):
         self._apply_theme()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
-        # Live USB status - connected once; this mode instance lives for the
-        # app's lifetime (it's never recreated), so there's no risk of
-        # accumulating duplicate connections across visits.
+        # Live USB status
         self.services.usb_add.connect(self._refresh_usb_status)
         self.services.usb_remove.connect(self._refresh_usb_status)
 
-    # ------------------------------------------------------------------
-    #  Theming
-    # ------------------------------------------------------------------
     def _on_theme_changed(self, _mode: str) -> None:
+        """Handle a theme change by refreshing themed UI elements and USB status.
+
+        Args:
+            _mode (str): Identifier for the newly activated theme mode. The value
+                is not used directly because the current theme is retrieved from
+                the theme manager.
+        """
         self._apply_theme()
         self._refresh_usb_status()
 
     def _apply_theme(self) -> None:
+        """Apply the active theme to the advanced data-management interface.
+
+        Updates text styles, status indicators, icons, backgrounds, borders, and
+        other theme-dependent visual properties using the current theme tokens.
+        """
         tok = ThemeManager.instance().tokens()
         accent = tok["flat_accent"]
         danger = tok["flat_error"]
@@ -274,6 +376,14 @@ class AdvancedMode(DataModeWidget):
 
     @staticmethod
     def _pill_qss(connected: bool) -> str:
+        """Build the style sheet for the USB connection status indicator.
+
+        Args:
+            connected (bool): Whether a USB drive is currently connected.
+
+        Returns:
+            str: Style sheet configured for the connected or disconnected state.
+        """
         tok = ThemeManager.instance().tokens()
         if connected:
             text = tok["flat_success"]
@@ -287,38 +397,69 @@ class AdvancedMode(DataModeWidget):
             "font-size: 10px; font-weight: 700; padding: 2px 8px; }"
         )
 
-    # ------------------------------------------------------------------
-    #  Lifecycle / shared-state hooks
-    # ------------------------------------------------------------------
-    def on_enter(self):
+    def on_enter(self) -> None:
+        """Refresh USB and local storage information when entering the mode."""
         self._refresh_usb_status()
         self._refresh_storage()
 
-    def on_freeze(self, frozen: bool):
-        """Freeze everything except Erase (the original 'Erase only' mode)."""
+    def on_freeze(self, frozen: bool) -> None:
+        """Enable or disable controls while the mode is frozen.
+
+        The erase control remains enabled when the mode is frozen, allowing
+        destructive operations to remain available.
+
+        Args:
+            frozen (bool): Whether the mode should be placed in its frozen state.
+        """
+
         self.btn_detect.setDisabled(frozen)
         self.btn_eject.setDisabled(frozen)
-        # btn_erase intentionally stays enabled.
 
-    def on_progress(self, label, pct, color):
+    def on_progress(self, label, pct, color) -> None:
+        """Update the operation status and refresh data when an operation ends.
+
+        Displays the supplied status message when available. When progress
+        reaches 100 percent, both USB and local storage information are refreshed
+        because either state may have changed during the operation.
+
+        Args:
+            label (str): Status message to display.
+            pct (int | float): Operation completion percentage.
+            color: Color associated with the current progress state. The value is
+                accepted for interface compatibility but is not used directly.
+        """
+
         if label:
             self.status_label.setVisible(True)
             self.status_label.setText(label)
         if pct == 100:
-            # Erase/eject finished (success, cancel, or error) - local state
-            # may have changed either way, so refresh both cards.
+            # Erase/eject finished (success, cancel, or error)
             self._refresh_usb_status()
             self._refresh_storage()
 
     def note_exported(self, exported: bool = True):
-        """Called by the container/export mode so the erase prompt knows whether
-        data was already exported this session."""
+        """Record whether data has been exported during the current session.
+
+        The stored state is used to determine the wording or behavior of the
+        local data deletion prompt.
+
+        Args:
+            exported (bool, optional): Whether an export has occurred during the
+                current session. Defaults to True.
+        """
         self._exported = exported
 
-    # ------------------------------------------------------------------
-    #  USB status / local storage display
-    # ------------------------------------------------------------------
-    def _refresh_usb_status(self, *_):
+    def _refresh_usb_status(self, *_) -> None:
+        """Refresh the displayed USB drive status.
+
+        Updates the connection indicator, tooltip, descriptive text, and eject
+        control based on the currently detected USB drive. When a drive is
+        connected, its available and total capacity are also displayed when
+        readable.
+
+        Args:
+            *_: Ignored signal arguments.
+        """
         drive = getattr(self.services, "usb_drive", None)
         if drive:
             self.usb_status_pill.setText("●  Connected")
@@ -340,7 +481,14 @@ class AdvancedMode(DataModeWidget):
             self.usb_desc.setText("No USB drive connected. Plug one in, then Re-detect.")
             self.btn_eject.setEnabled(False)
 
-    def _refresh_storage(self):
+    def _refresh_storage(self) -> None:
+        """Refresh the displayed local storage usage.
+
+        Recalculates the number of logged runs and their total disk usage,
+        updates the associated summary and legend labels, and adjusts the usage
+        bar based on the total capacity of the configured logging volume.
+        """
+
         run_count, total_bytes = self._compute_storage_stats()
         size_txt = self._fmt_size(total_bytes)
         self.storage_summary_label.setText(f"{run_count} runs · {size_txt} logged")
@@ -356,8 +504,18 @@ class AdvancedMode(DataModeWidget):
         self.storage_bar.set_fraction(fraction)
 
     @staticmethod
-    def _compute_storage_stats():
-        """(run_count, total_bytes) for everything under the logged-data path."""
+    def _compute_storage_stats() -> tuple[int, int]:
+        """Calculate statistics for locally logged run data.
+
+        Traverses the configured logging directory and counts each run directory
+        while summing the sizes of files contained directly within those
+        directories.
+
+        Returns:
+            tuple[int, int]: A tuple containing the number of runs and total file
+                size in bytes. Returns `(0, 0)` when the logging directory
+                cannot be accessed.
+        """
         data_path = Constants.log_prefer_path
         run_count = 0
         total_bytes = 0
@@ -392,7 +550,18 @@ class AdvancedMode(DataModeWidget):
         return run_count, total_bytes
 
     @staticmethod
-    def _fmt_size(num_bytes):
+    def _fmt_size(num_bytes) -> str:
+        """Format a byte count as a human-readable storage size.
+
+        Converts the supplied byte count to the largest appropriate binary unit,
+        up to terabytes.
+
+        Args:
+            num_bytes (int | float): Number of bytes to format.
+
+        Returns:
+            str: Formatted size using `B`, `KB`, `MB`, `GB`, or `TB`.
+        """
         size = float(num_bytes)
         for unit in ("B", "KB", "MB", "GB", "TB"):
             if size < 1024.0 or unit == "TB":
@@ -400,12 +569,16 @@ class AdvancedMode(DataModeWidget):
             size /= 1024.0
         return f"{size:.1f} TB"
 
-    # ------------------------------------------------------------------
-    #  Detect
-    # ------------------------------------------------------------------
-    def _do_detect(self):
-        # The shared loop owns detection; ask it to re-scan now. If the service
-        # exposes a manual trigger use it, otherwise this is a no-op nudge.
+    def _do_detect(self) -> None:
+        """Request USB drive detection and refresh the displayed status.
+
+        Uses the shared data services to trigger drive enumeration when the
+        detection callback is available. Falls back to logging the request when
+        the shared service does not provide a detection trigger.
+
+        The displayed USB status is refreshed immediately after the detection
+        request.
+        """
         trigger = getattr(self.services, "request_detect", None)
         if callable(trigger):
             trigger()
@@ -413,13 +586,29 @@ class AdvancedMode(DataModeWidget):
             Log.d(f"{TAG} detect requested (shared loop handles enumeration)")
         self._refresh_usb_status()
 
-    # ------------------------------------------------------------------
-    #  Eject
-    # ------------------------------------------------------------------
-    def _do_eject(self):
+    def _do_eject(self) -> None:
+        """Start the USB drive ejection task.
+
+        Submits the ejection operation to the shared service task runner so the
+        potentially blocking device operation does not execute directly on the
+        UI thread.
+        """
         self.services.run_task(self._eject_task)
 
-    def _eject_task(self, abort):
+    def _eject_task(self, abort) -> None:
+        """Safely eject the currently connected USB drive.
+
+        Requests the operating system to eject the detected drive, then verifies
+        that the drive is no longer accessible before reporting success. The
+        operation supports cancellation and emits progress updates throughout
+        the process.
+
+        Args:
+            abort (threading.Event): Event used to signal cancellation of the
+                ejection task.
+
+        NOTE: Only windows machines are supported!
+        """
         self.services.set_freeze(False)
         drive = getattr(self.services, "usb_drive", None)
         if not drive:
@@ -450,7 +639,6 @@ class AdvancedMode(DataModeWidget):
                 shell=True,
             )
 
-            # --- THE FIX: Actively test drive accessibility ---
             timeout_seconds = 5.0
             elapsed = 0.0
             eject_successful = False
@@ -468,7 +656,6 @@ class AdvancedMode(DataModeWidget):
 
                 time.sleep(0.5)
                 elapsed += 0.5
-            # --------------------------------------------------
 
             if eject_successful:
                 Log.i(TAG, "USB drive ejected.")
@@ -487,10 +674,16 @@ class AdvancedMode(DataModeWidget):
 
         self.services.set_freeze(True)
 
-    # ------------------------------------------------------------------
-    #  Erase
-    # ------------------------------------------------------------------
-    def _do_erase(self):
+    def _do_erase(self) -> None:
+        """Confirm and start the local data erasure task.
+
+        Prompts the user for confirmation before deleting locally stored run
+        data. The confirmation message varies depending on whether the user has
+        exported data during the current session.
+
+        If the operation is confirmed, the erasure task is submitted to the
+        shared service runner. If the user declines, the operation is cancelled.
+        """
         if not self._exported:
             confirmed = PopUp.question(
                 self,
@@ -521,7 +714,18 @@ class AdvancedMode(DataModeWidget):
                 return
         self.services.run_task(self._erase_task)
 
-    def _erase_task(self, abort):
+    def _erase_task(self, abort) -> None:
+        """Erase locally stored run data.
+
+        Traverses the configured logging directory and moves discovered run and
+        device directories to the Recycle Bin. Progress updates are emitted as
+        runs are processed, and the operation can be cancelled through the
+        supplied abort event.
+
+        Args:
+            abort (threading.Event): Event used to signal cancellation of the
+                erasure task.
+        """
         self.services.set_freeze(False)
         try:
             data_path = os.path.join(Constants.log_prefer_path)
@@ -567,11 +771,17 @@ class AdvancedMode(DataModeWidget):
             self.services.emit_progress(self.MODE_KEY, "Error erasing local data!", 100, "r")
         self.services.set_freeze(True)
 
-    # ------------------------------------------------------------------
-    #  Helpers
-    # ------------------------------------------------------------------
     @staticmethod
-    def _trash(path):
+    def _trash(path) -> None:
+        """Move a file or directory to the Recycle Bin when supported.
+
+        Uses the optional `send2trash` package when available so deleted data
+        remains recoverable. If the package is unavailable, permanently removes
+        the specified file or directory instead.
+
+        Args:
+            path (str): Path to the file or directory to remove.
+        """
         if send2trash is not None:
             send2trash.send2trash(path)
         else:
@@ -583,12 +793,30 @@ class AdvancedMode(DataModeWidget):
             elif os.path.exists(path):
                 os.remove(path)
 
-    def _icon(self, name):
+    def _icon(self, name) -> QtGui.QIcon:
+        """Load an icon from the application's icon directory.
+
+        Args:
+            name (str): Filename of the icon to load.
+
+        Returns:
+            QtGui.QIcon: Loaded icon, or an empty icon if the requested file
+                cannot be found.
+        """
         path = self._icon_file_path(name)
         return QtGui.QIcon(path) if path else QtGui.QIcon()
 
     @staticmethod
-    def _icon_file_path(name):
+    def _icon_file_path(name) -> str:
+        """Resolve the path to an application icon file.
+
+        Args:
+            name (str): Filename of the icon to locate.
+
+        Returns:
+            str: Normalized icon path if the file exists, otherwise an empty
+                string.
+        """
         try:
             path = os.path.join(Architecture.get_path(), "QATCH", "icons", name)
             if os.path.exists(path):

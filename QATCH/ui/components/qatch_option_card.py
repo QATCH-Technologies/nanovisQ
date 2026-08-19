@@ -371,7 +371,14 @@ class QATCHOptionCard(QtWidgets.QFrame):
             self._opacity_effect.setOpacity(0.5)
             self.setGraphicsEffect(self._opacity_effect)
         else:
+            # setGraphicsEffect() deletes the widget's *previous* effect,
+            # including when clearing it with None here - so
+            # self._opacity_effect would otherwise be left pointing at a
+            # destroyed C++ object. Clear the Python-side reference too so
+            # a later re-disable lazily creates a fresh effect instead of
+            # calling setOpacity() on the deleted one.
             self.setGraphicsEffect(None)
+            self._opacity_effect = None
 
     def mousePressEvent(self, event):
         """Handle mouse presses on the option card.

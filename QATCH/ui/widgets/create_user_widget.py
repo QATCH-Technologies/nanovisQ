@@ -42,51 +42,64 @@ _INPUT_H: int = 34
 
 
 class CreateUserWidget(QtWidgets.QWidget):
-    """Full-screen overlay widget for user account creation.
+    """Full-screen overlay widget for creating a user account.
 
-    Covers the parent widget with a semi-opaque scrim and centres a
-    glass-morphism card containing the creation form.
+    Displays a modal-style overlay containing a user creation form. The
+    widget validates the entered account information and stores the validated
+    result when the form is successfully submitted.
 
     Attributes:
-        existing_initials (list): A list of initials already in use by other users.
-        is_accepted (bool): Indicates whether the form was successfully validated
-            and submitted.
-        result_data (dict): A dictionary containing the newly created user's
-            validated data (name, username, email, initials, role, password).
-        base_layout (QtWidgets.QVBoxLayout): The centered outer layout.
-        glass_frame (QtWidgets.QFrame): The main glass card container.
-        main_layout (QtWidgets.QVBoxLayout): The inner layout of the glass card.
-        btn_close (QtWidgets.QPushButton): The close window button.
+        existing_initials (list): Initials that are already assigned to
+            existing users.
+        is_accepted (bool): Whether the form was successfully validated and
+            submitted.
+        result_data (dict): Validated data for the newly created user,
+            including name, username, email, initials, role, and password.
+        base_layout (QtWidgets.QVBoxLayout): Layout used to center the main
+            form container within the overlay.
+        glass_frame (QtWidgets.QFrame): Main container for the user creation
+            form.
+        main_layout (QtWidgets.QVBoxLayout): Layout containing the form
+            controls and actions.
+        btn_close (QtWidgets.QPushButton): Button used to close the widget.
         inp_first_name (GlassLineEdit): Input field for the user's first name.
         inp_last_name (GlassLineEdit): Input field for the user's last name.
-        err_name (QtWidgets.QLabel): Inline error label for the name inputs.
-        cmb_role (AnimatedComboBox): Dropdown selection for the user's role.
-        inp_username (GlassLineEdit): Optional input field for a custom username.
+        err_name (QtWidgets.QLabel): Error label for name validation
+            messages.
+        cmb_role (AnimatedComboBox): Combo box used to select the user's
+            role.
+        inp_username (GlassLineEdit): Optional input field for a custom
+            username.
         inp_email (GlassLineEdit): Input field for the user's email address.
-        err_email (QtWidgets.QLabel): Inline error label for the email input.
+        err_email (QtWidgets.QLabel): Error label for email validation
+            messages.
         inp_pwd1 (GlassLineEdit): Input field for the user's password.
-        inp_pwd2 (GlassLineEdit): Input field to confirm the password.
-        err_password (QtWidgets.QLabel): Inline error label for password inputs.
-        btn_create (QtWidgets.QPushButton): The submit button to create the user.
+        inp_pwd2 (GlassLineEdit): Input field for confirming the user's
+            password.
+        err_password (QtWidgets.QLabel): Error label for password validation
+            messages.
+        btn_create (QtWidgets.QPushButton): Button used to submit the form
+            and create the user.
     """
 
     def __init__(
         self,
         existing_initials: list,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
-        """Initializes the CreateUserWidget.
+        """Initialize the user creation widget.
 
         Args:
-            existing_initials (list): A list of strings representing already taken initials.
-            parent (QtWidgets.QWidget, optional): The parent widget to overlay.
-                Defaults to None.
+            existing_initials (list): Initials that are already assigned to
+                existing users.
+            parent (QtWidgets.QWidget, optional): Parent widget over which
+                this widget is displayed. Defaults to None.
         """
         super().__init__(parent)
         self.existing_initials = existing_initials
         self.is_accepted: bool = False
         self.result_data: dict = {}
-        self._shake_anims: List[QtCore.QPropertyAnimation] = []
+        self._shake_anims: list[QtCore.QPropertyAnimation] = []
         self._bg_alpha: int = 0
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
@@ -101,17 +114,27 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.raise_()
         self._animate_open()
 
-    # ------------------------------------------------------------------
-    # Theming
-    # ------------------------------------------------------------------
     def _on_theme_changed(self, _mode: str) -> None:
+        """Handle a theme change by refreshing the widget's styling.
+
+        Args:
+            _mode (str): Identifier for the newly activated theme mode. The value
+                is not used directly because the current theme is obtained from
+                the theme manager when applying the updated styles.
+        """
         self._apply_theme()
 
     def _apply_theme(self) -> None:
-        """Re-applies every themed style on this card to the active palette -
-        wired to ThemeManager.themeChanged so switching light/dark live
-        re-colors it instead of only picking up the new theme on next
-        construction."""
+        """Apply the current theme to all themed widget elements.
+
+        Refreshes styles, colors, icons, shadows, and other theme-dependent
+        properties using the currently active theme. This method is called when
+        the widget is initialized and when the application theme changes so the
+        widget updates immediately without requiring reconstruction.
+
+        The method preserves the current password visibility state while
+        regenerating the corresponding password visibility icons.
+        """
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
         tok = ThemeManager.instance().tokens()
 
@@ -143,7 +166,15 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.btn_create.setStyleSheet(gradient_button_qss())
 
     def _setup_ui(self) -> None:
-        """Builds and arranges the UI components of the widget."""
+        """Build and arrange the user creation interface.
+
+        Creates the main container, form fields, validation labels,
+        action buttons, icons, and supporting layouts used by the widget. The method also configures widget properties,
+        signal connections, and initial control states required for user account creation.
+
+        The interface includes fields for the user's name, role, optional username, email address, and password
+        confirmation, along with controls for closing the form and submitting the completed account information.
+        """
         # Centred outer layout
         self.base_layout = QtWidgets.QVBoxLayout(self)
         self.base_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -314,7 +345,7 @@ class CreateUserWidget(QtWidgets.QWidget):
 
         self.base_layout.addWidget(self.glass_frame)
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Paints a semi-transparent dark overlay background.
 
         Args:
