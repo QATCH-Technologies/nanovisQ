@@ -289,6 +289,12 @@ class QTextEditLogger(QtCore.QObject):
         self.search_input.setObjectName("SearchBar")
         self.search_input.setPlaceholderText("Find in logs...")
         self.search_input.setFixedSize(220, 28)
+        # This toolbar row is fixed at 28px throughout (level_filter,
+        # btn_clear, ...) - the default 9px vertical padding needs a 34px
+        # field (see _INPUT_H elsewhere) to avoid clipping the text, so use
+        # the tighter compact padding instead of growing just this one
+        # field and breaking the row's alignment.
+        self.search_input.set_compact(True)
 
         # Pressing Enter advances to the next search match.
         self.search_input.returnPressed.connect(self.find_next)

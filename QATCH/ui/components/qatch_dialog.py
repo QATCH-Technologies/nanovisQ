@@ -228,20 +228,40 @@ class DialogCard(QtWidgets.QFrame):
         p.end()
 
 
-class DialogBase(QtWidgets.QDialog):
-    """Shared modal window chrome and behavior for QATCH application dialogs.
+class DialogBase(QtWidgets.QWidget):
+    """Shared overlay chrome and behavior for QATCH application dialogs.
 
-    Provides the common window configuration used by modal dialogs built on
-    the application's `DialogCard` surface. The base class creates a
-    frameless, translucent, application-modal `QDialog` and resolves the
-    appropriate root window so the dialog overlay can cover the full
-    application window.
+    Provides the common configuration used by modal dialogs built on the
+    application's `DialogCard` surface. Unlike a `QDialog`, this is a plain
+    child widget reparented directly onto the app's root window content area
+    (its `centralWidget()` when there is one) - the same "overlay reparented
+    over the app" technique `OverlayLifecycleMixin`
+    (QATCH/ui/components/overlay_shell.py) uses for `RunInfoOverlay` and the
+    other in-app overlays, rather than a separate top-level window that has
+    to fight Qt/the OS to stay correctly positioned over (and modally
+    blocking) its "parent".
+
+    Being a genuine child widget gets three things for free that a top-level
+    `QDialog` had to (and, across two earlier attempts, failed to) fake:
+    it can never render detached from the app window (Qt guarantees correct
+    clipping/stacking within one window); it moves and resizes automatically
+    whenever its window does, with no separate position-tracking needed; and
+    the window's native title bar is never touched, so it stays fully
+    draggable/resizable the entire time a dialog is open. "Blocks input
+    while pending" is achieved the same way every other overlay in this app
+    achieves it - being the topmost, focused widget in its Z-order - rather
+    than OS-level window modality, which is also what used to make Windows
+    disable the whole app window (including its title bar) while a dialog
+    was open.
 
     Subclasses are responsible for constructing their dialog-specific
     `DialogCard` content in their own `_build_ui` or `__init__`
-    implementations. `DialogBase` supplies the shared modal behavior,
-    including Escape-to-cancel handling and the translucent overlay used
-    behind the dialog content.
+    implementations. `DialogBase` supplies the shared overlay behavior,
+    including Escape-to-cancel handling, the translucent dimmed backdrop
+    behind the dialog content, and a `QDialog`-compatible `exec_()`/
+    `accept()`/`reject()` so every existing call site
+    (`dlg.exec_(); ... == QtWidgets.QDialog.Accepted`) keeps working
+    unchanged.
 
     Subclasses:
         QATCHDialog: Dialog used for title/message/button-based modal
@@ -251,19 +271,15 @@ class DialogBase(QtWidgets.QDialog):
     Args:
         parent: Parent widget from which the application's root window is
             resolved. May be `None` when the dialog has no explicit parent.
-
-    Attributes:
-        The base class manages the dialog window configuration internally;
-        subclasses provide the dialog-specific content and controls.
     """
 
     def __init__(self, parent: QtWidgets.QWidget | None) -> None:
-        """Initialize the shared modal dialog configuration.
+        """Initialize the shared overlay configuration.
 
-        Resolves the application's root window from `parent` before
-        initializing the underlying `QDialog`. Configures the dialog as a
-        frameless, translucent, application-modal window and prevents Qt from
-        automatically deleting the dialog when it closes.
+        Resolves the application's root window from `parent` and reparents
+        this widget onto its content area, then configures it for
+        child-widget scrim painting (see `paintEvent`) instead of the
+        top-level-only `WA_TranslucentBackground` this class used before.
 
         Args:
             parent: Parent widget used to determine the root application
@@ -273,12 +289,23 @@ class DialogBase(QtWidgets.QDialog):
             None.
         """
         root = self._find_root(parent)
-        super().__init__(root)
+        container = self._resolve_container(root)
+        super().__init__(container)
 
-        self.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.FramelessWindowHint)  # type: ignore[arg-type]
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        # Child-widget scrim: WA_TranslucentBackground is top-level-only, so
+        # disable Qt's auto-fill instead and let paintEvent draw the dimmed
+        # backdrop directly over the parent's backing store - same technique
+        # OverlayLifecycleMixin._init_overlay_shell uses.
+        self.setAutoFillBackground(False)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+
+        self._root: QtWidgets.QWidget | None = None
+        self._container: QtWidgets.QWidget | None = None
+        self._result_code: int = QtWidgets.QDialog.Rejected
+        self._loop: QtCore.QEventLoop | None = None
+
+        self._attach_to(root, container)
+        self.hide()
 
     @staticmethod
     def _find_root(widget: QtWidgets.QWidget | None) -> QtWidgets.QWidget | None:
@@ -289,8 +316,7 @@ class DialogBase(QtWidgets.QDialog):
         finally the widget's parent hierarchy. This ordering is intentional:
         `QApplication.activeWindow()` can resolve to a smaller embedded
         `QMainWindow` during UI initialization or focus transitions, which
-        would cause the modal dim overlay to cover only part of the
-        application.
+        would cause the dim overlay to cover only part of the application.
 
         Dialog windows are excluded from the application-window search so an
         existing `DialogBase` instance cannot accidentally be selected as
@@ -317,6 +343,65 @@ class DialogBase(QtWidgets.QDialog):
             w = w.parent()
         return w
 
+    @staticmethod
+    def _resolve_container(root: QtWidgets.QWidget | None) -> QtWidgets.QWidget | None:
+        """Picks what to actually reparent onto: `root`'s content area.
+
+        Uses `root.centralWidget()` when `root` is a `QMainWindow` with one
+        set, matching where `RunInfoOverlay` and the other in-app overlays
+        already reparent to - covering the content area only, leaving the
+        window's own title bar and menu bar alone. Falls back to `root`
+        itself otherwise.
+
+        Args:
+            root: The resolved application root window, or `None`.
+
+        Returns:
+            The widget to reparent this dialog onto, or `None`.
+        """
+        if root is None:
+            return None
+        central = getattr(root, "centralWidget", None)
+        if callable(central):
+            widget = central()
+            if isinstance(widget, QtWidgets.QWidget):
+                return widget
+        return root
+
+    def _attach_to(
+        self, root: QtWidgets.QWidget | None, container: QtWidgets.QWidget | None
+    ) -> None:
+        """(Re-)parents this dialog onto `container` and fits it to it.
+
+        A no-op if `container` is already the current parent. Swaps the
+        resize event filter (see `eventFilter`) from the old container to
+        the new one, reparents via `setParent`, and immediately fits this
+        widget's geometry to `container.rect()` - parent-relative
+        coordinates, appropriate for a true child widget (unlike the global
+        `.geometry()` this class used to copy from a separate top-level
+        window, which never reliably stuck).
+
+        Args:
+            root: The resolved application root window, tracked separately
+                from `container` since it's what `_reveal` checks/restores
+                for minimized state.
+            container: The widget to reparent onto - `root` itself or its
+                `centralWidget()` (see `_resolve_container`).
+
+        Returns:
+            None.
+        """
+        self._root = root
+        if container is self._container:
+            return
+        if self._container is not None:
+            self._container.removeEventFilter(self)
+        self._container = container
+        if container is not None:
+            self.setParent(container)
+            container.installEventFilter(self)
+            self.setGeometry(container.rect())
+
     def _on_escape(self) -> None:
         """Handle an Escape key press by rejecting the dialog.
 
@@ -330,27 +415,127 @@ class DialogBase(QtWidgets.QDialog):
         """
         self.reject()
 
-    def showEvent(self, event: QtGui.QShowEvent) -> None:
-        """Size the dialog to the current application root before showing.
+    def _shake_widget(self, widget: QtWidgets.QWidget) -> None:
+        """Rapid horizontal jiggle animation used as inline error feedback.
 
-        Re-resolves the root window at show time because the active application
-        window may have changed since the dialog was constructed. When a valid
-        root widget is found, the dialog geometry is matched to that window.
-        Otherwise, the available desktop geometry is used as a fallback.
+        Shared by any `DialogBase` subclass that validates input inline
+        (e.g. `SignatureDialog`'s switch-user credentials) rather than via a
+        separate popup - mirrors `UILogin._shake_widget`
+        (QATCH/ui/interfaces/ui_login.py), the same feedback used for a
+        failed sign-in there.
 
         Args:
-            event: Qt show event generated when the dialog is about to become
-                visible.
+            widget: The widget to shake - typically the field that failed
+                validation.
 
         Returns:
             None.
         """
-        root = self._find_root(None)  # re-resolve at show time in case active window changed
-        if isinstance(root, QtWidgets.QWidget):
-            self.setGeometry(root.geometry())
-        else:
-            self.setGeometry(QtWidgets.QDesktopWidget().availableGeometry())
-        super().showEvent(event)
+        if not widget or not widget.isVisible():
+            return
+
+        self._shake_anim = QtCore.QPropertyAnimation(widget, b"pos")
+        self._shake_anim.setDuration(380)
+
+        base = widget.pos()
+        self._shake_anim.setKeyValueAt(0.0, base)
+        self._shake_anim.setKeyValueAt(0.1, base + QtCore.QPoint(-6, 0))
+        self._shake_anim.setKeyValueAt(0.3, base + QtCore.QPoint(6, 0))
+        self._shake_anim.setKeyValueAt(0.5, base + QtCore.QPoint(-4, 0))
+        self._shake_anim.setKeyValueAt(0.7, base + QtCore.QPoint(4, 0))
+        self._shake_anim.setKeyValueAt(0.9, base + QtCore.QPoint(-2, 0))
+        self._shake_anim.setKeyValueAt(1.0, base)
+
+        self._shake_anim.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def exec_(self) -> int:
+        """Shows this dialog and blocks until `accept()`/`reject()`.
+
+        A `QDialog.exec_()`-compatible replacement: runs a local
+        `QEventLoop` (rather than relying on `QDialog`'s own, since this is
+        no longer a `QDialog`) so every existing call site's
+        `if dlg.exec_() == QtWidgets.QDialog.Accepted:` keeps working
+        unchanged - `QDialog.Accepted`/`.Rejected` are plain class-level
+        ints, readable regardless of what class `dlg` actually is.
+
+        Returns:
+            int: `QtWidgets.QDialog.Accepted` or `QtWidgets.QDialog.Rejected`.
+        """
+        self._result_code = QtWidgets.QDialog.Rejected
+        self._reveal()
+        self._loop = QtCore.QEventLoop()
+        self._loop.exec_()
+        return self._result_code
+
+    def accept(self) -> None:
+        """Ends `exec_()` with an accepted result - see `QDialog.accept`."""
+        self._result_code = QtWidgets.QDialog.Accepted
+        self._finish()
+
+    def reject(self) -> None:
+        """Ends `exec_()` with a rejected result - see `QDialog.reject`."""
+        self._result_code = QtWidgets.QDialog.Rejected
+        self._finish()
+
+    def _finish(self) -> None:
+        """Hides the dialog and releases `exec_()`'s local event loop."""
+        self.hide()
+        if self._loop is not None and self._loop.isRunning():
+            self._loop.quit()
+
+    def _reveal(self) -> None:
+        """Re-attaches to the current root/container, then shows the dialog.
+
+        Re-resolves the root window (rather than reusing whatever `__init__`
+        saw) because the active application window may have changed since
+        this instance was constructed, and re-attaches (see `_attach_to`) if
+        it's now different. Restores the root first if it's minimized -
+        there's nothing sensible to show a pending confirmation over
+        otherwise. Deferred one event-loop tick via `QTimer.singleShot(0,
+        ...)`, matching `OverlayLifecycleMixin.setVisible`'s reveal
+        deferral, so geometry/layout has fully settled before anything
+        paints - avoiding the exact flash-at-stale-geometry class of bug
+        this class used to have as a top-level `QDialog`.
+
+        Returns:
+            None.
+        """
+
+        def _do_reveal() -> None:
+            root = self._find_root(None)
+            if isinstance(root, QtWidgets.QWidget) and root.isMinimized():
+                root.showNormal()
+            self._attach_to(root, self._resolve_container(root))
+            if self._container is not None:
+                self.setGeometry(self._container.rect())
+            self.show()
+            self.raise_()
+            self.setFocus()
+
+        QtCore.QTimer.singleShot(0, _do_reveal)
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        """Keeps this dialog filling its container whenever it resizes.
+
+        No move-tracking is needed at all (unlike when this was a separate
+        top-level window) - a child widget moves with its parent for free.
+
+        Args:
+            watched: Object the event filter observed - only the currently
+                attached container is acted on.
+            event: The event being filtered.
+
+        Returns:
+            bool: Result from the base `QWidget` event filter; this method
+            never consumes the event itself.
+        """
+        if (
+            watched is self._container
+            and event.type() == QtCore.QEvent.Type.Resize
+            and self._container is not None
+        ):
+            self.setGeometry(self._container.rect())
+        return super().eventFilter(watched, event)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Paint the modal backdrop dimming overlay.
@@ -377,7 +562,7 @@ class DialogBase(QtWidgets.QDialog):
 
         Intercepts the Escape key and routes it through the dialog's
         `_on_escape` handler. All other key events are delegated to the
-        standard `QDialog` implementation.
+        standard `QWidget` implementation.
 
         Args:
             event: Qt key event generated by keyboard input.

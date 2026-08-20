@@ -111,6 +111,7 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
         self._in_error: bool = False
         self._pulse_enabled: bool = False
         self._pulse_t: float = 0.0
+        self._compact: bool = False
 
         # Opt-in (see set_pulse_on_error) looping color animation for the
         # error state - same QVariantAnimation/InOutSine/loop shape as
@@ -162,11 +163,12 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
         """
         tok = ThemeManager.instance().tokens()
         text_color = tok["flat_text_muted"] if not self.isEnabled() else tok["flat_text"]
+        v_pad = 5 if self._compact else 9
         self.setStyleSheet(
             "QLineEdit {"
             "  background: transparent;"
             "  border: none;"
-            "  padding: 9px 12px;"
+            f"  padding: {v_pad}px 12px;"
             f"  color: {self._rgba(text_color)};"
             f"  font-family: {FONT_SANS_STACK};"
             "  font-size: 13px;"
@@ -268,6 +270,28 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
             self._pulse_anim.stop()
             self._pulse_t = 0.0
             self.update()
+
+    def set_compact(self, compact: bool) -> None:
+        """Opt this field into a tighter vertical padding (5px instead of
+        the default 9px top/bottom).
+
+        Off by default - every other `QATCHLineEdit` in the app is sized
+        to the default padding (see e.g. `_INPUT_H = 34` in
+        create_user_widget.py). Intended for a field placed in a shorter,
+        fixed-height toolbar row (e.g. a 28px-tall search bar) where the
+        default padding would otherwise leave too little vertical room
+        for the text/placeholder and clip it.
+
+        Args:
+            compact: Whether the tighter padding should be used.
+
+        Returns:
+            None.
+        """
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self._apply_text_qss()
 
     def _on_pulse(self, value) -> None:
         self._pulse_t = float(value)

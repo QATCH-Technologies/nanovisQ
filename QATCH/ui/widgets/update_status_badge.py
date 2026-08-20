@@ -5,6 +5,7 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from QATCH.ui.components.overlay_shell import OverlayActivity
 from QATCH.ui.components.window_utils import app_window_bounds_global, find_app_window
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
@@ -105,11 +106,18 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
     # ── Positioning ───────────────────────────────────────────────────────────
 
     def reposition(self) -> None:
-        """Place the badge below the anchor icon, right-aligned with it."""
+        """Place the badge above the anchor icon, right-aligned with it.
+
+        Above rather than below: several anchors (e.g. the software-update
+        icon in the bottom status bar) sit close to the app window's own
+        bottom edge, where a below-placed badge got clamped by the
+        window-bounds constraint further down and ended up rendering
+        directly on top of the icon instead of offset from it.
+        """
         global_pos = self._anchor.mapToGlobal(QtCore.QPoint(0, 0))
         anchor_right = global_pos.x() + self._anchor.width()
         x = anchor_right - self.width()
-        y = global_pos.y() + self._anchor.height() + 4
+        y = global_pos.y() - self.height() - 4
 
         # Constrain to the app's own window, not just the screen: the badge
         # is a separate top-level (frameless) widget, so clamping only to
@@ -131,7 +139,7 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
 
         self.move(x, y)
 
-    def show_below(self) -> None:
+    def show_above(self) -> None:
         self.adjustSize()
         self.reposition()
         self.show()
@@ -247,7 +255,22 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
 
         ThemeManager.instance().themeChanged.connect(lambda _: self._mark_icon_dirty())
         self.clicked.connect(self._on_clicked)
+        OverlayActivity.instance().any_open_changed.connect(self._on_overlay_activity_changed)
         self._update_tooltip()
+
+    def _on_overlay_activity_changed(self, any_open: bool) -> None:
+        """Suppresses the badge for as long as any overlay is open (see
+        `_show_badge`), then brings it back once every overlay has closed.
+        Reuses `dismiss_badge`/`resync_badge` - the same suppress/restore
+        pair a caller already uses to hold the badge off screen for the
+        duration of a run in progress - so the two suppression reasons
+        compose correctly instead of racing (`resync_badge` re-checks
+        `isEnabled()`, which a still-active run keeps `False` regardless
+        of overlay state)."""
+        if any_open:
+            self.dismiss_badge()
+        else:
+            self.resync_badge()
 
     def state(self) -> "UpdateStatusIcon.State":
         return self._state
@@ -293,7 +316,14 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         # mid-run) can't pop the badge back up early.
         if not self.isVisible() or not self.isEnabled():
             return
-        self._badge.show_below()
+        # The badge is a separate owned top-level (Tool) window, so it would
+        # otherwise always paint above an overlay's child-widget content
+        # regardless of which is logically "on top" - suppress it for as
+        # long as any overlay is open instead (see _on_overlay_activity_
+        # changed, which resyncs it once every overlay has closed).
+        if OverlayActivity.instance().is_any_open():
+            return
+        self._badge.show_above()
 
     def _on_badge_dismissed(self) -> None:
         self._badge_dismissed = True
@@ -426,10 +456,13 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
 
     def showEvent(self, event: QtGui.QShowEvent) -> None:
         super().showEvent(event)
-        # Re-show badge after icon becomes visible (e.g. window restore)
+        # Re-show badge after icon becomes visible (e.g. window restore) -
+        # routed through _show_badge() rather than self._badge.show_above
+        # directly so this path also gets its isEnabled()/overlay-open
+        # guards, not just the state check above.
         if self._state in (self.State.OPTIONAL, self.State.MANDATORY):
             if not self._badge_dismissed and self._badge:
-                QtCore.QTimer.singleShot(50, self._badge.show_below)
+                QtCore.QTimer.singleShot(50, self._show_badge)
 
     def hideEvent(self, event: QtGui.QHideEvent) -> None:
         super().hideEvent(event)

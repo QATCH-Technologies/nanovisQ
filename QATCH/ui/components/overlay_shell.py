@@ -54,6 +54,56 @@ SCRIM_MAX_ALPHA = 65
 FULLSCREEN_ANIM_EASING = QtCore.QEasingCurve.InOutCubic
 
 
+class OverlayActivity(QtCore.QObject):
+    """Tracks how many `OverlayLifecycleMixin` overlays are currently open,
+    application-wide.
+
+    Each overlay (`RunInfoOverlay`, `DataManagementWidget`,
+    `UserPreferencesWidget`, `UserProfilesManagerWidget`, ...) is a child
+    widget reparented over the app's central widget, not a separate
+    top-level window - but some other UI (e.g. the update-available
+    notification badges in `QATCH.ui.widgets.update_status_badge`) *is* a
+    separate owned top-level window, and would otherwise always paint
+    above every overlay's content regardless of which is logically "on
+    top". Such UI can watch `any_open_changed` to suppress itself for as
+    long as any overlay is open, instead.
+
+    A single process-wide instance, matching `ThemeManager`'s singleton
+    pattern. `OverlayLifecycleMixin.setVisible` reports into this - one
+    central chokepoint every overlay subclass already routes through for
+    both showing and hiding (including via `close()`, which Qt resolves
+    to `setVisible(False)` on this same overridden method).
+    """
+
+    any_open_changed = QtCore.pyqtSignal(bool)
+
+    _instance: "OverlayActivity | None" = None
+
+    @classmethod
+    def instance(cls) -> "OverlayActivity":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._open: set = set()
+
+    def is_any_open(self) -> bool:
+        return bool(self._open)
+
+    def mark_open(self, overlay: QtCore.QObject) -> None:
+        was_any = bool(self._open)
+        self._open.add(overlay)
+        if not was_any:
+            self.any_open_changed.emit(True)
+
+    def mark_closed(self, overlay: QtCore.QObject) -> None:
+        self._open.discard(overlay)
+        if not self._open:
+            self.any_open_changed.emit(False)
+
+
 def build_overlay_title(
     icon_path: str,
     title_text: str,
@@ -1035,9 +1085,12 @@ class OverlayLifecycleMixin(OverlayFadeMixin):
                 self.update()
                 self._animate_open()
                 self._on_after_reveal()
+                OverlayActivity.instance().mark_open(self)
 
             QtCore.QTimer.singleShot(0, _reveal)
             return
+        if not visible:
+            OverlayActivity.instance().mark_closed(self)
         QtWidgets.QWidget.setVisible(self, visible)
 
     def showEvent(self, event: QtGui.QShowEvent) -> None:

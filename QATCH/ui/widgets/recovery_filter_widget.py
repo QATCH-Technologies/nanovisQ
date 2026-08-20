@@ -29,46 +29,14 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import (
     QIcon,
-    QCloseEvent,
-    QColor,
-)
-from typing import Optional, Any
-from QATCH.common.architecture import Architecture
-
-from PyQt5.QtWidgets import (
-    QVBoxLayout,
-    QHBoxLayout,
-    QWidget,
-    QLabel,
-    QPushButton,
-    QFrame,
-    QSizePolicy,
-    QStackedWidget,
-    QComboBox,
-    QSpinBox,
-    QDoubleSpinBox,
-    QDateEdit,
-    QTimeEdit,
-    QGraphicsDropShadowEffect,
-)
-
-from PyQt5.QtCore import (
-    Qt,
-    pyqtSignal,
-    QPropertyAnimation,
-    QEasingCurve,
-    QDateTime,
-    QDate,
-    QTime,
-    QParallelAnimationGroup,
-)
-from PyQt5.QtGui import (
-    QIcon,
     QPainter,
     QPaintEvent,
     QCloseEvent,
     QColor,
 )
+from typing import Optional, Any
+from QATCH.common.architecture import Architecture
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
 
 class RoundedPanel(QFrame):
@@ -90,6 +58,9 @@ class RoundedPanel(QFrame):
         """
         super().__init__(parent)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
+        tok = ThemeManager.instance().tokens()
+        self._border_color = QColor(*tok["flat_border"])
+        self._fill_color = QColor(*tok["flat_surface"])
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         """Overridden paint event to draw the rounded rectangle geometry.
@@ -99,8 +70,8 @@ class RoundedPanel(QFrame):
         """
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QColor(0, 0, 0, 18))
-        painter.setBrush(QColor(255, 255, 255, 244))
+        painter.setPen(self._border_color)
+        painter.setBrush(self._fill_color)
         rect = self.rect().adjusted(0, 0, -1, -1)
         painter.drawRoundedRect(rect, 8.0, 8.0)
 
@@ -173,6 +144,8 @@ class RecoveryFilterWidget(QWidget):
         self._from_set = False
         self._to_set = False
 
+        tok = ThemeManager.instance().tokens()
+
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self._panel = RoundedPanel(self)
@@ -191,11 +164,12 @@ class RecoveryFilterWidget(QWidget):
         shadow = QGraphicsDropShadowEffect(self._panel)
         shadow.setBlurRadius(28)
         shadow.setOffset(0, 4)
-        shadow.setColor(QColor(0, 0, 0, 70))
+        shadow.setColor(QColor(*tok["flat_menu_shadow"]))
         self._panel.setGraphicsEffect(shadow)
 
         self.setStyleSheet(
             RecoveryFilterWidget._build_stylesheet(
+                tok,
                 icon_cal=os.path.join(Architecture.get_path(), "QATCH", "icons", "date-range.svg"),
                 icon_up=os.path.join(Architecture.get_path(), "QATCH", "icons", "up-chevron.svg"),
                 icon_down=os.path.join(
@@ -331,7 +305,7 @@ class RecoveryFilterWidget(QWidget):
         self._populate_from(current_filters or {})
 
     @staticmethod
-    def _build_stylesheet(icon_cal: str = "", icon_up: str = "", icon_down: str = "") -> str:
+    def _build_stylesheet(tok, icon_cal: str = "", icon_up: str = "", icon_down: str = "") -> str:
         """Generates the Qt Style Sheet (QSS) for the Recovery Filter popup.
 
         This method constructs a comprehensive CSS-like string used to style the
@@ -339,6 +313,10 @@ class RecoveryFilterWidget(QWidget):
         injection for interactive elements like dropdowns and spin boxes.
 
         Args:
+            tok: The active theme's ColorTokens dict (from
+                `ThemeManager.instance().tokens()`), resolved once by the
+                caller so every color in this stylesheet stays in sync with
+                the rest of the app's light/dark palette.
             icon_cal: The file path to the calendar SVG icon used in QDateEdit.
                 Defaults to an empty string (standard rendering).
             icon_up: The file path to the upward chevron SVG icon for spin boxes.
@@ -359,37 +337,49 @@ class RecoveryFilterWidget(QWidget):
         _up_img = _url(icon_up)
         _down_img = _url(icon_down)
 
-        _btn_bg = "rgba(245, 245, 245, 210)"
-        _btn_hover = "rgba(0, 114, 189, 30)"
-        _btn_pressed = "rgba(0, 114, 189, 58)"
-        _btn_border = "rgba(0, 0, 0, 14)"
+        accent = tok["flat_accent"]
+
+        def _accent_a(alpha: int) -> str:
+            """Accent hue at a custom alpha, for translucent hover/press washes."""
+            return tok_css((accent[0], accent[1], accent[2], alpha))
+
+        text = tok_css(tok["flat_text"])
+        text_muted = tok_css(tok["flat_text_muted"])
+        border = tok_css(tok["flat_border"])
+        surface2 = tok_css(tok["flat_surface2"])
+        accent_text = tok_css(tok["flat_accent_active"])
+
+        _btn_bg = surface2
+        _btn_hover = _accent_a(30)
+        _btn_pressed = _accent_a(58)
+        _btn_border = border
 
         return f"""
             /* Labels */
             QLabel {{
-                color: #555555;
+                color: {text_muted};
                 font-size: 9pt;
                 background: transparent;
                 border: none;
             }}
             QLabel#titleLabel {{
-                color: #888888;
+                color: {text_muted};
                 font-size: 9pt;
                 font-weight: 400;
             }}
             QLabel#sectionLabel {{
-                color: #444444;
+                color: {text};
                 font-size: 9pt;
                 font-weight: 600;
                 padding-top: 2px;
             }}
             QLabel#rangeSep {{
-                color: #999999;
+                color: {text_muted};
                 font-size: 9pt;
                 padding: 0 2px;
             }}
             QLabel#dateRangeLbl {{
-                color: #888888;
+                color: {text_muted};
                 font-size: 9pt;
                 min-width: 28px;
                 max-width: 28px;
@@ -397,24 +387,24 @@ class RecoveryFilterWidget(QWidget):
 
             /* Input fields */
             QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit {{
-                background-color: rgba(255, 255, 255, 180);
-                border: 1px solid rgba(0, 0, 0, 20);
+                background-color: {tok_css(tok['combo_bg'])};
+                border: 1px solid {tok_css(tok['combo_border'])};
                 border-radius: 4px;
                 padding: 3px 6px;
                 font-size: 9pt;
-                color: #333333;
+                color: {tok_css(tok['combo_text'])};
                 min-height: 20px;
-                selection-background-color: rgba(0, 114, 189, 80);
+                selection-background-color: {tok_css(tok['combo_selection_bg'])};
             }}
             QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover,
             QDateEdit:hover, QTimeEdit:hover {{
-                background-color: rgba(255, 255, 255, 220);
-                border-color: rgba(0, 0, 0, 32);
+                background-color: {tok_css(tok['combo_bg_hover'])};
+                border-color: {tok_css(tok['combo_border_hover'])};
             }}
             QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
             QDateEdit:focus, QTimeEdit:focus {{
-                border: 1px solid rgba(0, 114, 189, 120);
-                background-color: rgba(255, 255, 255, 255);
+                border: 1px solid {tok_css(tok['combo_border_focus'])};
+                background-color: {tok_css(tok['combo_bg_focus'])};
             }}
 
             /* ComboBox drop-down */
@@ -503,7 +493,7 @@ class RecoveryFilterWidget(QWidget):
 
             /* Separator */
             QFrame#filterSeparator {{
-                background-color: rgba(0, 0, 0, 14);
+                background-color: {tok_css(tok['ctrl_hairline'])};
                 border: none;
                 max-height: 1px;
                 min-height: 1px;
@@ -516,37 +506,37 @@ class RecoveryFilterWidget(QWidget):
                 font-size: 9pt;
             }}
             QPushButton#applyBtn {{
-                background-color: rgba(0, 114, 189, 25);
-                color: #005b9f;
-                border: 1px solid rgba(0, 114, 189, 60);
+                background-color: {_accent_a(25)};
+                color: {accent_text};
+                border: 1px solid {_accent_a(60)};
             }}
-            QPushButton#applyBtn:hover  {{ background-color: rgba(0, 114, 189, 45); }}
+            QPushButton#applyBtn:hover  {{ background-color: {_accent_a(45)}; }}
             QPushButton#resetBtn {{
                 background-color: transparent;
-                color: #666666;
-                border: 1px solid rgba(0, 0, 0, 22);
+                color: {text_muted};
+                border: 1px solid {border};
             }}
-            QPushButton#resetBtn:hover  {{ background-color: rgba(0, 0, 0, 6); }}
+            QPushButton#resetBtn:hover  {{ background-color: {surface2}; }}
 
             /* Date row widgets (from new date section) */
             QPushButton#addDateBtn {{
                 background-color: transparent;
-                color: #aaaaaa;
-                border: 1px dashed rgba(0, 0, 0, 22);
+                color: {text_muted};
+                border: 1px dashed {border};
                 border-radius: 4px;
                 padding: 4px 8px;
                 font-size: 9pt;
                 text-align: left;
             }}
             QPushButton#addDateBtn:hover {{
-                background-color: rgba(0, 114, 189, 8);
-                border-color: rgba(0, 114, 189, 55);
-                color: rgba(0, 100, 170, 200);
+                background-color: {_accent_a(8)};
+                border-color: {_accent_a(55)};
+                color: {accent_text};
             }}
             QPushButton#clearDateBtn {{
                 background-color: transparent;
                 border: none;
-                color: #aaaaaa;
+                color: {text_muted};
                 font-size: 11pt;
                 padding: 0px;
                 min-width: 20px;  max-width: 20px;
@@ -554,13 +544,13 @@ class RecoveryFilterWidget(QWidget):
                 border-radius: 10px;
             }}
             QPushButton#clearDateBtn:hover {{
-                background-color: rgba(0, 0, 0, 10);
-                color: #555555;
+                background-color: {surface2};
+                color: {text};
             }}
             QPushButton#closeBtn {{
                 background-color: transparent;
                 border: none;
-                color: #aaaaaa;
+                color: {text_muted};
                 padding: 0px;
                 min-width: 22px;  max-width: 22px;
                 min-height: 22px; max-height: 22px;
@@ -568,11 +558,11 @@ class RecoveryFilterWidget(QWidget):
                 qproperty-iconSize: 10px 10px;
             }}
             QPushButton#closeBtn:hover {{
-                background-color: rgba(0, 0, 0, 12);
-                color: #555555;
+                background-color: {surface2};
+                color: {text};
             }}
             QPushButton#closeBtn:pressed {{
-                background-color: rgba(0, 0, 0, 22);
+                background-color: {border};
             }}
         """
 

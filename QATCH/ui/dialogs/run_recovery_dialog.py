@@ -62,6 +62,7 @@ from PyQt5.QtGui import (
     QPainter,
     QMouseEvent,
     QBrush,
+    QColor,
 )
 from typing import List, Optional, Any, Dict, BinaryIO, Sequence, Set, Tuple, cast
 import numpy as np
@@ -76,7 +77,9 @@ from QATCH.core.constants import Constants
 from QATCH.core.run_metadata import RunMetadata
 from QATCH.ui.dialogs.signature_dialog import SignatureDialog
 from QATCH.ui.components import AnimatedComboBox
+from QATCH.ui.components.icon_utils import tinted_icon
 from QATCH.ui.workers import RecoveryWorker, ScanWorker
+from QATCH.ui.styles.theme_manager import ThemeManager, tok_css, error_label_qss
 
 TAG = "[RunRecovery]"
 
@@ -149,7 +152,7 @@ class RecoveryDialog(QDialog):
         self.progress_bar.hide()
 
         self.status_label = QLabel("", self)
-        self.status_label.setStyleSheet("color: red;")
+        self.status_label.setStyleSheet(error_label_qss())
         self.status_label.hide()
 
         # Buttons
@@ -373,52 +376,13 @@ class RunRecoveryDialog(QWidget):
             QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "search.svg")),
             QLineEdit.LeadingPosition,
         )
-        self.search_bar.setStyleSheet("""
-            QLineEdit {
-                background-color: rgba(255, 255, 255, 150);
-                border: 1px solid rgba(120, 130, 145, 150);
-                border-radius: 9px;
-                padding: 4px 10px;
-                font-size: 12px;
-                color: rgb(40, 50, 62);
-            }
-            QLineEdit:focus {
-                border: 1px solid rgba(10, 163, 230, 200);
-                background-color: rgba(255, 255, 255, 225);
-            }
-            """)
         self.search_bar.textChanged.connect(self.refilter_list)
-
-        _icon_btn_ss = """
-            QPushButton {
-                background-color: rgba(255, 255, 255, 150);
-                border: 1px solid rgba(120, 130, 145, 150);
-                border-radius: 9px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 200);
-                border: 1px solid rgba(90, 100, 115, 190);
-            }
-            QPushButton:pressed { background-color: rgba(255, 255, 255, 230); }
-            QPushButton:checked {
-                background-color: rgba(10, 163, 230, 45);
-                border: 1px solid rgba(0, 118, 174, 170);
-            }
-            QPushButton:disabled {
-                background-color: rgba(255, 255, 255, 90);
-                border: 1px solid rgba(180, 190, 202, 120);
-            }
-        """
 
         self.filter_btn = QPushButton()
         self.filter_btn.setFixedSize(28, 28)
         self.filter_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.filter_btn.setToolTip("Filter Options")
-        self.filter_btn.setIcon(
-            QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "filter.svg"))
-        )
         self.filter_btn.setIconSize(QSize(16, 16))
-        self.filter_btn.setStyleSheet(_icon_btn_ss)
         self.filter_btn.setCheckable(True)
         self.filter_btn.clicked.connect(self.show_filter_menu)
 
@@ -442,7 +406,6 @@ class RunRecoveryDialog(QWidget):
         self.rescan_btn.setToolTip("Rescan for unnamed runs")
         self.rescan_btn.setIcon(QIcon(self._rescan_base_pixmap))
         self.rescan_btn.setIconSize(QSize(16, 16))
-        self.rescan_btn.setStyleSheet(_icon_btn_ss)
         self.rescan_btn.clicked.connect(self.load_unnamed_runs)
 
         search_layout.addWidget(self.search_bar, stretch=1)
@@ -464,35 +427,8 @@ class RunRecoveryDialog(QWidget):
 
         # Sort bar
         sort_bar = QWidget()
-        sort_bar.setStyleSheet("""
-            QWidget#sortBar { background: transparent; }
-            QLabel#sortLabel {
-                color: rgba(60, 72, 88, 200);
-                font-size: 12px;
-                background: transparent;
-                border: none;
-                padding-left: 2px;
-            }
-            QPushButton#sortDir {
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 8px;
-                color: rgba(60, 72, 88, 210);
-                font-size: 15px;
-                font-weight: 600;
-                min-width: 22px;
-                min-height: 22px;
-                padding: 0px;
-            }
-            QPushButton#sortDir:hover {
-                background-color: rgba(255, 255, 255, 130);
-                border: 1px solid rgba(120, 130, 145, 150);
-            }
-            QPushButton#sortDir:pressed {
-                background-color: rgba(255, 255, 255, 190);
-            }
-            """)
         sort_bar.setObjectName("sortBar")
+        self.sort_bar = sort_bar
 
         sort_bar_layout = QHBoxLayout(sort_bar)
         sort_bar_layout.setContentsMargins(4, 0, 2, 0)
@@ -537,65 +473,11 @@ class RunRecoveryDialog(QWidget):
         # Left layout
         self.runs_list = ToggleListWidget()
         self.runs_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.runs_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid rgba(218, 224, 232, 170);
-                border-radius: 10px;
-                background-color: rgba(255, 255, 255, 130);
-                padding: 4px;
-                outline: none;
-            }
-            QListWidget::item {
-                padding: 6px 8px;
-                border-radius: 7px;
-                margin-bottom: 2px;
-                color: rgba(40, 50, 62, 230);
-            }
-            QListWidget::item:hover    { background-color: rgba(255, 255, 255, 140); }
-            QListWidget::item:selected {
-                background-color: rgba(10, 163, 230, 35);
-                color: rgba(0, 90, 135, 245);
-            }
-            QScrollBar:vertical {
-                border: none;
-                background: transparent;
-                width: 8px;
-                margin: 2px 0px 2px 0px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background: rgba(120, 134, 150, 110);
-                min-height: 24px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: rgba(90, 104, 120, 150);
-            }
-            QScrollBar::handle:vertical:pressed {
-                background: rgba(70, 84, 100, 180);
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none;
-            }
-            """)
         self.runs_list.itemSelectionChanged.connect(self.on_selection_changed)
         self.runs_list.itemDoubleClicked.connect(self.on_item_double_clicked)
 
         self.empty_list_placeholder = QLabel("No recoverable runs")
         self.empty_list_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_list_placeholder.setStyleSheet("""
-            QLabel {
-                border: 1px dashed rgba(180, 190, 202, 150);
-                border-radius: 10px;
-                background-color: rgba(255, 255, 255, 90);
-                color: rgba(60, 72, 88, 160);
-                font-size: 13px;
-                padding: 20px;
-            }
-            """)
 
         self.list_stack = QStackedWidget()
         self.list_stack.addWidget(self.runs_list)  # index 0
@@ -618,25 +500,6 @@ class RunRecoveryDialog(QWidget):
         self.details_frame = QFrame()
         self.details_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.details_frame.setMinimumWidth(0)
-        self.details_frame.setStyleSheet("""
-            QFrame#detailsFrame {
-                background-color: rgba(255, 255, 255, 110);
-                border: 1px solid rgba(218, 224, 232, 170);
-                border-radius: 10px;
-            }
-            QFrame#detailsFrame QLabel {
-                border: none;
-                background: transparent;
-                color: rgba(40, 50, 62, 230);
-                font-size: 12px;
-            }
-            QFrame#detailsSep {
-                background-color: rgba(210, 218, 228, 150);
-                border: none;
-                max-height: 1px;
-                min-height: 1px;
-            }
-            """)
         self.details_frame.setObjectName("detailsFrame")
 
         details_outer = QVBoxLayout(self.details_frame)
@@ -649,14 +512,15 @@ class RunRecoveryDialog(QWidget):
         details_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
         details_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
+        self._detail_key_labels: List[QLabel] = []
+
         def make_key_label(text):
             lbl = QLabel(text)
-            lbl.setStyleSheet("color: rgba(60, 72, 88, 170); font-size: 11px; font-weight: 600;")
+            self._detail_key_labels.append(lbl)
             return lbl
 
         def make_value_label():
             lbl = QLabel("-")
-            lbl.setStyleSheet("color: rgba(28, 40, 52, 230); font-size: 12px; font-weight: 600;")
             lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             return lbl
 
@@ -691,28 +555,6 @@ class RunRecoveryDialog(QWidget):
             QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "restore.svg"))
         )
         self.recover_button.setIconSize(QSize(14, 14))
-        self.recover_button.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: none;
-                border-radius: 7px;
-                color: rgba(0, 90, 135, 220);
-                font-size: 11px;
-                font-weight: 600;
-                padding: 5px 9px;
-                text-align: left;
-            }
-            QPushButton:hover {
-                background-color: rgba(10, 163, 230, 35);
-                color: rgba(0, 90, 135, 250);
-            }
-            QPushButton:pressed {
-                background-color: rgba(10, 163, 230, 60);
-            }
-            QPushButton:disabled {
-                color: rgba(140, 150, 162, 150);
-            }
-            """)
         self.recover_button.clicked.connect(self.on_recover_clicked)
 
         self.delete_button = QPushButton("  Delete")
@@ -730,28 +572,6 @@ class RunRecoveryDialog(QWidget):
         _del_text_w = _del_fm.horizontalAdvance("  Delete (999)")
         self.delete_button.setMinimumWidth(_del_text_w + 14 + 18 + 6)
         self.delete_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.delete_button.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: none;
-                border-radius: 7px;
-                color: rgba(176, 42, 56, 200);
-                font-size: 11px;
-                font-weight: 600;
-                padding: 5px 9px;
-                text-align: left;
-            }
-            QPushButton:hover {
-                background-color: rgba(220, 53, 69, 28);
-                color: rgba(176, 42, 56, 235);
-            }
-            QPushButton:pressed {
-                background-color: rgba(220, 53, 69, 48);
-            }
-            QPushButton:disabled {
-                color: rgba(140, 150, 162, 150);
-            }
-            """)
         self.delete_button.clicked.connect(self.on_delete_clicked)
 
         action_row.addWidget(self.recover_button)
@@ -767,19 +587,6 @@ class RunRecoveryDialog(QWidget):
         self.plot_card.setObjectName("plotCard")
         self.plot_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.plot_card.setMinimumHeight(150)
-        self.plot_card.setStyleSheet("""
-            QFrame#plotCard {
-                background-color: rgba(255, 255, 255, 110);
-                border: 1px solid rgba(218, 224, 232, 170);
-                border-radius: 10px;
-            }
-            QLabel#plotLegend {
-                background: transparent;
-                border: none;
-                color: rgba(60, 72, 88, 190);
-                font-size: 11px;
-            }
-            """)
 
         plot_card_layout = QVBoxLayout(self.plot_card)
         plot_card_layout.setContentsMargins(6, 6, 6, 4)
@@ -787,7 +594,6 @@ class RunRecoveryDialog(QWidget):
 
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.plot_widget.setBackground("#fafafa")
         self.plot_widget.setStyleSheet("border: none;")
         self.plot_widget.setMouseEnabled(x=False, y=False)
         self.plot_widget.hideButtons()
@@ -796,13 +602,10 @@ class RunRecoveryDialog(QWidget):
         self.plot_widget.hideAxis("left")
         self.plot_widget.hideAxis("right")
         bottom_axis = self.plot_widget.getAxis("bottom")
-        bottom_axis.setPen(pg.mkPen(color="#cccccc", width=1))
         bottom_axis.setLabel(text="")
         bottom_axis.setStyle(showValues=False)
-        self._FREQ_COLOR = (82, 142, 201)
-        self._DISS_COLOR = (225, 175, 85)
-        pen_freq = pg.mkPen(color=(*self._FREQ_COLOR, 170), width=1.4)
-        pen_diss = pg.mkPen(color=(*self._DISS_COLOR, 170), width=1.4)
+        pen_freq = pg.mkPen(width=1.4)
+        pen_diss = pg.mkPen(width=1.4)
 
         # antialias scoped to just these two curves (rather than the old
         # global pg.setConfigOptions(antialias=True)) - this dialog's own
@@ -842,14 +645,6 @@ class RunRecoveryDialog(QWidget):
 
         self.empty_plot_placeholder = QLabel("No data to display")
         self.empty_plot_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_plot_placeholder.setStyleSheet("""
-            QLabel {
-                background-color: #fafafa;
-                color: rgba(140, 150, 162, 200);
-                font-size: 12px;
-                border-radius: 8px;
-            }
-            """)
 
         self.plot_stack = QStackedWidget()
         self.plot_stack.addWidget(self.plot_widget)  # index 0
@@ -858,15 +653,7 @@ class RunRecoveryDialog(QWidget):
 
         plot_card_layout.addWidget(self.plot_stack, stretch=1)
         # Legend
-        freq_hex = "#%02x%02x%02x" % self._FREQ_COLOR
-        diss_hex = "#%02x%02x%02x" % self._DISS_COLOR
-        self.plot_legend_label = QLabel(
-            f'<span style="color:{freq_hex};">●</span>'
-            f'<span style="color:#48586c;"> Frequency</span>'
-            f"&nbsp;&nbsp;&nbsp;"
-            f'<span style="color:{diss_hex};">●</span>'
-            f'<span style="color:#48586c;"> Dissipation</span>'
-        )
+        self.plot_legend_label = QLabel()
         self.plot_legend_label.setObjectName("plotLegend")
         self.plot_legend_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_legend_label.setTextFormat(Qt.TextFormat.RichText)
@@ -880,6 +667,327 @@ class RunRecoveryDialog(QWidget):
         base_layout.setContentsMargins(0, 0, 0, 0)
 
         base_layout.addWidget(self.master_container)
+
+        self._apply_theme()
+        ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
+
+    @staticmethod
+    def _icon_path(name: str) -> str:
+        """Resolves an icon filename to its full path in the app's icon directory."""
+        return os.path.join(Architecture.get_path(), "QATCH", "icons", name)
+
+    def _on_theme_changed(self, _mode: str) -> None:
+        """Re-applies the active theme when it changes while this dialog is alive."""
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        """Applies the active theme's tokens to every styled child widget.
+
+        Rebuilds every QSS string and re-tints every icon-only button from
+        `ThemeManager.instance().tokens()`, mirroring the pattern established
+        in `AdvancedMode._apply_theme` (`QATCH.ui.widgets.data_mode_advanced`).
+        Safe to call repeatedly - called once at construction and again on
+        every `themeChanged` emission, since `RunRecoveryDialog` is built
+        once and kept alive for the app session.
+        """
+        tok = ThemeManager.instance().tokens()
+
+        def accent_a(alpha: int) -> str:
+            a = tok["flat_accent"]
+            return tok_css((a[0], a[1], a[2], alpha))
+
+        def error_a(alpha: int) -> str:
+            e = tok["flat_error"]
+            return tok_css((e[0], e[1], e[2], alpha))
+
+        def border_strong_a(alpha: int) -> str:
+            b = tok["flat_border_strong"]
+            return tok_css((b[0], b[1], b[2], alpha))
+
+        text = tok_css(tok["flat_text"])
+        text_muted = tok_css(tok["flat_text_muted"])
+        border = tok_css(tok["flat_border"])
+        surface = tok_css(tok["flat_surface"])
+        surface2 = tok_css(tok["flat_surface2"])
+
+        # Search bar
+        self.search_bar.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {tok_css(tok['ctrl_input_bg'])};
+                border: 1px solid {tok_css(tok['ctrl_input_border'])};
+                border-radius: 9px;
+                padding: 4px 10px;
+                font-size: 12px;
+                color: {tok_css(tok['ctrl_input_text'])};
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {tok_css(tok['ctrl_input_focus_border'])};
+                background-color: {tok_css(tok['ctrl_input_focus_bg'])};
+            }}
+            """)
+        self.search_icon_action.setIcon(
+            tinted_icon(self._icon_path("search.svg"), QColor(*tok["flat_text_muted"]), 14)
+        )
+
+        # Filter / rescan icon buttons
+        icon_btn_ss = f"""
+            QPushButton {{
+                background-color: {tok_css(tok['ctrl_input_bg'])};
+                border: 1px solid {tok_css(tok['ctrl_input_border'])};
+                border-radius: 9px;
+            }}
+            QPushButton:hover {{
+                background-color: {tok_css(tok['plot_icon_btn_hover_bg'])};
+                border: 1px solid {tok_css(tok['plot_icon_btn_hover_border'])};
+            }}
+            QPushButton:pressed {{ background-color: {tok_css(tok['plot_icon_btn_pressed_bg'])}; }}
+            QPushButton:checked {{
+                background-color: {tok_css(tok['flat_accent_weak'])};
+                border: 1px solid {tok_css(tok['flat_accent_ring'])};
+            }}
+            QPushButton:disabled {{
+                background-color: {surface2};
+                border: 1px solid {border};
+            }}
+        """
+        self.filter_btn.setStyleSheet(icon_btn_ss)
+        self.rescan_btn.setStyleSheet(icon_btn_ss)
+        self.filter_btn.setIcon(
+            tinted_icon(self._icon_path("filter.svg"), QColor(*tok["flat_text_muted"]), 16)
+        )
+        self._rescan_base_pixmap = tinted_icon(
+            self._icon_path("refresh-cw.svg"), QColor(*tok["flat_text_muted"]), 16
+        ).pixmap(QSize(16, 16))
+        self.rescan_btn.setIcon(QIcon(self._rescan_base_pixmap))
+
+        # Sort bar
+        self.sort_bar.setStyleSheet(f"""
+            QWidget#sortBar {{ background: transparent; }}
+            QLabel#sortLabel {{
+                color: {text_muted};
+                font-size: 12px;
+                background: transparent;
+                border: none;
+                padding-left: 2px;
+            }}
+            QPushButton#sortDir {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 8px;
+                color: {text_muted};
+                font-size: 15px;
+                font-weight: 600;
+                min-width: 22px;
+                min-height: 22px;
+                padding: 0px;
+            }}
+            QPushButton#sortDir:hover {{
+                background-color: {tok_css(tok['plot_icon_btn_hover_bg'])};
+                border: 1px solid {tok_css(tok['plot_icon_btn_hover_border'])};
+            }}
+            QPushButton#sortDir:pressed {{
+                background-color: {tok_css(tok['plot_icon_btn_pressed_bg'])};
+            }}
+            """)
+        sort_icon_name = "ascending.svg" if self._sort_ascending else "descending.svg"
+        self.sort_dir_btn.setIcon(
+            tinted_icon(self._icon_path(sort_icon_name), QColor(*tok["flat_text_muted"]), 16)
+        )
+
+        # Runs list
+        self.runs_list.setStyleSheet(f"""
+            QListWidget {{
+                border: 1px solid {border};
+                border-radius: 10px;
+                background-color: {surface};
+                padding: 4px;
+                outline: none;
+            }}
+            QListWidget::item {{
+                padding: 6px 8px;
+                border-radius: 7px;
+                margin-bottom: 2px;
+                color: {text};
+            }}
+            QListWidget::item:hover    {{ background-color: {tok_css(tok['menu_item_hover'])}; }}
+            QListWidget::item:selected {{
+                background-color: {tok_css(tok['flat_accent_weak'])};
+                color: {tok_css(tok['flat_accent_active'])};
+            }}
+            QScrollBar:vertical {{
+                border: none;
+                background: transparent;
+                width: 8px;
+                margin: 2px 0px 2px 0px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {border_strong_a(140)};
+                min-height: 24px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {border_strong_a(190)};
+            }}
+            QScrollBar::handle:vertical:pressed {{
+                background: {border_strong_a(230)};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+                background: none;
+            }}
+            """)
+
+        self.empty_list_placeholder.setStyleSheet(f"""
+            QLabel {{
+                border: 1px dashed {border};
+                border-radius: 10px;
+                background-color: {surface2};
+                color: {text_muted};
+                font-size: 13px;
+                padding: 20px;
+            }}
+            """)
+
+        # Details frame
+        self.details_frame.setStyleSheet(f"""
+            QFrame#detailsFrame {{
+                background-color: {surface};
+                border: 1px solid {border};
+                border-radius: 10px;
+            }}
+            QFrame#detailsFrame QLabel {{
+                border: none;
+                background: transparent;
+                color: {text};
+                font-size: 12px;
+            }}
+            QFrame#detailsSep {{
+                background-color: {tok_css(tok['ctrl_hairline'])};
+                border: none;
+                max-height: 1px;
+                min-height: 1px;
+            }}
+            """)
+        for key_lbl in self._detail_key_labels:
+            key_lbl.setStyleSheet(f"color: {text_muted}; font-size: 11px; font-weight: 600;")
+        for value_lbl in (
+            self.detail_datetime,
+            self.detail_duration,
+            self.detail_points,
+            self.detail_filesize,
+        ):
+            value_lbl.setStyleSheet(f"color: {text}; font-size: 12px; font-weight: 600;")
+        if self.selected_run is not None:
+            self._set_ruling_style(self.selected_run.ruling == "Good")
+        else:
+            self.detail_ruling.setStyleSheet(f"color: {text}; font-size: 12px; font-weight: 600;")
+
+        # Action buttons
+        self.recover_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 7px;
+                color: {tok_css(tok['flat_accent_active'])};
+                font-size: 11px;
+                font-weight: 600;
+                padding: 5px 9px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background-color: {accent_a(35)};
+                color: {tok_css(tok['flat_accent_hover'])};
+            }}
+            QPushButton:pressed {{
+                background-color: {accent_a(60)};
+            }}
+            QPushButton:disabled {{
+                color: {text_muted};
+            }}
+            """)
+        self.recover_button.setIcon(
+            tinted_icon(self._icon_path("restore.svg"), QColor(*tok["flat_accent_active"]), 14)
+        )
+
+        self.delete_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 7px;
+                color: {tok_css(tok['flat_error'])};
+                font-size: 11px;
+                font-weight: 600;
+                padding: 5px 9px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background-color: {error_a(28)};
+                color: {tok_css(tok['flat_error'])};
+            }}
+            QPushButton:pressed {{
+                background-color: {error_a(48)};
+            }}
+            QPushButton:disabled {{
+                color: {text_muted};
+            }}
+            """)
+        self.delete_button.setIcon(
+            tinted_icon(self._icon_path("delete.svg"), QColor(*tok["flat_error"]), 14)
+        )
+
+        # Plot preview card
+        self.plot_card.setStyleSheet(f"""
+            QFrame#plotCard {{
+                background-color: {surface};
+                border: 1px solid {border};
+                border-radius: 10px;
+            }}
+            QLabel#plotLegend {{
+                background: transparent;
+                border: none;
+                color: {text_muted};
+                font-size: 11px;
+            }}
+            """)
+
+        plot_bg = tok_css(tok["flat_surface"])
+        self.plot_widget.setBackground(plot_bg)
+        bottom_axis = self.plot_widget.getAxis("bottom")
+        bottom_axis.setPen(pg.mkPen(color=tok_css(tok["flat_border"]), width=1))
+
+        self._FREQ_COLOR = tuple(tok["plot_data_primary"][:3])
+        self._DISS_COLOR = tuple(tok["plot_data_secondary"][:3])
+        self.curve_freq.setPen(pg.mkPen(color=(*self._FREQ_COLOR, 170), width=1.4))
+        self.curve_diss.setPen(pg.mkPen(color=(*self._DISS_COLOR, 170), width=1.4))
+
+        self.empty_plot_placeholder.setStyleSheet(f"""
+            QLabel {{
+                background-color: {plot_bg};
+                color: {text_muted};
+                font-size: 12px;
+                border-radius: 8px;
+            }}
+            """)
+
+        freq_hex = tok_css((*self._FREQ_COLOR, 255))
+        diss_hex = tok_css((*self._DISS_COLOR, 255))
+        legend_text = text_muted
+        self.plot_legend_label.setText(
+            f'<span style="color:{freq_hex};">●</span>'
+            f'<span style="color:{legend_text};"> Frequency</span>'
+            f"&nbsp;&nbsp;&nbsp;"
+            f'<span style="color:{diss_hex};">●</span>'
+            f'<span style="color:{legend_text};"> Dissipation</span>'
+        )
+
+    def _set_ruling_style(self, is_good: bool) -> None:
+        """Applies the success/error token color to the ruling detail value label."""
+        tok = ThemeManager.instance().tokens()
+        color = tok_css(tok["flat_success"] if is_good else tok["flat_error"])
+        self.detail_ruling.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: 600;")
 
     def hideEvent(self, event) -> None:
         """Handles the event triggered when the widget is hidden.
@@ -1199,9 +1307,9 @@ class RunRecoveryDialog(QWidget):
         ascending and descending SVG assets, and triggers a re-sort of the runs list.
         """
         self._sort_ascending = not self._sort_ascending
-        icon_asc = QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "ascending.svg"))
-        icon_desc = QIcon(os.path.join(Architecture.get_path(), "QATCH", "icons", "descending.svg"))
-        new_icon = icon_asc if self._sort_ascending else icon_desc
+        tok = ThemeManager.instance().tokens()
+        icon_name = "ascending.svg" if self._sort_ascending else "descending.svg"
+        new_icon = tinted_icon(self._icon_path(icon_name), QColor(*tok["flat_text_muted"]), 16)
         self.sort_dir_btn.setIcon(new_icon)
         self.sort_dir_btn.setText("")  # Ensure text is cleared
         self.sort_dir_btn.setToolTip("Ascending" if self._sort_ascending else "Descending")
@@ -1510,12 +1618,7 @@ class RunRecoveryDialog(QWidget):
             self.detail_duration.setText(f"{run.duration} seconds")
             self.detail_points.setText(f"{run.samples:,}")
 
-            ruling_color = (
-                "rgba(20, 130, 75, 235)" if run.ruling == "Good" else "rgba(190, 55, 45, 235)"
-            )
-            self.detail_ruling.setStyleSheet(
-                f"color: {ruling_color}; font-size: 12px; font-weight: 600;"
-            )
+            self._set_ruling_style(run.ruling == "Good")
             self.detail_ruling.setText(run.ruling)
 
             self.detail_filesize.setText(f"{run.file_size_mb} MB")
@@ -1618,38 +1721,56 @@ class RunRecoveryDialog(QWidget):
         """
         items = [item for item, _ in runs_to_remove]
 
+        tok = ThemeManager.instance().tokens()
+        error = tok["flat_error"]
         original_stylesheet = self.runs_list.styleSheet()
-        red_stylesheet = original_stylesheet + """
-            QListWidget::item:selected {
-                background-color: rgba(220, 53, 69, 55);
-                color: rgba(176, 42, 56, 235);
-            }
+        red_stylesheet = (
+            original_stylesheet
+            + f"""
+            QListWidget::item:selected {{
+                background-color: {tok_css((error[0], error[1], error[2], 55))};
+                color: {tok_css(tok['flat_error'])};
+            }}
         """
+        )
         self.runs_list.setStyleSheet(red_stylesheet)
         self.runs_list.repaint()
 
         def do_collapse() -> None:
             """Inner function to handle the vertical collapse and overlay logic."""
+            viewport = self.runs_list.viewport()
             overlays = []
             orig_rects = {}
+            pixmaps = {}
+
+            # Capture every item's pixmap first, before any paint-triggering
+            # work (overlay.show(), item background/foreground changes) runs.
+            # Interleaving grab() with show()/repaint calls on the same
+            # viewport - one item at a time in a single loop - lets a later
+            # grab() race with a still-in-flight paint from an earlier
+            # iteration's overlay.show(), which is what produces Qt's
+            # "Painter not active" / "can only be painted by one painter at
+            # a time" warnings (one triplet per selected item).
             for item in items:
                 rect = self.runs_list.visualItemRect(item)
                 orig_rects[id(item)] = rect
+                if rect.height() > 0 and viewport is not None:
+                    pixmaps[id(item)] = viewport.grab(rect)
 
-                if rect.height() > 0:
-                    viewport = self.runs_list.viewport()
-                    if viewport is not None:
-                        pixmap = viewport.grab(rect)
-                        overlay = QLabel(viewport)
-                        overlay.setPixmap(pixmap)
-                        overlay.setScaledContents(True)
-                        overlay.setGeometry(rect)
+            for item in items:
+                rect = orig_rects[id(item)]
+                pixmap = pixmaps.get(id(item))
+                if pixmap is not None and viewport is not None:
+                    overlay = QLabel(viewport)
+                    overlay.setPixmap(pixmap)
+                    overlay.setScaledContents(True)
+                    overlay.setGeometry(rect)
 
-                        opacity = QGraphicsOpacityEffect(overlay)
-                        opacity.setOpacity(1.0)
-                        overlay.setGraphicsEffect(opacity)
-                        overlay.show()
-                        overlays.append((item, overlay, opacity))
+                    opacity = QGraphicsOpacityEffect(overlay)
+                    opacity.setOpacity(1.0)
+                    overlay.setGraphicsEffect(opacity)
+                    overlay.show()
+                    overlays.append((item, overlay, opacity))
 
                 item.setBackground(QBrush(Qt.GlobalColor.transparent))
                 item.setForeground(QBrush(Qt.GlobalColor.transparent))
@@ -1738,8 +1859,9 @@ class RunRecoveryDialog(QWidget):
         self.detail_points.setText(placeholder)
         self.detail_filesize.setText(placeholder)
         self.detail_ruling.setText(placeholder)
+        tok = ThemeManager.instance().tokens()
         self.detail_ruling.setStyleSheet(
-            "color: rgba(28, 40, 52, 230); font-size: 12px; font-weight: 600;"
+            f"color: {tok_css(tok['flat_text'])}; font-size: 12px; font-weight: 600;"
         )
 
         if hasattr(self, "curve_freq") and hasattr(self, "curve_diss"):

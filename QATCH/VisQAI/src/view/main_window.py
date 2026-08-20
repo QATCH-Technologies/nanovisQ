@@ -505,13 +505,24 @@ class VisQAIWindow(BaseVisQAIWindow):
         else:
             self.parent.signature_required = False
 
-    def _switch_user_for_signature(self) -> Optional[Tuple[str, str]]:
-        """Callback passed to `SignatureDialog(on_switch_user=...)`. Performs
-        the actual profile switch and pushes the result into the toolbar/
-        controls window; returns the new `(username, initials)` on a real
-        change so the dialog can refresh its own displayed labels, or `None`
-        if the switch failed or the user didn't change."""
-        new_username, new_initials, new_userrole = UserProfiles.change(UserRoles.ANALYZE)
+    def _switch_user_for_signature(
+        self, initials: str, password: str
+    ) -> Optional[Tuple[str, str]]:
+        """Callback passed to `SignatureDialog(on_switch_user=...)`.
+        Authenticates the initials/password entered on the dialog's own
+        inline "Switch User" page (no more popup-based
+        `UserProfiles.change()` prompt) and pushes the result into the
+        toolbar/controls window; returns the new `(username, initials)` on a
+        real change so the dialog can refresh its own displayed labels, or
+        `None` if authentication failed or the user didn't change - failure
+        feedback lives on the dialog's own inline error label now
+        (`SignatureDialog._submit_switch_user`), not a popup from here."""
+        authenticated, _, params = UserProfiles.auth(initials, password, UserRoles.ANALYZE)
+        new_username, new_initials, new_userrole = (
+            (params[0], params[1], params[2].value)
+            if authenticated and params
+            else (None, None, 0)
+        )
         if UserProfiles.check(UserRoles(new_userrole), UserRoles.ANALYZE):
             if self.username != new_username:
                 self.username = new_username
@@ -531,10 +542,8 @@ class VisQAIWindow(BaseVisQAIWindow):
             else:
                 Log.d("User switched users to the same user profile. Nothing to change.")
                 return None
-            # PopUp.warning(self, Constants.app_title, "User has been switched.\n\nPlease sign now.")
-        # elif new_username == None and new_initials == None and new_userrole == 0:
         else:
-            if new_username == None and not UserProfiles.session_info()[0]:
+            if new_username is None and not UserProfiles.session_info()[0]:
                 Log.d("User session invalidated. Switch users credentials incorrect.")
                 self.parent.controls_window.username.setText("User: [NONE]")
                 self.parent.controls_window.userrole = UserRoles.NONE
@@ -542,12 +551,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                 self.parent.controls_window.manage.setText("&Manage Users...")
                 self.parent.controls_window.ui.tool_User.setText("Anonymous")
                 self.parent.analyze_window.ui.tool_User.setText("Anonymous")
-                PopUp.warning(
-                    self,
-                    Constants.app_title,
-                    "User has not been switched.\n\nReason: Not authenticated.",
-                )
-            if new_username != None and UserProfiles.session_info()[0]:
+            if new_username is not None and UserProfiles.session_info()[0]:
                 Log.d("User name changed. Changing sign-in user info.")
                 self.parent.controls_window.username.setText(f"User: {new_username}")
                 self.parent.controls_window.userrole = UserRoles(new_userrole)
@@ -556,11 +560,6 @@ class VisQAIWindow(BaseVisQAIWindow):
                 self.parent.analyze_window.ui.tool_User.setText(new_username)
                 if self.parent.controls_window.userrole != UserRoles.ADMIN:
                     self.parent.controls_window.manage.setText("&Change Password...")
-                PopUp.warning(
-                    self,
-                    Constants.app_title,
-                    "User has not been switched.\n\nReason: Not authorized.",
-                )
 
             Log.d("User did not authenticate for role to switch users.")
             return None
