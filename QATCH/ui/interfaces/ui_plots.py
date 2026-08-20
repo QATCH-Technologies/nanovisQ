@@ -831,10 +831,13 @@ class PlotTabContainer(PlotContainer):
         h_layout.addLayout(self.tabs_layout)
         h_layout.addStretch(1)
 
-        # Firmware update status icon
+        # Firmware update status icon - lives in this panel's own header
+        # row, so its notification badge should drop down into the panel's
+        # content below rather than float up over other chrome above it
+        # (see UpdateStatusIcon's prefer_below).
         _fw_icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "fw-update.svg")
         self._fw_status_icon = UpdateStatusIcon(
-            _fw_icon_path, size=18, badge_text="Firmware update available"
+            _fw_icon_path, size=18, badge_text="Firmware update available", prefer_below=True
         )
         h_layout.addWidget(self._fw_status_icon)
 

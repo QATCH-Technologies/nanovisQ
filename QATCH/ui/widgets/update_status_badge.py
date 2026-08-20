@@ -27,6 +27,7 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         self,
         anchor: QtWidgets.QWidget,
         text: str = "Software update available",
+        prefer_below: bool = False,
     ) -> None:
         # Own this badge by the app's top-level window instead of leaving it
         # parentless. Combined with dropping WindowStaysOnTopHint below, this
@@ -37,6 +38,17 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         super().__init__(app_window)
         self._anchor = anchor
         self._app_window = app_window
+        # Which side to try first in reposition(). Not auto-detected from
+        # geometry: a check against the *whole app window's* top/bottom
+        # edges is too permissive for an anchor buried in a nested layout
+        # (e.g. a plot panel's header row) - there's almost always
+        # numerically "enough room" above it within the full window even
+        # when that space is actually occupied by other panel chrome the
+        # check has no visibility into. Each caller already knows
+        # structurally whether its icon sits in a top header (prefer
+        # below, into the panel's own content) or a bottom footer bar
+        # (prefer above, the original/default), so let it say so directly.
+        self._prefer_below = prefer_below
         self._bg = QtGui.QColor(30, 38, 48, 235)
         self._border = QtGui.QColor(255, 255, 255, 45)
 
@@ -106,18 +118,22 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
     # ── Positioning ───────────────────────────────────────────────────────────
 
     def reposition(self) -> None:
-        """Place the badge above or below the anchor icon - whichever
-        actually fits in the app window - right-aligned with it.
+        """Place the badge above or below the anchor icon, right-aligned
+        with it - trying `self._prefer_below`'s side first and falling back
+        to the other only if the preferred side doesn't fit in the app
+        window at all.
 
-        A fixed "always above" placement (the original approach) worked for
-        anchors near the window's *bottom* edge (e.g. the software-update
-        icon in the footer status bar, which motivated it - a below
-        placement there got clamped by the window-bounds constraint and
-        ended up rendering directly on top of the icon) but broke the same
-        way in the opposite direction for anchors near the *top* edge (e.g.
-        the firmware-update icon in a plot panel's header): "above" is what
-        got clamped there instead. Preferring above but falling back to
-        below when above doesn't actually fit handles both.
+        Not decided by measuring "is there room" against the whole app
+        window: for an anchor buried in a nested layout (e.g. a plot
+        panel's header row, well below the window's actual top edge)
+        there's almost always numerically "enough room" above it within
+        the full window, even though that space is really occupied by
+        other panel chrome the window-bounds check can't see - so a
+        geometry-only fit check kept choosing "above" for that anchor too
+        and rendering the badge directly over its header instead of into
+        the panel's own content below it. `prefer_below` lets each caller
+        state which side is structurally correct for its own anchor
+        instead.
         """
         global_pos = self._anchor.mapToGlobal(QtCore.QPoint(0, 0))
         anchor_right = global_pos.x() + self._anchor.width()
@@ -141,11 +157,14 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         if bounds is not None:
             fits_above = y_above >= bounds.top()
             fits_below = y_below + self.height() <= bounds.bottom()
-            y = y_above if (fits_above or not fits_below) else y_below
+            if self._prefer_below:
+                y = y_below if (fits_below or not fits_above) else y_above
+            else:
+                y = y_above if (fits_above or not fits_below) else y_below
             x = max(bounds.left(), min(x, bounds.right() - self.width()))
             y = max(bounds.top(), min(y, bounds.bottom() - self.height()))
         else:
-            y = y_above
+            y = y_below if self._prefer_below else y_above
 
         self.move(x, y)
 
@@ -198,6 +217,11 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         parent: Optional parent widget.
         badge_text: Text shown in the floating notification badge, e.g.
             "Software update available" or "Firmware update available".
+        prefer_below: Whether the notification badge should try placing
+            itself below this icon first instead of above (see
+            `UpdateNotificationBadge.reposition`) - set this for an icon
+            that lives in a header/top row, so the badge drops into real
+            content below it rather than up over other panel chrome.
     """
 
     update_requested = QtCore.pyqtSignal()
@@ -240,6 +264,7 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         size: int = 20,
         parent: Optional[QtWidgets.QWidget] = None,
         badge_text: str = "Software update available",
+        prefer_below: bool = False,
     ) -> None:
         super().__init__(parent)
         self._icon_path = icon_path
@@ -247,6 +272,7 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         self._state = self.State.UNKNOWN
         self._detail = ""
         self._badge_text = badge_text
+        self._prefer_below = prefer_below
         self._badge_dismissed = False
         self._badge: Optional[UpdateNotificationBadge] = None
         # `_refresh_icon` rebuilds a scaled+tinted QPixmap/QIcon from scratch;
@@ -316,7 +342,9 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
 
     def _show_badge(self) -> None:
         if self._badge is None:
-            self._badge = UpdateNotificationBadge(self, text=self._badge_text)
+            self._badge = UpdateNotificationBadge(
+                self, text=self._badge_text, prefer_below=self._prefer_below
+            )
             self._badge.action_requested.connect(self._on_clicked)
             self._badge.dismissed.connect(self._on_badge_dismissed)
         # Also gated on isEnabled(): a caller suppressing the badge for the
