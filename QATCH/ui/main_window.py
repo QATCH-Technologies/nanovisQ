@@ -2168,6 +2168,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if not hasattr(self, "_dim_overlays"):
             self._dim_overlays = {}
+        if not hasattr(self, "_dim_state"):
+            self._dim_state = {}
 
         # Guard against plot_item itself being a dead Qt wrapper
         try:
@@ -2180,6 +2182,20 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         key = id(plot_item)
+
+        # Skip entirely if this plot is already at (or animating toward)
+        # the requested (dim, animate) combination. Without this,
+        # _update_calibration_ui's every-100ms-tick call to undim the
+        # amplitude plots during the calibration success/warning phase
+        # tears down and restarts the fade from scratch on every tick, so
+        # for multiplex configs (several ticks land before the timer
+        # stops) the transition never actually settles and keeps
+        # rebuilding fresh QGraphicsBlurEffect objects. Keyed on `animate`
+        # too so an explicit instant-snap request is never suppressed by a
+        # prior animated one targeting the same end state.
+        if self._dim_state.get(key) == (dim, animate):
+            return
+        self._dim_state[key] = (dim, animate)
 
         # 1. Stop and clean up any existing animation for this specific plot
         if key in self._dim_overlays:

@@ -137,13 +137,13 @@ class FormulationConfigCard(QtWidgets.QFrame):
         super().__init__(parent)
         self.setProperty("class", "card")
 
-        # Shadow
-        shadow = QtWidgets.QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setXOffset(0)
-        shadow.setYOffset(4)
-        shadow.setColor(QtGui.QColor(0, 0, 0, 30))
-        self.setGraphicsEffect(shadow)
+        # No QGraphicsDropShadowEffect here: the card's QSS already
+        # provides its full visual identity (border/background/hover/
+        # selected/measured states - see QFrame[class="card"] in
+        # theme.qss), and a real QGraphicsEffect attached to every card
+        # forces Qt to render each one into an offscreen buffer and
+        # composite it on every repaint - expensive multiplied across a
+        # scrollable, uncapped list of comparison cards.
 
         self.animation = QtCore.QPropertyAnimation(self, b"maximumHeight")
         self.animation.setDuration(300)

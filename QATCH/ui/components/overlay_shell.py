@@ -469,6 +469,51 @@ class OverlayFadeMixin:
         if effect is not None:
             effect.setOpacity(frac)
 
+    def _ensure_glass_opacity(self) -> QtWidgets.QGraphicsOpacityEffect:
+        """Re-enable `glass_frame`'s opacity effect, creating and attaching
+        it once (on first use) rather than on every fade.
+
+        Called right before a fade animation starts. The effect is only
+        ever *disabled* between fades (see `_detach_glass_opacity`), never
+        detached via `setGraphicsEffect(None)` - Qt destroys the previous
+        effect when you do that (empirically confirmed: reusing the
+        now-dangling Python reference afterward raises `RuntimeError:
+        wrapped C/C++ object ... has been deleted`), so toggling
+        `setEnabled()` on one long-lived effect is the correct mechanism
+        for repeatedly bypassing it without rebuilding it.
+
+        Returns:
+            QtWidgets.QGraphicsOpacityEffect: The attached opacity effect.
+        """
+        effect = getattr(self, "_glass_opacity", None)
+        if effect is None:
+            effect = QtWidgets.QGraphicsOpacityEffect(self.glass_frame)
+            self.glass_frame.setGraphicsEffect(effect)
+            self._glass_opacity = effect
+        effect.setEnabled(True)
+        return effect
+
+    def _detach_glass_opacity(self) -> None:
+        """Disable (without detaching) `glass_frame`'s opacity effect once
+        it's no longer needed.
+
+        Called once a fade settles at full opacity (see `_run_fade`). Per
+        Qt's docs, a disabled `QGraphicsEffect` renders its source directly
+        with no post-processing - this restores the normal fast paint path
+        for the panel exactly as removing the effect would, but keeps the
+        same effect instance alive and attached for `_ensure_glass_opacity`
+        to cheaply re-enable next time, instead of a `QGraphicsEffect` left
+        *attached and enabled* routing every future repaint (even sitting
+        inert at opacity 1.0) through offscreen compositing for as long as
+        the overlay stays open.
+
+        Returns:
+            None.
+        """
+        effect = getattr(self, "_glass_opacity", None)
+        if effect is not None:
+            effect.setEnabled(False)
+
     def _run_fade(
         self,
         scrim_from,
@@ -534,6 +579,13 @@ class OverlayFadeMixin:
             self._fade_anim = None
             if done_anim is not None:
                 done_anim.deleteLater()
+            # Fully opaque and it's this overlay's own glass-frame effect
+            # (not a caller-supplied one, e.g. DataManagementWidget's
+            # close-fade proxy) - detach it now that it's inert. Guarded on
+            # identity so an override's own effect (which callers manage
+            # themselves) is left alone.
+            if op_to >= 1.0 and effect is self._glass_opacity:
+                self._detach_glass_opacity()
             if on_done is not None:
                 on_done()
 
@@ -553,6 +605,7 @@ class OverlayFadeMixin:
             None.
         """
         self._scrim_alpha = 0
+        self._ensure_glass_opacity()
         self._set_glass_opacity(0.0)
         self.update()
 
@@ -578,6 +631,7 @@ class OverlayFadeMixin:
             None.
         """
         cur_op = self._glass_opacity.opacity() if self._glass_opacity else 1.0
+        self._ensure_glass_opacity()
 
         self._run_fade(
             scrim_from=self._scrim_alpha,
@@ -850,10 +904,19 @@ class OverlayLifecycleMixin(OverlayFadeMixin):
             if glass_qss:
                 self.glass_frame.setStyleSheet(glass_panel_qss(object_name, panel_alpha, 1.5, 12))
 
-        # Fade via a composited opacity effect
-        self._glass_opacity = QtWidgets.QGraphicsOpacityEffect(self.glass_frame)
-        self._glass_opacity.setOpacity(0.0)
-        self.glass_frame.setGraphicsEffect(self._glass_opacity)
+        # Fade via a composited opacity effect - created lazily by
+        # _ensure_glass_opacity() right before the first fade needs one,
+        # then left attached but *disabled* once the overlay settles at
+        # full opacity (see _detach_glass_opacity), never detached via
+        # setGraphicsEffect(None) (which destroys the effect - the object
+        # needs to survive to be cheaply re-enabled next time). A QGraphics
+        # Effect that is attached and enabled forces Qt to render its
+        # widget's whole subtree into an offscreen buffer and composite it
+        # on *every* repaint, even while sitting inert at opacity 1.0 - not
+        # just during the animation - so an overlay left open for a while
+        # would otherwise pay that cost on every hover/scroll/text update
+        # inside the panel for as long as it stays open.
+        self._glass_opacity = None
 
         self.main_layout = QtWidgets.QVBoxLayout(self.glass_frame)
         self.main_layout.setContentsMargins(*content_margins)

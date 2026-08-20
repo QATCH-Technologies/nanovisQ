@@ -340,6 +340,11 @@ class RunRecoveryDialog(QWidget):
         self.active_filters: dict[str, Any] = {}
         self.is_preview_visible: bool = True
         self._filter_popup: Optional[QWidget] = None
+        # Reused across scans (see _ensure_list_blur_effect /
+        # _ensure_placeholder_blur_effect) rather than constructing a fresh
+        # QGraphicsBlurEffect on every rescan.
+        self._blur_effect: Optional[QGraphicsBlurEffect] = None
+        self._placeholder_blur: Optional[QGraphicsBlurEffect] = None
         self.setup_ui()
         # self.load_unnamed_runs()  # defer to show()
 
@@ -1260,20 +1265,66 @@ class RunRecoveryDialog(QWidget):
             self._update_rescan_icon(0.0)
             self.rescan_btn.setEnabled(True)
 
-            if hasattr(self, "_blur_effect") and self._blur_effect is not None:
+            if self._blur_effect is not None:
                 self._blur_out_anim = QPropertyAnimation(self._blur_effect, b"blurRadius", self)
                 self._blur_out_anim.setDuration(250)  # Smooth fade out
                 self._blur_out_anim.setStartValue(self._blur_effect.blurRadius())
                 self._blur_out_anim.setEndValue(0.0)
-
-                def _cleanup_blur():
-                    viewport = self.runs_list.viewport()
-                    if viewport is not None:
-                        viewport.setGraphicsEffect(None)
-                    self._blur_effect = None
-
-                self._blur_out_anim.finished.connect(_cleanup_blur)
+                self._blur_out_anim.finished.connect(self._cleanup_list_blur)
                 self._blur_out_anim.start()
+
+    def _ensure_list_blur_effect(self) -> Optional[QGraphicsBlurEffect]:
+        """Returns the runs_list viewport's blur effect, creating and
+        attaching it once (on first use) and re-enabling it on every
+        subsequent scan rather than constructing a fresh
+        QGraphicsBlurEffect each time.
+
+        The effect is only ever *disabled* between scans (see
+        `_cleanup_list_blur`), never detached via `setGraphicsEffect(None)`
+        - Qt destroys the previous effect when you do that (empirically
+        confirmed: reusing the now-dangling Python reference afterward
+        raises `RuntimeError: wrapped C/C++ object ... has been deleted`),
+        so toggling `setEnabled()` on one long-lived effect is the correct
+        mechanism for repeatedly bypassing it without rebuilding it.
+        """
+        viewport = self.runs_list.viewport()
+        if viewport is None:
+            return None
+        if self._blur_effect is None:
+            self._blur_effect = QGraphicsBlurEffect(viewport)
+            self._blur_effect.setBlurRadius(0.0)
+            viewport.setGraphicsEffect(self._blur_effect)
+        self._blur_effect.setEnabled(True)
+        return self._blur_effect
+
+    def _cleanup_list_blur(self) -> None:
+        """Disables (without detaching) the runs_list viewport's blur
+        effect once its blur-out animation settles - see
+        _ensure_list_blur_effect.
+        """
+        if self._blur_effect is not None:
+            self._blur_effect.setEnabled(False)
+
+    def _ensure_placeholder_blur_effect(self) -> Optional[QGraphicsBlurEffect]:
+        """Returns the empty-list placeholder's blur effect, creating and
+        attaching it once (starting at a heavy blur, matching the original
+        one-shot "scanning..." reveal) and re-enabling it on every
+        subsequent scan - see _ensure_list_blur_effect for why this uses
+        setEnabled() rather than detach/reattach.
+        """
+        if self._placeholder_blur is None:
+            self._placeholder_blur = QGraphicsBlurEffect(self.empty_list_placeholder)
+            self._placeholder_blur.setBlurRadius(10.0)
+            self.empty_list_placeholder.setGraphicsEffect(self._placeholder_blur)
+        self._placeholder_blur.setEnabled(True)
+        return self._placeholder_blur
+
+    def _cleanup_placeholder_blur(self) -> None:
+        """Disables (without detaching) the placeholder's blur effect once
+        its reveal animation settles - see _ensure_placeholder_blur_effect.
+        """
+        if self._placeholder_blur is not None:
+            self._placeholder_blur.setEnabled(False)
 
     def _start_rescan_animation(self) -> None:
         """
@@ -1390,13 +1441,20 @@ class RunRecoveryDialog(QWidget):
         # Conditionally blur existing items or show placeholder
         viewport = self.runs_list.viewport()
         if viewport is not None and self.isVisible():
-            self._blur_effect = QGraphicsBlurEffect(viewport)
-            self._blur_effect.setBlurRadius(0.0)
-            viewport.setGraphicsEffect(self._blur_effect)
+            effect = self._ensure_list_blur_effect()
 
-            self._blur_anim = QPropertyAnimation(self._blur_effect, b"blurRadius")
+            # Cancel any in-flight blur-out from a previous scan cycle
+            # (e.g. rescan clicked again before the last one's 250ms
+            # blur-out finished) so it can't keep racing this new blur-in
+            # on the same effect object.
+            old_out = getattr(self, "_blur_out_anim", None)
+            if old_out is not None:
+                old_out.stop()
+                self._blur_out_anim = None
+
+            self._blur_anim = QPropertyAnimation(effect, b"blurRadius")
             self._blur_anim.setDuration(300)
-            self._blur_anim.setStartValue(0.0)
+            self._blur_anim.setStartValue(effect.blurRadius())
             self._blur_anim.setEndValue(5.0)
             self._blur_anim.start()
 
@@ -1404,15 +1462,18 @@ class RunRecoveryDialog(QWidget):
             self.empty_list_placeholder.setText("Scanning for runs…")
             self.list_stack.setCurrentIndex(1)
             if self.isVisible():
-                self._placeholder_blur = QGraphicsBlurEffect(self.empty_list_placeholder)
-                self.empty_list_placeholder.setGraphicsEffect(self._placeholder_blur)
-                self._placeholder_anim = QPropertyAnimation(self._placeholder_blur, b"blurRadius")
+                placeholder_effect = self._ensure_placeholder_blur_effect()
+
+                old_placeholder_anim = getattr(self, "_placeholder_anim", None)
+                if old_placeholder_anim is not None:
+                    old_placeholder_anim.stop()
+                    self._placeholder_anim = None
+
+                self._placeholder_anim = QPropertyAnimation(placeholder_effect, b"blurRadius")
                 self._placeholder_anim.setDuration(400)
-                self._placeholder_anim.setStartValue(10.0)
+                self._placeholder_anim.setStartValue(placeholder_effect.blurRadius())
                 self._placeholder_anim.setEndValue(0.0)
-                self._placeholder_anim.finished.connect(
-                    lambda: self.empty_list_placeholder.setGraphicsEffect(None)
-                )
+                self._placeholder_anim.finished.connect(self._cleanup_placeholder_blur)
                 self._placeholder_anim.start()
 
         self._start_rescan_animation()
