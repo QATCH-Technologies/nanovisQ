@@ -67,6 +67,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from QATCH.common.architecture import Architecture
 from QATCH.ui.components.flat_paint import paint_flat_surface
+from QATCH.ui.components.overlay_shell import OverlayActivity
 from QATCH.ui.components.qatch_push_button import QATCHPushButton
 from QATCH.ui.components.window_utils import find_app_window
 from QATCH.ui.styles.theme_manager import (
@@ -480,6 +481,7 @@ class DialogBase(QtWidgets.QWidget):
     def _finish(self) -> None:
         """Hides the dialog and releases `exec_()`'s local event loop."""
         self.hide()
+        OverlayActivity.instance().mark_closed(self)
         if self._loop is not None and self._loop.isRunning():
             self._loop.quit()
 
@@ -511,6 +513,13 @@ class DialogBase(QtWidgets.QWidget):
             self.show()
             self.raise_()
             self.setFocus()
+            # Same OverlayActivity signal the overlay panels (RunInfoOverlay,
+            # DataManagementWidget, ...) already report into - lets anything
+            # watching "is some modal-ish content open right now" (e.g. the
+            # update-notification badges, which should stay hidden and
+            # under the dim rather than floating above it) react to this
+            # dialog too, not just those overlays.
+            OverlayActivity.instance().mark_open(self)
 
         QtCore.QTimer.singleShot(0, _do_reveal)
 

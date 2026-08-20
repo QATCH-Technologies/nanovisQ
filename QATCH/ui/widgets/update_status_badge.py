@@ -106,18 +106,24 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
     # ── Positioning ───────────────────────────────────────────────────────────
 
     def reposition(self) -> None:
-        """Place the badge above the anchor icon, right-aligned with it.
+        """Place the badge above or below the anchor icon - whichever
+        actually fits in the app window - right-aligned with it.
 
-        Above rather than below: several anchors (e.g. the software-update
-        icon in the bottom status bar) sit close to the app window's own
-        bottom edge, where a below-placed badge got clamped by the
-        window-bounds constraint further down and ended up rendering
-        directly on top of the icon instead of offset from it.
+        A fixed "always above" placement (the original approach) worked for
+        anchors near the window's *bottom* edge (e.g. the software-update
+        icon in the footer status bar, which motivated it - a below
+        placement there got clamped by the window-bounds constraint and
+        ended up rendering directly on top of the icon) but broke the same
+        way in the opposite direction for anchors near the *top* edge (e.g.
+        the firmware-update icon in a plot panel's header): "above" is what
+        got clamped there instead. Preferring above but falling back to
+        below when above doesn't actually fit handles both.
         """
         global_pos = self._anchor.mapToGlobal(QtCore.QPoint(0, 0))
         anchor_right = global_pos.x() + self._anchor.width()
         x = anchor_right - self.width()
-        y = global_pos.y() - self.height() - 4
+        y_above = global_pos.y() - self.height() - 4
+        y_below = global_pos.y() + self._anchor.height() + 4
 
         # Constrain to the app's own window, not just the screen: the badge
         # is a separate top-level (frameless) widget, so clamping only to
@@ -128,18 +134,22 @@ class UpdateNotificationBadge(QtWidgets.QWidget):
         app_window = find_app_window()
         if app_window is not None:
             bounds = app_window_bounds_global(app_window)
+        else:
+            screen = QtWidgets.QApplication.screenAt(global_pos)
+            bounds = screen.geometry() if screen else None
+
+        if bounds is not None:
+            fits_above = y_above >= bounds.top()
+            fits_below = y_below + self.height() <= bounds.bottom()
+            y = y_above if (fits_above or not fits_below) else y_below
             x = max(bounds.left(), min(x, bounds.right() - self.width()))
             y = max(bounds.top(), min(y, bounds.bottom() - self.height()))
         else:
-            screen = QtWidgets.QApplication.screenAt(global_pos)
-            if screen:
-                sg = screen.geometry()
-                x = max(sg.left(), min(x, sg.right() - self.width()))
-                y = max(sg.top(), min(y, sg.bottom() - self.height()))
+            y = y_above
 
         self.move(x, y)
 
-    def show_above(self) -> None:
+    def show_near_anchor(self) -> None:
         self.adjustSize()
         self.reposition()
         self.show()
@@ -323,7 +333,7 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
         # changed, which resyncs it once every overlay has closed).
         if OverlayActivity.instance().is_any_open():
             return
-        self._badge.show_above()
+        self._badge.show_near_anchor()
 
     def _on_badge_dismissed(self) -> None:
         self._badge_dismissed = True
@@ -457,7 +467,7 @@ class UpdateStatusIcon(QtWidgets.QToolButton):
     def showEvent(self, event: QtGui.QShowEvent) -> None:
         super().showEvent(event)
         # Re-show badge after icon becomes visible (e.g. window restore) -
-        # routed through _show_badge() rather than self._badge.show_above
+        # routed through _show_badge() rather than self._badge.show_near_anchor
         # directly so this path also gets its isEnabled()/overlay-open
         # guards, not just the state check above.
         if self._state in (self.State.OPTIONAL, self.State.MANDATORY):
