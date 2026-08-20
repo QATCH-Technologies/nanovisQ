@@ -109,6 +109,21 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
         super().__init__(parent)
         self._hovered: bool = False
         self._in_error: bool = False
+        self._pulse_enabled: bool = False
+        self._pulse_t: float = 0.0
+
+        # Opt-in (see set_pulse_on_error) looping color animation for the
+        # error state - same QVariantAnimation/InOutSine/loop shape as
+        # QueryRunInfoWidget.ScanNowOverlay's pulse, just driving a border
+        # color lerp in paintEvent instead of a separate painted overlay.
+        self._pulse_anim = QtCore.QVariantAnimation(self)
+        self._pulse_anim.setStartValue(0.0)
+        self._pulse_anim.setKeyValueAt(0.5, 1.0)
+        self._pulse_anim.setEndValue(0.0)
+        self._pulse_anim.setDuration(1600)
+        self._pulse_anim.setEasingCurve(QtCore.QEasingCurve.InOutSine)
+        self._pulse_anim.setLoopCount(-1)
+        self._pulse_anim.valueChanged.connect(self._on_pulse)
 
         self.setFrame(False)
         self.setAutoFillBackground(False)
@@ -213,6 +228,9 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
         When enabled, the widget paints using the theme's error border and
         error focus-ring tokens. This method only changes the visual state;
         it does not affect the line edit's enabled state or text contents.
+        If pulsing is enabled (see `set_pulse_on_error`), entering the error
+        state also starts the looping border pulse; leaving it stops the
+        pulse.
 
         Args:
             on: Whether the error appearance should be enabled.
@@ -222,7 +240,47 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
         """
         if on != self._in_error:
             self._in_error = on
+            if self._pulse_enabled:
+                if on:
+                    self._pulse_anim.stop()
+                    self._pulse_anim.start()
+                else:
+                    self._pulse_anim.stop()
+                    self._pulse_t = 0.0
             self.update()
+
+    def set_pulse_on_error(self, on: bool) -> None:
+        """Opt this field into a looping red pulse while in the error state.
+
+        Off by default, so every other `QATCHLineEdit` keeps today's static
+        error border. Intended for fields where an empty/invalid value
+        should read as urgent (e.g. a required Run Name) rather than just
+        flagged.
+
+        Args:
+            on: Whether the error state should pulse.
+
+        Returns:
+            None.
+        """
+        self._pulse_enabled = on
+        if not on:
+            self._pulse_anim.stop()
+            self._pulse_t = 0.0
+            self.update()
+
+    def _on_pulse(self, value) -> None:
+        self._pulse_t = float(value)
+        self.update()
+
+    @staticmethod
+    def _lerp(a: QtGui.QColor, b: QtGui.QColor, t: float) -> QtGui.QColor:
+        return QtGui.QColor(
+            int(a.red() + (b.red() - a.red()) * t),
+            int(a.green() + (b.green() - a.green()) * t),
+            int(a.blue() + (b.blue() - a.blue()) * t),
+            int(a.alpha() + (b.alpha() - a.alpha()) * t),
+        )
 
     def enterEvent(self, event: QtCore.QEvent) -> None:
         """Handle the cursor entering the line edit.
@@ -319,7 +377,12 @@ class QATCHLineEdit(QtWidgets.QLineEdit):
             border = QtGui.QColor(*tok["flat_border"])
             ring = None
         elif self._in_error:
-            fill = QtGui.QColor(*tok["flat_surface"])
+            if self._pulse_enabled:
+                base = QtGui.QColor(*tok["flat_surface"])
+                warm = QtGui.QColor(*tok["flat_error_weak"])
+                fill = self._lerp(base, warm, self._pulse_t)
+            else:
+                fill = QtGui.QColor(*tok["flat_surface"])
             border = QtGui.QColor(*tok["flat_error"])
             ring = QtGui.QColor(*tok["flat_error_ring"])
         elif self.hasFocus():

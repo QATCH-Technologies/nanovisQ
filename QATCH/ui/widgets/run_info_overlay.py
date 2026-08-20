@@ -45,6 +45,7 @@ from QATCH.ui.dialogs.pop_up_dialog import PopUp
 from QATCH.ui.styles.theme_manager import (
     ThemeManager,
     caption_label_qss,
+    error_label_qss,
     field_label_qss,
     glass_panel_qss,
     tok_css,
@@ -141,10 +142,18 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
         self.l_runname = self._field_label("Run Name")
         rn_row.addWidget(self.l_runname)
         self.t_runname = QATCHLineEdit()
+        self.t_runname.set_pulse_on_error(True)
         self.t_runname.textChanged.connect(self._detect_change)
+        self.t_runname.textChanged.connect(self._on_runname_changed)
         self.t_runname.editingFinished.connect(self._update_hidden_child_fields)
         rn_row.addWidget(self.t_runname)
         runname_col.addLayout(rn_row)
+        self.err_runname = QtWidgets.QLabel("")
+        self.err_runname.setWordWrap(True)
+        self.err_runname.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.err_runname.setStyleSheet(error_label_qss())
+        self.err_runname.setVisible(False)
+        runname_col.addWidget(self.err_runname)
 
         batch_row = QtWidgets.QHBoxLayout()
         self.l_batch = self._field_label("Batch Number")
@@ -245,6 +254,7 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
             lbl.setStyleSheet(caption_label_qss())
         for lbl in self._field_labels:
             lbl.setStyleSheet(field_label_qss())
+        self.err_runname.setStyleSheet(error_label_qss())
         tok = ThemeManager.instance().tokens()
         for name, obj in (
             ("runInfoOverlayPath", self.t_runpath),
@@ -390,6 +400,13 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
             self._port_cards = []
             self._port_card_layouts = []
             for i, form in enumerate(self._forms):
+                # Multi-port sessions have no per-port Run Name field of
+                # their own (see setRuns()/_enter_wizard_mode() - the
+                # Identify step is skipped) - this back-reference lets each
+                # port's wizard consult and flash the shared common-row
+                # field instead (see QueryRunInfoWidget._runname_ok /
+                # _flag_runname_invalid).
+                form._shared_overlay = self
                 card = QATCHPanel()
                 vbox = QtWidgets.QVBoxLayout(card)
                 vbox.setContentsMargins(12, 10, 12, 10)
@@ -447,6 +464,26 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
         do_recall = self.q_recall.isChecked()
         for form in self._forms:
             form.setHiddenFields(run_name, batch_num, notes_txt, do_recall)
+
+    def _on_runname_changed(self, text: str) -> None:
+        """Live-validates the shared multi-port Run Name field on every
+        keystroke, so it pulses the instant the field goes empty rather
+        than only when a port's wizard tries to advance/save (see
+        QueryRunInfoWidget._runname_ok, which consults `has_valid_runname`
+        on this overlay for multi-port sessions)."""
+        if text.strip():
+            self.t_runname.set_error(False)
+            self.err_runname.setVisible(False)
+        else:
+            self.flash_runname_error("Run name is required.")
+
+    def has_valid_runname(self) -> bool:
+        return bool(self.t_runname.text().strip())
+
+    def flash_runname_error(self, message: str) -> None:
+        self.t_runname.set_error(True)
+        self.err_runname.setText(message)
+        self.err_runname.setVisible(True)
 
     def prevent_duplicate_scans(self) -> None:
         current_text = self.t_batch.text()
@@ -536,6 +573,9 @@ class RunInfoOverlay(OverlayLifecycleMixin, QtWidgets.QWidget):
             # Enter shortcut - this only drives the multi-port common row
             # (hidden in that case, but its window-scoped Enter/Return
             # shortcuts can still reach here; no-op rather than double-save).
+            return False
+        if not self.has_valid_runname():
+            self.flash_runname_error("Run name is required.")
             return False
         for i, form in enumerate(self._forms):
             if not form.isVisible():

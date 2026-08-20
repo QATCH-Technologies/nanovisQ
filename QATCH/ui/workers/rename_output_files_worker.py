@@ -23,7 +23,7 @@ from time import localtime, strftime
 from typing import Any, List
 
 import pyzipper
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore
 
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
@@ -176,8 +176,9 @@ class RenameOutputFilesWorker(QtCore.QObject):
         """Executes the main workflow for renaming, analyzing, and saving capture files.
 
         Reads temporary files, delegates temperature interpolation, analyzes run
-        quality using AI models, prompts the user for naming, and securely archives
-        the data into ZIP formats.
+        quality using AI models, saves each kept run under an auto-generated
+        placeholder name (naming is completed later by the user in the Run
+        Info overlay), and securely archives the data into ZIP formats.
 
         Optimized for batch I/O and cached lookups to prevent pipeline stalling.
         """
@@ -283,23 +284,19 @@ class RenameOutputFilesWorker(QtCore.QObject):
                         )
 
                     self.indicate_saving()
-                    status_ok = False
 
-                    while True:
-                        if input_text == "":
-                            if force_save:
-                                # WARNING: Blocking UI call
-                                input_text, status_ok = QtWidgets.QInputDialog.getText(
-                                    self.main_window,
-                                    "Name this run...",
-                                    "Enter a name for this run:",
-                                    text=input_text,
-                                )
-                            else:
-                                status_ok = False
-
-                        for character in Constants.invalidChars:
-                            input_text = input_text.replace(character, "")
+                    # Run naming is no longer collected here via a blocking
+                    # dialog - every kept run (force_save True) is saved
+                    # immediately under an auto-generated placeholder name
+                    # and unconditionally queued for the Run Info overlay,
+                    # which is now the sole place a run name is entered (see
+                    # QueryRunInfoWidget/RunInfoOverlay's required Run Name
+                    # field). Renaming the on-disk directory to the user's
+                    # real name happens later via QueryRunInfoWidget.
+                    # update_run_name(), called from confirm().
+                    if force_save:
+                        ask_for_info = True
+                        input_text = new_file_time
 
                         prefs = UserProfiles.user_preferences
                         if prefs:
@@ -311,55 +308,31 @@ class RenameOutputFilesWorker(QtCore.QObject):
                             )
                         else:
                             run_directory = f"{input_text}_{_dev_name}"
-                            run_parent_directory = "_unnamed"
+                            run_parent_directory = ""
 
-                        if status_ok:
-                            ask_for_info = True
-                            if not input_text:
-                                PopUp.warning(
-                                    self.main_window,
-                                    "Enter a Run Name",
-                                    "Please enter a run name to save this run.",
-                                )
-                                continue
+                        target_dir = os.path.join(path_root, run_parent_directory, run_directory)
+                        os.makedirs(target_dir, exist_ok=True)
+                    else:
+                        ask_for_info = False
+                        input_text = new_file_time
+                        if not is_good:
+                            input_text += "_BAD"
 
-                            try:
-                                target_dir = os.path.join(
-                                    path_root, run_parent_directory, run_directory
-                                )
-                                os.makedirs(target_dir, exist_ok=False)
-                            except FileExistsError:
-                                PopUp.warning(
-                                    self.main_window,
-                                    "Duplicate Run Name",
-                                    "A run with this name already exists.",
-                                )
-                                input_text = ""
-                                continue
-
-                            input_text = input_text.strip().replace(" ", "_")
-                        else:
-                            ask_for_info = False
-                            input_text = new_file_time
-                            if not is_good:
-                                input_text += "_BAD"
-
-                            run_parent_directory = "_unnamed"
-                            prefs = UserProfiles.user_preferences
-                            if prefs:
-                                run_directory = prefs.get_file_save_path(
-                                    runname=input_text, device_id=_dev_name, port_id=_dev_pid  # type: ignore
-                                )
-                            else:
-                                run_directory = f"{input_text}_{_dev_name}"  # Adding as a fallback directory path.
-
-                            run_directory = run_directory[: run_directory.rfind("_")]
-                            run_directory = run_directory[: run_directory.rfind("_")]
-                            target_dir = os.path.join(
-                                path_root, run_parent_directory, run_directory
+                        run_parent_directory = "_unnamed"
+                        prefs = UserProfiles.user_preferences
+                        if prefs:
+                            run_directory = prefs.get_file_save_path(
+                                runname=input_text, device_id=_dev_name, port_id=_dev_pid  # type: ignore
                             )
-                            os.makedirs(target_dir, exist_ok=True)
-                        break
+                        else:
+                            run_directory = f"{input_text}_{_dev_name}"  # Adding as a fallback directory path.
+
+                        run_directory = run_directory[: run_directory.rfind("_")]
+                        run_directory = run_directory[: run_directory.rfind("_")]
+                        target_dir = os.path.join(
+                            path_root, run_parent_directory, run_directory
+                        )
+                        os.makedirs(target_dir, exist_ok=True)
 
                 new_run_path = os.path.join(
                     path_root,

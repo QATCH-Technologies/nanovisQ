@@ -38,6 +38,7 @@ from QATCH.ui.styles.theme_manager import (
     ThemeManager,
     caption_label_qss,
     desc_label_qss,
+    error_label_qss,
     field_label_qss,
     hairline_qss,
     tok_css,
@@ -233,9 +234,16 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         self.q_runname.addWidget(self.l_runname)
         self.t_runname = QATCHLineEdit()
         self.t_runname.setText(self.run_name)
+        self.t_runname.set_pulse_on_error(True)
+        self.t_runname.textChanged.connect(self._on_runname_changed)
         self.q_runname.addWidget(self.t_runname)
         self.h_runname = self._hint("This name applies to all ports captured this run.")
         self.q_runname.addWidget(self.h_runname)
+        self.err_runname = QtWidgets.QLabel("")
+        self.err_runname.setWordWrap(True)
+        self.err_runname.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.err_runname.setStyleSheet(error_label_qss())
+        self.err_runname.setVisible(False)
 
         self.q_batch = QtWidgets.QHBoxLayout()  # batch #
         self.l_batch = self._field_label("Batch Number")
@@ -1041,6 +1049,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         row1.addWidget(self.t_runname)
         row1.addWidget(self.h_runname)
         lay.addLayout(row1)
+        lay.addWidget(self.err_runname)
 
         row2 = QtWidgets.QHBoxLayout()
         row2.addWidget(self.l_batch)
@@ -1308,6 +1317,44 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         else:
             self._go_next()
 
+    def _on_runname_changed(self, text: str) -> None:
+        """Live-validates the Run Name field on every keystroke, so it pulses
+        the instant the field goes empty rather than only when the user
+        tries to advance/save. Only this widget's own `t_runname` is
+        wired here - in multi-port mode it's hidden/unused (see setRuns())
+        and the shared field lives on `RunInfoOverlay` instead (wired the
+        same way there)."""
+        if text.strip():
+            self.t_runname.set_error(False)
+            self.err_runname.setVisible(False)
+        else:
+            self._flash_runname_error("Run name is required.")
+
+    def _flash_runname_error(self, message: str) -> None:
+        self.t_runname.set_error(True)
+        self.err_runname.setText(message)
+        self.err_runname.setVisible(True)
+
+    def _runname_ok(self) -> bool:
+        """Whether the run name required to advance/save is currently
+        valid - the shared overlay field for multi-port sessions (this
+        form's own Identify step is skipped, see `_enter_wizard_mode()`),
+        or this form's own field otherwise."""
+        overlay = getattr(self, "_shared_overlay", None)
+        if overlay is not None:
+            return overlay.has_valid_runname()
+        return bool(self.t_runname.text().strip())
+
+    def _flag_runname_invalid(self, message: str = "Run name is required.") -> None:
+        """Surfaces a run-name error on whichever field is authoritative for
+        this session (see `_runname_ok`) - `RunInfoOverlay.t_runname` for a
+        multi-port session, this form's own `t_runname` otherwise."""
+        overlay = getattr(self, "_shared_overlay", None)
+        if overlay is not None:
+            overlay.flash_runname_error(message)
+        else:
+            self._flash_runname_error(message)
+
     def _go_next(self) -> None:
         """Light, step-boundary-only validation - the same two checks
         confirm() already enforces at Save time, just surfaced a step
@@ -1317,18 +1364,22 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         Keyed off `_wizard_step_kinds` rather than a raw step index, since
         multi-port sessions skip the Identify step (see
         `_enter_wizard_mode()`), shifting Composition/Properties down to
-        different indices than the single-port case."""
+        different indices than the single-port case. Multi-port sessions
+        still can't advance past ANY step without a valid shared run name
+        (see `_runname_ok`), even though they have no Identify step of
+        their own to catch it on."""
+        if not self._runname_ok():
+            self._flag_runname_invalid()
+            return
         step_kind = self._wizard_step_kinds[self._wizard_step]
         if step_kind == "identify":
-            name_ok = bool(self.t_runname.text().strip())
             batch_ok = bool(self.t_batch.text().strip())
-            self.t_runname.set_error(not name_ok)
             self.t_batch.set_error(not batch_ok)
-            if not (name_ok and batch_ok):
+            if not batch_ok:
                 PopUp.warning(
                     self,
                     Constants.app_title,
-                    "Enter a Run Name and Batch Number before continuing.",
+                    "Enter a Batch Number before continuing.",
                 )
                 return
         elif step_kind == "composition":
@@ -1358,6 +1409,7 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             line.setStyleSheet(hairline_qss())
         for chip in self._unit_chips:
             chip.setStyleSheet(self._unit_chip_qss())
+        self.err_runname.setStyleSheet(error_label_qss())
         if getattr(self, "_wizard_mode", False):
             self._refresh_composition_table_theme()
         tok = ThemeManager.instance().tokens()
@@ -2603,6 +2655,13 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
             bool : True if confirmation and writing of run_info was successful.  On errors, False is returned
                 indicating a failed writing attempt.
         """
+        # Run Name is required and, unlike the numeric-field checks below,
+        # is never bypassed by force=True - an empty name has nothing for
+        # update_run_name() to rename the run directory to.
+        if not self._runname_ok():
+            self._flag_runname_invalid()
+            return False
+
         from QATCH.processors.analyze_formulas import AnalyzeFormulas
 
         # Parameter initialization
@@ -3317,27 +3376,47 @@ class QueryRunInfoWidget(QtWidgets.QWidget):
         else:
             pass  # leave 'audits' block as empty
 
-        if not self.post_run:
-            # Get date from XML for secure file writing.
-            metrics = xml.getElementsByTagName("metric")
-            stop_value = None
-            for metric in metrics:
-                if metric.getAttribute("name") == "stop":
-                    stop_value = metric.getAttribute("value")
-                    break
-            stop_datetime = datetime.date.fromisoformat(stop_value.split("T")[0])
-            # Update the run data files and directory to reflect changes made to
-            # the run name in the RunInfo window.
+        # Get date from XML for secure file writing. `xml` here is either
+        # freshly built in-memory (CAPTURE mode, self.post_run True) or
+        # parsed from disk (PARAMS mode) - either way its 'stop' metric is
+        # already present in the DOM tree by this point, so this works
+        # identically for a fresh capture and a later edit.
+        metrics = xml.getElementsByTagName("metric")
+        stop_value = None
+        for metric in metrics:
+            if metric.getAttribute("name") == "stop":
+                stop_value = metric.getAttribute("value")
+                break
+        stop_datetime = (
+            datetime.date.fromisoformat(stop_value.split("T")[0]) if stop_value else None
+        )
+
+        updated_name = new_name = old_name = None
+        if self.run_name_changed and stop_datetime is None:
+            Log.e(
+                tag=TAG,
+                msg="Could not determine a stop date for this run - skipping rename; "
+                "the run directory keeps its previous name.",
+            )
+            self._flag_runname_invalid(
+                "Couldn't rename this run right now - try again in a moment."
+            )
+            return False
+        elif self.run_name_changed:
+            # Update the run data files and directory to reflect the run
+            # name entered/edited in the RunInfo window - including a fresh
+            # capture's auto-generated placeholder name being replaced by
+            # the user's real Run Name for the first time (see
+            # RenameOutputFilesWorker.run(), which no longer prompts for a
+            # name up front).
             updated_name, new_name, old_name = self.update_run_name(
                 self.xml_path, self.run_name, secure=True, date=stop_datetime
             )
             if not updated_name:
-                Log.e(tag=TAG, msg="Could not update directory due path error.")
-                # return False
-            # os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
-            # secure_open(self.xml_path, 'w', "audit") as f:
+                Log.e(tag=TAG, msg="Could not update directory - name likely already in use.")
+                self._flag_runname_invalid("A run with this name already exists.")
+                return False
             elif old_name != new_name:
-                # self.run_name = new_name
                 if xml.hasAttribute("name"):
                     xml.setAttribute("name", new_name)
                     hash = hashlib.sha256()
