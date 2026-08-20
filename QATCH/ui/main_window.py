@@ -4250,6 +4250,8 @@ class MainWindow(QtWidgets.QMainWindow):
             vb_rect = vb.mapRectToItem(pi.graphicsItem(), vb.boundingRect())
             left_axis = pi.getAxis("left")
             axis_w = left_axis.width() if left_axis is not None else 0.0
+            right_axis = pi.getAxis("right")
+            right_axis_w = right_axis.width() if right_axis is not None else 0.0
         except Exception:
             return
 
@@ -4262,8 +4264,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
         right_lbl = getattr(pi, "_right_title_label", None)
         if right_lbl is not None:
+            # Mirrors the left label: that one starts flush at the *left*
+            # edge of the left axis's own column (vb_rect.x() - axis_w),
+            # not the data viewbox's edge. This one was ending flush at the
+            # data viewbox's right edge (vb_rect.x() + vb_rect.width()),
+            # never accounting for the right axis's own column width at
+            # all - so "Dissipation" sat entirely over the data area
+            # instead of the axis column carrying its tick values. The
+            # right axis auto-sizes its width from its rendered tick text
+            # (no fixed setWidth() the way the left axis has one), so this
+            # wasn't just a fixed offset - the drift tracked whatever the
+            # axis's current content happened to size it to.
             lbl_w = right_lbl.boundingRect().width() or 80.0
-            right_lbl.setPos(vb_rect.x() + vb_rect.width() - lbl_w, label_y)
+            right_lbl.setPos(vb_rect.x() + vb_rect.width() + right_axis_w - lbl_w, label_y)
 
     def _on_left_pane_grid_changed(self, key: str, visible: bool) -> None:
         """Toggles grid lines on the RF/Dissipation dual-axis plot.
