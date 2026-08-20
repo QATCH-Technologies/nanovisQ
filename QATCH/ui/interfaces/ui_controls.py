@@ -3617,6 +3617,23 @@ class UIControls:
                 analyze_window.ui.tool_User.setText("Anonymous")
                 analyze_window.ui._refresh_account_button_state()
 
+            # Hide any open software/firmware update notification badges -
+            # a signed-out session shouldn't keep nagging about updates.
+            # dismiss_badge() (not the permanent user-dismiss path) so a
+            # later state change can still legitimately bring one back,
+            # rather than suppressing it for the rest of this update cycle.
+            sw_update_icon = getattr(main_win.ui, "sw_update_icon", None)
+            if sw_update_icon is not None:
+                sw_update_icon.dismiss_badge()
+            plots_window = getattr(self.parent.parent, "plots_window", None)
+            fw_status_icon = getattr(
+                getattr(plots_window.ui, "left_pane", None) if plots_window else None,
+                "_fw_status_icon",
+                None,
+            )
+            if fw_status_icon is not None:
+                fw_status_icon.dismiss_badge()
+
             self.refresh_user_button_state()
 
         except Exception as exc:
