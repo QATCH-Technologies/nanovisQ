@@ -197,6 +197,25 @@ class PlotMenuRow(QtWidgets.QWidget):
         self._apply_eye_style()
         self.visibility_changed.emit(self._key, checked)
 
+    def set_color(self, color: QtGui.QColor) -> None:
+        """Programmatically syncs the swatch to `color` without emitting
+        `color_changed` - for restoring a persisted preference into an
+        already-built gear menu (see `PlotContainer.set_section_color`),
+        as opposed to `_pick_color`, which is the user-driven path."""
+        self._color = QtGui.QColor(color)
+        self._apply_swatch_style()
+
+    def set_visible(self, visible: bool) -> None:
+        """Programmatically syncs the eye toggle to `visible` without
+        emitting `visibility_changed` - see `set_color`."""
+        if self._visible == visible:
+            return
+        self._visible = visible
+        self._eye.blockSignals(True)
+        self._eye.setChecked(visible)
+        self._eye.blockSignals(False)
+        self._apply_eye_style()
+
     def _find_parent_menu(self) -> QtWidgets.QMenu | None:
         """Traverses the widget hierarchy to find the parent QMenu.
 
@@ -283,6 +302,17 @@ class GridMenuRow(QtWidgets.QWidget):
             checked: The new checked state of the checkbox.
         """
         self.toggled.emit(self._key, checked)
+
+    def set_checked(self, checked: bool) -> None:
+        """Programmatically syncs the checkbox to `checked` without
+        re-emitting `toggled` - for restoring a persisted preference into
+        an already-built gear menu (see `PlotContainer.set_grid_checked`),
+        as opposed to a real user click on the checkbox."""
+        if self._checkbox.isChecked() == checked:
+            return
+        self._checkbox.blockSignals(True)
+        self._checkbox.setChecked(checked)
+        self._checkbox.blockSignals(False)
 
     def _apply_style(self, _mode: str | None = None) -> None:
         """Applies dynamic CSS styling based on the current theme tokens.
@@ -373,6 +403,14 @@ class PlotContainer(QtWidgets.QWidget):
         self.has_header = title is not None or show_menu
         self._bg_cache: QtGui.QPixmap | None = None
         self._bg_cache_mode: ThemeMode | None = None
+        # Populated as the gear menu's rows are built (see _style_menu) so
+        # set_section_color/set_section_visible/set_grid_checked below can
+        # push a restored preference into an already-built row without
+        # needing the menu to be rebuilt or even opened - see those
+        # widgets' own set_color/set_visible/set_checked docstrings for why
+        # this is needed at all.
+        self._section_rows: dict[str, PlotMenuRow] = {}
+        self._grid_rows: dict[str, GridMenuRow] = {}
 
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
@@ -605,6 +643,7 @@ class PlotContainer(QtWidgets.QWidget):
                 row = PlotMenuRow(key, label, color)
                 row.color_changed.connect(self.section_color_changed)
                 row.visibility_changed.connect(self.section_visibility_changed)
+                self._section_rows[key] = row
 
                 wa = QtWidgets.QWidgetAction(menu)
                 wa.setDefaultWidget(row)
@@ -625,6 +664,7 @@ class PlotContainer(QtWidgets.QWidget):
         ):
             grid_row = GridMenuRow(grid_key, grid_label)
             grid_row.toggled.connect(self.grid_changed)
+            self._grid_rows[grid_key] = grid_row
 
             gwa = QtWidgets.QWidgetAction(menu)
             gwa.setDefaultWidget(grid_row)
@@ -633,6 +673,29 @@ class PlotContainer(QtWidgets.QWidget):
         self._build_extra_menu_rows(menu)
 
         return menu
+
+    def set_section_color(self, key: str, color: QtGui.QColor) -> None:
+        """Syncs a section's gear-menu color swatch to `color` - a no-op if
+        this container has no row for `key`. Called both from a real click
+        (self-referential, harmless) and from replaying a restored
+        preference onto an already-built, possibly-never-opened menu."""
+        row = self._section_rows.get(key)
+        if row is not None:
+            row.set_color(color)
+
+    def set_section_visible(self, key: str, visible: bool) -> None:
+        """Syncs a section's gear-menu eye toggle to `visible` - see
+        `set_section_color`."""
+        row = self._section_rows.get(key)
+        if row is not None:
+            row.set_visible(visible)
+
+    def set_grid_checked(self, key: str, checked: bool) -> None:
+        """Syncs a grid gear-menu checkbox (`"grid_major"`/`"grid_minor"`)
+        to `checked` - see `set_section_color`."""
+        row = self._grid_rows.get(key)
+        if row is not None:
+            row.set_checked(checked)
 
     def _build_extra_menu_rows(self, menu: QtWidgets.QMenu) -> None:
         """Hook for a subclass to append its own rows to the gear menu,
@@ -832,6 +895,7 @@ class PlotTabContainer(PlotContainer):
             row = PlotMenuRow(key, label, color)
             row.color_changed.connect(self.section_color_changed)
             row.visibility_changed.connect(self.section_visibility_changed)
+            self._section_rows[key] = row
 
             wa = QtWidgets.QWidgetAction(menu)
             wa.setDefaultWidget(row)
@@ -846,6 +910,7 @@ class PlotTabContainer(PlotContainer):
         ):
             grid_row = GridMenuRow(grid_key, grid_label)
             grid_row.toggled.connect(self.grid_changed)
+            self._grid_rows[grid_key] = grid_row
 
             gwa = QtWidgets.QWidgetAction(menu)
             gwa.setDefaultWidget(grid_row)

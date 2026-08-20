@@ -4132,6 +4132,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._ci_temp.setPen(pen)
                 self._ci_temp.setBrush(brush)
 
+        # Keep every container's gear-menu swatch in sync, not just
+        # whichever one was actually used - each container's
+        # set_section_color is a no-op if it has no row for this key (see
+        # PlotContainer.set_section_color).
+        for container in (
+            self.plots_window.ui.left_pane,
+            self.plots_window.ui.amp_glass,
+            self.plots_window.ui.temp_glass,
+        ):
+            container.set_section_color(key, color)
+
         self._save_run_plot_prefs()
 
     def _on_plot_visibility_changed(self, key: str, visible: bool) -> None:
@@ -4159,6 +4170,13 @@ class MainWindow(QtWidgets.QMainWindow):
             if self._ci_temp is not None:
                 self._ci_temp.setVisible(visible)
 
+        for container in (
+            self.plots_window.ui.left_pane,
+            self.plots_window.ui.amp_glass,
+            self.plots_window.ui.temp_glass,
+        ):
+            container.set_section_visible(key, visible)
+
         self._save_run_plot_prefs()
 
     def _on_grid_changed(
@@ -4185,6 +4203,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
         if container:
             self._grid_flags.setdefault(container, {})[key] = visible
+            getattr(self.plots_window.ui, container).set_grid_checked(key, visible)
             self._save_run_plot_prefs()
 
     def _reposition_rf_diss_titles(self, pi) -> None:
@@ -4246,6 +4265,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     y_axis=pi.getAxis("left"),
                 )
         self._grid_flags.setdefault("left_pane", {})[key] = visible
+        self.plots_window.ui.left_pane.set_grid_checked(key, visible)
         self._save_run_plot_prefs()
 
     # Fixed line alpha (0-255) for grid levels, applied via ThemedGridItem.

@@ -1129,12 +1129,19 @@ class UIAnalyze(QtWidgets.QWidget):
             self.graphWidget2: "difference",
             self.graphWidget3: "dissipation",
         }
-        for card, plot_widget in (
+        _card_by_plot_widget = (
             (self.overview_card, self.graphWidget),
             (self.resonance_card, self.graphWidget1),
             (self.difference_card, self.graphWidget2),
             (self.dissipation_card, self.graphWidget3),
-        ):
+        )
+        # Reverse of the pairing above - lets _on_grid_toggle find which
+        # card's gear-menu grid checkboxes to sync to a restored/replayed
+        # preference (see PlotContainer.set_grid_checked).
+        self._grid_widget_cards: Dict[QtWidgets.QWidget, PlotContainer] = {
+            plot_widget: card for card, plot_widget in _card_by_plot_widget
+        }
+        for card, plot_widget in _card_by_plot_widget:
             card.grid_changed.connect(partial(self._on_grid_toggle, plot_widget))
             card.section_color_changed.connect(self._on_analyze_section_color_changed)
             card.section_visibility_changed.connect(self._on_analyze_section_visibility_changed)
@@ -1665,9 +1672,49 @@ class UIAnalyze(QtWidgets.QWidget):
 
         A no-op if `card` is already in the requested state, or isn't one
         of the three detail cards at all.
+
+        Guarded for firing before this widget has ever been shown on
+        screen - `_load_persisted_plot_prefs()` replays all three cards'
+        saved visibility during `UIAnalyze.setup_ui()`, well before
+        `AnalyzeWindow.show()` is ever called. `QWidget.isVisible()` is
+        ancestor-aware and reads `False` for every card in that state
+        regardless of what's actually been requested via `setVisible()`,
+        which would otherwise corrupt both the no-op guard above and the
+        "how many cards are currently visible" tally below (each of the
+        three replayed calls would compute zero visible cards and stop
+        the previous one before it ever renders a frame, leaving
+        `lowerGraphs` sized as if every card were hidden once the window
+        is finally shown). In that state, `self._series_visible` (the
+        logical preference, independent of on-screen status) is used
+        instead, and the final layout is applied directly rather than
+        tweened.
         """
         cards = (self.resonance_card, self.difference_card, self.dissipation_card)
-        if card not in cards or card.isVisible() == visible:
+        if card not in cards:
+            return
+
+        if not self.isVisible():
+            prev_anim = getattr(self, "_detail_vis_anim", None)
+            if prev_anim is not None:
+                prev_anim.stop()
+                self._detail_vis_anim = None
+                self._detail_vis_pending = None
+            card.setVisible(visible)
+            keys = ("resonance", "difference", "dissipation")
+            visible_indices = [
+                i for i, k in enumerate(keys) if self._series_visible.get(k, True)
+            ]
+            total = sum(self.lowerGraphs.sizes()) or 1
+            target_sizes = [0] * len(cards)
+            if visible_indices:
+                share, remainder = divmod(total, len(visible_indices))
+                for i in visible_indices:
+                    target_sizes[i] = share
+                target_sizes[visible_indices[0]] += remainder
+            self.lowerGraphs.setSizes(target_sizes)
+            return
+
+        if card.isVisible() == visible:
             return
 
         prev_anim = getattr(self, "_detail_vis_anim", None)
@@ -1906,6 +1953,9 @@ class UIAnalyze(QtWidgets.QWidget):
         flags = self._grid_flags.setdefault(plot_widget, {})
         flags[key] = visible
         self._apply_grid_item(plot_widget, key, visible)
+        card = self._grid_widget_cards.get(plot_widget)
+        if card is not None:
+            card.set_grid_checked(key, visible)
         self._save_analyze_plot_prefs()
 
     def _apply_grid_item(self, plot_widget: pg.PlotWidget, key: str, visible: bool) -> None:
@@ -2039,6 +2089,19 @@ class UIAnalyze(QtWidgets.QWidget):
         }.get(key)
         if detail_card is not None:
             self._animate_detail_card_visibility(detail_card, visible)
+
+        # Keep every card's gear-menu eye toggle in sync, not just whichever
+        # card's own menu was actually used - mirrors the color loop in
+        # _on_analyze_section_color_changed (each card's set_section_visible
+        # is a no-op if it has no row for this key).
+        for card in (
+            self.overview_card,
+            self.resonance_card,
+            self.difference_card,
+            self.dissipation_card,
+        ):
+            card.set_section_visible(key, visible)
+
         self._update_overview_fullscreen_enabled()
         self._save_analyze_plot_prefs()
 
@@ -9542,6 +9605,7 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         self._overview_point_to_point = enabled
         self._apply_overview_point_cloud_visibility()
+        self.overview_card.set_point_to_point_checked(enabled)
         self._save_analyze_plot_prefs()
 
     def _apply_overview_point_cloud_visibility(self) -> None:
@@ -9586,6 +9650,13 @@ class UIAnalyze(QtWidgets.QWidget):
         """
         self._detail_point_to_point[key] = enabled
         self._apply_detail_point_cloud_visibility(key)
+        detail_card = {
+            "resonance": self.resonance_card,
+            "difference": self.difference_card,
+            "dissipation": self.dissipation_card,
+        }.get(key)
+        if detail_card is not None:
+            detail_card.set_point_to_point_checked(enabled)
         self._save_analyze_plot_prefs()
 
     def _apply_detail_point_cloud_visibility(self, key: str) -> None:

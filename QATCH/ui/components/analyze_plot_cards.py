@@ -320,13 +320,18 @@ class SignalOverviewCard(PlotContainer):
 
         If a legend chip exists for the specified section key, its color is
         updated to keep the Signal Overview legend synchronized with the
-        corresponding detail plot card.
+        corresponding detail plot card. Also syncs this card's own gear-menu
+        color swatch (via `PlotContainer.set_section_color`), which
+        otherwise only ever reflects whatever color it was constructed
+        with, never a later programmatic change (e.g. restoring a
+        signed-in user's saved preference).
 
         Args:
             key: Signal section identifier whose legend color should be
                 updated.
             color: New color for the signal's legend indicator.
         """
+        super().set_section_color(key, color)
         chip = self._legend_chips.get(key)
         if chip is not None:
             chip.set_color(color)
@@ -393,10 +398,18 @@ class SignalOverviewCard(PlotContainer):
         menu.addSeparator()
         row = GridMenuRow("point_to_point", "Point-to-Point Rendering", checked=False)
         row.toggled.connect(lambda _key, checked: self.point_to_point_toggled.emit(checked))
+        self._point_to_point_row = row
 
         wa = QtWidgets.QWidgetAction(menu)
         wa.setDefaultWidget(row)
         menu.addAction(wa)
+
+    def set_point_to_point_checked(self, checked: bool) -> None:
+        """Syncs the gear menu's Point-to-Point Rendering checkbox to
+        `checked` without re-emitting `point_to_point_toggled` - for
+        restoring a signed-in user's saved preference (see
+        `UIAnalyze._set_overview_point_to_point`)."""
+        self._point_to_point_row.set_checked(checked)
 
 
 class DetailPlotCard(PlotContainer):
@@ -473,12 +486,17 @@ class DetailPlotCard(PlotContainer):
         Only updates the title chip when `key` matches the signal associated
         with this detail card. The method may be called on every plot card
         when a color is changed from any card's gear menu, allowing all
-        corresponding visual indicators to remain synchronized.
+        corresponding visual indicators to remain synchronized. Also syncs
+        this card's own gear-menu color swatch (via
+        `PlotContainer.set_section_color`, a no-op here unless `key`
+        matches this card's single section) - see
+        `SignalOverviewCard.set_section_color` for why that's needed.
 
         Args:
             key: Signal identifier whose color was changed.
             color: New color for the signal indicator.
         """
+        super().set_section_color(key, color)
         if key == self._color_key and self._title_chip is not None:
             self._title_chip.set_color(color)
 
@@ -529,3 +547,10 @@ class DetailPlotCard(PlotContainer):
                 `False` to disable it.
         """
         self._point_to_point_row.setEnabled(available)
+
+    def set_point_to_point_checked(self, checked: bool) -> None:
+        """Syncs the gear menu's Point-to-Point Rendering checkbox to
+        `checked` without re-emitting `point_to_point_toggled` - for
+        restoring a signed-in user's saved preference (see
+        `UIAnalyze._set_detail_point_to_point`)."""
+        self._point_to_point_row.set_checked(checked)
