@@ -5261,11 +5261,19 @@ class MainWindow(QtWidgets.QMainWindow):
         color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
         color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
 
-        # This whole block (axis scale/tick formatting + floating title
-        # labels + their repositioning) only depends on unit_rf/scale_rf/
-        # color_rf/color_diss, none of which change tick-to-tick outside of
-        # a unit-scale rollover or a user recoloring a section - skip the
-        # rebuild entirely when none of them moved since the last tick.
+        # The axis scale/tick formatting + floating title label *text* only
+        # depend on unit_rf/scale_rf/color_rf/color_diss, none of which
+        # change tick-to-tick outside of a unit-scale rollover or a user
+        # recoloring a section - skip that rebuild when none of them moved
+        # since the last tick. Repositioning the labels is intentionally
+        # its own always-run loop below, not folded into this guard: a
+        # freshly-set label's boundingRect() (which repositioning reads to
+        # right-align "Dissipation") isn't always accurate the instant
+        # setText() returns, and this guard means the state that would
+        # normally trigger a fresh setText() + reposition together often
+        # doesn't recur again for a long time (e.g. right after
+        # calibration ends) - so a stale one-shot position would otherwise
+        # never self-correct the way it did when this ran every tick.
         axis_label_state = (unit_rf, scale_rf, color_rf, color_diss)
         if getattr(self, "_ref_axis_label_state", None) != axis_label_state:
             self._ref_axis_label_state = axis_label_state
@@ -5317,7 +5325,10 @@ class MainWindow(QtWidgets.QMainWindow):
                         pi._right_title_label.setParentItem(pi.graphicsItem())
                     pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
 
-                    self._reposition_rf_diss_titles(pi)
+        for p in self._plt2_arr:
+            if p is not None:
+                pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
+                self._reposition_rf_diss_titles(pi)
 
         layout_ui = self.info_window.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff > Ref. Frequency </font>{self._labelref1}")
@@ -5483,9 +5494,11 @@ class MainWindow(QtWidgets.QMainWindow):
         color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
 
         # See the matching guard in _update_reference_axis_labels - this
-        # whole block is fully determined by unit_rf/scale_rf/color_rf/
-        # color_diss, so skip the rebuild when none of them moved since the
-        # last tick.
+        # block (axis scale/tick formatting + floating title label *text*)
+        # is fully determined by unit_rf/scale_rf/color_rf/color_diss, so
+        # skip the rebuild when none of them moved since the last tick.
+        # Repositioning stays its own always-run loop below (see the
+        # comment on that guard for why).
         axis_label_state = (unit_rf, scale_rf, color_rf, color_diss)
         if getattr(self, "_no_ref_axis_label_state", None) != axis_label_state:
             self._no_ref_axis_label_state = axis_label_state
@@ -5537,7 +5550,10 @@ class MainWindow(QtWidgets.QMainWindow):
                         pi._right_title_label.setParentItem(pi.graphicsItem())
                     pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
 
-                    self._reposition_rf_diss_titles(pi)
+        for p in self._plt2_arr:
+            if p:
+                pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
+                self._reposition_rf_diss_titles(pi)
 
         layout_ui = self.info_window.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff> Ref. Frequency </font>{self._labelref1}")
