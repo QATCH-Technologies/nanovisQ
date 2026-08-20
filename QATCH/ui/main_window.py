@@ -3930,6 +3930,8 @@ class MainWindow(QtWidgets.QMainWindow):
             brush=_temp_brush,
             fillLevel=0,
             clipToView=True,
+            autoDownsample=True,
+            downsampleMethod="peak",
             skipFiniteCheck=True,
             antialias=True,
             connect="finite",
@@ -4646,7 +4648,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.plots_window.ui.left_pane.set_device_state(i, "error")
 
         # Apply updates to the Side-panel UI
-        controls_ui.infostatus.setStyleSheet(css_style)
+        self._set_infostatus_style(css_style)
         controls_ui.infostatus.setText(f"<font color=#333333> Program Status </font>{label_status}")
         controls_ui.infobar.setText(
             f"<font color=#0000ff> Infobar </font><font color={color_err}>{label_bar}</font>"
@@ -4909,9 +4911,30 @@ class MainWindow(QtWidgets.QMainWindow):
             bgcolor = "lightgreen" if abs(tec_temperature - tec_set_point) <= 1.0 else "yellow"
 
         tec_label = self.controls_window.ui.lTemp
-        tec_label.setText(label)
-        tec_label.setStyleSheet(f"background-color: {bgcolor}")
-        tec_label.repaint()
+        # This is called every live-plot tick (10 Hz) for the whole duration
+        # of a TEC-locked run; skip the QSS reparse (and the label's own
+        # text_updated cascade) when neither the text nor color actually
+        # changed since the last tick.
+        new_state = (label, bgcolor)
+        if getattr(self, "_tec_label_state", None) != new_state:
+            self._tec_label_state = new_state
+            tec_label.setText(label)
+            tec_label.setStyleSheet(f"background-color: {bgcolor}")
+            tec_label.update()
+
+    def _set_infostatus_style(self, css_style: str) -> None:
+        """Applies `infostatus`'s stylesheet only when it actually changed.
+
+        Called every live-plot tick (10 Hz) from both the measurement and
+        calibration state-label paths; the underlying state (Processing/
+        Monitoring/Warning/...) typically holds steady for minutes at a
+        time, so skip the QSS reparse when the same style is already
+        applied instead of re-parsing it on every tick.
+        """
+        if getattr(self, "_infostatus_css", None) == css_style:
+            return
+        self._infostatus_css = css_style
+        self.controls_window.ui.infostatus.setStyleSheet(css_style)
 
     def _build_measurement_labels(
         self,
@@ -4950,7 +4973,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Early-data processing state
         if data_resonance_frequency[0] == 0 and not (e1 or e2):
-            ui.infostatus.setStyleSheet(Constants._CSS_YELLOW)
+            self._set_infostatus_style(Constants._CSS_YELLOW)
             return (
                 "processing...",
                 "processing...",
@@ -4967,7 +4990,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
 
         # Error states
-        ui.infostatus.setStyleSheet(Constants._CSS_RED)
+        self._set_infostatus_style(Constants._CSS_RED)
 
         if data_resonance_frequency[0] == 0 and (e1 or e2):
             return ("", "", "", "Warning", "#ff0000", self._bandwidth_error_msg(e1, e2))
@@ -5023,7 +5046,7 @@ class MainWindow(QtWidgets.QMainWindow):
         diss_label = f"{d_diss:.6f}"
         d_temperature = float(f"{data_temperature[0]:.2f}")
 
-        self.controls_window.ui.infostatus.setStyleSheet(Constants._CSS_GREEN)
+        self._set_infostatus_style(Constants._CSS_GREEN)
 
         # Check for max dissipation warning bounds
         _max_diss = (
@@ -5215,63 +5238,70 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._last_unit_rf = unit_rf
 
-        for p in self._plt2_arr:
-            if p is not None:
-                pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
+        _def_rf = Constants.plot_colors[6]
+        _def_diss = Constants.plot_colors[7]
+        c_rf = self._section_colors.get("resonance_freq", _def_rf)
+        c_diss = self._section_colors.get("dissipation", _def_diss)
+        color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
+        color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
 
-                p.setLabel("left", text=" ")
-                p.setLabel("right", text=" ")
-                p.setTitle("")
+        # This whole block (axis scale/tick formatting + floating title
+        # labels + their repositioning) only depends on unit_rf/scale_rf/
+        # color_rf/color_diss, none of which change tick-to-tick outside of
+        # a unit-scale rollover or a user recoloring a section - skip the
+        # rebuild entirely when none of them moved since the last tick.
+        axis_label_state = (unit_rf, scale_rf, color_rf, color_diss)
+        if getattr(self, "_ref_axis_label_state", None) != axis_label_state:
+            self._ref_axis_label_state = axis_label_state
 
-                left_axis = p.getAxis("left")
-                if left_axis:
-                    left_axis.setScale(scale_rf)
-                    left_axis.enableAutoSIPrefix(False)
-                    left_axis.setWidth(48)
-                    left_axis.tickStrings = lambda values, scale, spacing: [
-                        (
-                            f"{v * scale:.3f}".rstrip("0").rstrip(".")
-                            if "." in f"{v * scale:.3f}"
-                            else f"{v * scale:.0f}"
-                        )
-                        for v in values
-                    ]
+            for p in self._plt2_arr:
+                if p is not None:
+                    pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
 
-                right_axis = p.getAxis("right")
-                if right_axis:
-                    # Scale is kept at 1.0 for tick generation; display divides by 1e6
-                    # to convert from the internal x1e6 representat×on to decimal dissipation.
-                    right_axis.setScale(1.0)
-                    right_axis.enableAutoSIPrefix(False)
-                    right_axis.tickStrings = lambda values, scale, spacing: [
-                        f"{v * scale / 1e6:.2e}" for v in values
-                    ]
+                    p.setLabel("left", text=" ")
+                    p.setLabel("right", text=" ")
+                    p.setTitle("")
 
-                _def_rf = Constants.plot_colors[6]
-                _def_diss = Constants.plot_colors[7]
-                c_rf = self._section_colors.get("resonance_freq", _def_rf)
-                c_diss = self._section_colors.get("dissipation", _def_diss)
-                color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
-                color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
+                    left_axis = p.getAxis("left")
+                    if left_axis:
+                        left_axis.setScale(scale_rf)
+                        left_axis.enableAutoSIPrefix(False)
+                        left_axis.setWidth(48)
+                        left_axis.tickStrings = lambda values, scale, spacing: [
+                            (
+                                f"{v * scale:.3f}".rstrip("0").rstrip(".")
+                                if "." in f"{v * scale:.3f}"
+                                else f"{v * scale:.0f}"
+                            )
+                            for v in values
+                        ]
 
-                unit_diss = "&Delta;"
+                    right_axis = p.getAxis("right")
+                    if right_axis:
+                        # Scale is kept at 1.0 for tick generation; display divides by 1e6
+                        # to convert from the internal x1e6 representat×on to decimal dissipation.
+                        right_axis.setScale(1.0)
+                        right_axis.enableAutoSIPrefix(False)
+                        right_axis.tickStrings = lambda values, scale, spacing: [
+                            f"{v * scale / 1e6:.2e}" for v in values
+                        ]
 
-                # Top-Left / Top-Right axis labels (single-line, flanking the status chip).
-                # Free-floating (not pi.layout children) - see
-                # _reposition_rf_diss_titles for why.
-                if not hasattr(pi, "_left_title_label"):
-                    pi._left_title_label = pg.LabelItem(justify="left")
-                    pi._left_title_label.setParentItem(pi.graphicsItem())
-                pi._left_title_label.setText(
-                    f"Resonance Freq ({unit_rf})", color=color_rf, size="9pt"
-                )
+                    # Top-Left / Top-Right axis labels (single-line, flanking the status chip).
+                    # Free-floating (not pi.layout children) - see
+                    # _reposition_rf_diss_titles for why.
+                    if not hasattr(pi, "_left_title_label"):
+                        pi._left_title_label = pg.LabelItem(justify="left")
+                        pi._left_title_label.setParentItem(pi.graphicsItem())
+                    pi._left_title_label.setText(
+                        f"Resonance Freq ({unit_rf})", color=color_rf, size="9pt"
+                    )
 
-                if not hasattr(pi, "_right_title_label"):
-                    pi._right_title_label = pg.LabelItem(justify="left")
-                    pi._right_title_label.setParentItem(pi.graphicsItem())
-                pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
+                    if not hasattr(pi, "_right_title_label"):
+                        pi._right_title_label = pg.LabelItem(justify="left")
+                        pi._right_title_label.setParentItem(pi.graphicsItem())
+                    pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
 
-                self._reposition_rf_diss_titles(pi)
+                    self._reposition_rf_diss_titles(pi)
 
         layout_ui = self.info_window.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff > Ref. Frequency </font>{self._labelref1}")
@@ -5429,61 +5459,69 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._last_unit_rf = unit_rf
 
-        for p in self._plt2_arr:
-            if p:
-                pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
+        _def_rf = colors[2]
+        _def_diss = colors[3]
+        c_rf = self._section_colors.get("resonance_freq", _def_rf)
+        c_diss = self._section_colors.get("dissipation", _def_diss)
+        color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
+        color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
 
-                p.setLabel("left", text=" ")
-                p.setLabel("right", text=" ")
-                p.setTitle("")
+        # See the matching guard in _update_reference_axis_labels - this
+        # whole block is fully determined by unit_rf/scale_rf/color_rf/
+        # color_diss, so skip the rebuild when none of them moved since the
+        # last tick.
+        axis_label_state = (unit_rf, scale_rf, color_rf, color_diss)
+        if getattr(self, "_no_ref_axis_label_state", None) != axis_label_state:
+            self._no_ref_axis_label_state = axis_label_state
 
-                left_axis = p.getAxis("left")
-                if left_axis:
-                    left_axis.setScale(scale_rf)
-                    left_axis.enableAutoSIPrefix(False)
-                    left_axis.setWidth(48)
-                    left_axis.tickStrings = lambda values, scale, spacing: [
-                        (
-                            f"{v * scale:.3f}".rstrip("0").rstrip(".")
-                            if "." in f"{v * scale:.3f}"
-                            else f"{v * scale:.0f}"
-                        )
-                        for v in values
-                    ]
+            for p in self._plt2_arr:
+                if p:
+                    pi = p.getPlotItem() if hasattr(p, "getPlotItem") else p
 
-                right_axis = p.getAxis("right")
-                if right_axis:
-                    # Scale is kept at 1.0 for tick generation; display divides by 1e6
-                    # to convert from the internal x1e6 representat×on to decimal dissipation.
-                    right_axis.setScale(1.0)
-                    right_axis.enableAutoSIPrefix(False)
-                    right_axis.tickStrings = lambda values, scale, spacing: [
-                        f"{v * scale / 1e6:.2e}" for v in values
-                    ]
+                    p.setLabel("left", text=" ")
+                    p.setLabel("right", text=" ")
+                    p.setTitle("")
 
-                _def_rf = colors[2]
-                _def_diss = colors[3]
-                c_rf = self._section_colors.get("resonance_freq", _def_rf)
-                c_diss = self._section_colors.get("dissipation", _def_diss)
-                color_rf = c_rf.name() if hasattr(c_rf, "name") else c_rf
-                color_diss = c_diss.name() if hasattr(c_diss, "name") else c_diss
+                    left_axis = p.getAxis("left")
+                    if left_axis:
+                        left_axis.setScale(scale_rf)
+                        left_axis.enableAutoSIPrefix(False)
+                        left_axis.setWidth(48)
+                        left_axis.tickStrings = lambda values, scale, spacing: [
+                            (
+                                f"{v * scale:.3f}".rstrip("0").rstrip(".")
+                                if "." in f"{v * scale:.3f}"
+                                else f"{v * scale:.0f}"
+                            )
+                            for v in values
+                        ]
 
-                # Top-Left / Top-Right axis labels (single-line, flanking the status chip).
-                # Free-floating (not pi.layout children) - see
-                # _reposition_rf_diss_titles for why.
-                if not hasattr(pi, "_left_title_label"):
-                    pi._left_title_label = pg.LabelItem(justify="left")
-                    pi._left_title_label.setParentItem(pi.graphicsItem())
-                pi._left_title_label.setText(
-                    f"Resonance Freq ({unit_rf})", color=color_rf, size="9pt"
-                )
+                    right_axis = p.getAxis("right")
+                    if right_axis:
+                        # Scale is kept at 1.0 for tick generation; display divides by 1e6
+                        # to convert from the internal x1e6 representat×on to decimal dissipation.
+                        right_axis.setScale(1.0)
+                        right_axis.enableAutoSIPrefix(False)
+                        right_axis.tickStrings = lambda values, scale, spacing: [
+                            f"{v * scale / 1e6:.2e}" for v in values
+                        ]
 
-                if not hasattr(pi, "_right_title_label"):
-                    pi._right_title_label = pg.LabelItem(justify="left")
-                    pi._right_title_label.setParentItem(pi.graphicsItem())
-                pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
+                    # Top-Left / Top-Right axis labels (single-line, flanking the status chip).
+                    # Free-floating (not pi.layout children) - see
+                    # _reposition_rf_diss_titles for why.
+                    if not hasattr(pi, "_left_title_label"):
+                        pi._left_title_label = pg.LabelItem(justify="left")
+                        pi._left_title_label.setParentItem(pi.graphicsItem())
+                    pi._left_title_label.setText(
+                        f"Resonance Freq ({unit_rf})", color=color_rf, size="9pt"
+                    )
 
-                self._reposition_rf_diss_titles(pi)
+                    if not hasattr(pi, "_right_title_label"):
+                        pi._right_title_label = pg.LabelItem(justify="left")
+                        pi._right_title_label.setParentItem(pi.graphicsItem())
+                    pi._right_title_label.setText("Dissipation", color=color_diss, size="9pt")
+
+                    self._reposition_rf_diss_titles(pi)
 
         layout_ui = self.info_window.ui
         layout_ui.inforef1.setText(f"<font color=#0000ff> Ref. Frequency </font>{self._labelref1}")
@@ -5580,11 +5618,16 @@ class MainWindow(QtWidgets.QMainWindow):
             5. Triggers the visual status label for
               drop detection.
         """
-        # Cache the slices to prevent redundant array operations per tick
-        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)
-        slice_resonance_frequency = self.worker.get_d1_buffer(i)
-        slice_time_dissipation = self.worker.get_t2_buffer(i)
-        slice_dissipation = self.worker.get_d2_buffer(i)
+        # Cache the slices to prevent redundant array operations per tick.
+        # Truncated to the display limit 'n' - a no-op today since 'n'
+        # (Constants._NUM_DISPLAY_POINTS) equals the ring buffer's own fixed
+        # capacity, but keeps this method honoring its documented contract
+        # and matches the [:n] idiom used elsewhere in this file for the
+        # same constant (see _update_pre_drop_label).
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[:n]
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)[:n]
+        slice_time_dissipation = self.worker.get_t2_buffer(i)[:n]
+        slice_dissipation = self.worker.get_d2_buffer(i)[:n]
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 
@@ -5669,6 +5712,16 @@ class MainWindow(QtWidgets.QMainWindow):
             _yavg = float(np.nanmean(visible))
             _ymin, _ymax = _yavg - (min_range / 2.0), _yavg + (min_range / 2.0)
             _yrange = min_range
+
+        # Skip the Qt calls below when this channel's Y bounds are unchanged
+        # since the last tick - mirrors the yMax caching already used for
+        # the dissipation plot right below this method (`_p3_last_ymax`).
+        if not hasattr(self, "_freq_limits_cache"):
+            self._freq_limits_cache = {}
+        new_bounds = (_ymin, _ymax)
+        if self._freq_limits_cache.get(i) == new_bounds:
+            return
+        self._freq_limits_cache[i] = new_bounds
 
         # Calculate padding
         pad = Constants.default_plot_padding * _yrange

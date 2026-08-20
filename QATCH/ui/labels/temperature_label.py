@@ -44,10 +44,16 @@ class TemperatureLabel(QtWidgets.QLabel):
 
         The method first delegates to the base QLabel implementation to
         update the displayed text and then emits :attr:`text_updated`,
-        allowing connected slots to react to the new value.
+        allowing connected slots to react to the new value. The signal is
+        only emitted when the text actually changes, since this label is
+        refreshed on every live-plot tick (10 Hz) and downstream listeners
+        (e.g. the temperature status bar) otherwise reparse their stylesheet
+        on every tick even while the displayed value is unchanged.
 
         Args:
             text (str): New text to display in the label.
         """
+        changed = text != self.text()
         super().setText(text)
-        self.text_updated.emit(text)
+        if changed:
+            self.text_updated.emit(text)

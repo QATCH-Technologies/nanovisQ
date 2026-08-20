@@ -66,6 +66,15 @@ class RingBuffer:
         self._full: bool = False
         self.size: int = 0
         self._data: np.ndarray = np.full(size_max, default_value, dtype=dtype)
+        # Memoizes the O(n) chronological reconstruction (concatenate/copy
+        # from the ring's write-head position) between appends. Live plot
+        # drawing reads the same buffer several times per 100ms tick (once
+        # per curve/limit calculation); this avoids redoing that
+        # reconstruction on every one of those reads. It is *not* a cache of
+        # what get_all()/get_partial() return to callers - both still hand
+        # back a fresh .copy() of it every time (see _materialize), so
+        # nothing about external mutation-safety changes.
+        self._materialized: Union[np.ndarray, None] = None
 
     def append(self, value: Any) -> None:
         """Appends new data to the ring buffer in `O(1)` time.
@@ -77,11 +86,31 @@ class RingBuffer:
         """
         self._data[self._head] = value
         self._head = (self._head + 1) % self.size_max
+        self._materialized = None
 
         if not self._full:
             self.size += 1
             if self.size == self.size_max:
                 self._full = True
+
+    def _materialize(self) -> np.ndarray:
+        """Rebuilds (or reuses, if nothing has been appended since the last
+        call) the full chronological reconstruction of the buffer.
+
+        Returns:
+            np.ndarray: The cached reconstruction - callers within this
+            module must not mutate it in place; `get_all`/`get_partial`
+            always copy it before handing it to external code.
+        """
+        if self._materialized is None:
+            if not self._full:
+                self._materialized = self._data.copy()
+            else:
+                # Oldest sample sits at _head, newest at _head - 1.
+                self._materialized = np.concatenate(
+                    (self._data[self._head :], self._data[: self._head])
+                )
+        return self._materialized
 
     def get_all(self) -> np.ndarray:
         """Returns all elements from the buffer, preserving capacity size.
@@ -92,11 +121,7 @@ class RingBuffer:
         Returns:
             np.ndarray: A copy of the array from oldest to newest.
         """
-        if not self._full:
-            return self._data.copy()
-
-        # Oldest sample sits at _head, newest at _head - 1.
-        return np.concatenate((self._data[self._head :], self._data[: self._head]))
+        return self._materialize().copy()
 
     def get_partial(self) -> np.ndarray:
         """Returns only the valid, written samples in chronological order.
@@ -109,7 +134,7 @@ class RingBuffer:
         if self.size == 0 or self._full:
             return self.get_all()
 
-        return self._data[: self.size].copy()
+        return self._materialize()[: self.size].copy()
 
     def get_newest(self) -> Any:
         """Retrieves the most recently added element in the buffer.
