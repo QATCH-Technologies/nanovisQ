@@ -1,12 +1,20 @@
 """
-create_user_widget.py
+QATCH.ui.widgets.create_user_widget.py
 
-Provides an overlay widget for creating a new user account.
+User account creation overlay for the QATCH application.
 
-This module contains the `CreateUserWidget` class, which covers the parent application
-with a semi-opaque scrim and centers a glass-morphism card containing a user creation form.
-It features per-field inline error reporting, animated jiggle feedback, and styling
-consistent with the application's modern UI conventions.
+Provides the :class:`CreateUserWidget`, a modal-style overlay used to collect
+and validate information for creating a new user account.
+
+The widget presents a centered form over a semi-transparent application scrim
+and provides fields for the user's name, role, optional username, email
+address, and password. Validation errors are displayed inline with visual
+error styling and animated shake feedback.
+
+The interface is theme-aware and uses the application's shared authentication
+styles, icons, and theme tokens. The overlay also provides animated entrance
+and dismissal transitions and exposes the validated account information
+through the widget's result state when creation is accepted.
 
 Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
@@ -19,7 +27,6 @@ from __future__ import annotations
 
 import os
 import re
-from typing import List, Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -42,44 +49,46 @@ _INPUT_H: int = 34
 
 
 class CreateUserWidget(QtWidgets.QWidget):
-    """Full-screen overlay widget for creating a user account.
+    """Full-screen overlay for creating a new user account.
 
-    Displays a modal-style overlay containing a user creation form. The
-    widget validates the entered account information and stores the validated
-    result when the form is successfully submitted.
+    Presents a modal-style user creation form over its parent widget. The form
+    collects account details, validates the entered values, and exposes the
+    validated account data when creation is accepted.
+
+    The overlay adapts its styling to the active application theme and
+    maintains its size with respect to the parent widget. It also provides
+    animated visual feedback for opening the form and invalid input.
 
     Attributes:
-        existing_initials (list): Initials that are already assigned to
-            existing users.
-        is_accepted (bool): Whether the form was successfully validated and
+        existing_initials: Initials already assigned to existing users, used
+            to prevent duplicate initials.
+        is_accepted: Whether the form has been successfully validated and
             submitted.
-        result_data (dict): Validated data for the newly created user,
-            including name, username, email, initials, role, and password.
-        base_layout (QtWidgets.QVBoxLayout): Layout used to center the main
-            form container within the overlay.
-        glass_frame (QtWidgets.QFrame): Main container for the user creation
-            form.
-        main_layout (QtWidgets.QVBoxLayout): Layout containing the form
-            controls and actions.
-        btn_close (QtWidgets.QPushButton): Button used to close the widget.
-        inp_first_name (GlassLineEdit): Input field for the user's first name.
-        inp_last_name (GlassLineEdit): Input field for the user's last name.
-        err_name (QtWidgets.QLabel): Error label for name validation
-            messages.
-        cmb_role (AnimatedComboBox): Combo box used to select the user's
-            role.
-        inp_username (GlassLineEdit): Optional input field for a custom
-            username.
-        inp_email (GlassLineEdit): Input field for the user's email address.
-        err_email (QtWidgets.QLabel): Error label for email validation
-            messages.
-        inp_pwd1 (GlassLineEdit): Input field for the user's password.
-        inp_pwd2 (GlassLineEdit): Input field for confirming the user's
-            password.
-        err_password (QtWidgets.QLabel): Error label for password validation
-            messages.
-        btn_create (QtWidgets.QPushButton): Button used to submit the form
-            and create the user.
+        result_data: Validated data for the newly created user, including
+            name, username, email, initials, role, and password.
+        base_layout: Layout used to center the main form container within the
+            overlay.
+        glass_frame: Main visual container for the user creation form.
+        main_layout: Layout containing the form controls and action buttons.
+        btn_close: Button used to close the user creation overlay.
+        inp_first_name: Input field for the user's first name.
+        inp_last_name: Input field for the user's last name.
+        err_name: Label used to display name validation errors.
+        cmb_role: Combo box used to select the user's role.
+        inp_username: Optional input field for a custom username.
+        inp_email: Input field for the user's email address.
+        err_email: Label used to display email validation errors.
+        inp_pwd1: Input field for the user's password.
+        inp_pwd2: Input field used to confirm the user's password.
+        err_password: Label used to display password validation errors.
+        btn_create: Button used to validate and submit the form.
+        _shake_anims: Active input-error shake animations.
+        _bg_alpha: Current alpha value used for the overlay background
+            animation.
+
+    Args:
+        existing_initials: Initials already assigned to existing users.
+        parent: Optional parent widget over which the overlay is displayed.
     """
 
     def __init__(
@@ -87,13 +96,15 @@ class CreateUserWidget(QtWidgets.QWidget):
         existing_initials: list,
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
-        """Initialize the user creation widget.
+        """Initialize the user creation overlay.
+
+        Sets up the overlay state, sizes it to its parent when available,
+        initializes the form controls, subscribes to theme changes, and
+        starts the entrance animation.
 
         Args:
-            existing_initials (list): Initials that are already assigned to
-                existing users.
-            parent (QtWidgets.QWidget, optional): Parent widget over which
-                this widget is displayed. Defaults to None.
+            existing_initials: Initials already assigned to existing users.
+            parent: Optional parent widget over which the overlay is displayed.
         """
         super().__init__(parent)
         self.existing_initials = existing_initials
@@ -115,25 +126,25 @@ class CreateUserWidget(QtWidgets.QWidget):
         self._animate_open()
 
     def _on_theme_changed(self, _mode: str) -> None:
-        """Handle a theme change by refreshing the widget's styling.
+        """Refresh the widget styling after a theme change.
+
+        The supplied theme mode is not used directly; the current theme tokens
+        are retrieved by the widget's theme application logic.
 
         Args:
-            _mode (str): Identifier for the newly activated theme mode. The value
-                is not used directly because the current theme is obtained from
-                the theme manager when applying the updated styles.
+            _mode: Identifier for the newly activated theme mode.
         """
         self._apply_theme()
 
     def _apply_theme(self) -> None:
-        """Apply the current theme to all themed widget elements.
+        """Apply the active theme to the user creation interface.
 
-        Refreshes styles, colors, icons, shadows, and other theme-dependent
-        properties using the currently active theme. This method is called when
-        the widget is initialized and when the application theme changes so the
-        widget updates immediately without requiring reconstruction.
+        Refreshes theme-dependent styles, colors, shadows, and icons for the
+        user creation form. Password visibility state is preserved while the
+        password visibility icons are regenerated using the current theme colors.
 
-        The method preserves the current password visibility state while
-        regenerating the corresponding password visibility icons.
+        This method is called during initialization and whenever the application
+        theme changes.
         """
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
         tok = ThemeManager.instance().tokens()
@@ -166,14 +177,15 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.btn_create.setStyleSheet(gradient_button_qss())
 
     def _setup_ui(self) -> None:
-        """Build and arrange the user creation interface.
+        """Build and configure the user creation form.
 
-        Creates the main container, form fields, validation labels,
-        action buttons, icons, and supporting layouts used by the widget. The method also configures widget properties,
-        signal connections, and initial control states required for user account creation.
+        Creates the centered form card, header and close controls, user identity
+        fields, role selector, optional username field, email field, password
+        fields, validation labels, and user creation action button. Configures
+        the associated layouts, widget properties, icons, styles, and signal
+        connections required for interactive account creation.
 
-        The interface includes fields for the user's name, role, optional username, email address, and password
-        confirmation, along with controls for closing the form and submitting the completed account information.
+        The resulting interface is added to the widget's centered base layout.
         """
         # Centred outer layout
         self.base_layout = QtWidgets.QVBoxLayout(self)
@@ -346,10 +358,14 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.base_layout.addWidget(self.glass_frame)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Paints a semi-transparent dark overlay background.
+        """Paint the semi-transparent dark overlay behind the form.
+
+        Fills the widget's entire rectangular area using the current background
+        alpha value to visually dim the parent content beneath the user creation
+        form.
 
         Args:
-            event (QtGui.QPaintEvent): The Qt paint event.
+            event: Qt paint event that triggered the repaint.
         """
         p = QtGui.QPainter(self)
         p.fillRect(self.rect(), QtGui.QColor(0, 0, 0, self._bg_alpha))
@@ -357,10 +373,14 @@ class CreateUserWidget(QtWidgets.QWidget):
 
     @staticmethod
     def _make_error_label() -> QtWidgets.QLabel:
-        """Constructs a compact, red inline error label.
+        """Create a hidden inline label for displaying validation errors.
+
+        Configures a compact, word-wrapped label using the application's standard
+        error styling. The returned label is hidden until a validation error needs
+        to be displayed.
 
         Returns:
-            QtWidgets.QLabel: The newly created error label, hidden by default.
+            A configured, initially hidden error label.
         """
         lbl = QtWidgets.QLabel("")
         lbl.setWordWrap(True)
@@ -374,11 +394,14 @@ class CreateUserWidget(QtWidgets.QWidget):
         fields: list,
         error_label: QtWidgets.QLabel,
     ) -> None:
-        """Clears the error styling on inputs and hides the associated error label.
+        """Clear validation errors for the specified input fields.
+
+        Removes error styling from supported line-edit widgets and hides the
+        associated inline error message.
 
         Args:
-            fields (list): A list of input widgets (e.g., GlassLineEdit) to reset.
-            error_label (QtWidgets.QLabel): The inline error label to hide.
+            fields: Input widgets whose error state should be cleared.
+            error_label: Error label associated with the specified fields.
         """
         for f in fields:
             if isinstance(f, QATCHLineEdit):
@@ -390,16 +413,21 @@ class CreateUserWidget(QtWidgets.QWidget):
         fields: list,
         error_label: QtWidgets.QLabel,
         message: str,
-        shake_target: Optional[QtWidgets.QWidget] = None,
+        shake_target: QtWidgets.QWidget | None = None,
     ) -> None:
-        """Applies error styling, displays the error message, and triggers a jiggle.
+        """Display a validation error and provide visual feedback.
+
+        Applies error styling to the specified input fields, displays the supplied
+        error message, and triggers a horizontal shake animation on the selected
+        widget. If no explicit shake target is provided, the first field in
+        `fields` is used.
 
         Args:
-            fields (list): A list of input widgets to mark with error styling.
-            error_label (QtWidgets.QLabel): The label to display the error text.
-            message (str): The error message text.
-            shake_target (QtWidgets.QWidget, optional): The specific widget to apply
-                the shake animation to. If None, uses the first widget in `fields`.
+            fields: Input widgets to mark as invalid.
+            error_label: Label used to display the validation error message.
+            message: Error message to display.
+            shake_target: Optional widget to animate. Defaults to the first widget
+                in `fields` when available.
         """
         for f in fields:
             if isinstance(f, QATCHLineEdit):
@@ -408,11 +436,15 @@ class CreateUserWidget(QtWidgets.QWidget):
         error_label.setVisible(True)
         self._shake_widget(shake_target or (fields[0] if fields else None))
 
-    def _shake_widget(self, widget: Optional[QtWidgets.QWidget]) -> None:
-        """Triggers a horizontal jiggle animation for visual error feedback.
+    def _shake_widget(self, widget: QtWidgets.QWidget | None) -> None:
+        """Animate a widget horizontally to indicate a validation error.
+
+        Applies a short back-and-forth jiggle to the widget's position and retains
+        the animation until completion so it is not garbage-collected prematurely.
 
         Args:
-            widget (QtWidgets.QWidget | None): The widget to animate.
+            widget: Widget to animate. No animation is performed if the widget is
+                `None` or not currently visible.
         """
         if not widget or not widget.isVisible():
             return
@@ -435,7 +467,11 @@ class CreateUserWidget(QtWidgets.QWidget):
         )
 
     def _toggle_pwd1(self) -> None:
-        """Toggles visibility and the eye icon for the primary password field."""
+        """Toggle visibility of the primary password field.
+
+        Switches the password field between masked and plain-text modes and updates
+        its eye action icon to reflect the current visibility state.
+        """
         if self._act_eye1 is None:
             return
 
@@ -448,7 +484,11 @@ class CreateUserWidget(QtWidgets.QWidget):
         self._act_eye1.setIcon(self._eye_off if self._pwd1_visible else self._eye_on)
 
     def _toggle_pwd2(self) -> None:
-        """Toggles visibility and the eye icon for the confirm password field."""
+        """Toggle visibility of the password confirmation field.
+
+        Switches the confirmation field between masked and plain-text modes and
+        updates its eye action icon to reflect the current visibility state.
+        """
         if self._act_eye2 is None:
             return
 
@@ -461,17 +501,18 @@ class CreateUserWidget(QtWidgets.QWidget):
         self._act_eye2.setIcon(self._eye_off if self._pwd2_visible else self._eye_on)
 
     def _generate_initials(self, first: str, last: str) -> str:
-        """Generates a unique set of initials based on the user's name.
+        """Generate unique initials for a new user.
 
-        If the direct initials are already in `existing_initials`, appends an
-        incrementing numeric counter until a unique string is found.
+        Creates initials from the first characters of the supplied first and last
+        names. If those initials are already assigned to an existing user, appends
+        an incrementing numeric suffix until a unique value is produced.
 
         Args:
-            first (str): The user's first name.
-            last (str): The user's last name.
+            first: User's first name.
+            last: User's last name.
 
         Returns:
-            str: The validated, unique initials string.
+            A unique uppercase initials string.
         """
         base = f"{first[0]}{last[0]}".upper()
         initials, counter = base, 1
@@ -481,11 +522,16 @@ class CreateUserWidget(QtWidgets.QWidget):
         return initials
 
     def _validate_and_accept(self) -> None:
-        """Validates all form inputs, saves data on success, and initiates closure.
+        """Validate the form and accept the new user when all inputs are valid.
 
-        Validates name length, email format, password strength, and password match.
-        If validation fails, the relevant fields are highlighted and shaken. If successful,
-        populates `self.result_data` and begins the closing animation.
+        Clears existing validation errors, validates the user's name, email
+        address, password strength, and password confirmation, and provides
+        visual error feedback for invalid fields. When validation succeeds,
+        populates :attr:`result_data`, marks the form as accepted, and starts the
+        closing animation.
+
+        The generated user data includes the normalized full name, optional
+        username, email address, unique initials, selected role, and password.
         """
         # Reset all error states
         self._clear_field_errors([self.inp_first_name, self.inp_last_name], self.err_name)
@@ -555,12 +601,21 @@ class CreateUserWidget(QtWidgets.QWidget):
         self._close_with_animation()
 
     def _reject(self) -> None:
-        """Marks the action as rejected and closes the widget via animation."""
+        """Reject the user creation request and close the overlay.
+
+        Marks the form as not accepted and starts the closing animation without
+        populating or modifying the validated result data.
+        """
         self.is_accepted = False
         self._close_with_animation()
 
     def _animate_open(self) -> None:
-        """Fades in the dark overlay and slides the form card up into place."""
+        """Animate the user creation overlay into view.
+
+        Fades in the dark background overlay while transitioning the form card
+        into its visible position using an easing curve for a smooth entrance
+        effect.
+        """
         self.anim_in = QtCore.QVariantAnimation(self)
         self.anim_in.setDuration(300)
         self.anim_in.setStartValue(0.0)
@@ -570,7 +625,13 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.anim_in.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _close_with_animation(self) -> None:
-        """Reverses the intro animation, fading out before destroying the widget."""
+        """Animate the overlay closed before destroying the widget.
+
+        Disables the form to prevent further interaction during dismissal, then
+        reverses the entrance effect by fading out the overlay and moving the form
+        card downward. The widget is closed automatically when the animation
+        completes.
+        """
         # Disable interactions so the user can't double-click 'close' or 'create'
         self.glass_frame.setEnabled(False)
 
@@ -584,10 +645,14 @@ class CreateUserWidget(QtWidgets.QWidget):
         self.anim_out.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _on_anim_frame(self, progress: float) -> None:
-        """Updates the background opacity and card position based on animation progress.
+        """Update the overlay and form position for an animation frame.
+
+        Adjusts the background opacity and vertical offset of the form card based
+        on the current animation progress.
 
         Args:
-            progress (float): The current interpolation value (0.0 to 1.0).
+            progress: Normalized animation progress, typically ranging from
+                `0.0` to `1.0`.
         """
         self._bg_alpha = int(130 * progress)
         offset = int(50 * (1.0 - progress))
