@@ -8525,7 +8525,7 @@ class AnalyzerWorker(QtCore.QObject):
                     raise ValueError("Calculated mlen is not positive. Check input lengths.")
 
                 # Ensure that the maximum index needed is within bounds.
-                max_required_index = 5 * mlen  # roughly the maximum index accessed
+                max_required_index = (5 * mlen) - 1  # the maximum index accessed
                 if max_required_index > len(log_velocity_46):
                     raise ValueError("Not enough entries in log_velocity_46 for the computed mlen.")
 
@@ -9235,6 +9235,12 @@ class AnalyzerWorker(QtCore.QObject):
 
                     if USE_NEW_FILL_METHOD:
                         # NEW METHOD:
+                        if last_idx == idx:
+                            # See issue #436: Allowing this to proceed uninterrupted would add a NAN value to output data
+                            Log.e(
+                                f"Failed to plot index {idx} for shear point {pt:2.2f}. Already plotted {in_shear_rate[idx]:2.2f} for index {idx}."
+                            )
+                            continue
                         if last_idx == -1:
                             mv = fill_pos[idx] / fill_time[idx]
                             mp = fill_pos[idx] / 2
@@ -9262,8 +9268,20 @@ class AnalyzerWorker(QtCore.QObject):
                         #     s=15,
                         #     c="red",
                         # )
-                        sm_trendline[idx] = mid_visc
-                        in_shear_rate[idx] = mid_shear
+
+                        # See issue #436: Add safety guard against adding NAN values in arrays
+                        if np.isfinite(mid_visc):
+                            sm_trendline[idx] = mid_visc
+                        else:
+                            Log.e(
+                                f"Failed to plot index {idx} for shear point {pt:2.2f}. Calculated viscosity is not finite."
+                            )
+                        if np.isfinite(mid_shear):
+                            in_shear_rate[idx] = mid_shear
+                        else:
+                            Log.e(
+                                f"Failed to plot index {idx} for shear point {pt:2.2f}. Calculated mid_shear is not finite."
+                            )
 
                     local_shear.append(in_shear_rate[idx])
                     local_visc.append(sm_trendline[idx])
@@ -9416,6 +9434,9 @@ class AnalyzerWorker(QtCore.QObject):
 
             ax7.set_xscale("log")
             ax7.set_yscale("log")
+
+            # redraw canvas on figure set (non-interactive mode)
+            ax7.figure.canvas.draw()
 
             self.update(status_label)
 
