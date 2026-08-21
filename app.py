@@ -68,7 +68,7 @@ class QATCH:
     and the main user interface lifecycle.
     """
 
-    def __init__(self, argv=sys.argv) -> None:
+    def __init__(self, argv: list = sys.argv) -> None:
         """Initializes the QATCH application setup and environment.
 
         Triggers the splash screen immediately, configures the working directory for frozen
