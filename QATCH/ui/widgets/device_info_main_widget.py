@@ -4,9 +4,9 @@ QATCH.ui.widgets.device_info_main_widget.py
 Popup widget for Device Info configuration.
 
 Provides the visual container used to display Device Info configuration
-content as an anchored, frameless popup. The module defines a rounded
-frosted-glass inner panel with custom painting, translucent backgrounds,
-dual borders, and a drop shadow.
+content as an anchored, frameless popup. The module defines a rounded inner
+panel with custom painting, translucent backgrounds, dual borders, and
+a drop shadow.
 
 The popup supports dynamically injected content and automatically clamps
 its position to the associated application window. It also closes when

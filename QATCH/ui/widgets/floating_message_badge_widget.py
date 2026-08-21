@@ -1,5 +1,5 @@
 """
-floating_message_badge_widget.py
+QATCH.ui.widgets.floating_message_badge_widget.py
 
 Non-blocking overlay notification system for nanovisQ.
 
@@ -25,35 +25,51 @@ Date:
     2026-05-05
 """
 
-from typing import Optional
-
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
 class FloatingMessageBadgeWidget(QtWidgets.QWidget):
-    """A frameless, glass-style floating badge for alerts and info."""
+    """Display a frameless, glass-style floating message badge.
+
+    Provides a transient notification widget for informational and error
+    messages. The badge supports themed glass styling, optional custom
+    close icons, automatic dismissal, fade and slide animations, and
+    positioning relative to an anchor widget.
+
+    The badge tracks both its anchor widget and the anchor's top-level
+    window so that it remains visually aligned as the application moves
+    or resizes. It automatically closes when the anchor is hidden, closed,
+    or destroyed.
+    """
 
     def __init__(
         self,
         parent: QtWidgets.QWidget,
-        close_icon_path: Optional[str] = None,
+        close_icon_path: str | None = None,
     ) -> None:
+        """Initialize the floating message badge.
+
+        Configures the badge as a frameless translucent tool window, creates
+        the glass-style message panel and close button, initializes the fade,
+        slide, and dismissal timer animations, and applies the default visual
+        styling.
+
+        Args:
+            parent (QtWidgets.QWidget): Parent widget used to establish the
+                badge's ownership within the application.
+            close_icon_path (str, optional): Filesystem path to a custom close
+                button icon. If omitted or invalid, the close button falls back
+                to an `x` character.
+        """
         super().__init__(parent)
 
         self._display_duration_ms = 15_000
         self._fade_duration_ms = 260
         self._hide_when_animation_finishes = False
         self._close_icon_path = close_icon_path
-        self._anchor_widget: Optional[QtWidgets.QWidget] = None
+        self._anchor_widget: QtWidgets.QWidget | None = None
         self._tracked_anchor_widgets: list[QtWidgets.QWidget] = []
         self._position_gap_px = 15
-
-        # Frameless tool window that stays above the app without stealing focus.
-        # No WindowStaysOnTopHint: that flag makes Qt/Windows keep the badge
-        # above *every* application's windows, not just this one. Passing
-        # `parent` above already gives it an owned-window relationship with
-        # the app's top-level window, which is enough to keep it above the
-        # app's own windows without floating over other apps too.
         self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.WindowType.FramelessWindowHint)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(QtCore.Qt.WA_ShowWithoutActivating)
@@ -89,7 +105,9 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self.close_button.setAccessibleName("Close message")
         self.close_button.setFixedSize(22, 22)
         self.close_button.clicked.connect(self.clear)
-        panel_layout.addWidget(self.close_button, 0, QtCore.Qt.AlignTop | QtCore.Qt.AlignmentFlag.AlignRight)
+        panel_layout.addWidget(
+            self.close_button, 0, QtCore.Qt.AlignTop | QtCore.Qt.AlignmentFlag.AlignRight
+        )
 
         shadow = QtWidgets.QGraphicsDropShadowEffect(self.panel)
         shadow.setBlurRadius(34)
@@ -101,9 +119,6 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self._fade_animation.setDuration(self._fade_duration_ms)
         self._fade_animation.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         self._fade_animation.finished.connect(self._on_fade_animation_finished)
-
-        # Optional drop-in/slide-up spring motion (see show_message(drop_in=)
-        # and slide_out()) layered alongside the opacity fade above.
         self._slide_animation = QtCore.QPropertyAnimation(self, b"pos", self)
 
         self._dismiss_timer = QtCore.QTimer(self)
@@ -114,8 +129,17 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self.set_close_icon_path(close_icon_path)
         self.hide()
 
-    def set_close_icon_path(self, icon_path: Optional[str]) -> None:
-        """Set or clear the custom icon used by the close button."""
+    def set_close_icon_path(self, icon_path: str | None) -> None:
+        """Set or clear the custom close icon for the badge.
+
+        Loads the supplied icon path when available and uses it for the close
+        button. If no path is supplied or the icon cannot be loaded, restores
+        the default `x` text fallback.
+
+        Args:
+            icon_path (str, optional): Filesystem path to the close icon, or
+                `None` to use the default text-based close control.
+        """
         self._close_icon_path = icon_path
 
         if icon_path:
@@ -134,18 +158,28 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self,
         text: str,
         is_error: bool = False,
-        parent_widget: Optional[QtWidgets.QWidget] = None,
+        parent_widget: QtWidgets.QWidget | None = None,
         drop_in: bool = False,
         drop_in_duration: int = 500,
     ) -> None:
-        """Update the message, position the badge, fade it in, then auto-dismiss it.
+        """Display a message badge with optional drop-in animation.
+
+        Updates the message text and visual state, anchors and positions the
+        badge, then fades it into view. The badge automatically dismisses after
+        the configured display duration.
 
         Args:
-            drop_in (bool, optional): If True, the badge also drops down
-                from 50px above its resting position with a springy
-                overshoot, instead of just fading in place.
-            drop_in_duration (int, optional): Duration of the drop-in slide,
-                in milliseconds, when `drop_in` is True.
+            text (str): Message text to display.
+            is_error (bool, optional): Whether the message should use the error
+                visual style instead of the informational style. Defaults to
+                `False`.
+            parent_widget (QtWidgets.QWidget, optional): Widget to use as the
+                badge's positioning anchor. If omitted, the badge's parent
+                widget is used. Defaults to `None`.
+            drop_in (bool, optional): Whether to animate the badge downward
+                from 50 pixels above its final position. Defaults to `False`.
+            drop_in_duration (int, optional): Duration of the drop-in animation
+                in milliseconds. Defaults to `500`.
         """
         message_type = "error" if is_error else "info"
         self.panel.setProperty("messageType", message_type)
@@ -184,7 +218,12 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self._dismiss_timer.start(self._display_duration_ms)
 
     def fade_out(self) -> None:
-        """Fade the badge out, then hide it."""
+        """Fade the visible badge out and hide it when the animation completes.
+
+        Stops the dismissal timer and any existing fade animation before
+        starting a new fade from the badge's current opacity to fully
+        transparent.
+        """
         if not self.isVisible():
             return
 
@@ -197,14 +236,16 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self._fade_animation.start()
 
     def slide_out(self, duration: int = 250) -> None:
-        """Slides the badge up by 50px while fading it out, then hides it.
+        """Slide the badge upward while fading it out.
 
-        Used when dismissing a still-visible toast as part of a larger
-        transition (e.g. the sign-in "Deep Focus" dismissal), rather than
-        the plain fade_out()/instant clear() used elsewhere.
+        Moves the badge 50 pixels upward while simultaneously reducing its
+        opacity. The badge is hidden after the animations complete. This is
+        intended for coordinated dismissals where a visible toast should
+        leave with motion rather than simply fading in place.
 
         Args:
-            duration (int, optional): Slide/fade duration in milliseconds.
+            duration (int, optional): Duration of the slide and fade animations
+                in milliseconds. Defaults to `250`.
         """
         if not self.isVisible():
             return
@@ -227,7 +268,12 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self._slide_animation.start()
 
     def clear(self) -> None:
-        """Immediately close the badge without waiting for the fade-out animation."""
+        """Immediately hide and reset the floating message badge.
+
+        Stops any active dismissal or fade animation, clears the pending
+        hide-on-animation state, resets the window opacity to zero, and hides
+        the badge without waiting for an animation to finish.
+        """
         self._dismiss_timer.stop()
         self._fade_animation.stop()
         self._hide_when_animation_finishes = False
@@ -235,7 +281,20 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self.hide()
 
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        """Keep the floating badge visually locked to its anchor widget/window."""
+        """Keep the badge synchronized with its tracked anchor widgets.
+
+        Closes the badge when a tracked anchor is hidden or closed. While the
+        badge is visible, repositions it synchronously when a tracked anchor
+        or its top-level window moves, resizes, is shown, or changes window
+        state.
+
+        Args:
+            watched (QtCore.QObject): Object that generated the event.
+            event (QtCore.QEvent): Event being processed.
+
+        Returns:
+            bool: The result of the base class event-filter implementation.
+        """
         if watched in self._tracked_anchor_widgets:
             event_type = event.type()
 
@@ -253,13 +312,28 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         return super().eventFilter(watched, event)
 
     def _on_fade_animation_finished(self) -> None:
+        """Hide the badge after a fade-out animation completes.
+
+        Hides the badge and restores zero window opacity when the current fade
+        operation was initiated as part of a dismissal.
+        """
         if self._hide_when_animation_finishes:
             self._hide_when_animation_finishes = False
             self.hide()
             self.setWindowOpacity(0.0)
 
-    def _set_anchor_widget(self, target: Optional[QtWidgets.QWidget]) -> None:
-        """Track the widget used for badge placement and its top-level window."""
+    def _set_anchor_widget(self, target: QtWidgets.QWidget | None) -> None:
+        """Set the widget used to anchor and track badge positioning.
+
+        Replaces the current anchor, removes obsolete event filters, and
+        installs event filters on the new anchor and its top-level window.
+        This allows the badge to respond to geometry and visibility changes
+        affecting either object.
+
+        Args:
+            target (QtWidgets.QWidget, optional): Widget to use as the badge's
+                anchor, or `None` to remove the current anchor.
+        """
         if target is self._anchor_widget and self._tracked_anchor_widgets:
             return
 
@@ -276,6 +350,16 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
             self._install_anchor_event_filter(window)
 
     def _install_anchor_event_filter(self, widget: QtWidgets.QWidget) -> None:
+        """Install event tracking on an anchor-related widget.
+
+        Registers this badge as an event filter and connects the widget's
+        destruction signal so the badge can cleanly dismiss itself if the
+        tracked widget is deleted.
+
+        Args:
+            widget (QtWidgets.QWidget): Widget whose lifecycle and geometry
+                should be tracked.
+        """
         if widget in self._tracked_anchor_widgets:
             return
 
@@ -284,6 +368,11 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self._tracked_anchor_widgets.append(widget)
 
     def _remove_anchor_event_filters(self) -> None:
+        """Remove event filters from all currently tracked anchor widgets.
+
+        Safely unregisters the badge from each tracked widget, including
+        widgets that may already have been deleted by Qt.
+        """
         for widget in list(self._tracked_anchor_widgets):
             try:
                 widget.removeEventFilter(self)
@@ -294,18 +383,43 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
         self._tracked_anchor_widgets.clear()
 
     def _on_anchor_destroyed(self, *_args: object) -> None:
+        """Handle destruction of the badge's anchor widget.
+
+        Clears the stored anchor and tracked-widget state and immediately
+        dismisses the badge so it cannot remain visible after its positioning
+        target has been destroyed.
+
+        Args:
+            *_args (object): Arguments emitted with the Qt `destroyed`
+                signal.
+        """
         self._anchor_widget = None
         self._tracked_anchor_widgets.clear()
         self.clear()
 
     def _reposition_to_anchor(self) -> None:
+        """Recalculate and apply the badge position relative to its anchor.
+
+        Adjusts the badge size to its current contents before positioning it
+        above the tracked anchor widget.
+        """
         if self._anchor_widget is None:
             return
 
         self.adjustSize()
         self._position_above(self._anchor_widget)
 
-    def _position_above(self, target: Optional[QtWidgets.QWidget]) -> None:
+    def _position_above(self, target: QtWidgets.QWidget | None) -> None:
+        """Position the badge above an anchor widget.
+
+        Centers the badge horizontally over the target and places it above the
+        target with the configured vertical gap. The resulting position is
+        clamped to the available geometry of the screen containing the target.
+
+        Args:
+            target (QtWidgets.QWidget, optional): Widget above which the badge
+                should be positioned.
+        """
         if target is None:
             return
 
@@ -326,11 +440,27 @@ class FloatingMessageBadgeWidget(QtWidgets.QWidget):
 
     @staticmethod
     def _refresh_polish(widget: QtWidgets.QWidget) -> None:
+        """Refresh a widget's Qt style after a dynamic property change.
+
+        Unpolishes and reapplies the widget's current style, then requests a
+        repaint so stylesheet rules dependent on dynamic properties take
+        effect immediately.
+
+        Args:
+            widget (QtWidgets.QWidget): Widget whose styling should be
+                refreshed.
+        """
         widget.style().unpolish(widget)
         widget.style().polish(widget)
         widget.update()
 
     def _apply_styles(self) -> None:
+        """Apply the default glass and message-state styles to the badge.
+
+        Configures the translucent panel, informational and error backgrounds,
+        message text, and close button appearance, including hover and pressed
+        states.
+        """
         self.setStyleSheet("""
             QFrame#floatingMessagePanel {
                 background-color: qlineargradient(

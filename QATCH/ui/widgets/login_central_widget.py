@@ -1,4 +1,5 @@
-"""login_central_widget.py
+"""
+QATCH.ui.widgets.login_central_widget.py
 
 This module defines two classes that together implement the frosted-glass, blurred-backdrop
 login overlay for the nanovisQ application:
@@ -17,7 +18,6 @@ Author(s):
 
 Date:
     2026-07-01
-
 """
 
 from typing import TYPE_CHECKING, Optional
@@ -82,7 +82,7 @@ class PopAnimation(QtWidgets.QGraphicsEffect):
         """
         return self._scale
 
-    def setOpacity(self, opacity: float) -> None:  # noqa: N802
+    def setOpacity(self, opacity: float) -> None:
         """Sets the opacity of the rendered widget.
 
         Args:
@@ -102,7 +102,7 @@ class PopAnimation(QtWidgets.QGraphicsEffect):
         """
         return self._opacity
 
-    def boundingRectFor(self, source_rect: QtCore.QRectF) -> QtCore.QRectF:  # noqa: N802
+    def boundingRectFor(self, source_rect: QtCore.QRectF) -> QtCore.QRectF:
         """Returns an expanded bounding rectangle to accommodate scaling.
 
         This prevents clipping when the effect applies overshoot animations
@@ -775,7 +775,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
             dim_color.setAlpha(dim_alpha)
             p.fillRect(rect, dim_color)
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Paints the "Deep Focus" backdrop for this widget.
 
         Args:
@@ -796,7 +796,7 @@ class LoginCentralWidget(QtWidgets.QWidget):
 
         p.end()
 
-    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # noqa: N802
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         """Handles widget resizing by rescaling and refreshing the cached backdrop.
 
         Args:

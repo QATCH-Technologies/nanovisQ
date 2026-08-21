@@ -1,8 +1,52 @@
+"""
+QATCH.ui.widgets.floating_menu_widget.py
+
+Floating navigation menu widget.
+
+Provides a frameless, translucent floating menu used to display and
+navigate between toolkit sections. The menu presents a titled list of
+selectable items with visual states for the active item and mouse-hover
+interaction.
+
+The widget manages its own item layout, styling, selection state, and
+mouse interaction. Selecting an item delegates navigation to the parent
+widget through its `_set_learn_mode` method.
+
+Author(s):
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-21
+"""
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
 class FloatingMenuWidget(QtWidgets.QWidget):
+    """Display a floating, styled navigation menu for toolkit sections.
+
+    Creates a frameless, always-on-top menu with a rounded content surface
+    and drop shadow. Menu items are displayed vertically beneath a toolkit
+    title and support active-selection and hover styling.
+
+    The widget delegates selected-item navigation to its parent and tracks
+    the currently active item internally.
+    """
+
     def __init__(self, parent=None):
+        """Initialize the floating toolkit navigation menu.
+
+        Configures the widget as a frameless, translucent tool window, creates
+        the styled content container and drop shadow, and initializes the
+        layouts and title used to display menu items.
+
+        Args:
+            parent (QtWidgets.QWidget, optional): The parent or controller
+                associated with the floating menu. If the supplied object has a
+                ``parent`` attribute, that object's parent is used as the Qt
+                widget parent. Defaults to ``None``.
+        """
         super().__init__(parent.parent if hasattr(parent, "parent") else parent)
         self.parent = parent
 
@@ -72,6 +116,16 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         self.vbox.addStretch()
 
     def addItems(self, items: list):
+        """Add navigation items to the floating menu.
+
+        Creates a label for each supplied item, applies the default item
+        styling, connects mouse presses to toolkit navigation, and installs
+        the event filter used for hover-state handling. The menu is resized
+        to accommodate the resulting contents.
+
+        Args:
+            items (list): The menu item labels to add in display order.
+        """
         for idx, item in enumerate(items):
             label = QtWidgets.QLabel(item)
             # Style the label (padding and background)
@@ -87,6 +141,11 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         )
 
     def removeItems(self):
+        """Remove all navigation items from the floating menu.
+
+        Detaches each item from the menu layout and schedules its widget for
+        deletion.
+        """
         while self.items.count():
             item = self.items.takeAt(0)
             widget = item.widget() if item else None
@@ -94,12 +153,31 @@ class FloatingMenuWidget(QtWidgets.QWidget):
                 widget.deleteLater()
 
     def setActiveItem(self, index: int):
+        """Set the currently active navigation item.
+
+        Updates the styling of every menu item so that only the item at the
+        supplied index is displayed as selected, then records that index as
+        the active item.
+
+        Args:
+            index (int): Zero-based index of the item to mark as active.
+        """
         for idx in range(self.items.count()):
             label = self.items.itemAt(idx).widget()
             self._setStyleSheet(label, True if idx == index else False)
         self._active = index
 
     def _setHoverItem(self, index: int):
+        """Update menu item styling for a hovered item.
+
+        Preserves the active-item styling while applying the hover styling to
+        the specified item. Passing ``-1`` clears the hover state from all
+        items.
+
+        Args:
+            index (int): Zero-based index of the item currently under the
+                mouse, or ``-1`` when no item is hovered.
+        """
         for idx in range(self.items.count()):
             label = self.items.itemAt(idx).widget()
             self._setStyleSheet(
@@ -109,6 +187,18 @@ class FloatingMenuWidget(QtWidgets.QWidget):
             )
 
     def _viewToolkitItem(self, index: int):
+        """Navigate to the toolkit section represented by an item.
+
+        Validates the requested item index and delegates navigation to the
+        parent widget through its ``_set_learn_mode`` method.
+
+        Args:
+            index (int): Zero-based index of the toolkit item to activate.
+
+        Raises:
+            ValueError: If ``index`` is outside the range of available menu
+                items.
+        """
         if 0 <= index < self.items.count():
             self.parent._set_learn_mode(tab_index=index)
             # self.setActiveItem(index) # Handled by VisQAIWindow.on_tab_change()
@@ -118,6 +208,20 @@ class FloatingMenuWidget(QtWidgets.QWidget):
     def _setStyleSheet(
         self, label: QtWidgets.QLabel, selected: bool, hover: bool = False
     ) -> QtWidgets.QLabel:
+        """Apply the appropriate visual state to a menu item.
+
+        Updates the label stylesheet according to whether the item is active,
+        hovered, both, or neither.
+
+        Args:
+            label (QtWidgets.QLabel): The menu item label to style.
+            selected (bool): Whether the item is the currently active item.
+            hover (bool, optional): Whether the item is currently being
+                hovered. Defaults to ``False``.
+
+        Returns:
+            QtWidgets.QLabel: The styled label.
+        """
         if hover and selected:
             label.setStyleSheet("padding: 10px; padding-left: 15px; background: #A9E1FA;")
         elif hover:
@@ -129,6 +233,18 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         return label
 
     def eventFilter(self, obj, event):
+        """Handle mouse-enter and mouse-leave events for menu items.
+
+        Detects pointer entry and exit on navigation labels and updates their
+        hover styling while preserving the active-item state.
+
+        Args:
+            obj (QtCore.QObject): The object that received the event.
+            event (QtCore.QEvent): The event being processed.
+
+        Returns:
+            bool: The result of the base class event-filter implementation.
+        """
         if event.type() in [QtCore.QEvent.Enter, QtCore.QEvent.Leave]:
             found = False
             for idx in range(self.items.count()):

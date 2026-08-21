@@ -1,40 +1,40 @@
 import os
-
-from PyQt5.QtWidgets import (
-    QVBoxLayout,
-    QHBoxLayout,
-    QWidget,
-    QLabel,
-    QPushButton,
-    QFrame,
-    QSizePolicy,
-    QStackedWidget,
-    QComboBox,
-    QSpinBox,
-    QDoubleSpinBox,
-    QDateEdit,
-    QTimeEdit,
-    QGraphicsDropShadowEffect,
-)
+from typing import Any, Optional
 
 from PyQt5.QtCore import (
-    Qt,
-    pyqtSignal,
-    QPropertyAnimation,
-    QEasingCurve,
-    QDateTime,
     QDate,
-    QTime,
+    QDateTime,
+    QEasingCurve,
     QParallelAnimationGroup,
+    QPropertyAnimation,
+    Qt,
+    QTime,
+    pyqtSignal,
 )
 from PyQt5.QtGui import (
+    QCloseEvent,
+    QColor,
     QIcon,
     QPainter,
     QPaintEvent,
-    QCloseEvent,
-    QColor,
 )
-from typing import Optional, Any
+from PyQt5.QtWidgets import (
+    QComboBox,
+    QDateEdit,
+    QDoubleSpinBox,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QSpinBox,
+    QStackedWidget,
+    QTimeEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
 from QATCH.common.architecture import Architecture
 from QATCH.ui.styles.theme_manager import ThemeManager, tok_css
 
