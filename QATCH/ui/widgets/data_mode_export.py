@@ -3181,11 +3181,11 @@ class ExportMode(DataModeWidget):
                 title. Defaults to an empty string.
             header_right (QtWidgets.QWidget or QtWidgets.QLayout, optional):
                 A widget or layout to place at the right side of the header.
-                Defaults to ``None``.
+                Defaults to `None`.
 
         Returns:
-            QtWidgets.QFrame: The constructed content section. Its ``body``
-            attribute contains a ``QVBoxLayout`` for adding section controls.
+            QtWidgets.QFrame: The constructed content section. Its `body`
+            attribute contains a `QVBoxLayout` for adding section controls.
         """
         card = QtWidgets.QFrame()
         card.setObjectName("dataCard")
