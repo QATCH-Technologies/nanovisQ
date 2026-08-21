@@ -1,53 +1,34 @@
-"""Export mode - select runs + destination (folder or USB) and export data.
+"""
+QATCH.ui.data_mode_export.py
 
-PORT FROM export_widget.Ui_Export:
-    build()                  <- tab2 (groupbox1 USB, groupbox2 Folder,
-                                groupbox3 Export Settings, groupbox6 CSV fields,
-                                tb/pb progress, exportNow/exportCancel)
-    select_folder_source     -> _select_run
-    select_folder_target     -> _select_target / _refresh_target
-    generateExportName       -> _generate_name
-    exportChanged            -> _on_format_changed
-    noNameChanged            -> _on_noname_changed
-    selectChanged            -> _on_selection_changed
-    checkChanged1/2          -> _on_dest_changed (USB/Folder destination segment)
-    export                   -> _do_export (validates range, then run_task)
-    exportTask               -> _export_task(abort, name, target, min, max)
-    appendRunToCsvReport      -> _append_run_to_csv (+ _build_csv_row)
-    copytree                 -> _copytree
-    (CSV header expansion)    -> _expand_csv_cols
-    (nested-folder cleanup)   -> _flatten_nested
-    (export_history.log)      -> _write_history
+Export mode for selecting runs, destinations, and export settings.
 
-LAYOUT (responsive redesign):
-  The previous layout stacked every caption on its own line above a full-width
-  segmented control, producing a tall column that overflowed and collided at the
-  minimized overlay width (~17.5% inset). This pass:
+Provides the Export mode page used by the data-management overlay. The module
+ports the export functionality formerly implemented by
+`export_widget.Ui_Export` into the shared :class:`DataModeWidget` /
+:class:`DataServices` architecture.
 
-    * Wraps the whole page in a QScrollArea so content is ALWAYS reachable at any
-      overlay size - nothing clips or overlaps regardless of height.
-    * Uses a compact "field" pattern (caption over control, packed tightly) so
-      each setting takes one short row instead of two tall ones.
-    * Lays the Export Settings out in a responsive grid that collapses from two
-      columns to one below a width threshold, keeping controls legible when the
-      overlay is small and using the space efficiently when it is large.
-    * Pins the status readout + primary actions in a footer below the scroll
-      area, so the Export button is always visible.
+The mode supports selecting logged runs and exporting them to a folder or
+removable USB destination in CSV, ZIP, or folder format. It preserves the
+original export semantics, including existing-file handling, date filtering,
+CSV field selection and expansion, ZIP packaging, nested-folder cleanup, and
+export-history logging.
 
-  All original semantics are preserved verbatim - only widget *arrangement*
-  changed. The state handlers, signals, and validation are untouched:
-    * USB vs Folder targets are mutually exclusive; selecting one clears the
-      other; `drive` tracks the active target.
-    * Export-as CSV/ZIP/Folder is exclusive; CSV enables the field picker and
-      relabels Merge/Skip -> Append/Cancel.
-    * Run scope is All vs Selection (a logged-data subfolder).
-    * Date filter is Off / Today / Last-N {Hours,Days,Weeks}.
-    * Existing-files policy is Merge / Replace / Skip (ids 2 / 1 / 3).
+The page uses a responsive layout designed to remain usable at the compact
+width of the data-management overlay. Its content is contained within a
+scrollable area, settings are arranged using compact field controls and a
+responsive grid, and the status readout and primary actions remain pinned
+below the scrolling content.
 
-The export pipeline is a full port of `export_widget.Ui_Export`: CSV report
-generation (with column expansion and per-run parsing), ZIP packaging, folder
-copytree with existing-files policy + date filtering, nested-folder flattening,
-and the export-history log entry.
+All cross-mode task execution, cancellation, USB state, progress reporting,
+and GUI-freeze coordination are delegated to :class:`DataServices`; this
+module is responsible for Export-specific UI state and processing.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-21
 """
 
 import csv
@@ -68,7 +49,6 @@ from QATCH.ui.components import (
     QATCHOptionCardGroup,
     QATCHPushButton,
 )
-from QATCH.ui.components.icon_utils import tinted_icon
 from QATCH.ui.components.stepper import Stepper as _Stepper
 from QATCH.ui.styles.theme_manager import (
     ThemeManager,
@@ -79,23 +59,16 @@ from QATCH.ui.styles.theme_manager import (
 )
 from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
-# Parser for reading run capture archives when building the CSV report. Imported
-# lazily-safe: if VisQAI isn't importable at layout time, CSV export degrades to
-# a clear error rather than crashing the whole module import.
 try:
     from QATCH.VisQAI.src.io.parser import Parser
-except Exception:  # pragma: no cover - optional at layout time
+except Exception:
     Parser = None
 
 TAG = "[DataExport]"
 
-# Existing-files policy ids - preserved from the original btnGroup2.
 POLICY_REPLACE = 1
 POLICY_MERGE = 2
 POLICY_SKIP = 3
-
-# Below this content width the settings grid collapses to a single column so
-# paired controls never get crushed at the minimized overlay size.
 RESPONSIVE_BREAKPOINT = 560
 
 CSV_FIELDS = [
@@ -108,8 +81,6 @@ CSV_FIELDS = [
     "Notes",
 ]
 
-# Components a "Formulation" column expands into (one CSV column each), in the
-# same order as the original Ui_Export.exportTask.
 _FORMULATION_COMPONENTS = [
     "Protein",
     "Stabilizer",
@@ -121,59 +92,152 @@ _FORMULATION_COMPONENTS = [
 
 
 class _FlowLayout(QtWidgets.QLayout):
-    """Left-to-right layout that wraps to additional rows as needed.
+    """Flow layout that arranges child items left-to-right with row wrapping.
 
-    Used for the CSV column chips so a wide field list reads as a simple
-    flowing row (per the wireframe) instead of a fixed-column grid that
-    leaves uneven gaps for differently-sized labels.
+    Lays out items sequentially across the available width and automatically
+    starts a new row when the next item would exceed the available space.
+    The layout reports a height based on the required number of wrapped rows,
+    allowing it to participate correctly in Qt's height-for-width layout
+    system.
+
+    This layout is used for CSV column chips, where variable-width labels are
+    better represented by a natural flowing arrangement than by a fixed-column
+    grid.
+
+    Attributes:
+        _items (list): Layout items managed by the flow layout.
     """
 
-    def __init__(self, parent=None, margin=0, spacing=8):
+    def __init__(self, parent=None, margin=0, spacing=8) -> None:
+        """Initialize the flow layout.
+
+        Args:
+            parent (QtWidgets.QWidget, optional): Parent layout or widget.
+                Defaults to None.
+            margin (int, optional): Uniform margin applied around the layout.
+                Defaults to 0.
+            spacing (int, optional): Horizontal and vertical spacing between
+                items. Defaults to 8.
+        """
         super().__init__(parent)
         self._items = []
         self.setContentsMargins(margin, margin, margin, margin)
         self.setSpacing(spacing)
 
-    def addItem(self, item):
+    def addItem(self, item) -> None:
+        """Add a layout item to the flow layout.
+
+        Args:
+            item (QtWidgets.QLayoutItem): Layout item to append.
+        """
+
         self._items.append(item)
         self.invalidate()
 
-    def count(self):
+    def count(self) -> int:
+        """Return the number of items managed by the layout.
+
+        Returns:
+            int: Number of layout items.
+        """
         return len(self._items)
 
-    def itemAt(self, index):
+    def itemAt(self, index) -> QtWidgets.QLayoutItem:
+        """Return the layout item at the specified index.
+
+        Args:
+            index (int): Zero-based item index.
+
+        Returns:
+            QtWidgets.QLayoutItem | None: The requested item, or `None` if
+            the index is outside the layout's valid range.
+        """
         return self._items[index] if 0 <= index < len(self._items) else None
 
-    def takeAt(self, index):
+    def takeAt(self, index) -> QtWidgets.QLayoutItem:
+        """Remove and return the layout item at the specified index.
+
+        Args:
+            index (int): Zero-based item index.
+
+        Returns:
+            QtWidgets.QLayoutItem | None: The removed item, or `None` if
+            the index is outside the layout's valid range.
+        """
         item = self._items.pop(index) if 0 <= index < len(self._items) else None
         if item is not None:
             self.invalidate()
         return item
 
-    def expandingDirections(self):
+    def expandingDirections(self) -> QtCore.Qt.Orientations:
+        """Return the layout's expanding directions.
+
+        Returns:
+            QtCore.Qt.Orientations: Empty orientations because the layout does
+            not request expansion in either direction.
+        """
         return QtCore.Qt.Orientations(QtCore.Qt.Orientation(0))
 
-    def hasHeightForWidth(self):
+    def hasHeightForWidth(self) -> bool:
+        """Indicate that the layout's height depends on its available width.
+
+        Returns:
+            bool: Always `True` because items wrap into additional rows as
+            the available width decreases.
+        """
         return True
 
-    def heightForWidth(self, width):
+    def heightForWidth(self, width) -> int:
+        """Calculate the height required to lay out items at a given width.
+
+        Args:
+            width (int): Available layout width.
+
+        Returns:
+            int: Required layout height including margins and wrapped rows.
+        """
         return self._do_layout(QtCore.QRect(0, 0, width, 0), test_only=True)
 
-    def setGeometry(self, rect):
+    def setGeometry(self, rect) -> None:
+        """Position all managed items within the supplied geometry.
+
+        Args:
+            rect (QtCore.QRect): Geometry available to the layout.
+        """
         super().setGeometry(rect)
         self._do_layout(rect, test_only=False)
 
-    def sizeHint(self):
+    def sizeHint(self) -> QtCore.QSize:
+        """Return the preferred size of the layout.
+
+        Returns:
+            QtCore.QSize: Minimum size required by the managed items.
+        """
         return self.minimumSize()
 
-    def minimumSize(self):
+    def minimumSize(self) -> QtCore.QSize:
+        """Calculate the minimum size required by all layout items.
+
+        Returns:
+            QtCore.QSize: Bounding minimum size including layout margins.
+        """
         size = QtCore.QSize()
         for item in self._items:
             size = size.expandedTo(item.minimumSize())
         left, top, right, bottom = self.getContentsMargins()
         return size + QtCore.QSize(left + right, top + bottom)
 
-    def _do_layout(self, rect, test_only):
+    def _do_layout(self, rect: QtCore.QRect, test_only: bool) -> int:
+        """Lay out items sequentially and wrap them onto additional rows.
+
+        Args:
+            rect (QtCore.QRect): Rectangle available for laying out items.
+            test_only (bool): If `True`, calculate the required height
+                without changing item geometries.
+
+        Returns:
+            int: Height required to lay out all items within `rect`.
+        """
         left, top, right, bottom = self.getContentsMargins()
         effective = rect.adjusted(left, top, -right, -bottom)
         x, y = effective.x(), effective.y()
@@ -196,15 +260,35 @@ class _FlowLayout(QtWidgets.QLayout):
 
 
 class _ToggleChip(QtWidgets.QPushButton):
-    """A checkable pill used for the CSV column picker.
+    """Checkable pill-shaped control for selecting CSV export columns.
 
-    Reads as a wrapping tag: a check mark prefix + accent fill while
-    selected, a "+" prefix + plain outline while not - so the picker's
-    state is legible without a separate checkbox glyph competing for
-    space in a tight wrapping row.
+    The chip presents a compact, wrapping-friendly representation of a CSV
+    field. Selected fields display a check-mark prefix and accent styling,
+    while unselected fields display a plus prefix with the standard flat
+    surface and border styling.
+
+    The widget manages its own visual state and automatically reapplies its
+    styling when the checked state changes or when the application theme is
+    changed.
+
+    Attributes:
+        _label (str): Display label identifying the CSV field represented by
+            the chip.
     """
 
-    def __init__(self, label, parent=None):
+    def __init__(self, label, parent=None) -> None:
+        """Initialize the CSV column toggle chip.
+
+        The chip starts in the checked state and immediately applies the
+        current theme styling. It also subscribes to theme changes so its
+        appearance remains synchronized with the application theme.
+
+        Args:
+            label (str): Text displayed on the chip to identify the CSV
+                column.
+            parent (QtWidgets.QWidget, optional): Parent widget. Defaults to
+                None.
+        """
         super().__init__(parent)
         self._label = label
         self.setCheckable(True)
@@ -214,10 +298,27 @@ class _ToggleChip(QtWidgets.QPushButton):
         self._restyle()
         ThemeManager.instance().themeChanged.connect(lambda _: self._restyle())
 
-    def label(self):
+    def label(self) -> str:
+        """Return the CSV column label represented by this chip.
+
+        Returns:
+            str: The field label assigned when the chip was created.
+        """
         return self._label
 
-    def _restyle(self, *_):
+    def _restyle(self, *_) -> None:
+        """Update the chip text and appearance for its current state.
+
+        Selected chips use the accent color and a highlighted surface, while
+        unselected chips use the standard flat surface and text colors.
+        Disabled-state styling is also applied for both states. All colors
+        are obtained from the current theme tokens so the chip remains
+        consistent across light and dark themes.
+
+        Args:
+            *_: Ignored signal arguments supplied when connected to the
+                `toggled` signal or theme-change callback.
+        """
         checked = self.isChecked()
         tok = ThemeManager.instance().tokens()
         self.setText(("✓ " if checked else "+ ") + self._label)
@@ -257,43 +358,97 @@ class _ToggleChip(QtWidgets.QPushButton):
 
 
 class ExportMode(DataModeWidget):
+    """Data-management mode for configuring and executing data exports.
+
+    Provides the complete export workflow for selecting an output destination,
+    defining the run scope, choosing CSV fields, reviewing the configuration,
+    and executing the export operation. The interface is organized as a
+    four-step workflow:
+
+    * Destination: Select USB or folder output and configure the export format.
+    * Scope: Select all available runs or a specific run/device subfolder and
+      configure date filtering.
+    * Fields: Select the CSV columns to include when exporting CSV data.
+    * Review: Verify the configured export options before starting the task.
+
+    The mode delegates shared task execution, USB detection, cancellation,
+    progress reporting, and GUI-freeze coordination to the inherited
+    `DataModeWidget` / `DataServices` infrastructure. Export-specific state,
+    validation, file processing, and presentation remain owned by this class.
+
+    The widget maintains compatibility with the original export workflow while
+    using a responsive step-based interface. A pinned footer provides progress
+    feedback and navigation controls without requiring the user to scroll away
+    from the primary actions.
+
+    Class Attributes:
+        MODE_KEY (str): Named service channel used for export progress routing.
+        MODE_LABEL (str): Human-readable label displayed by the mode selector.
+
+    Attributes:
+        _chk_usb (bool): Whether USB export is currently selected.
+        _chk_folder (bool): Whether folder export is currently selected.
+        _source_subfolder (str): Selected source run or device subfolder.
+            An empty string indicates that all available runs are selected.
+        _filter_min (int): Computed lower bound for the active date filter.
+        _filter_max (int | None): Computed upper bound for the active date
+            filter, or None when the range is open-ended.
+        _export_unnamed (bool): Whether unnamed runs are included in exports.
+        _exported (bool): Whether the most recent export completed successfully.
+        csv_report_path (str | None): Path to the CSV report currently being
+            generated, when applicable.
+        _task_running (bool): Whether an export task is currently active.
+        _csv_card_opacity: Optional visual effect used to dim the CSV settings
+            card when CSV-specific controls are unavailable.
+        _cards (list): Collection of export settings cards that require
+            coordinated theme updates.
+        _settings_two_col (bool | None): Tracks the current responsive
+            two-column breakpoint state for the settings layout.
+        _step_labels (list[str]): Labels displayed by the export workflow
+            stepper.
+        stepper (_Stepper): Workflow stepper used to navigate between export
+            stages.
+        step_stack (QtWidgets.QStackedWidget): Container holding the four
+            export workflow pages.
+    """
+
     MODE_KEY = "export"
     MODE_LABEL = "Export"
 
-    # ------------------------------------------------------------------
-    #  Build
-    # ------------------------------------------------------------------
     def build(self):
+        """Construct the export workflow and initialize its default state.
+
+        Creates the four-step export interface, including the destination,
+        scope, CSV fields, and review pages. A pinned footer containing the
+        progress indicator and navigation/action buttons is added below the
+        step pages.
+
+        The export format defaults to CSV and the destination defaults to a
+        folder. The initial step is selected and the appropriate controls are
+        enabled or disabled according to those defaults. Theme handling is
+        also initialized after the interface has been constructed.
+        """
         # Shared-state mirrors of the original flags.
         self._chk_usb = False  # exporting to USB
         self._chk_folder = False  # exporting to folder
         self._source_subfolder = ""  # selected run/device subpath ("" = all)
         self._filter_min = 0  # computed date floor at export time
         self._filter_max = None  # computed date ceiling (None = open-ended)
-        # Preserve the original's hidden "Include _unnamed runs" opt-in (default
-        # off). No visible control today; flip via _export_unnamed if needed.
         self._export_unnamed = False
         self._exported = False  # set True after a successful export
         self.csv_report_path = None  # path of the CSV report being written
         self._task_running = False  # drives Cancel's dual abort/reset behavior
         self._csv_card_opacity = None  # lazily-created dim effect for the CSV card
-        self._cards = []  # every GlassPanel from self._card(), restyled on theme change
-
-        # Tracks the live column mode of the responsive grids so resizeEvent
-        # only re-lays-out when a breakpoint is actually crossed.
+        self._cards = []  # every GlassPanel from self._card(), restyled on theme change.
         self._settings_two_col = None
 
-        # --- Stepper + step pages ---------------------------------------
+        # Stepper, step pages
         self._step_labels = ["Destination", "Scope", "Fields", "Review"]
         self.stepper = _Stepper(self._step_labels)
         self.stepper.stepClicked.connect(self._go_to_step)
         self.root.addWidget(self.stepper)
 
         self.step_stack = QtWidgets.QStackedWidget()
-        # Let _slide_step truly hide() the stack during a step transition
-        # (cheapest possible "don't paint this" - no compositing, no QSS,
-        # nothing to race) while it still reserves its layout space, so
-        # hiding it doesn't snap the stepper/footer around it.
         stack_policy = self.step_stack.sizePolicy()
         stack_policy.setRetainSizeWhenHidden(True)
         self.step_stack.setSizePolicy(stack_policy)
@@ -305,10 +460,10 @@ class ExportMode(DataModeWidget):
             self.step_stack.addWidget(scroll)
         self.root.addWidget(self.step_stack, 1)
 
-        # Pinned footer: progress bar + Cancel / Back / Next-or-Export.
+        # Footer
         self._build_status_and_actions()
 
-        # Apply initial enable-state (CSV default, folder destination default).
+        # Apply initial enable-state
         self.rb_csv.setChecked(True)
         self._on_format_changed()
         self._set_destination("folder")
@@ -319,13 +474,30 @@ class ExportMode(DataModeWidget):
         self._apply_theme()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
-    # ------------------------------------------------------------------
-    #  Theming
-    # ------------------------------------------------------------------
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the export interface when the application theme changes.
+
+        Args:
+            _mode (str): Identifier for the newly activated theme mode. The
+                value is not used directly because the current theme is
+                obtained from `ThemeManager` by `_apply_theme`.
+        """
         self._apply_theme()
 
     def _apply_theme(self) -> None:
+        """Apply the current theme to all export-mode UI components.
+
+        Refreshes theme-dependent colors, borders, typography, separators,
+        date controls, review elements, progress-bar styling, and export
+        setting cards using the active `ThemeManager` tokens.
+
+        The method also refreshes the review section so dynamically generated
+        review cards are rebuilt using the current theme rather than retaining
+        styling from the previous theme.
+
+        Returns:
+            None
+        """
         tok = ThemeManager.instance().tokens()
 
         for card in self._cards:
@@ -384,14 +556,21 @@ class ExportMode(DataModeWidget):
                 border-radius: 1px;
             }}
         """)
-
-        # Review cards are rebuilt wholesale (not restyled in place) every
-        # time the review step is (re)populated - simplest way to guarantee
-        # every review-card label picks up the new theme too.
         self._refresh_review()
 
     @staticmethod
-    def _make_step_scroll(content_widget):
+    def _make_step_scroll(content_widget) -> QtWidgets.QScrollArea:
+        """Create a scrollable container for an export workflow step.
+
+        Args:
+            content_widget (QtWidgets.QWidget): Widget containing the controls
+                and layout for the step.
+
+        Returns:
+            QtWidgets.QScrollArea: Configured scroll area with transparent
+            styling, a hidden horizontal scrollbar, and an automatically
+            displayed vertical scrollbar when required.
+        """
         scroll = QtWidgets.QScrollArea()
         scroll.setObjectName("exportScroll")
         scroll.setWidgetResizable(True)
@@ -404,23 +583,37 @@ class ExportMode(DataModeWidget):
         return scroll
 
     @staticmethod
-    def _step_host():
+    def _step_host() -> tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]:
+        """Create the transparent host used inside an export step scroll area.
+
+        Returns:
+            tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]: The transparent
+            host widget and its outer vertical layout.
+        """
         host = QtWidgets.QWidget()
         host.setObjectName("exportScrollHost")
         host.setStyleSheet("QWidget#exportScrollHost { background: transparent; }")
         outer = QtWidgets.QVBoxLayout(host)
-        outer.setContentsMargins(2, 2, 6, 2)  # right pad = room for scrollbar
+        outer.setContentsMargins(2, 2, 6, 2)
         outer.setSpacing(12)
         return host, outer
 
-    # ---- Step 0: Destination -------------------------------------------
-    def _build_destination_page(self):
+    def _build_destination_page(self) -> QtWidgets.QWidget:
+        """Build the destination-selection step of the export workflow.
+
+        Creates controls for selecting USB or local-folder export, choosing
+        or detecting the destination target, ejecting a selected USB drive,
+        and optionally creating a dated export subfolder.
+
+        Returns:
+            QtWidgets.QWidget: Scrollable-step host containing the destination
+            controls.
+        """
         host, outer = self._step_host()
         card = self._card("Export Destination", "Where the exported data is written")
         lay = card.body
 
-        # Destination is a pair of labelled cards (radio-style); target picker
-        # adapts to whichever one is selected.
+        # Destination is a pair of labelled cards
         lay.addWidget(self._caption("Export to"))
         self.dest_group = QATCHOptionCardGroup(self)
         dest_row = QtWidgets.QHBoxLayout()
@@ -437,9 +630,7 @@ class ExportMode(DataModeWidget):
         dest_row.addWidget(self.card_folder, 1)
         lay.addLayout(dest_row)
 
-        # Target row: read-only target field + grouped action pickers. The
-        # contents adapt to the destination (Detect/Eject for USB; Choose for
-        # folder), but both live in the same frosted picker box for consistency.
+        # Target row
         lay.addWidget(self._caption("Target"))
 
         target_row = QtWidgets.QHBoxLayout()
@@ -457,11 +648,7 @@ class ExportMode(DataModeWidget):
         picker_lay = QtWidgets.QHBoxLayout(picker_box)
         picker_lay.setContentsMargins(4, 4, 4, 4)
         picker_lay.setSpacing(4)
-        # USB actions - borderless (ghost variant: blue-accent hover wash,
-        # matching the app's accent colour) since they already sit inside
-        # pickerBox's own frosted border; a border per-button too would be
-        # one too many. Fixed size policy keeps them from being stretched by
-        # the layout's surplus space while a sibling slides open/closed.
+        # USB actions
         self.btn_detect = QATCHPushButton(" Detect", variant="ghost")
         self.btn_detect.setFixedHeight(28)
         self.btn_detect.setIcon(self._icon("usb.svg"))
@@ -488,9 +675,7 @@ class ExportMode(DataModeWidget):
         picker_lay.addWidget(self.sep_eject_choose)
         picker_lay.addWidget(self.btn_target)
 
-        # Detect/Eject (and their separators) only apply to a USB
-        # destination; start collapsed (Folder is the default) and slide
-        # open/closed on _on_dest_changed.
+        # Detect/Eject
         for btn in (self.btn_detect, self.btn_eject):
             btn._natural_w = btn.sizeHint().width()
             btn.setMaximumWidth(0)
@@ -516,28 +701,30 @@ class ExportMode(DataModeWidget):
         outer.addStretch(1)
         return host
 
-    # ---- Step 1: Scope --------------------------------------------------
-    def _build_scope_page(self):
+    def _build_scope_page(self) -> QtWidgets.QWidget:
+        """Builds the export scope configuration page.
+
+        Creates the controls used to configure the export name, run selection,
+        optional date filtering, and output format. The run-selection and export-
+        format controls are arranged in a responsive two-column layout that
+        collapses to a single column when space is limited.
+
+        Returns:
+            QtWidgets.QWidget: The host widget containing the completed export
+                scope page.
+        """
         host, outer = self._step_host()
         self.scope_host = host
         card = self._card("Export Scope", "Choose what gets exported and how")
         lay = card.body
 
-        # --- Export name (full-width, top of the card) ------------------
-        # Pulled out of the responsive grid so it reads as the first thing
-        # you set before exporting, but otherwise a plain field like the
-        # rest of the page - no special highlight box.
+        # Export name
         self.name_field = QATCHLineEdit()
         self.name_field.setMinimumHeight(34)
         lay.addWidget(self._field("Export name", self.name_field))
         lay.addSpacing(4)
 
-        # The rest of the settings build as two self-contained "field" column
-        # units - Which Runs / Export As - dropped into a responsive grid
-        # that re-flows between 1 and 2 columns. Each field stacks its cards
-        # vertically rather than side-by-side, matching the wireframe.
-
-        # --- Which runs: All vs Selection (+ choose button) -------------
+        # Which runs
         self.scope_group = QATCHOptionCardGroup(self)
         self.btn_scope_all = QATCHOptionCard("All runs", "Export every run in the database")
         self.btn_scope_sel = QATCHOptionCard("Selected runs", "Pick specific devices or runs")
@@ -556,9 +743,7 @@ class ExportMode(DataModeWidget):
         scope_cards.addWidget(self.btn_scope_all)
         scope_cards.addWidget(self.btn_scope_sel)
 
-        # Date range is a checkable sub-option of "Which runs" - nested in
-        # its own tinted box, only meaningful once switched on. An unchecked
-        # box means "all dates" (date_filter == 0 / date_filter_max == None).
+        # Date range
         date_box = QtWidgets.QFrame()
         date_box.setObjectName("dateRangeBox")
         self._date_box = date_box
@@ -586,7 +771,6 @@ class ExportMode(DataModeWidget):
         self.date_end.setMaximumDate(today)
         self.date_end.setMinimumHeight(34)
         self.date_end.setStyleSheet(self._date_qss())
-        # Keep the window coherent: start can't exceed end, end can't precede start.
         self.date_start.dateChanged.connect(lambda d: self.date_end.setMinimumDate(d))
         self.date_end.dateChanged.connect(
             lambda d: self.date_start.setMaximumDate(min(d, QtCore.QDate.currentDate()))
@@ -594,7 +778,7 @@ class ExportMode(DataModeWidget):
         self.date_end.setMinimumDate(self.date_start.date())
 
         date_inner = QtWidgets.QHBoxLayout()
-        date_inner.setContentsMargins(20, 0, 0, 0)  # indent under the checkbox
+        date_inner.setContentsMargins(20, 0, 0, 0)
         date_inner.setSpacing(8)
         self.lbl_date_from = QtWidgets.QLabel("From")
         self.lbl_date_from.setStyleSheet(self._inline_lbl_qss())
@@ -614,7 +798,7 @@ class ExportMode(DataModeWidget):
         which_inner.addWidget(date_box)
         self.field_which = self._field("Which runs", which_inner)
 
-        # --- Export as: CSV / ZIP / Folder -------------------------------
+        # Export as CSV / ZIP / Folder
         self.format_group = QATCHOptionCardGroup(self)
         self.rb_csv = QATCHOptionCard("CSV Report", "A single spreadsheet - choose columns next")
         self.rb_zip = QATCHOptionCard("ZIP Archive", "One compressed archive of raw run files")
@@ -630,8 +814,6 @@ class ExportMode(DataModeWidget):
             format_col.addWidget(c)
         self.field_export_as = self._field("Export as", format_col)
 
-        # Responsive grid. Wide layout pairs the two columns side-by-side;
-        # narrow stacks them so cards never get crushed.
         self.scope_grid = QtWidgets.QGridLayout()
         self.scope_grid.setContentsMargins(0, 0, 0, 0)
         self.scope_grid.setHorizontalSpacing(20)
@@ -646,13 +828,24 @@ class ExportMode(DataModeWidget):
         outer.addStretch(1)
         return host
 
-    # ---- Step 2: Fields -------------------------------------------------
-    def _build_fields_page(self):
+    def _build_fields_page(self) -> QtWidgets.QWidget:
+        """Builds the export fields and existing-file policy page.
+
+        Creates the CSV report field-selection controls, including bulk
+        select/clear actions and a flow layout of toggle chips for individual
+        columns. The required `Run Name` field is always included and cannot
+        be disabled.
+
+        Also creates the existing-file handling controls, allowing the user to
+        choose whether matching files are merged, replaced, or skipped during
+        export.
+
+        Returns:
+            QtWidgets.QWidget: The host widget containing the completed fields
+                configuration page.
+        """
         host, outer = self._step_host()
 
-        # "Select all" / "Clear" dock into the card header, top-right, next
-        # to the title - a quick bulk action so ticking columns one-by-one
-        # isn't the only way to set up a wide report.
         header_actions = QtWidgets.QHBoxLayout()
         header_actions.setContentsMargins(0, 0, 0, 0)
         header_actions.setSpacing(4)
@@ -683,9 +876,7 @@ class ExportMode(DataModeWidget):
         cols_row.addWidget(self.csv_count_label)
         lay.addLayout(cols_row)
 
-        # Columns flow as toggle chips (wrap left-to-right) rather than a
-        # fixed checkbox grid, so labels of differing length pack tightly.
-        # "Run Name" is required, so its chip stays checked + disabled.
+        # Columns flow as toggle chips
         self.csv_chips = {}
         chip_host = QtWidgets.QWidget()
         chip_host.setStyleSheet("background: transparent;")
@@ -706,7 +897,7 @@ class ExportMode(DataModeWidget):
         self._fields_hairline = self._hairline()
         outer.addWidget(self._fields_hairline)
 
-        # --- Existing-files policy: Merge / Replace / Skip -------------
+        # Existing-files policy
         policy_card = self._card("Existing Files")
         policy_card.body.addWidget(self._caption("When a file already exists"))
         policy_desc = QtWidgets.QLabel(
@@ -735,23 +926,56 @@ class ExportMode(DataModeWidget):
         outer.addStretch(1)
         return host
 
-    def _on_csv_select_all(self):
+    def _on_csv_select_all(self) -> None:
+        """Selects all optional CSV report fields.
+
+        Iterates over the available CSV field chips and checks every selectable
+        field. The required `Run Name` field is left unchanged because it is
+        always included in the export.
+        """
         for field, chip in self.csv_chips.items():
             if field != "Run Name":
                 chip.setChecked(True)
 
-    def _on_csv_clear(self):
+    def _on_csv_clear(self) -> None:
+        """Clears all optional CSV report field selections.
+
+        Unchecks every selectable CSV field chip while leaving the required
+        `Run Name` field checked and unchanged.
+        """
         for field, chip in self.csv_chips.items():
             if field != "Run Name":
                 chip.setChecked(False)
 
-    def _update_csv_count(self, *_):
+    def _update_csv_count(self, *_) -> None:
+        """Updates the CSV field-selection count label.
+
+        Recalculates the number of currently selected CSV columns and updates
+        the associated label to display the selected count relative to the
+        total number of available fields.
+
+        Args:
+            *_: Ignored signal arguments. Accepts arbitrary positional arguments
+                so the method can be connected directly to Qt signals that emit
+                values.
+        """
         total = len(CSV_FIELDS)
         selected = len(self._selected_csv_cols())
         self.csv_count_label.setText(f"{selected} of {total} selected")
 
-    # ---- Step 3: Review --------------------------------------------------
-    def _build_review_page(self):
+    def _build_review_page(self) -> QtWidgets.QWidget:
+        """Builds the final review and export page.
+
+        Creates the review page heading, explanatory subtitle, dynamically
+        populated review-card layout, and a confirmation banner summarizing
+        the export action. The page allows users to verify their selections
+        before proceeding with the export and provides the visual structure
+        used for editing previously configured options.
+
+        Returns:
+            QtWidgets.QWidget: The host widget containing the completed review
+                and export page.
+        """
         host, outer = self._step_host()
 
         heading = QtWidgets.QLabel("Review & export")
@@ -770,9 +994,7 @@ class ExportMode(DataModeWidget):
         self.review_cards_lay.setSpacing(12)
         outer.addLayout(self.review_cards_lay)
 
-        # "Ready to export" banner - restates the action in one sentence so
-        # the final click is unambiguous, instead of leaving the user to
-        # infer it from the cards above.
+        # "Ready to export" banner
         self.review_banner = QtWidgets.QFrame()
         self.review_banner.setObjectName("reviewBanner")
         banner_lay = QtWidgets.QHBoxLayout(self.review_banner)
@@ -790,7 +1012,17 @@ class ExportMode(DataModeWidget):
         outer.addStretch(1)
         return host
 
-    def _refresh_review(self):
+    def _refresh_review(self) -> None:
+        """Rebuilds the review summary from the current export settings.
+
+        Clears the existing review cards and reconstructs them using the
+        currently selected destination, scope, date range, export format,
+        CSV fields, and existing-file policy. The review banner is also
+        updated to provide a concise summary of the pending export operation.
+
+        The method is intended to be called whenever the underlying export
+        configuration changes or the review page needs to be refreshed.
+        """
         while self.review_cards_lay.count():
             item = self.review_cards_lay.takeAt(0)
             w = item.widget()
@@ -866,13 +1098,22 @@ class ExportMode(DataModeWidget):
             f"Ready to export {run_count} run{plural} as {fmt_phrase} to {dest_label}."
         )
 
-    def _build_review_card(self, title, step_index, rows):
-        """One grouped review section: a small caption + "Edit" link (jumps
-        back to the step that owns this data) above a 2-column field grid.
+    def _build_review_card(self, title: str, step_index: int, rows: list) -> QtWidgets.QFrame:
+        """Builds a grouped review section for the export summary.
 
-        Borderless - the review list separates its entries with hairlines
-        (see _refresh_review) rather than nesting another bordered panel
-        inside the step's own content pane.
+        Creates a borderless review card containing a section heading, an
+        `Edit` action that navigates back to the corresponding configuration
+        step, and a two-column grid of label/value fields.
+
+        Args:
+            title: Section title displayed above the review fields.
+            step_index: Index of the configuration step to open when the user
+                activates the `Edit` button.
+            rows: Sequence of `(label, value)` pairs to display in the review
+                field grid.
+
+        Returns:
+            QtWidgets.QFrame: The completed review section widget.
         """
         card = QtWidgets.QFrame()
         card.setObjectName("reviewCard")
@@ -907,10 +1148,19 @@ class ExportMode(DataModeWidget):
         clay.addLayout(grid)
         return card
 
-    def _count_scoped_runs(self):
-        """Count run folders matching the current scope (device/run
-        selection + unnamed-run policy + date range), for the Review
-        banner. Lightweight: only stats file mtimes, never parses runs."""
+    def _count_scoped_runs(self) -> int:
+        """Counts runs matching the current export scope.
+
+        Counts run directories according to the currently selected device/run
+        scope, unnamed-run export policy, and optional date range. The method
+        only inspects directory structure and run metadata needed for date
+        filtering; it does not parse the contents of individual run files.
+
+        Returns:
+            int: Number of runs matching the current export scope. Returns `0`
+                if the configured data directory cannot be accessed or no runs
+                satisfy the current filters.
+        """
         data_path = Constants.log_prefer_path
         select_device, select_run = os.path.split(self._source_subfolder)
         if select_device == "":
@@ -978,7 +1228,21 @@ class ExportMode(DataModeWidget):
         return True
 
     @staticmethod
-    def _review_field(label, value):
+    def _review_field(label: str, value: float) -> QtWidgets.QWidget:
+        """Builds a label/value field for the export review summary.
+
+        Creates a compact vertical field containing a muted, uppercase label
+        and a prominently styled value. The value supports word wrapping so
+        longer paths, column lists, or other review details remain readable.
+
+        Args:
+            label: Descriptive label displayed above the value.
+            value: Value to display in the review field. It is converted to a
+                string before being assigned to the label.
+
+        Returns:
+            QtWidgets.QWidget: A widget containing the styled label and value.
+        """
         tok = ThemeManager.instance().tokens()
         block = QtWidgets.QWidget()
         block.setStyleSheet("background: transparent;")
@@ -1001,13 +1265,29 @@ class ExportMode(DataModeWidget):
         blay.addWidget(val)
         return block
 
-    def _selected_csv_cols(self):
-        """The ordered list of columns the user has ticked (Run Name always
-        first/included). Replaces the old combo_csv_cols.check_items() read."""
+    def _selected_csv_cols(self) -> list[str]:
+        """Returns the currently selected CSV report columns in defined order.
+
+        The required `Run Name` column is always included and appears first,
+        regardless of the state of its associated chip. Optional columns are
+        included when their corresponding toggle chip is checked.
+
+        Returns:
+            list[str]: Ordered list of CSV column names selected for export.
+        """
         return [f for f in CSV_FIELDS if f == "Run Name" or self.csv_chips[f].isChecked()]
 
-    # ---- Status + actions ---------------------------------------------
     def _build_status_and_actions(self):
+        """Builds the export progress indicator and wizard action controls.
+
+        Creates the footer containing a slim progress bar and the navigation
+        buttons used to cancel, move backward, advance through the wizard, or
+        initiate the export. The progress bar is hidden while no export is
+        running and is updated through the export task's progress reporting.
+
+        The cancel action is available in both idle and active states, where it
+        either resets the wizard or aborts the current export task.
+        """
         footer = QtWidgets.QFrame()
         footer.setObjectName("exportFooter")
         footer.setStyleSheet("QFrame#exportFooter { background: transparent; border: none; }")
@@ -1015,9 +1295,7 @@ class ExportMode(DataModeWidget):
         flay.setContentsMargins(0, 4, 0, 0)
         flay.setSpacing(8)
 
-        # Slim progress bar (matches the Import UI). Visible only while an export
-        # is running; driven by the pct emitted on the export channel. Replaces
-        # the old inline status readout.
+        # Progress bar
         self.export_progress = QtWidgets.QProgressBar()
         self.export_progress.setObjectName("exportProgress")
         self.export_progress.setRange(0, 100)
@@ -1026,10 +1304,6 @@ class ExportMode(DataModeWidget):
         self.export_progress.setFixedHeight(3)
         self.export_progress.setVisible(False)
         flay.addWidget(self.export_progress)
-
-        # Cancel sits on the left (always available - aborts a running task, or
-        # resets the wizard to step 1 when idle); Back/Next-or-Export on the
-        # right, matching the wireframe's footer.
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
@@ -1051,18 +1325,22 @@ class ExportMode(DataModeWidget):
         flay.addLayout(row)
         self.root.addWidget(footer, 0)
 
-    # ------------------------------------------------------------------
-    #  Wizard step navigation
-    # ------------------------------------------------------------------
-    def _go_to_step(self, index):
+    def _go_to_step(self, index: int) -> None:
+        """Navigates to a specified export wizard step.
+
+        Updates the current step, navigation controls, and stepper state before
+        animating the transition from the current page to the requested page.
+        When navigating to the review step, refreshes its contents first so the
+        transition reflects the latest export selections.
+
+        Args:
+            index: Zero-based index of the destination wizard step.
+        """
         if index == self._step:
             return
         going_forward = index > self._step
         old_index = self._step
 
-        # Prep the destination page's content BEFORE sliding so its captured
-        # pixmap (used by the slide) reflects the latest selections, not a
-        # stale snapshot from whenever that page was last shown.
         if index == len(self._step_labels) - 1:
             self._refresh_review()
 
@@ -1073,15 +1351,26 @@ class ExportMode(DataModeWidget):
             self._update_export_enabled()
         else:
             self.btn_next.setEnabled(True)
-        self.btn_next.setText(" Export" if index == len(self._step_labels) - 1 else " Next →")
+        self.btn_next.setText(" Export" if index == len(self._step_labels) - 1 else " Next")
 
         self._slide_step(old_index, index, going_forward)
 
-    def _go_back(self):
+    def _go_back(self) -> None:
+        """Navigates to the previous export wizard step.
+
+        Does nothing when the wizard is already on its first step.
+        """
         if self._step > 0:
             self._go_to_step(self._step - 1)
 
-    def _go_next_or_export(self):
+    def _go_next_or_export(self) -> None:
+        """Advances the wizard or starts the export operation.
+
+        On the final review step, initiates the export. On earlier steps,
+        validates the required destination or date-range configuration before
+        advancing to the next step. Displays a warning dialog when validation
+        fails.
+        """
         if self._step == len(self._step_labels) - 1:
             self._do_export()
             return
@@ -1101,15 +1390,29 @@ class ExportMode(DataModeWidget):
                 return
         self._go_to_step(self._step + 1)
 
-    def _on_cancel_clicked(self):
+    def _on_cancel_clicked(self) -> None:
+        """Handles the export wizard's Cancel action.
+
+        Requests an abort from the export service when an export task is
+        running. When idle, resets the wizard to its default configuration.
+        """
         if self._task_running:
             self.services.request_abort()
         else:
             self._reset_state()
 
-    def _reset_state(self):
-        """Reset every wizard field back to its defaults and return to step
-        0 - used after a completed export, and by Cancel when idle."""
+    def _reset_state(self) -> None:
+        """Resets the export wizard to its default configuration.
+
+        Restores the source selection, export format, date range, existing-file
+        policy, CSV field selections, dated-subfolder option, generated export
+        name, destination, and internal export state. The wizard is returned to
+        the first step and its stepper is explicitly reset so previously
+        completed steps are no longer marked as complete.
+
+        This method is used after a completed export and when Cancel is pressed
+        while the wizard is idle.
+        """
         self._source_subfolder = ""
         self.btn_select_run.setText(" Choose…")
         self.btn_select_run.setVisible(False)
@@ -1135,20 +1438,19 @@ class ExportMode(DataModeWidget):
         self._refresh_target(no_ask=True)
 
         self._exported = False
-        # Explicit, not just via _go_to_step(0): that call is a no-op when
-        # already on step 0, which would otherwise leave old steps marked
-        # "done" (still highlighted/clickable) after a reset.
         self.stepper.reset()
         self._go_to_step(0)
 
-    # ------------------------------------------------------------------
-    #  Step slide transition (pixmap-proxy cross-slide, same technique as
-    #  DataManagementWidget._slide_to - adapted to horizontal/Next-Back).
-    # ------------------------------------------------------------------
-    def _teardown_step_slide(self):
-        """Stop any running slide and destroy its proxy clip immediately, so
-        a rapid double Next/Back click can't leave a stale page snapshot
-        painting over the live stack."""
+    def _teardown_step_slide(self) -> None:
+        """Stops and cleans up any active step-slide animation.
+
+        Immediately stops the current slide animation and removes its temporary
+        proxy clip. This prevents stale page snapshots from remaining visible
+        when navigation occurs again before a previous slide has finished.
+
+        The live step stack is also restored to its normal visible state and any
+        graphics effect applied during the animation is removed.
+        """
         group = getattr(self, "_step_slide_group", None)
         if group is not None:
             try:
@@ -1170,10 +1472,31 @@ class ExportMode(DataModeWidget):
             self.step_stack.setGraphicsEffect(None)
             self.step_stack.show()
 
-    def _slide_step(self, old_index, new_index, going_forward):
-        """Cross-slide the outgoing/incoming step pages horizontally: Next
-        slides the new page in from the right (old exits left); Back is the
-        mirror image."""
+    def _slide_step(self, old_index: int, new_index: int, going_forward: bool) -> None:
+        """Animates a horizontal transition between export wizard steps.
+
+        Captures the outgoing and incoming pages as pixmaps and animates them
+        together inside a temporary clipping frame. When moving forward, the
+        current page exits to the left while the new page enters from the right;
+        navigating backward reverses the direction.
+
+        Any existing slide animation is torn down before starting a new one.
+        The live step stack is hidden for the duration of the animation to
+        prevent the newly selected page from bleeding through the animated
+        snapshots.
+
+        Args:
+            old_index: Zero-based index of the currently displayed step.
+            new_index: Zero-based index of the destination step.
+            going_forward: Whether navigation is moving toward a later step.
+                If `False`, the transition is animated in the reverse
+                direction.
+
+        Notes:
+            If either page is unavailable or the step stack has not yet been
+            laid out with a valid size, the method falls back to an immediate
+            step change without animation.
+        """
         self._teardown_step_slide()
 
         stack = self.step_stack
@@ -1181,7 +1504,7 @@ class ExportMode(DataModeWidget):
         new_widget = stack.widget(new_index)
         size = stack.size()
         if old_widget is None or new_widget is None or size.width() <= 0 or size.height() <= 0:
-            stack.setCurrentIndex(new_index)  # layout not settled - fall back to instant
+            stack.setCurrentIndex(new_index)  # layout not settled
             return
 
         old_pix = old_widget.grab()
@@ -1194,7 +1517,7 @@ class ExportMode(DataModeWidget):
         clip.setStyleSheet("QFrame#stepSlideClip { background: transparent; border: none; }")
         clip.setGeometry(stack.geometry())
         clip.show()
-        clip.raise_()  # paint over the (still-visible, still-laid-out) live stack
+        clip.raise_()  # paint over the live stack
         self._step_slide_clip = clip
 
         w = size.width()
@@ -1219,26 +1542,8 @@ class ExportMode(DataModeWidget):
         new_lbl.show()
         new_lbl.raise_()
 
-        # Hide the live stack for the duration - genuinely hidden, not just
-        # covered. Relying on "the proxies always cover it" (the previous
-        # approach) left a real ghosting artifact: the live stack already
-        # shows the NEW page underneath, and any imprecision (DPI scaling,
-        # async layout/paint timing) let it bleed through during the slide.
-        # A plain hide() has nothing like that to go wrong - Qt simply skips
-        # painting it, which is also far cheaper than the QGraphicsOpacityEffect
-        # this used to use (that one applied to a QStackedWidget full of
-        # custom-painted children - GlassOptionCard, GlassPushButton, toggle
-        # chips - and intermittently raced Qt's own paint pass, producing
-        # "QPainter::begin: a paint device can only be painted by one painter
-        # at a time" spam). retainSizeWhenHidden (set once at construction)
-        # keeps its layout space reserved, so the stepper/footer don't snap
-        # around it the way they did with a plain setVisible(False).
+        # Hide the live stack for the duration
         stack.hide()
-
-        # Both animations share the EXACT same duration/curve so old and new
-        # move in lockstep - old's trailing edge and new's leading edge stay
-        # joined at every frame (a "push"), with no momentary gap that would
-        # let the live stack (already showing the new page) flash through.
         anim_old = QtCore.QPropertyAnimation(old_lbl, b"pos", self)
         anim_old.setDuration(220)
         anim_old.setEasingCurve(QtCore.QEasingCurve.OutCubic)
@@ -1267,11 +1572,18 @@ class ExportMode(DataModeWidget):
         self._step_slide_group = group
         group.start()
 
-    # ------------------------------------------------------------------
-    #  Responsive grid relayout
-    # ------------------------------------------------------------------
-    def _relayout_grid(self, force=False):
-        """Place the Scope step's fields in 1 or 2 columns based on width."""
+    def _relayout_grid(self, force: bool = False) -> None:
+        """Reflows the Scope step fields between one and two columns.
+
+        Determines the available content width and switches the Scope step
+        layout between a two-column arrangement for wider views and a
+        single-column arrangement for narrower views. Existing field widgets
+        are detached and reinserted into the grid without being destroyed.
+
+        Args:
+            force: Whether to rebuild the grid even when the current column
+                configuration already matches the available width.
+        """
         avail = (
             self.scope_scroll.viewport().width() if hasattr(self, "scope_scroll") else self.width()
         )
@@ -1301,66 +1613,97 @@ class ExportMode(DataModeWidget):
         for field in self._scope_fields:
             field.show()
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, event) -> None:
+        """Handles resizing of the export wizard.
+
+        Performs the standard Qt resize handling and updates the Scope step's
+        responsive field grid when the widget dimensions change.
+
+        Args:
+            event: Qt resize event containing the widget's new dimensions.
+        """
         super().resizeEvent(event)
         if hasattr(self, "scope_grid"):
             self._relayout_grid()
 
-    # ------------------------------------------------------------------
-    #  Shared-service hooks
-    # ------------------------------------------------------------------
-    def on_enter(self):
+    def on_enter(self) -> None:
+        """Initializes the export UI when the wizard becomes active.
+
+        Generates the default export name, refreshes the current destination,
+        connects USB device add/remove signals, updates export availability,
+        and forces an initial responsive layout of the Scope step.
+        """
         self._generate_name()
         self._refresh_target(no_ask=True)
-        # Pick up any drive the shared loop already found.
         self.services.usb_add.connect(self._on_usb_add)
         self.services.usb_remove.connect(self._on_usb_remove)
         self._update_export_enabled()
         self._relayout_grid(force=True)
 
-    def on_freeze(self, frozen: bool):
-        # Mirror freezeGUI's enable/disable (Erase-only handled elsewhere).
-        # Destination cards aren't gated here: they live on their own wizard
-        # step the user can't reach mid-export anyway, and disabling them
-        # caused a visible "stuck disabled" flash on the Destination step
-        # right as a completed export resets back to it (the success signal
-        # can arrive on the GUI thread before the freeze-clearing one does).
+    def on_freeze(self, frozen: bool) -> None:
+        """Updates navigation controls when the export UI is frozen.
+
+        Disables or re-enables the Back and Next/Export buttons to mirror the
+        application's frozen GUI state while leaving destination controls
+        unchanged.
+
+        Args:
+            frozen: Whether the export UI should be disabled while an operation
+                is in progress.
+        """
         for w in (self.btn_next, self.btn_back):
             w.setDisabled(frozen)
 
-    def on_progress(self, label, pct, color):
-        # The slim bar conveys progress; text labels are logged, not shown.
+    def on_progress(self, label: str, pct: float, color: str) -> None:
+        """Updates export progress and handles successful completion.
+
+        Updates the export progress bar from the reported percentage. When the
+        progress reaches 100 percent with the success color, treats the export
+        as successfully completed and resets the wizard to its default state.
+
+        Args:
+            label: Status message associated with the progress update.
+            pct: Export completion percentage.
+            color: Status color code identifying the result state. A value of
+                `"g"` at 100 percent indicates successful completion.
+        """
         try:
             self.export_progress.setValue(max(0, min(100, int(pct))))
         except Exception:
             pass
-        # pct == 100 with the "success" colour is unique to _export_task's
-        # final "Exported to ..." message (cancelled/error finish at 100
-        # with "b"/"r" instead) - reset the wizard back to a clean slate
-        # once an export genuinely completes.
         if pct == 100 and color == "g":
             self._reset_state()
 
-    # ------------------------------------------------------------------
-    #  USB / folder destination state (preserves chk_usb/chk_folder/drive)
-    # ------------------------------------------------------------------
     def _set_destination(self, kind):
-        """Programmatically set the destination ('usb' or 'folder')."""
+        """Selects the export destination type programmatically.
+
+        Args:
+            kind: Destination type to select. `"usb"` selects the USB
+                destination; any other value selects the local folder
+                destination.
+        """
         self.dest_group.setCheckedId(0 if kind == "usb" else 1)
 
-    def _on_dest_changed(self, card, checked):
+    def _on_dest_changed(self, card, checked: bool) -> None:
+        """Handles changes to the selected export destination.
+
+        Updates the internal USB/folder destination state, adjusts the
+        visibility of USB-specific controls, and synchronizes the target path
+        with the selected destination. When USB is selected, an already
+        detected drive is adopted when available; otherwise the existing target
+        is preserved. When a folder is selected, the current target is restored
+        or refreshed as appropriate.
+
+        Args:
+            card: Destination option card whose checked state changed.
+            checked: Whether the destination card is now selected. Unchecked
+                cards are ignored.
+        """
         if not checked:
             return
         is_usb = card is self.card_usb
         self._chk_usb = is_usb
         self._chk_folder = not is_usb
-
-        # Detect/Eject are USB-only extras; Choose… stays available for both
-        # destinations so there's always a manual way to set/override the
-        # target - auto-detection isn't guaranteed to find a drive. Slide
-        # Detect/Eject open/closed rather than an abrupt show/hide; their
-        # separators track the same state (no point separating from a
-        # button that isn't there).
         self._slide_button(self.btn_detect, is_usb)
         self._slide_button(self.btn_eject, is_usb)
         self.sep_detect_eject.setVisible(is_usb)
@@ -1368,28 +1711,28 @@ class ExportMode(DataModeWidget):
         self.btn_target.setVisible(True)
 
         if is_usb:
-            # Switching to USB: adopt the currently detected USB drive if the
-            # shared loop already found one; otherwise leave the field as-is
-            # so a manually-chosen target (via Choose…) isn't clobbered.
-            # NOTE: usb_drive (hardware-detected), not drive (export target)
-            # - the latter may still hold a stale Folder path here.
             drive = getattr(self.services, "usb_drive", None)
             if drive:
                 self.target_field.setText(drive)
                 self._set_drive(drive)
         else:
-            # Folder: target is whatever was chosen / defaulted.
             t = self.target_field.text()
             self._set_drive(t if t and t != "[NONE]" else None)
             self._refresh_target(no_ask=True)
         self._update_export_enabled()
 
-    def _slide_button(self, widget, show):
-        """Slide a USB-only action button open (show=True) or closed
-        (show=False) by animating maximumWidth - a real QWidget property
-        that QHBoxLayout respects every frame, so siblings reflow smoothly
-        as it grows/shrinks (unlike animating geometry directly, which only
-        the layout itself is allowed to set)."""
+    def _slide_button(self, widget: QtWidgets.QWidget, show: bool) -> None:
+        """Animates the visibility of a destination action button.
+
+        Expands or collapses the button by animating its `maximumWidth` so the
+        surrounding layout can reflow smoothly. When hiding the button, it is
+        made invisible after the collapse animation completes.
+
+        Args:
+            widget: Button widget whose width should be animated.
+            show: Whether the button should be expanded and shown. If `False`,
+                the button is collapsed and hidden when the animation finishes.
+        """
         natural_w = getattr(widget, "_natural_w", widget.sizeHint().width())
         anim = QtCore.QPropertyAnimation(widget, b"maximumWidth", self)
         anim.setDuration(200)
@@ -1412,11 +1755,17 @@ class ExportMode(DataModeWidget):
         self._dest_anims.append(anim)
         anim.start()
 
-    def _on_usb_add(self):
-        # usb_drive is the hardware-detected letter; drive is the export
-        # target. Mirror one into the other only while USB is the active
-        # destination - otherwise a detected stick must not clobber a
-        # Folder destination the user already chose.
+    def _on_usb_add(self) -> None:
+        """Handles detection of a newly available USB drive.
+
+        Updates the export target to the detected USB drive when USB is the
+        currently selected destination. A folder destination is left unchanged
+        so that automatic USB detection cannot overwrite a target selected by
+        the user.
+
+        Also logs the detection event and refreshes the export button's enabled
+        state.
+        """
         drive = getattr(self.services, "usb_drive", None)
         if self._chk_usb:
             self.target_field.setText(drive if drive else "[NONE]")
@@ -1424,7 +1773,13 @@ class ExportMode(DataModeWidget):
         Log.i(TAG, f"[{drive}] USB drive found! Ready to export.")
         self._update_export_enabled()
 
-    def _on_usb_remove(self):
+    def _on_usb_remove(self) -> None:
+        """Handles removal of the currently detected USB drive.
+
+        Logs the removal event and clears the active export target when USB is
+        the selected destination. Folder destinations are left unchanged.
+        The export button state is refreshed after the target is updated.
+        """
         Log.w(TAG, "USB drive removed. Please eject first next time.")
         if self._chk_usb:
             self._set_drive(None)
@@ -1432,26 +1787,52 @@ class ExportMode(DataModeWidget):
         self._update_export_enabled()
 
     def _set_drive(self, value):
-        # The shared service owns the canonical 'drive'; mirror locally too.
+        """Sets the shared export destination path.
+
+        Updates the canonical `drive` value maintained by the shared service.
+        Errors from the service assignment are ignored so a failure to mirror
+        the value does not interrupt the export UI.
+
+        Args:
+            value: Destination path to assign, or `None` when no destination
+                is currently available.
+        """
         try:
             self.services.drive = value
         except Exception:
             pass
 
-    def _drive(self):
+    def _drive(self) -> str | None:
+        """Returns the currently configured export destination.
+
+        Returns:
+            str | None: The destination path maintained by the shared service,
+                or `None` when no destination is configured.
+        """
         return getattr(self.services, "drive", None)
 
-    def _update_export_enabled(self):
-        # Live-gates Next while the user is on the Destination step; steps
-        # 1-3 validate (and warn) at click-time instead in _go_next_or_export.
+    def _update_export_enabled(self) -> None:
+        """Updates whether export navigation is available.
+
+        Enables the Next button while on the Destination step only when a valid
+        destination type is selected and a destination path is available.
+        Later wizard steps perform their validation when the user attempts to
+        advance.
+        """
         ready = (self._chk_usb or self._chk_folder) and self._drive() is not None
         if getattr(self, "_step", 0) == 0 and hasattr(self, "btn_next"):
             self.btn_next.setEnabled(bool(ready))
 
-    # ------------------------------------------------------------------
-    #  Selection / target pickers
-    # ------------------------------------------------------------------
-    def _select_target(self):
+    def _select_target(self) -> None:
+        """Prompts the user to select a local export destination folder.
+
+        Opens a directory-selection dialog using the existing target as the
+        initial location when available, otherwise falling back to the default
+        export directory. When a folder is selected, updates both the shared
+        destination and target field, then refreshes the export button state.
+
+        If the dialog is cancelled, the current destination remains unchanged.
+        """
         start = QtCore.QUrl.fromLocalFile(
             os.path.join(os.path.dirname(Constants.log_prefer_path), "export")
         )
@@ -1467,8 +1848,21 @@ class ExportMode(DataModeWidget):
         self.target_field.setText(path)
         self._update_export_enabled()
 
-    def _refresh_target(self, no_ask=True):
-        """Default the folder target (old select_folder_target(no_ask=True))."""
+    def _refresh_target(self, no_ask: bool = True) -> None:
+        """Refreshes and validates the default export folder target.
+
+        Uses the existing target when available, otherwise falls back to the
+        application's default export directory. When `no_ask` is enabled,
+        ensures the target directory exists and updates the shared destination
+        when the Folder destination is active.
+
+        If the target cannot be created or accessed, clears the shared
+        destination and marks the target field as unavailable.
+
+        Args:
+            no_ask: Whether to refresh the target without prompting the user.
+                Defaults to `True`.
+        """
         cur = self.target_field.text()
         if cur and cur != "[NONE]":
             target = cur
@@ -1487,7 +1881,18 @@ class ExportMode(DataModeWidget):
                 self.target_field.setText(target)
         self._update_export_enabled()
 
-    def _select_run(self):
+    def _select_run(self) -> None:
+        """Prompts the user to select a device or run directory for export.
+
+        Opens a directory-selection dialog rooted at the logged-data directory.
+        Valid selections are converted to a relative source path, switch the
+        scope to `Selected runs`, update the selection button label, and
+        regenerate the export name.
+
+        Selections outside the configured logged-data directory are rejected and
+        leave the current run selection unchanged.
+
+        """
         data_root = Constants.log_prefer_path
         start = QtCore.QUrl.fromLocalFile(data_root)
         folder = QtWidgets.QFileDialog.getExistingDirectoryUrl(self, "Select Folder", start)
@@ -1499,8 +1904,7 @@ class ExportMode(DataModeWidget):
             self._source_subfolder = ""
             Log.w(TAG, "Selected folder not in logged data path.")
             return
-        self.scope_group.setCheckedId(1)  # Selection - setChecked() alone wouldn't
-        # enforce exclusivity or notify the group (only the click path / setCheckedId do).
+        self.scope_group.setCheckedId(1)
         sub = selected.replace(data_root, "").replace("/", Constants.slash)
         sub = sub.strip(Constants.slash)
         self._source_subfolder = sub
@@ -1509,22 +1913,46 @@ class ExportMode(DataModeWidget):
         self.btn_select_run.setText(f" {kind}{leaf}")
         self._generate_name()
 
-    def _on_selection_changed(self, *_):
+    def _on_selection_changed(self, *_) -> None:
+        """Updates controls when the run-selection mode changes.
+
+        Shows the run-selection button when `Selected runs` is active. When
+        `All runs` is selected, clears the current source subfolder, restores
+        the default selection label, and regenerates the export name.
+
+        Args:
+            *_: Ignored signal arguments emitted by the option-card group.
+        """
         self.btn_select_run.setVisible(self.btn_scope_sel.isChecked())
         if self.btn_scope_all.isChecked():
             self.btn_select_run.setText(" Choose…")
             self._source_subfolder = ""
             self._generate_name()
 
-    def _on_date_range_toggled(self, *_):
+    def _on_date_range_toggled(self, *_) -> None:
+        """Enables or disables the date-range controls.
+
+        Synchronizes the enabled state of the start/end date editors and their
+        associated labels with the `Limit to a date range` checkbox.
+
+        Args:
+            *_: Ignored signal arguments emitted by the date-range checkbox.
+        """
         enabled = self.chk_date_range.isChecked()
         for w in (self.date_start, self.date_end, self.lbl_date_from, self.lbl_date_to):
             w.setEnabled(enabled)
 
-    # ------------------------------------------------------------------
-    #  Name / format handlers
-    # ------------------------------------------------------------------
-    def _generate_name(self):
+    def _generate_name(self) -> None:
+        """Generates and applies the default export name.
+
+        Uses the selected run's leaf directory name when a specific source
+        subfolder is selected. Otherwise, generates a date-based name using the
+        current date followed by the `_QATCH_EXPORT` suffix.
+
+        The export name field is enabled only when dated subfolders are enabled;
+        otherwise the field is cleared because no explicit subfolder name is
+        required.
+        """
         _, leaf = os.path.split(self._source_subfolder)
         default = (
             str(datetime.datetime.now())
@@ -1540,29 +1968,39 @@ class ExportMode(DataModeWidget):
         self.name_field.setEnabled(enabled)
         self.name_field.setText(default if enabled else "")
 
-    def _on_dated_subfolder_changed(self, *_):
+    def _on_dated_subfolder_changed(self, *_) -> None:
+        """Regenerates the export name after the dated-subfolder setting changes.
+
+        Args:
+            *_: Ignored signal arguments emitted by the dated-subfolder control.
+        """
         self._generate_name()
 
-    def _on_format_changed(self, *_):
+    def _on_format_changed(self, *_) -> None:
+        """Updates the UI for the selected export format.
+
+        Enables or disables the CSV field-selection card based on whether CSV
+        export is selected, applies visual dimming when the card is inactive,
+        and updates the existing-file policy labels to reflect the semantics
+        of the selected format.
+
+        For CSV exports, the `Merge` and `Skip` policies are relabeled as
+        `Append` and `Cancel` respectively. Non-CSV formats restore the
+        original `Merge` and `Skip` labels and descriptions.
+
+        Args:
+            *_: Ignored signal arguments emitted by the export-format option
+                group.
+        """
         is_csv = self.rb_csv.isChecked()
         self.csv_card.setEnabled(is_csv)
-        # Dim the disabled CSV card so the active format reads clearly. A
-        # QGraphicsOpacityEffect is safe here (per GlassOptionCard.setCardEnabled's
-        # reasoning): this card only repaints on rare format-change events,
-        # never on a timer/hover cycle, so it doesn't hit the offscreen
-        # pixmap-caching ghosting failure mode of continuously-animated widgets.
+        # Dim the disabled CSV card so the active format reads clearly.
         if not is_csv:
             if self._csv_card_opacity is None:
                 self._csv_card_opacity = QtWidgets.QGraphicsOpacityEffect(self.csv_card)
             self._csv_card_opacity.setOpacity(0.5)
             self.csv_card.setGraphicsEffect(self._csv_card_opacity)
         else:
-            # QWidget.setGraphicsEffect() deletes the widget's *previous*
-            # effect (including when clearing it with None), leaving
-            # self._csv_card_opacity a dangling reference to a destroyed
-            # C++ object. Drop the Python-side reference too so the next
-            # non-CSV toggle's `is None` check above lazily creates a fresh
-            # effect instead of calling setOpacity() on the deleted one.
             self.csv_card.setGraphicsEffect(None)
             self._csv_card_opacity = None
         # CSV relabels the merge/skip policy to Append/Cancel (semantics differ).
@@ -1576,51 +2014,85 @@ class ExportMode(DataModeWidget):
             self.rb_merge.setDescription("Keep newer versions")
             self.rb_skip.setText("Skip")
             self.rb_skip.setDescription("Leave existing untouched")
-        # The dated-subfolder toggle stays freely editable regardless of
-        # format: it lives on the Destination step, before the user has even
-        # reached this Scope step's format choice, so locking/forcing it here
-        # would make a control they already set appear to break for no
-        # visible reason. Unchecking it for CSV/ZIP just changes the report's
-        # default file name (falls back to the target folder's name).
 
-    # ------------------------------------------------------------------
-    #  USB detect / eject (delegate to shared service)
-    # ------------------------------------------------------------------
-    def _do_detect(self):
+    def _do_detect(self) -> None:
+        """Requests USB device detection from the shared service.
+
+        Invokes the shared USB detection trigger when available. If the service
+        does not expose a callable detection handler, logs the request instead,
+        leaving USB enumeration to the shared service loop.
+        """
         trigger = getattr(self.services, "request_detect", None)
         if callable(trigger):
             trigger()
         else:
             Log.d(f"{TAG} detect requested (shared loop handles enumeration)")
 
-    def _do_eject(self):
-        # Eject task lives with the shared worker; reuse if exposed.
+    def _do_eject(self) -> None:
+        """Requests ejection of the currently selected USB device.
+
+        Invokes the shared service ejector when available. If no ejector is
+        exposed by the service, logs the request without performing an eject
+        operation.
+        """
         ejector = getattr(self.services, "eject", None)
         if callable(ejector):
             ejector()
         else:
             Log.d(f"{TAG} eject requested (no shared ejector wired yet)")
 
-    # ------------------------------------------------------------------
-    #  Export
-    # ------------------------------------------------------------------
     @staticmethod
-    def _qdate_to_utc_floor(qdate):
-        """Local midnight at the START of `qdate`, as an aware UTC datetime."""
+    def _qdate_to_utc_floor(qdate) -> datetime.datetime:
+        """Converts a Qt date to the UTC start of its local calendar day.
+
+        Interprets the supplied date at local midnight and converts that instant
+        to an aware UTC datetime.
+
+        Args:
+            qdate: Qt date to convert.
+
+        Returns:
+            datetime.datetime: Timezone-aware UTC datetime representing local
+                midnight at the beginning of `qdate`.
+        """
         local = datetime.datetime(qdate.year(), qdate.month(), qdate.day(), 0, 0, 0).astimezone()
         return local.astimezone(tz.utc)
 
     @staticmethod
-    def _qdate_to_utc_ceiling(qdate):
-        """Local midnight at the END of `qdate` (start of next day), UTC aware."""
+    def _qdate_to_utc_ceiling(qdate) -> datetime.datetime:
+        """Converts a Qt date to the UTC start of the following local day.
+
+        Interprets the supplied date as ending at local midnight immediately
+        after the date and converts that instant to an aware UTC datetime. This
+        provides an exclusive upper bound while keeping the selected end date
+        inclusive.
+
+        Args:
+            qdate: Qt date whose following local midnight should be converted.
+
+        Returns:
+            datetime.datetime: Timezone-aware UTC datetime representing local
+                midnight at the beginning of the day after `qdate`.
+        """
         nxt = qdate.addDays(1)
         local = datetime.datetime(nxt.year(), nxt.month(), nxt.day(), 0, 0, 0).astimezone()
         return local.astimezone(tz.utc)
 
-    def _compute_filter_min(self):
-        """Date floor: local midnight at the START of the selected start date,
-        as an aware UTC datetime. 0 ("no filter") if the date-range checkbox
-        is off. Raises ValueError if start is after end."""
+    def _compute_filter_min(self) -> datetime.datetime:
+        """Computes the inclusive lower bound for the selected date range.
+
+        Converts the selected start date's local midnight to an aware UTC
+        datetime. When date filtering is disabled, returns `0` to indicate
+        that no lower date bound should be applied.
+
+        Raises:
+            ValueError: If the selected start date occurs after the selected
+                end date.
+
+        Returns:
+            datetime.datetime | int: UTC datetime representing the beginning of
+                the selected start date, or `0` when date filtering is disabled.
+        """
         if not self.chk_date_range.isChecked():
             return 0
         start, end = self.date_start.date(), self.date_end.date()
@@ -1630,15 +2102,33 @@ class ExportMode(DataModeWidget):
             )
         return self._qdate_to_utc_floor(start)
 
-    def _compute_filter_max(self):
-        """Date ceiling: local midnight at the END of the selected end date
-        (i.e. start of the following day) so the end day is inclusive. None
-        ("no filter") if the date-range checkbox is off."""
+    def _compute_filter_max(self) -> datetime.datetime:
+        """Computes the exclusive upper bound for the selected date range.
+
+        Converts midnight at the start of the day following the selected end
+        date to an aware UTC datetime, making the selected end date fully
+        inclusive. When date filtering is disabled, returns `None` to indicate
+        that no upper date bound should be applied.
+
+        Returns:
+            datetime.datetime | None: UTC datetime representing the start of the
+                day after the selected end date, or `None` when date filtering
+                is disabled.
+        """
         if not self.chk_date_range.isChecked():
             return None
         return self._qdate_to_utc_ceiling(self.date_end.date())
 
-    def _do_export(self):
+    def _do_export(self) -> None:
+        """Validates the export configuration and starts the export task.
+
+        Computes and stores the active date-range filters, prompts for an export
+        name when a ZIP export has no name, and submits the export operation to
+        the shared task service.
+
+        If the date range is invalid or the user cancels the ZIP export-name
+        prompt, no export task is started.
+        """
         try:
             self._filter_min = self._compute_filter_min()
             self._filter_max = self._compute_filter_max()
@@ -1646,8 +2136,6 @@ class ExportMode(DataModeWidget):
             Log.e(TAG, f"Input Error: {e}")
             QtWidgets.QMessageBox.warning(self, "Export by date range", str(e))
             return
-
-        # ZIP with no name -> prompt for one (matches original).
         if self.rb_zip.isChecked() and not self.name_field.text():
             self._generate_name()
             name, ok = QtWidgets.QInputDialog.getText(
@@ -1669,8 +2157,18 @@ class ExportMode(DataModeWidget):
             lambda abort: self._export_task(abort, name, target, date_filter, date_filter_max)
         )
 
-    def _set_running(self, running):
-        self._task_running = running  # plain bool; safe to set from the worker thread
+    def _set_running(self, running: bool) -> None:
+        """Updates the wizard UI to reflect export task activity.
+
+        Tracks whether an export task is running and asynchronously updates the
+        navigation buttons and progress bar through Qt's queued invocation
+        mechanism. The Next/Export and Back buttons are disabled while an export
+        is active, and the progress bar is reset and shown when a task starts.
+
+        Args:
+            running: Whether an export task is currently running.
+        """
+        self._task_running = running
         QtCore.QMetaObject.invokeMethod(
             self.btn_next,
             "setEnabled",
@@ -1683,7 +2181,6 @@ class ExportMode(DataModeWidget):
             QtCore.Qt.QueuedConnection,
             QtCore.Q_ARG(bool, not running and self._step > 0),
         )
-        # Reset to 0 on start, then show/hide the slim bar (worker-thread safe).
         if running:
             QtCore.QMetaObject.invokeMethod(
                 self.export_progress,
@@ -1698,21 +2195,24 @@ class ExportMode(DataModeWidget):
             QtCore.Q_ARG(bool, running),
         )
 
-    def _policy_id(self):
+    def _policy_id(self) -> int:
+        """Returns the identifier of the selected existing-file policy.
+
+        Returns:
+            int: Identifier associated with the currently selected policy card.
+        """
         return self.policy_group.checkedId()
 
-    # ------------------------------------------------------------------
-    #  CSV column expansion (port of the header-building block in exportTask)
-    # ------------------------------------------------------------------
-    def _expand_csv_cols(self):
-        """Expand the user-ticked CSV fields into concrete report columns.
+    def _expand_csv_cols(self) -> list[str]:
+        """Expands selected CSV field names into concrete report columns.
 
-        Mirrors Ui_Export.exportTask:
-          * "Temp"            -> "Temperature"
-          * "Formulation"     -> one column per component (Protein, Stabilizer,
-                                 Buffer, Surfactant, Salt, Excipient), named
-                                 "Formulation_<Component>"
-          * "Viscosity Profile" and all others pass through unchanged.
+        Converts user-facing field selections into the column names written to
+        the exported CSV report. `Temp` is mapped to `Temperature` and
+        `Formulation` expands into one column for each configured formulation
+        component. All other selected fields are passed through unchanged.
+
+        Returns:
+            list[str]: Ordered list of concrete CSV report column names.
         """
         cols = []
         for field in self._selected_csv_cols():
@@ -1725,20 +2225,37 @@ class ExportMode(DataModeWidget):
                 cols.append(field)
         return cols
 
-    # ------------------------------------------------------------------
-    #  Export task - full port of Ui_Export.exportTask
-    # ------------------------------------------------------------------
-    def _export_task(self, abort, name, output_folder, date_filter, date_filter_max=None):
-        """Export the selected runs to the chosen destination.
+    def _export_task(
+        self,
+        abort,
+        name: str,
+        output_folder: str,
+        date_filter,
+        date_filter_max=None,
+    ):
+        """Exports the selected runs to the configured destination.
 
-        Faithful port of `export_widget.Ui_Export.exportTask` covering all
-        three output formats (CSV report / ZIP archive / plain Folder), the
-        existing-files policy, run-scope selection, date filtering, nested-folder
-        flattening, and the export-history log entry.
+        Performs the complete export operation for CSV reports, ZIP archives,
+        and plain folders. Handles existing-file policies, run and date-range
+        filtering, unnamed-run handling, nested-folder flattening, ZIP
+        packaging, progress reporting, cancellation, and export-history
+        logging.
 
-        `abort` is a no-arg callable returning True when the user cancels.
-        `date_filter` is the lower bound (0 = no filter); `date_filter_max`
-        is the optional upper bound from the date-range picker (None = open).
+        The task updates the shared service with progress and completion state
+        and ensures the running/frozen UI state is restored when the operation
+        finishes.
+
+        Args:
+            abort: Cancellation event or compatible object whose `is_set()`
+                method returns `True` when the export should be aborted.
+            name: Export name used to construct the destination path.
+            output_folder: Base folder or drive path where the export should be
+                written.
+            date_filter: Inclusive lower date bound. `0` disables the lower
+                date filter.
+            date_filter_max: Optional exclusive upper date bound. `None`
+                leaves the upper date range open.
+
         """
         self._set_running(True)
         self.services.set_freeze(False)
@@ -1764,7 +2281,7 @@ class ExportMode(DataModeWidget):
             else:
                 export_path = os.path.join(output_folder, name, Constants.log_export_path)
 
-            # --- CSV report header -------------------------------------
+            # CSV report header
             csv_report_cols = []
             if is_csv:
                 if Parser is None:
@@ -1811,7 +2328,7 @@ class ExportMode(DataModeWidget):
                     with open(self.csv_report_path, "w", newline="") as f:
                         csv.writer(f).writerow(csv_report_cols)
 
-            # --- ZIP: expand an existing archive so we can merge into it
+            # ZIP: expand an existing archive so we can merge into it
             if is_zip:
                 export_folder = os.path.split(export_path)[0]
                 zip_path = export_folder + ".zip"
@@ -1854,7 +2371,7 @@ class ExportMode(DataModeWidget):
                 select_device = select_run
                 select_run = ""
 
-            # --- Walk the data tree, exporting each matching run --------
+            # -- Walk the data tree, exporting each matching run
             for _folder, devices, _logs in os.walk(data_path):
                 y1 = len(devices)
                 z1 = 0
@@ -1926,11 +2443,11 @@ class ExportMode(DataModeWidget):
                                     date_filter_max,
                                 )
 
-            # --- Flatten nested folders (folder/ZIP output only) -------
+            # Flatten nested folders
             if not is_csv:
                 self._flatten_nested(export_path)
 
-            # --- ZIP packaging -----------------------------------------
+            # ZIP packaging
             if is_zip:
                 self.services.emit_progress(
                     self.MODE_KEY,
@@ -1962,9 +2479,6 @@ class ExportMode(DataModeWidget):
                 finished_msg += " Ready to eject."
             self.services.emit_progress(self.MODE_KEY, finished_msg, 100, "g")
             self._exported = True
-            # Mirror onto the shared service so a later Advanced-mode "erase"
-            # can tell whether local data has been exported yet (matches the
-            # original Ui_Export.exported shared flag).
             try:
                 self.services.exported = True
             except Exception:
@@ -1976,13 +2490,17 @@ class ExportMode(DataModeWidget):
             self.services.set_freeze(True)
             self._set_running(False)
 
-    # ------------------------------------------------------------------
-    #  Nested-folder flattening (port of the flatten block in exportTask)
-    # ------------------------------------------------------------------
-    def _flatten_nested(self, export_path):
-        """Collapse single-child folder chains created under export_path.
+    def _flatten_nested(self, export_path: str) -> None:
+        """Collapses unnecessary single-child folder chains in an export.
 
-        Direct port of the 'remove nested folders' loop in the original.
+        Walks downward through directories containing no files and exactly one
+        child directory, then moves the resulting contents toward the export's
+        top-level directory. This removes redundant nesting introduced while
+        exporting runs and preserves the configured existing-file policy when
+        copying contents.
+
+        Args:
+            export_path: Root path of the exported directory tree to flatten.
         """
         Log.d(TAG, f"Checking for nested folders at {export_path}")
         top_level = os.path.split(export_path)[0]
@@ -2010,15 +2528,29 @@ class ExportMode(DataModeWidget):
                 Log.d(TAG, "Nested directory points to itself; leaving as-is.")
             break
 
-    # ------------------------------------------------------------------
-    #  CSV row builder - full port of Ui_Export.appendRunToCsvReport
-    # ------------------------------------------------------------------
-    def _append_run_to_csv(self, run, cols, date_filter=0, date_filter_max=None):
-        """Parse one run and append a row to the open CSV report.
+    def _append_run_to_csv(self, run: str, cols: list, date_filter=0, date_filter_max=None):
+        """Parses a run and appends its data as a row to the CSV report.
 
-        Returns True on success, False if the run was skipped (date filtered,
-        not analyzed, missing data, or a conversion error). Faithful port of
-        the original, with the date-range upper bound added.
+        Reads the run's capture data, applies the configured date-range filter,
+        extracts only the information required by the requested columns, builds
+        the corresponding CSV row, rounds numeric values, and appends the row to
+        the active report.
+
+        Runs that fall outside the date range, lack required analysis data, have
+        missing capture files, or encounter parsing/conversion errors are
+        skipped and reported as unsuccessful.
+
+        Args:
+            run: Path to the run directory to export.
+            cols: Ordered list of concrete CSV column names to generate.
+            date_filter: Inclusive lower UTC datetime bound. `0` disables the
+                lower date filter.
+            date_filter_max: Optional exclusive upper UTC datetime bound.
+                `None` disables the upper date filter.
+
+        Returns:
+            bool: `True` if the run was successfully written to the CSV report;
+                `False` if the run was skipped or could not be exported.
         """
         run_name = os.path.basename(run)
         viscosity_profile = []
@@ -2032,7 +2564,7 @@ class ExportMode(DataModeWidget):
         try:
             files = os.listdir(run)
 
-            # Date filtering: use the newest file mtime in the run folder.
+            # Date filtering
             if date_filter != 0 or date_filter_max is not None:
                 epoch = datetime.datetime.fromtimestamp(0, tz=tz.utc)
                 last_modified = epoch
@@ -2122,7 +2654,7 @@ class ExportMode(DataModeWidget):
                 success = False
                 row = []
 
-            # Round floats to 2 dp where possible (Notes stays raw text).
+            # Round floats to 2 dp where possible
             def is_float(value):
                 try:
                     float(str(value))
@@ -2160,8 +2692,22 @@ class ExportMode(DataModeWidget):
         return success
 
     @staticmethod
-    def _formulation_cell(formulation, attr):
-        """Format one formulation component as '<conc> <units> <name>' or ''."""
+    def _formulation_cell(formulation, attr: str) -> str:
+        """Formats a formulation component for a CSV cell.
+
+        Extracts the requested formulation component and formats it as
+        `"<concentration> <units> <ingredient name>"`. Missing formulations,
+        missing components, or components whose ingredient name is `"None"`
+        produce an empty string.
+
+        Args:
+            formulation: Formulation object containing component attributes.
+            attr: Name of the formulation component attribute to retrieve.
+
+        Returns:
+            str: Formatted formulation component, or an empty string when no
+                usable component is available.
+        """
         if not formulation:
             return ""
         component = getattr(formulation, attr, None)
@@ -2171,17 +2717,35 @@ class ExportMode(DataModeWidget):
 
     def _build_csv_row(
         self,
-        cols,
-        run_name,
+        cols: list,
+        run_name: str,
         viscosity_profile,
-        average_viscosity,
-        std_dev,
-        temperature,
+        average_viscosity: float,
+        std_dev: float,
+        temperature: float,
         formulation,
-        notes,
-    ):
-        """Assemble the CSV row values in column order. Returns None on an
-        unknown column (signals failure to the caller)."""
+        notes: str,
+    ) -> list | None:
+        """Builds a CSV row in the requested column order.
+
+        Maps concrete CSV column names to their corresponding run, viscosity,
+        temperature, formulation, and notes values. Formulation component
+        columns are formatted through :meth:`_formulation_cell`.
+
+        Args:
+            cols: Ordered list of concrete CSV column names.
+            run_name: Name of the run.
+            viscosity_profile: Viscosity profile values for the run.
+            average_viscosity: Average viscosity calculated from the profile.
+            std_dev: Standard deviation of the viscosity profile.
+            temperature: Run temperature.
+            formulation: Parsed formulation object, if available.
+            notes: Run notes text.
+
+        Returns:
+            list | None: CSV row values in the same order as `cols`, or
+                `None` when an unknown column is encountered.
+        """
         comp_attr = {
             "Formulation_Protein": "protein",
             "Formulation_Stabilizer": "stabilizer",
@@ -2211,16 +2775,42 @@ class ExportMode(DataModeWidget):
                 return None
         return row
 
-    # ------------------------------------------------------------------
-    #  copytree - full port of Ui_Export.copytree
-    # ------------------------------------------------------------------
-    def _copytree(self, src, dst, policy, copied=0, skipped=0, date_filter=0, date_filter_max=None):
-        """Recursively copy `src` into `dst` honoring the existing-files
-        policy and date filtering. Counts .xml files copied vs skipped.
+    def _copytree(
+        self,
+        src: str,
+        dst: str,
+        policy: int,
+        copied: int = 0,
+        skipped: int = 0,
+        date_filter: int = 0,
+        date_filter_max=None,
+    ) -> tuple[int, int]:
+        """Recursively copies files while applying export policies and filters.
 
-        `policy`: POLICY_REPLACE overwrites all; POLICY_MERGE overwrites only
-        when the source is >2s newer; POLICY_SKIP leaves existing files. New
-        files are always copied. Direct port of the original.
+        Traverses the source directory tree and copies files into the destination
+        according to the configured existing-file policy. Existing files can be
+        replaced unconditionally, merged when the source is sufficiently newer,
+        or left untouched. Optional date filtering is applied using source file
+        modification times.
+
+        XML files are counted separately to track the number of copied and
+        skipped run-related files.
+
+        Args:
+            src: Source directory to copy.
+            dst: Destination directory.
+            policy: Existing-file policy. `POLICY_REPLACE` overwrites existing
+                files, `POLICY_MERGE` replaces files that are more than two
+                seconds newer, and other policies leave existing files untouched.
+            copied: Running count of copied XML files.
+            skipped: Running count of skipped XML files.
+            date_filter: Inclusive lower UTC datetime bound. `0` disables the
+                lower date filter.
+            date_filter_max: Optional exclusive upper UTC datetime bound.
+                `None` disables the upper date filter.
+
+        Returns:
+            tuple[int, int]: Updated `(copied, skipped)` XML file counts.
         """
         for item in os.listdir(src):
             s = os.path.join(src, item)
@@ -2242,7 +2832,7 @@ class ExportMode(DataModeWidget):
                     allow_copy = True
 
             if allow_copy and (date_filter != 0 or date_filter_max is not None):
-                # Recency filter: newest file mtime in the source folder.
+                # Recency filter
                 if "_unnamed" in src:
                     last_modified = datetime.datetime.fromtimestamp(os.stat(s).st_mtime, tz=tz.utc)
                 else:
@@ -2271,12 +2861,31 @@ class ExportMode(DataModeWidget):
                     skipped += 1
         return copied, skipped
 
-    # ------------------------------------------------------------------
-    #  Export history log (port of the history block in exportTask)
-    # ------------------------------------------------------------------
-    def _write_history(self, data_path, export_path, copied, skipped, is_zip, date_filter):
-        """Prepend an HTML entry to export_history.log (same format the History
-        view parses)."""
+    def _write_history(
+        self,
+        data_path: str,
+        export_path: str,
+        copied: int,
+        skipped: int,
+        is_zip: bool,
+        date_filter,
+    ) -> None:
+        """Prepends an HTML-formatted entry to the export history log.
+
+        Records the completed export operation using the format consumed by the
+        application's History view. The entry includes the export timestamp,
+        source and destination paths, scope, format, existing-file policy, and
+        any skipped-run information.
+
+        Args:
+            data_path: Root path containing the exported run data.
+            export_path: Destination path used for the export.
+            copied: Number of runs successfully exported.
+            skipped: Number of runs skipped during export.
+            is_zip: Whether the export was packaged as a ZIP archive.
+            date_filter: Lower date-filter bound. `0` indicates that date
+                filtering was not enabled.
+        """
         history_path = os.path.join(os.getcwd(), Constants.log_export_path, "export_history.log")
         try:
             os.makedirs(os.path.dirname(history_path), exist_ok=True)
@@ -2313,14 +2922,26 @@ class ExportMode(DataModeWidget):
         except Exception as e:
             Log.e(TAG, f"Failed writing export history: {e}")
 
-    # ------------------------------------------------------------------
-    #  Layout helpers
-    # ------------------------------------------------------------------
-    def _field(self, caption_text, control):
-        """A compact caption-over-control unit used as a grid cell.
+    def _field(
+        self,
+        caption_text: str,
+        control: QtWidgets.QWidget | QtWidgets.QLayout,
+    ) -> QtWidgets.QWidget:
+        """Builds a compact caption-and-control field container.
 
-        `control` may be a QWidget or a QLayout. Returns a QWidget so it can be
-        placed into the responsive grid and shown/hidden as one.
+        Creates a vertically arranged widget containing a caption followed by
+        either a child widget or an existing layout. The resulting wrapper can
+        be inserted into the responsive settings grid and treated as a single
+        layout unit.
+
+        Args:
+            caption_text: Text displayed as the field caption.
+            control: QWidget or QLayout containing the field's interactive
+                control(s).
+
+        Returns:
+            QtWidgets.QWidget: Wrapper containing the caption and supplied
+                control or layout.
         """
         wrap = QtWidgets.QWidget()
         wrap.setStyleSheet("background: transparent;")
@@ -2334,18 +2955,32 @@ class ExportMode(DataModeWidget):
             v.addWidget(control)
         return wrap
 
-    # ------------------------------------------------------------------
-    #  Styling helpers (mirror data_mode_import)
-    # ------------------------------------------------------------------
-    def _caption(self, text):
+    def _caption(self, text: str) -> QtWidgets.QLabel:
+        """Creates a styled caption label.
+
+        Args:
+            text: Caption text to display.
+
+        Returns:
+            QtWidgets.QLabel: Label styled using the shared caption-label
+                stylesheet.
+        """
         w = QtWidgets.QLabel(text)
         w.setStyleSheet(caption_label_qss())
         return w
 
     @staticmethod
-    def _hairline():
-        """A subtle 1px divider between stacked borderless sections -
-        mirrors UserPreferencesWidget's section separators."""
+    def _hairline() -> QtWidgets.QFrame:
+        """Create a subtle horizontal divider for stacked sections.
+
+        Creates a 1-pixel-high horizontal frame using the shared hairline
+        stylesheet. The resulting divider is intended for use between
+        borderless sections and follows the same visual treatment as the
+        separators used by `UserPreferencesWidget`.
+
+        Returns:
+            QtWidgets.QFrame: A themed 1-pixel horizontal divider.
+        """
         line = QtWidgets.QFrame()
         line.setFrameShape(QtWidgets.QFrame.HLine)
         line.setFixedHeight(1)
@@ -2353,7 +2988,16 @@ class ExportMode(DataModeWidget):
         return line
 
     @staticmethod
-    def _radio_qss():
+    def _radio_qss() -> str:
+        """Build the stylesheet for radio buttons and checkboxes.
+
+        Retrieves the current theme tokens and generates a stylesheet that
+        applies the flat text color, compact font size, and transparent
+        background used by radio buttons and checkboxes.
+
+        Returns:
+            str: A Qt stylesheet for `QRadioButton` and `QCheckBox` widgets.
+        """
         tok = ThemeManager.instance().tokens()
         return (
             f"QRadioButton, QCheckBox {{ color: {tok_css(tok['flat_text'])}; "
@@ -2361,15 +3005,30 @@ class ExportMode(DataModeWidget):
         )
 
     @staticmethod
-    def _picker_box_qss():
-        # No fill/border of its own - the thin separators between Detect,
-        # Eject, and Choose… (shown only while Detect/Eject are expanded)
-        # are the only visual division here now.
+    def _picker_box_qss() -> str:
+        """Build the stylesheet for the picker action container.
+
+        Returns a transparent, borderless stylesheet so the picker container
+        does not introduce its own visual surface. Visual separation between
+        picker actions is provided by the individual separators shown when
+        the relevant actions are expanded.
+
+        Returns:
+            str: A Qt stylesheet for the `pickerBox` frame.
+        """
         return "QFrame#pickerBox { background: transparent; border: none; }"
 
     @staticmethod
-    def _picker_separator():
-        """A thin vertical divider between borderless pickerBox actions."""
+    def _picker_separator() -> QtWidgets.QFrame:
+        """Create a thin vertical divider between picker actions.
+
+        Creates a fixed-size vertical frame using the current theme's flat
+        border color. The divider is intended to visually separate the
+        borderless picker actions such as Detect, Eject, and Choose.
+
+        Returns:
+            QtWidgets.QFrame: A themed 1-pixel-wide vertical divider.
+        """
         tok = ThemeManager.instance().tokens()
         sep = QtWidgets.QFrame()
         sep.setFixedWidth(1)
@@ -2378,22 +3037,47 @@ class ExportMode(DataModeWidget):
         return sep
 
     @staticmethod
-    def _scroll_qss():
-        # The scrollbar handle itself is already themed app-wide by the
-        # global QScrollBar rule in app_theme.qss - only the transparent
-        # background needs declaring here.
+    def _scroll_qss() -> str:
+        """Build the stylesheet for the export step scroll area.
+
+        Applies a transparent background and removes the scroll area's border.
+        The scrollbar handle styling is provided by the application's global
+        `QScrollBar` stylesheet.
+
+        Returns:
+            str: A Qt stylesheet for the `exportScroll` scroll area.
+        """
         return "QScrollArea#exportScroll { background: transparent; border: none; }"
 
     @staticmethod
-    def _inline_lbl_qss():
+    def _inline_lbl_qss() -> str:
+        """Build the stylesheet for inline labels.
+
+        Retrieves the current theme tokens and creates a transparent label
+        style using the application's flat text color and compact 12-pixel
+        font size.
+
+        Returns:
+            str: A Qt stylesheet for `QLabel` widgets.
+        """
         tok = ThemeManager.instance().tokens()
         return (
             f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
             "background: transparent; }"
         )
 
-    def _date_qss(self):
-        """Glass styling for QDateEdit that mirrors the line-edit/combo look."""
+    def _date_qss(self) -> str:
+        """Build the themed stylesheet for the date editor.
+
+        Creates the styled appearance used by `QDateEdit` controls,
+        including themed backgrounds, borders, text, hover and focus states,
+        and the calendar drop-down icon. The associated calendar popup is
+        styled using the current combo-box theme tokens.
+
+        Returns:
+            str: A Qt stylesheet for the `QDateEdit` control and its calendar
+            popup.
+        """
         tok = ThemeManager.instance().tokens()
         icon_path = self._icon_file_path("date-range.svg")
         drop_image = f"image: url({icon_path});" if icon_path else ""
@@ -2431,12 +3115,39 @@ class ExportMode(DataModeWidget):
             }}
         """
 
-    def _icon(self, name):
+    def _icon(self, name: str) -> QtGui.QIcon:
+        """Create an icon from a named application icon resource.
+
+        Resolves the icon file path using :meth:`_icon_file_path` and creates a
+        `QIcon` from the resolved path. If the icon cannot be located, returns
+        an empty icon.
+
+        Args:
+            name (str): The filename of the icon resource.
+
+        Returns:
+            QtGui.QIcon: The resolved application icon, or an empty icon when
+            the resource cannot be found.
+        """
         path = self._icon_file_path(name)
         return QtGui.QIcon(path) if path else QtGui.QIcon()
 
     @staticmethod
-    def _icon_file_path(name):
+    def _icon_file_path(name: str):
+        """Resolve the filesystem path for an application icon.
+
+        Uses the application's architecture path to locate an icon within the
+        `QATCH/icons` directory. Path separators are normalized for use by
+        Qt styles and resources. Any lookup or filesystem error is suppressed
+        and treated as a missing icon.
+
+        Args:
+            name (str): The filename of the icon resource.
+
+        Returns:
+            str: The normalized icon file path if it exists; otherwise an empty
+            string.
+        """
         try:
             from QATCH.common.architecture import Architecture
 
@@ -2447,20 +3158,34 @@ class ExportMode(DataModeWidget):
             pass
         return ""
 
-    def _card(self, title, subtitle="", header_right=None):
-        """A borderless content section. Returns the frame with a `.body`
-        QVBoxLayout for callers to populate (header + optional subtitle are
-        pre-added).
+    def _card(
+        self,
+        title: str,
+        subtitle: str = "",
+        header_right: str | None = None,
+    ) -> QtWidgets.QFrame:
+        """Create a borderless content section with a populated header.
 
-        No background/border of its own - the step stack already sits on
-        the tab rail's own content-pane surface (see ConnectedTabRail),
-        so a second bordered panel here would just nest one border inside
-        another (the same fix applied to UserPreferencesWidget's section
-        wells). Only the object name + padding-via-layout role remain.
+        Creates a transparent, borderless frame containing a title row, an
+        optional subtitle, and a body layout for caller-supplied controls. An
+        optional widget or layout can be placed on the right side of the title
+        row for actions or other auxiliary controls.
 
-        `header_right` is an optional widget or layout (e.g. "Select all /
-        Clear" actions, an "Edit" link) docked to the right of the title,
-        on the same line.
+        The card intentionally does not provide its own background or border.
+        The surrounding step container supplies the shared content-pane
+        surface, avoiding nested bordered panels.
+
+        Args:
+            title (str): Text displayed in the section header.
+            subtitle (str, optional): Descriptive text displayed beneath the
+                title. Defaults to an empty string.
+            header_right (QtWidgets.QWidget or QtWidgets.QLayout, optional):
+                A widget or layout to place at the right side of the header.
+                Defaults to ``None``.
+
+        Returns:
+            QtWidgets.QFrame: The constructed content section. Its ``body``
+            attribute contains a ``QVBoxLayout`` for adding section controls.
         """
         card = QtWidgets.QFrame()
         card.setObjectName("dataCard")
@@ -2489,8 +3214,6 @@ class ExportMode(DataModeWidget):
             outer.addWidget(sub)
         else:
             card._sub_lbl = None
-
-        # Body holds the actual controls; callers append here.
         card.body = QtWidgets.QVBoxLayout()
         card.body.setContentsMargins(0, 2, 0, 0)
         card.body.setSpacing(8)
@@ -2501,6 +3224,17 @@ class ExportMode(DataModeWidget):
 
     @staticmethod
     def _restyle_card(card) -> None:
+        """Apply the current theme styling to a content card.
+
+        Updates the card header and optional subtitle using the current theme
+        tokens. The header receives the flat text color and bold compact
+        typography, while the subtitle uses the shared description-label
+        stylesheet.
+
+        Args:
+            card (QtWidgets.QFrame): The content card whose header and subtitle
+                styling should be refreshed.
+        """
         tok = ThemeManager.instance().tokens()
         card._header_lbl.setStyleSheet(
             f"QLabel {{ color: {tok_css(tok['flat_text'])}; font-size: 12px; "
