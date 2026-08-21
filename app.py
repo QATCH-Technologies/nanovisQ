@@ -1,5 +1,16 @@
+"""
+QATCH.app.py
+
+Main entry point for the QATCH nanovisQ application.
+
+Handles application startup, operating system-specific configurations, custom logging,
+and theming initialization. Manages the application lifecycle, including launching
+the initial splash screen as a separate subprocess and tearing it down once the main
+window is ready.
+"""
+
 import ctypes
-import os  # add
+import os
 import subprocess
 import sys
 import time
@@ -14,50 +25,61 @@ from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants, MinimalPython
 from QATCH.ui.widgets import QatchSplashScreen
 
-# from QATCH.ui import mainWindow # lazy load
-
+TAG = "[Application]"
 try:
     import logging
 
     # suppress ERROR if not bundled in EXE
     logging.getLogger("pyi_splash").setLevel(logging.CRITICAL)
+
     # if splash binaries are not bundled with a compiled EXE, this import will fail
     import pyi_splash
 
     # this is just a sanity check to confirm the splash module
-    USE_PYI_SPLASH = False  # pyi_splash.is_alive() jj
+    USE_PYI_SPLASH = False  # pyi_splash.is_alive()
+
     # restore to default level, it's active
     logging.getLogger("pyi_splash").setLevel(logging.WARNING)
-except:
+except ImportError:
     USE_PYI_SPLASH = False
 
-if not USE_PYI_SPLASH:
-    if len(sys.argv) > 1 and sys.argv[1] == "--splash":
-        # This block only executes inside the subprocess. It has no
-        # console attached when launched from a frozen/windowed build, so
-        # without this try/except a construction failure here would just
-        # silently kill the subprocess with no visible trace at all -
-        # log it so a future regression is actually diagnosable.
-        try:
-            app = QApplication(sys.argv)
-            splash = QatchSplashScreen()
-            sys.exit(app.exec_())
-        except Exception as splash_exc:
-            Log.e("Splash screen subprocess failed to start:", splash_exc)
-            sys.exit(1)
+if not USE_PYI_SPLASH and len(sys.argv) > 1 and sys.argv[1] == "--splash":
+    # This block only executes inside the subprocess. It has no
+    # console attached when launched from a frozen/windowed build, so
+    # without this try/except a construction failure here would just
+    # silently kill the subprocess with no visible trace at all -
+    # log specific UI construction regressions so they are diagnosable.
+    try:
+        app = QApplication(sys.argv)
+        splash = QatchSplashScreen()
+        sys.exit(app.exec_())
+    except (RuntimeError, ValueError, TypeError) as splash_exc:
+        Log.e(
+            TAG,
+            f"Splash screen subprocess failed to start due to instantiation error: {splash_exc}",
+        )
+        sys.exit(1)
 
-TAG = ""  # "[Application]"
 
-
-###############################################################################
-# Main Application
-###############################################################################
 class QATCH:
+    """Main application class for QATCH nanovisQ.
 
-    ###########################################################################
-    # Initializing values for application
-    ###########################################################################
-    def __init__(self, argv=sys.argv):
+    Manages the initialization of the Qt application, logging, command-line arguments,
+    and the main user interface lifecycle.
+    """
+
+    def __init__(self, argv=sys.argv) -> None:
+        """Initializes the QATCH application setup and environment.
+
+        Triggers the splash screen immediately, configures the working directory for frozen
+        builds, and sets the Windows AppUserModelID so the QATCH icon displays correctly on
+        the toolbar. It also initializes the logger, sets QCoreApplication metadata,
+        and applies the application stylesheet via the ThemeManager.
+
+        Args:
+            argv (list, optional): Command-line arguments passed to the application.
+                Defaults to sys.argv.
+        """
 
         self.win = None
         self.flashSplashShow()
@@ -65,21 +87,13 @@ class QATCH:
         if getattr(sys, "frozen", False):
             userpath = os.path.expandvars("%USERPROFILE%")
             docspath = os.path.join(userpath, "Documents", "QATCH nanovisQ")
-            if os.path.isdir(docspath):
-                if os.path.normcase(os.getcwd()) != os.path.normcase(docspath):
-                    try:
-                        os.chdir(docspath)
-                    except OSError as ose:
-                        raise ose
+            if os.path.isdir(docspath) and os.path.normcase(os.getcwd()) != os.path.normcase(
+                docspath
+            ):
+                os.chdir(docspath)
 
-        print("Launching application...")
         if Architecture.get_os() is OSType.windows:
-            myappid = "{} {} {} ({})".format(
-                Constants.app_publisher,
-                Constants.app_name,
-                Constants.app_version,
-                Constants.app_date,
-            )  # arbitrary string, required for Windows Toolbar to display QATCH icon
+            myappid = f"{Constants.app_publisher} {Constants.app_name} {Constants.app_version} ({Constants.app_date})"  # arbitrary string, required for Windows Toolbar to display QATCH icon
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
             ctypes.windll.kernel32.SetConsoleTitleW("QATCH Q-1 Real-Time GUI - command line")
         self._args = self._init_logger()
@@ -91,7 +105,13 @@ class QATCH:
 
         ThemeManager.instance().apply_app_stylesheet(self._app)
 
-    def flashSplashShow(self):
+    def flashSplashShow(self) -> None:
+        """Displays the application splash screen.
+
+        If bundled as a compiled executable with pyi_splash, it updates the splash screen text
+        directly. Otherwise, it spawns a separate subprocess (using the `--splash`
+        flag) to run the animated splash screen concurrently without blocking the main thread.
+        """
         build_info = f" {Constants.app_title}\n Version: {Constants.app_version}\n Build Date: {Constants.app_date}\n"
 
         if USE_PYI_SPLASH:
@@ -109,17 +129,21 @@ class QATCH:
                 else:
                     # Launch a completely separate Python instance for splash screen process
                     self.splash_process = subprocess.Popen([sys.executable, "app.py", "--splash"])
-            except Exception as e:
-                Log.e("Failed to launch splash screen process:", e)
+            except OSError as e:
+                Log.e(TAG, f"Failed to launch splash screen process: {e}")
 
         # Close SplashScreen after app is loaded
-        # (min 3 sec, timer will wait longer for app load, if needed)
-        # time.sleep(2)
-        #     QtCore.QTimer.singleShot(3000, self.flashSplashHide)
         self.start = time.time()
 
-    def flashSplashHide(self):
-        while time.time() - self.start < 3 and self.win.ReadyToShow == False:
+    def flashSplashHide(self) -> None:
+        """Hides and terminates the splash screen.
+
+        Waits in a non-blocking loop until the main window indicates it is ready to show and
+        has loaded the update attributes. Once ready, it cleanly closes pyi_splash
+        or terminates the splash subprocess, shows the main mode window maximized, and starts
+        update downloads if requested.
+        """
+        while time.time() - self.start < 3 and (self.win is None or not self.win.ReadyToShow):
             time.sleep(0.02)
 
         while time.time() - self.start < 9 and not hasattr(self.win, "ask_for_update"):
@@ -134,59 +158,61 @@ class QATCH:
                 except PermissionError as e:
                     Log.e("Failed to terminate splash screen:", e)
 
-        # if Architecture.get_os() is OSType.windows:
-        #     kernel32 = ctypes.WinDLL('kernel32')
-        #     user32 = ctypes.WinDLL('user32')
-        #     SW_HIDE = 0
-        #     hWnd = kernel32.GetConsoleWindow()
-        #     if hWnd:
-        #         user32.ShowWindow(hWnd, SW_HIDE)
+        if self.win is not None:
+            self.win.mode_window.showMaximized()
+            self.win.mode_window.activateWindow()
 
-        self.win.mode_window.showMaximized()
-        self.win.mode_window.activateWindow()
-
-        if hasattr(self.win, "ask_for_update") and self.win.ask_for_update:
+        if self.win is not None and getattr(self.win, "ask_for_update", False):
             self.win.start_download()
-        ##
 
-    ###########################################################################
-    # Runs the application
-    ###########################################################################
-    def run(self):
-        # lazy load imports
+    def run(self) -> None:
+        """Executes the main application loop.
+
+        Validates that the required minimal Python version is being used. If valid,
+        it instantiates the MainWindow with user samples, hides the splash screen, starts the
+        Qt event loop, and eventually closes the application. If invalid, it logs a
+        failure and terminates.
+        """
         from QATCH.ui import main_window
 
         if Architecture.is_python_version(MinimalPython.major, minor=MinimalPython.minor):
             Log.i(TAG, "Application started")
-
-            self.win = main_window.MainWindow(samples=self._args.get_user_samples())
-            # win.setWindowTitle("{} - {}".format(Constants.app_title, Constants.app_version))
-            # win.move(500, 20) #GUI position (x,y) on the screen
-            # win.show()
+            samples = self._args.get_user_samples() if self._args is not None else 51
+            self.win = main_window.MainWindow(samples=samples)
             self.flashSplashHide()
-            # self.gui_ready = True
             self._app.exec()
+
             Log.i(TAG, "Finishing Application...")
             Log.i(TAG, "Application closed")
-            self.win.close()
+
+            if self.win is not None:
+                self.win.close()
         else:
             self._fail()
             time.sleep(5)
+
         self.close()
 
-    ###########################################################################
-    # Closes application
-    ###########################################################################
-    def close(self):
+    def close(self) -> None:
+        """Closes the application and releases resources.
+
+        Exits the Qt application event loop, cleanly closes the logger, and aggressively exits
+        the process with status 0.
+        """
         self._app.exit()
         Log.close()
         os._exit(0)
 
-    ###########################################################################
-    # Initializing logger
-    ###########################################################################
     @staticmethod
-    def _init_logger():
+    def _init_logger() -> Arguments:
+        """Initializes the system logger and parses command-line arguments.
+
+        Redirects standard error to the custom logger, creates file and console logging handlers,
+        and sets the user log level.
+
+        Returns:
+            Arguments: The parsed argument object.
+        """
         sys.stderr = Log()
         Log.create()  # initialize file and console handlers
         args = Arguments()
@@ -194,26 +220,25 @@ class QATCH:
         args.set_user_log_level()
         return args
 
-    ###########################################################################
-    # Specifies the minimal Python version required
-    ###########################################################################
     @staticmethod
     def _fail():
-        txt = str(
-            "Application requires Python {}.{} to run".format(
-                MinimalPython.major, MinimalPython.minor
-            )
+        """Logs a failure message regarding an unsupported Python version.
+
+        Prints an error specifying the minimal major and minor Python version required to
+        run the application.
+        """
+        Log.e(
+            TAG, f"Application requires Python {MinimalPython.major}.{MinimalPython.minor} to run."
         )
-        Log.e(TAG, txt)
 
 
 if __name__ == "__main__":
     if hasattr(QtCore.Qt, "AA_EnableHighDpiScaling"):
-        QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+        QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)  # type: ignore
     if hasattr(QtCore.Qt, "AA_UseHighDpiPixmaps"):
-        QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+        QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)  # type: ignore
     if hasattr(QtCore.Qt, "AA_ShareOpenGLContexts"):  # Needed to load web modules
-        QApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts, True)
+        QApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts, True)  # type: ignore
     freeze_support()
 
     QATCH().run()
