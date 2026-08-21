@@ -156,7 +156,7 @@ class QATCH:
                 try:
                     self.splash_process.terminate()
                 except PermissionError as e:
-                    Log.e("Failed to terminate splash screen:", e)
+                    Log.e(TAG, f"Failed to terminate splash screen: {e}")
 
         if self.win is not None:
             self.win.mode_window.showMaximized()
