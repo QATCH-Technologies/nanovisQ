@@ -70,10 +70,7 @@ class RingBuffer:
         # from the ring's write-head position) between appends. Live plot
         # drawing reads the same buffer several times per 100ms tick (once
         # per curve/limit calculation); this avoids redoing that
-        # reconstruction on every one of those reads. It is *not* a cache of
-        # what get_all()/get_partial() return to callers - both still hand
-        # back a fresh .copy() of it every time (see _materialize), so
-        # nothing about external mutation-safety changes.
+        # reconstruction on every one of those reads.
         self._materialized: Union[np.ndarray, None] = None
 
     def append(self, value: Any) -> None:
