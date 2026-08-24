@@ -7219,6 +7219,7 @@ class AnalyzerWorker(QtCore.QObject):
             # raw data
             xs = relative_time
             ys = dissipation
+            na_val = len(xs) - 1
 
             self.update(status_label)
 
@@ -8033,12 +8034,18 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            # pop blips if user input -1
-            while True:
-                if times[-1] == -1:
+            # pop blips if user input -1 or na_val
+            initial_fill_only = False
+            while len(times):
+                if times[-1] in [-1, na_val]:
                     times.pop(-1)
                 else:
                     break
+            if not len(times):
+                # no valid times to process,
+                # use initial fill data only
+                initial_fill_only = True
+                times.append(na_val)
 
             # Log.d(times)
             # Log.d("times:", xs[times]) #-xs[times[0]])
@@ -8102,7 +8109,7 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             # show final constructed distance vs time curve
-            times.append(t0)  # overloaded: end of inital fill
+            times.append(t0 if not initial_fill_only else na_val)  # overloaded: end of inital fill
             times.sort()
 
             # insert midpoints into "times" array (to match length of "distances" array)
@@ -8215,6 +8222,8 @@ class AnalyzerWorker(QtCore.QObject):
 
             idx_of_normal_pts_to_remove = []
             idx_of_normal_pts_to_retain = []
+            if initial_fill_only:
+                normal_pts = []  # none, skip next for loop
             for p in normal_pts:
                 try:
                     midpoint_p_i = next(x for x, y in enumerate(ys_normal) if y >= p) + tp
@@ -8246,8 +8255,8 @@ class AnalyzerWorker(QtCore.QObject):
             bad_distances = []
             for x in range(1, len(times)):
                 this_window_size = xs[times[x]] - xs[times[last_x]]
-                # Log.e(f"Compare {times[x]} to {len(xs)-1}...")
-                if this_window_size < 0.75 * last_window_size or times[x] == len(xs) - 1:
+                # Log.e(f"Compare {times[x]} to {na_val}...")
+                if this_window_size < 0.75 * last_window_size or na_val in times[last_x : x + 1]:
                     bad_x = x
                     if bad_x == 5:  # trust channel 1 pt more than estimated 80% point
                         bad_x = 4
@@ -8454,9 +8463,13 @@ class AnalyzerWorker(QtCore.QObject):
             end_fill_idx = max(0, len(log_velocity_46) - len(distances))
             fill_velocity = log_velocity_46[:end_fill_idx]
             fill_position = log_position_46[:end_fill_idx]
-            best_fit_idx = []
-            best_fit_pts = []
+            best_fit_idx = log_velocity_46.tolist()
+            best_fit_pts = log_position_46.tolist()
+            best_fill_idx = np.asarray(best_fit_idx, dtype=float)  # copy for later plotting
+            best_fill_pts = np.asarray(best_fit_pts, dtype=float)  # copy for later plotting
             try:
+                if initial_fill_only: 
+                    raise StopIteration("Initial fill only in this dataset.")
                 if len(fill_velocity) and len(fill_position):
                     # Shown as black squares on "velocity vs position" plot
                     num_fill_pts = min(5, len(fill_velocity))
@@ -8478,6 +8491,8 @@ class AnalyzerWorker(QtCore.QObject):
                 best_fit_idx = np.delete(best_fit_idx, len(best_fill_idx) + 1)
                 best_fit_pts = np.delete(best_fit_pts, len(best_fill_pts) + 2)
                 best_fit_pts = np.delete(best_fit_pts, len(best_fill_pts) + 1)
+            except StopIteration:
+                Log.w("Skipped initial fill point weighting for initial fill only dataset.")
             except Exception as e:
                 Log.e("An error occurred while finding the initial fill points median value")
                 best_fit_idx = log_velocity_46
@@ -8579,6 +8594,8 @@ class AnalyzerWorker(QtCore.QObject):
             ax6.plot(log_velocity_46, best_fit_pts, "-", color="blue")
             ax6.plot(best_fill_idx, best_fill_pts, "s", color="black")  # initial fill (avg)
             try:
+                if initial_fill_only: 
+                    raise StopIteration("Initial fill only in this dataset.")
                 for i in range(-len(distances), 0):
                     ax6.plot(log_velocity_46[i], log_position_46[i], "d", color="black")
                 # mark the 20% and 40% points as not being included in the fit approximation
@@ -8597,7 +8614,9 @@ class AnalyzerWorker(QtCore.QObject):
                 ax6.set_title(
                     f"Power log coefficient: {data_title}\nn = {n:.2f}" + r"$ \pm $" + "0.05"
                 )
-            except:
+            except StopIteration:
+                Log.w("Skipped initial fill point fit approximation for initial fill only dataset.")
+            except Exception as e:
                 Log.e(TAG, "An error occurred while annotating Figure 3")
             ax6.set_xlabel("Log(velocity) (mm/s)")
             ax6.set_ylabel("Log(1/position) (1/mm)")
@@ -8742,7 +8761,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            if len(all_times) > BLIP1_IDX:
+            if len(all_times) > BLIP1_IDX and not initial_fill_only:
                 f0 = ys_freq[all_times[FILL_IDX]]
                 d0 = dissipation[all_times[FILL_IDX]]
                 f2 = ys_freq[all_times[BLIP1_IDX]]
@@ -9037,6 +9056,8 @@ class AnalyzerWorker(QtCore.QObject):
             # PURPOSE: Hide 60% and/or 80% points when trending outside +/- 5% of POI2 and POI4
             # NOTE: Historically, this used to be +/- 10%, but was changed with issue #314.
             try:
+                if initial_fill_only: 
+                    raise StopIteration("Initial fill only in this dataset.")
                 normal_idxs = []
                 percent_pts = {}
                 for i in idx_of_normal_pts_to_retain:
@@ -9045,7 +9066,7 @@ class AnalyzerWorker(QtCore.QObject):
                     else:
                         Log.w(f"Index for {i} in `times` cannot be found in list. Skipping point")
                 if len(normal_idxs) == 0:
-                    raise Exception("Empty list cannot be reduced further")
+                    raise Exception("Empty list cannot be reduced further.")
                 idx0 = np.min(normal_idxs) - 1  # POI2
                 idx1 = np.max(normal_idxs) + 1  # POI4
                 # avg_viscosity = np.average(
@@ -9113,6 +9134,8 @@ class AnalyzerWorker(QtCore.QObject):
                         flag_warn = True
                     if flag_warn:
                         Log.w("WARNING: Unable to remove all outliers from the dataset.")
+            except StopIteration:
+                Log.w("Skipped initial fill trendline comparison for initial fill only dataset.")
             except Exception as e:
                 Log.e("ERROR:", e)
                 Log.e("Unable to remove outliers from the dataset prior to plotting.")
@@ -9343,7 +9366,7 @@ class AnalyzerWorker(QtCore.QObject):
                 #     # ax7.plot(xp, yp, 'b.')
                 #     ax7.errorbar(xp, yp, stdev, fmt="b.",
                 #                  ecolor="blue", capsize=3)
-            else:
+            elif not initial_fill_only:
                 # Remove initial fill points from output table later
                 remove_initial_fill = True
 
@@ -9353,6 +9376,7 @@ class AnalyzerWorker(QtCore.QObject):
             std_viscosity = np.std(in_viscosity)
             # lin_viscosity = np.flip(lin_viscosity)
             for i in range(-len(distances), 0):
+                if initial_fill_only: break  # skip
                 percent_error = (
                     abs((viscosity[i] - viscosity[-len(distances)]) / viscosity[-len(distances)])
                     * 100
@@ -9381,6 +9405,13 @@ class AnalyzerWorker(QtCore.QObject):
                 in_viscosity = in_viscosity[-len(distances) :]
                 lin_viscosity = lin_viscosity[-len(distances) :]
                 in_temp = in_temp[-len(distances) :]
+
+            if initial_fill_only:
+                # Only show initial fill points in output table
+                in_shear_rate = in_shear_rate[: -len(distances)]
+                in_viscosity = in_viscosity[: -len(distances)]
+                lin_viscosity = lin_viscosity[: -len(distances)]
+                in_temp = in_temp[: -len(distances)]
 
             in_shear_rate = np.flip(in_shear_rate)
             in_viscosity = np.flip(in_viscosity)
@@ -9809,7 +9840,6 @@ class AnalyzerWorker(QtCore.QObject):
                             )
                         ).astype(int)
                     )
-                    na_val = len(xs) - 1
                     while len(cal_idxs) < len(cal_pts):  # extend until at required size
                         cal_idxs = np.append(cal_idxs, na_val)
                     cal_times = np.array(np.round(xs[cal_idxs], 4), dtype=float)
