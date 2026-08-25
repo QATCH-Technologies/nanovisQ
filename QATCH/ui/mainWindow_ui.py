@@ -3016,6 +3016,15 @@ class RunControls(QWidget):
         self.btn.is_running = running
         self.btn.update()
 
+    def pause(self):
+        # Leave layout expanded to show "Next Port" for Flux
+        # But "paused" with Green arrow to Continue
+        self.btn.is_complete = False
+        self.btn.is_running = False
+        self.btn.setText("Continue")
+        self.setEnabled(True)  # calls self.btn.update()
+
+
     def update_progress(self, current_step, max_steps, fill_type_text):
         """Updates the progress button and status label text.
 
