@@ -7547,6 +7547,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
             return download_resources
 
+        except requests.exceptions.RequestException as e:
+            Log.e("ERROR: Unable to update resources!")
+            Log.e("Reason: OFFLINE")
+            return False
+        
         except Exception as e:
             Log.e("ERROR: Unable to update resources!")
             Log.e("Reason: " + str(e))

@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<!-- saved from url=(0077)https://qatch-technologies.github.io/Donnan-Calculator/donnan_calculator.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Donnan UF/DF Calculator — QATCH Technologies</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com/">
+  <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+  <link href="./Donnan UF_DF Calculator - QATCH Technologies_files/css2.css" rel="stylesheet">
+  <link rel="stylesheet" href="./Donnan UF_DF Calculator - QATCH Technologies_files/donnan_styles.css">
+  <link rel="icon" type="image/png" href="./Donnan UF_DF Calculator - QATCH Technologies_files/qatch-logo.png">
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- NAVIGATION + TITLE -->
+  <nav class="navbar">
+    <a href="https://qatchtech.com/" class="navbar-brand">
+        <img src="./Donnan UF_DF Calculator - QATCH Technologies_files/qatch-logo.png" alt="QATCH Logo" width="48" height="48">
+      <div aria-hidden="true">
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">QATCH</span>
+        <span class="brand-sub">Technologies</span>
+      </div>
+    </a>
+
+    <!-- Centered title -->
+    <span class="navbar-title">
+      UF/DF pH &amp; Buffer <strong>Shift Calculator</strong>
+    </span>
+
+    <!-- About button — right side of navbar -->
+    <button class="navbar-about-btn" onclick="openDrawer()" type="button" aria-label="About this tool">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="8.5"></line>
+        <line x1="12" y1="11" x2="12" y2="16"></line>
+      </svg>
+      How This Model Works
+    </button>
+  </nav>
+
+  <!-- ══ INFO DRAWER ══════════════════════════════════════════════ -->
+  <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+
+  <aside class="info-drawer" id="infoDrawer" aria-modal="true" role="dialog" aria-label="About this tool">
+
+    <div class="drawer-header">
+      <span class="drawer-title">About This Model</span>
+      <button class="drawer-close" onclick="closeDrawer()" type="button" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="drawer-body">
+
+      <!-- About / Model Overview -->
+      <div class="info-section">
+        <button class="accordion-btn active" onclick="toggleAccordion(this)" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="8.5"></line><line x1="12" y1="11" x2="12" y2="16"></line></svg>
+          Model Overview
+          <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="accordion-body open">
+          <p>This tool is an open Donnan/UF/DF screening model based on a <strong>simplified version</strong> of:</p>
+          <blockquote>
+            Kannan et al., <em>Predicting Formulation Conditions During Ultrafiltration and Dilution to Drug Substance Using a Donnan Model with Homology-Model Based Protein Charge</em>, J. Pharmaceutical Sciences, 112 (2023).
+            <a href="https://doi.org/10.1016/j.xphs.2022.10.028" target="_blank" rel="noopener">doi:10.1016/j.xphs.2022.10.028</a>
+          </blockquote>
+          <p><strong>This is not the original Kannan model</strong> and should be considered an approximate educational / screening implementation.</p>
+
+          <div class="info-subhead">What the model estimates</div>
+          <ul>
+            <li>Buffer concentration shifts across the UF/DF membrane</li>
+            <li>Ionic redistribution of charged species</li>
+            <li>Approximate pH changes during UF/DF</li>
+          </ul>
+
+          <div class="info-subhead">Supported components</div>
+          <ul>
+            <li>Histidine — weak buffer (Henderson–Hasselbalch)</li>
+            <li>Acetate — weak buffer (Henderson–Hasselbalch)</li>
+            <li>Arginine</li>
+            <li>NaCl</li>
+          </ul>
+          <p class="info-note">Counterions may be automatically added internally to maintain electroneutrality.</p>
+
+          <div class="info-subhead">Protein charge input</div>
+          <ul>
+            <li><strong>Direct Z and dZ/dpH</strong> (preferred) — can be estimated from sequence data using the tools below.</li>
+            <li><strong>Estimated from pI and protein type</strong> — mAb, Fab, generic, and polyclonal options are simplified heuristics not in the original paper.</li>
+          </ul>
+
+          <div class="info-subhead">Free charge estimation tools</div>
+          <ul class="link-list">
+            <li><a href="https://www.protpi.ch/Calculator/ProteinTool" target="_blank" rel="noopener">Protpi Protein Tool</a></li>
+            <li><a href="https://web.expasy.org/protparam/" target="_blank" rel="noopener">ExPASy ProtParam</a></li>
+            <li><a href="https://www.ddl.unimi.it/vegaol/propka.htm" target="_blank" rel="noopener">PROPKA</a></li>
+          </ul>
+
+          <div class="info-subhead">Simplifications vs. original paper</div>
+          <ul>
+            <li>Protein charge</li>
+            <li>Buffer thermodynamics</li>
+            <li>Donnan equilibrium</li>
+            <li>Ionic strength / activity corrections</li>
+            <li>Molecular structure effects</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Disclaimer -->
+      <div class="info-section">
+        <button class="accordion-btn" onclick="toggleAccordion(this)" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          Disclaimer
+          <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="accordion-body">
+          <p>This software is provided <strong>"as is"</strong> without warranty of accuracy, fitness for a particular purpose, or regulatory suitability.</p>
+          <p>Users are responsible for <strong>validating results experimentally</strong> before use in research, development, manufacturing, or process decisions.</p>
+          <p>This tool is intended for <strong>educational and early-stage screening purposes only</strong> and does not constitute regulatory or engineering advice.</p>
+        </div>
+      </div>
+
+      <!-- Contact -->
+      <div class="info-section">
+        <button class="accordion-btn" onclick="toggleAccordion(this)" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+          Contact Us
+          <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="accordion-body">
+          <p>Questions, feedback, or want to learn more about QATCH's viscosity and injectability solutions? We'd love to hear from you.</p>
+          <form class="contact-form" onsubmit="submitContact(event)">
+            <div class="contact-field">
+              <label for="contactName">Name</label>
+              <input type="text" id="contactName" placeholder="Your name" autocomplete="name">
+            </div>
+            <div class="contact-field">
+              <label for="contactEmail">Email</label>
+              <input type="email" id="contactEmail" placeholder="your@email.com" autocomplete="email">
+            </div>
+            <div class="contact-field">
+              <label for="contactMsg">Message</label>
+              <textarea id="contactMsg" rows="4" placeholder="Questions, feedback, or requests..."></textarea>
+            </div>
+            <button type="submit" class="contact-submit">Send Message</button>
+            <div id="contactConfirm" class="contact-confirm" style="display:none">
+              ✓ Opening your email client — or write to us directly at
+              <a href="mailto:info@qatchtech.com">info@qatchtech.com</a>
+            </div>
+          </form>
+          <p class="contact-direct">Or email us directly:
+            <a href="mailto:info@qatchtech.com">info@qatchtech.com</a>
+          </p>
+        </div>
+      </div>
+
+    </div><!-- /.drawer-body -->
+  </aside><!-- /#infoDrawer -->
+
+  <!-- APP BODY -->
+  <div class="app-body">
+
+      <!-- LEFT: Inputs -->
+      <div class="glass-card" id="inputPanel">
+        <div class="card-header">
+          <img src="./Donnan UF_DF Calculator - QATCH Technologies_files/beaker.svg" width="18" height="18" alt="">
+          <span class="card-title">Formulation Inputs</span>
+        </div>
+
+        <div class="card-body">
+
+          <div class="section-label">
+            <img src="./Donnan UF_DF Calculator - QATCH Technologies_files/empty-flask.svg" class="section-icon" alt="">
+            DF / Permeate Buffer
+          </div>
+
+          <div class="field">
+            <label for="pH">Buffer pH <span class="unit">pH units</span></label>
+            <input type="number" id="pH" min="2" max="12" step="any" placeholder="e.g. 5.5" inputmode="decimal">
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="histidine">Histidine <span class="unit">mM total</span></label>
+              <input type="number" id="histidine" min="0" step="any" placeholder="0" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label for="acetate">Acetate <span class="unit">mM total</span></label>
+              <input type="number" id="acetate" min="0" step="any" placeholder="0" inputmode="decimal">
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="nacl">NaCl <span class="unit">mM</span></label>
+              <input type="number" id="nacl" min="0" step="any" placeholder="0" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label for="arginine">Arginine <span class="unit">mM total</span></label>
+              <input type="number" id="arginine" min="0" step="any" placeholder="0" inputmode="decimal">
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section-label">
+            <img src="./Donnan UF_DF Calculator - QATCH Technologies_files/protein.svg" class="section-icon" alt="">
+            Protein
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="protConc">Concentration <span class="unit">mg/mL</span></label>
+              <input type="number" id="protConc" min="1" step="any" placeholder="e.g. 150" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label for="mw">MW <span class="unit">kDa</span></label>
+              <input type="number" id="mw" min="5" step="any" placeholder="e.g. 148" inputmode="decimal">
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section-label">
+            <img src="./Donnan UF_DF Calculator - QATCH Technologies_files/charge.svg" class="section-icon" alt="">
+            Protein Charge
+          </div>
+
+          <div class="mode-toggle" role="group" aria-label="Charge input mode">
+            <button class="mode-btn active" id="modeKnown" onclick="setMode(&#39;known&#39;)" type="button">Known Z</button>
+            <button class="mode-btn" id="modepI" onclick="setMode(&#39;pI&#39;)" type="button">From pI</button>
+          </div>
+
+          <div id="knownInputs">
+            <div class="field">
+              <label for="chargeZ">Charge Z at buffer pH <span class="unit">e</span></label>
+              <input type="number" id="chargeZ" step="any" placeholder="e.g. 15" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label for="dZdpH">dZ/dpH <span class="unit">e/pH</span></label>
+              <input type="number" id="dZdpH" step="any" placeholder="e.g. -10" inputmode="decimal">
+            </div>
+          </div>
+
+          <div id="pIInputs" style="display:none">
+            <div class="field">
+              <label for="pI">Isoelectric point (pI) <span class="unit">pH</span></label>
+              <input type="number" id="pI" step="any" placeholder="e.g. 8.5" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label for="protType">Protein type</label>
+              <select id="protType">
+                <option value="mab">mAb / IgG</option>
+                <option value="fab">Fab</option>
+                <option value="polyclonal">Polyclonal</option>
+                <option value="generic">Generic</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="chargeMode">Charge estimate</label>
+              <select id="chargeMode">
+                <option value="low">Low bound</option>
+                <option value="mid" selected="">Mid (recommended)</option>
+                <option value="high">High bound</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="dZdpH_pI">dZ/dpH <span class="unit">e/pH</span></label>
+              <input type="number" id="dZdpH_pI" step="any" placeholder="e.g. -10" inputmode="decimal">
+            </div>
+          </div>
+
+          <!-- Primary CTA -->
+          <button class="btn-primary" onclick="calculate()" type="button">
+            Calculate Retentate
+          </button>
+
+          <div id="errorBox" class="error-box" style="display:none" role="alert" aria-live="polite"></div>
+
+
+
+        </div>
+      </div><!-- /#inputPanel -->
+
+
+      <!-- RIGHT: Results -->
+      <div class="glass-card" id="resultsPanel">
+        <div class="card-header">
+          <img src="./Donnan UF_DF Calculator - QATCH Technologies_files/bar-chart.svg" width="18" height="18" alt="">
+          <div aria-hidden="true"></div>
+          <span class="card-title">Predicted Retentate</span>
+        </div>
+
+        <div class="card-body-scroll" id="resultsBody">
+          <div class="results-empty" id="emptyState">
+            <img src="./Donnan UF_DF Calculator - QATCH Technologies_files/flask.svg" width="40" height="40" alt="">
+            <div aria-hidden="true"></div>
+            <p class="empty-title">Ready to calculate</p>
+            <p class="empty-text">
+              Configure your formulation parameters and click
+              <strong>Calculate Retentate</strong> to predict
+              Donnan-shifted conditions.
+            </p>
+          </div>
+          <div id="resultsContent" style="display:none"></div>
+        </div><!-- /.card-body-scroll -->
+
+        <!-- Always-visible pinned citation at the bottom of the panel -->
+        <div class="disclaimer-bar">
+          Model: Kannan et al. (2023) <em>J. Pharm. Sci.</em> Coupled pH solve with molal
+          Donnan equilibrium and volume exclusion. Ideal buffer speciation; no Debye–Hückel correction.
+          <a href="https://doi.org/10.1016/j.xphs.2022.10.028" target="_blank" rel="noopener">doi:10.1016/j.xphs.2022.10.028</a>
+        </div>
+      </div><!-- /#resultsPanel -->
+
+  </div><!-- /.app-body -->
+
+</div><!-- /.page-wrap -->
+
+
+<script>
+'use strict';
+const pKa_his=6.00,pKa_ac=4.76,pKa_arg=12.5,PSV=0.73;
+function totalCharge(s){return Object.values(s).reduce((a,[c,z])=>a+c*z,0);}
+function totalPos(s){return Object.values(s).reduce((a,[c,z])=>a+(z>0?c:0),0);}
+function totalNeg(s){return Object.values(s).reduce((a,[c,z])=>a+(z<0?c:0),0);}
+function ionicStr(s){return 0.5*Object.values(s).reduce((a,[c,z])=>a+c*z*z,0);}
+function osmol(s,pm){return Object.values(s).reduce((a,[c])=>a+c,0)+pm;}
+function waterKgL(p){return Math.max(1.0-(p*PSV/1000.0),0.50);}
+
+function speciate(pH,his,ac,nacl,arg){
+  const s={};
+  const add=(name,c,z)=>{if(Math.abs(c)<1e-18)return;s[name]=s[name]?[s[name][0]+c,z]:[c,z];};
+  if(nacl){add('Na\u207A',nacl,+1);add('Cl\u207B',nacl,-1);}
+  if(his){const fp=1/(1+Math.pow(10,pH-pKa_his));add('HHis\u207A',his*fp,+1);add('His\u00B0',his*(1-fp),0);}
+  if(ac){const fm=1/(1+Math.pow(10,pKa_ac-pH));add('Ac\u207B',ac*fm,-1);add('HAc',ac*(1-fm),0);}
+  if(arg){const fp=1/(1+Math.pow(10,pH-pKa_arg));add('HArg\u207A',arg*fp,+1);add('Arg\u00B0',arg*(1-fp),0);}
+  const net=totalCharge(s);
+  if(net<-1e-12)add('Na\u207A(auto)',-net,+1);
+  else if(net>1e-12)add('Cl\u207B(auto)',net,-1);
+  return s;
+}
+
+function estimateCharge(pI,pH,type,mode){
+  const delta=pI-pH;
+  const slopes={mab:{low:2,mid:4,high:8},fab:{low:1,mid:2,high:4},polyclonal:{low:2,mid:5,high:10},generic:{low:2,mid:4,high:8}};
+  return(slopes[type]||slopes.mab)[mode]*delta;
+}
+
+function brent(f,a,b,tol=1e-10){
+  let fa=f(a),fb=f(b);
+  if(fa*fb>0)return null;
+  if(Math.abs(fa)<tol)return a;
+  if(Math.abs(fb)<tol)return b;
+  let c=a,fc=fa,d=b-a,e=d;
+  for(let i=0;i<100;i++){
+    if(fb*fc>0){c=a;fc=fa;d=e=b-a;}
+    if(Math.abs(fc)<Math.abs(fb)){[a,b,c]=[b,c,b];[fa,fb,fc]=[fb,fc,fb];}
+    const tol1=2*1.5e-8*Math.abs(b)+0.5*tol,xm=0.5*(c-b);
+    if(Math.abs(xm)<=tol1||Math.abs(fb)<tol)return b;
+    if(Math.abs(e)>=tol1&&Math.abs(fa)>Math.abs(fb)){
+      let s=fb/fa,p,q,r;
+      if(a===c){p=2*xm*s;q=1-s;}else{q=fa/fc;r=fb/fc;p=s*(2*xm*q*(q-r)-(b-a)*(r-1));q=(q-1)*(r-1)*(s-1);}
+      if(p>0)q=-q;else p=-p;
+      if(2*p<Math.min(3*xm*q-Math.abs(tol1*q),Math.abs(e*q))){e=d;d=p/q;}else{d=xm;e=d;}
+    }else{d=xm;e=d;}
+    a=b;fa=fb;b+=(Math.abs(d)>tol1?d:(xm>0?tol1:-tol1));fb=f(b);
+  }
+  return b;
+}
+
+function retFrompH(pH,perm,water,pm,prod,plusSpec,minusSpec,plusTot,minusTot,ZfnpH){
+  const Z=ZfnpH(pH),fixed=Z*pm;
+  const mplus=(-fixed+Math.sqrt(fixed*fixed+4*prod))/2,mminus=mplus+fixed;
+  const cp=mplus*water,cm=mminus*water,ret={};
+  for(const[n,[c,z]] of Object.entries(plusSpec))ret[n]=[cp*c/plusTot,z];
+  for(const[n,[c,z]] of Object.entries(minusSpec))ret[n]=[cm*c/minusTot,z];
+  for(const[n,[c,z]] of Object.entries(perm))if(z===0)ret[n]=[c,z];
+  return{ret,mplus,mminus};
+}
+
+function impliedpH(ret){
+  const est=[];
+  const hp=ret['HHis\u207A']?ret['HHis\u207A'][0]:0,hn=ret['His\u00B0']?ret['His\u00B0'][0]:0;
+  if(hp>0&&hn>0)est.push([pKa_his+Math.log10(hn/hp),hp+hn]);
+  const am=ret['Ac\u207B']?ret['Ac\u207B'][0]:0,an=ret['HAc']?ret['HAc'][0]:0;
+  if(am>0&&an>0)est.push([pKa_ac+Math.log10(am/an),am+an]);
+  if(!est.length)return null;
+  const sumW=est.reduce((a,[,w])=>a+w,0);
+  return est.reduce((a,[p,w])=>a+p*w,0)/sumW;
+}
+
+function solveRetentate(pH0,perm,water,protMM,ZfnpH){
+  const pm=protMM/water,mp=totalPos(perm)/water,mm=totalNeg(perm)/water;
+  if(mp<=0||mm<=0)throw new Error('Buffer needs at least one positive and one negative charged species.');
+  const prod=mp*mm,plusSpec={},minusSpec={};
+  let plusTot=0,minusTot=0;
+  for(const[n,[c,z]] of Object.entries(perm)){
+    if(z>0){plusSpec[n]=[c,z];plusTot+=c;}
+    else if(z<0){minusSpec[n]=[c,z];minusTot+=c;}
+  }
+  const residual=pH=>{
+    const{ret}=retFrompH(pH,perm,water,pm,prod,plusSpec,minusSpec,plusTot,minusTot,ZfnpH);
+    const imp=impliedpH(ret);
+    if(imp===null)throw new Error('No buffer pair to infer pH. Add histidine or acetate.');
+    return pH-imp;
+  };
+  let sol=null;
+  for(const[a,b] of[[Math.max(pH0-1,1),Math.min(pH0+1,13)],[Math.max(pH0-2,1),Math.min(pH0+2,13)],[2,10]]){
+    const fa=residual(a),fb=residual(b);
+    if(fa===0){sol=a;break;}if(fb===0){sol=b;break;}
+    if(fa*fb<0){sol=brent(residual,a,b);if(sol!==null)break;}
+  }
+  if(sol===null){
+    const lo=Math.max(1,pH0-2),hi=Math.min(13,pH0+2);
+    let best=lo,bestA=Infinity;
+    for(let i=0;i<=400;i++){const x=lo+i*(hi-lo)/400,r=Math.abs(residual(x));if(r<bestA){bestA=r;best=x;}}
+    sol=best;
+  }
+  const{ret,mplus,mminus}=retFrompH(sol,perm,water,pm,prod,plusSpec,minusSpec,plusTot,minusTot,ZfnpH);
+  return{pH:sol,species:ret,mplus,mminus,Z:ZfnpH(sol)};
+}
+
+let chargeInputMode='known';
+function setMode(m){
+  chargeInputMode=m;
+  document.getElementById('modeKnown').className='mode-btn'+(m==='known'?' active':'');
+  document.getElementById('modepI').className='mode-btn'+(m==='pI'?' active':'');
+  document.getElementById('knownInputs').style.display=m==='known'?'':'none';
+  document.getElementById('pIInputs').style.display=m==='pI'?'':'none';
+}
+function fv(id){return parseFloat(document.getElementById(id).value)||0;}
+function sv(id){return document.getElementById(id).value;}
+
+function calculate(){
+  const errBox=document.getElementById('errorBox');
+  errBox.style.display='none';
+  try{
+    const pH0=fv('pH'),his=fv('histidine'),ac=fv('acetate'),nacl=fv('nacl'),
+          arg=fv('arginine'),protC=fv('protConc'),mw=fv('mw');
+    if(mw<=0)throw new Error('Molecular weight must be > 0 kDa.');
+    if(protC<=0)throw new Error('Protein concentration must be > 0 mg/mL.');
+    if(pH0<2||pH0>12)throw new Error('pH must be between 2 and 12.');
+    const perm=speciate(pH0,his,ac,nacl,arg),water=waterKgL(protC),protMM=protC/mw;
+    let ZfnpH;
+    if(chargeInputMode==='known'){const Z0=fv('chargeZ'),dZ=fv('dZdpH');ZfnpH=pH=>Z0+dZ*(pH-pH0);}
+    else{const pI=fv('pI'),type=sv('protType'),mode=sv('chargeMode'),dZ=fv('dZdpH_pI'),Z0=estimateCharge(pI,pH0,type,mode);ZfnpH=pH=>Z0+dZ*(pH-pH0);}
+    const result=solveRetentate(pH0,perm,water,protMM,ZfnpH);
+    renderResults(perm,result,pH0,protMM,water,ZfnpH(pH0));
+  }catch(e){errBox.textContent='Error: '+e.message;errBox.style.display='block';}
+}
+
+function fmt(v,d=3){return(Math.abs(v)<1e-9?0:v).toFixed(d);}
+function fmtSign(v,d=3){return(v>=0?'+':'')+v.toFixed(d);}
+
+function renderResults(perm,result,pH0,protMM,water,Z0){
+  document.getElementById('emptyState').style.display='none';
+  const rc=document.getElementById('resultsContent');rc.style.display='block';
+  const pH1=result.pH,dph=pH1-pH0,is0=ionicStr(perm),is1=ionicStr(result.species);
+  const os1=osmol(result.species,protMM),pcc=result.Z*protMM,Z1=result.Z;
+  const allNames=[...new Set([...Object.keys(perm),...Object.keys(result.species)])];
+  const charged=allNames.filter(n=>Math.abs((perm[n]||result.species[n])[1])>0);
+  const neutral=allNames.filter(n=>(perm[n]||result.species[n])[1]===0);
+  const maxC=Math.max(...allNames.map(n=>Math.max(perm[n]?perm[n][0]:0,result.species[n]?result.species[n][0]:0)),0.001);
+  const CC='#17a9d4',AC='#d94f4f';
+
+  function speciesRow(name){
+    const c0=perm[name]?perm[name][0]:0,c1=result.species[name]?result.species[name][0]:0;
+    const z=(perm[name]||result.species[name])[1];
+    if(c0<1e-9&&c1<1e-9)return'';
+    const zC=z>0?'charge-pos':z<0?'charge-neg':'charge-zer';
+    const zL=z>0?'+'+z:z===0?'0':''+z;
+    const p0=(c0/maxC)*100,p1=(c1/maxC)*100,bc=z>0?CC:z<0?AC:'#8aa0b0';
+    const dlt=c1-c0,ds=dlt>1e-5?'(+'+fmt(dlt)+')':dlt<-1e-5?'('+fmt(dlt)+')':'';
+    return`<div class="species-row">
+      <span class="species-name">${name}</span>
+      <span class="charge-badge ${zC}">${zL}</span>
+      <div class="bar-track">
+        <div class="bar-compare" style="width:${p0.toFixed(1)}%;background:${bc}"></div>
+        <div class="bar-fill" style="width:${p1.toFixed(1)}%;background:${bc}"></div>
+      </div>
+      <span class="species-val">${fmt(c1)}<span class="species-delta"> ${ds}</span></span>
+    </div>`;
+  }
+
+  function gt(sp,a,b){return(sp[a]?sp[a][0]:0)+(sp[b]?sp[b][0]:0);}
+  const his0=gt(perm,'HHis\u207A','His\u00B0'),his1=gt(result.species,'HHis\u207A','His\u00B0');
+  const ac0=gt(perm,'Ac\u207B','HAc'),ac1=gt(result.species,'Ac\u207B','HAc');
+  const arg0=gt(perm,'HArg\u207A','Arg\u00B0'),arg1=gt(result.species,'HArg\u207A','Arg\u00B0');
+  const na0=(perm['Na\u207A']?perm['Na\u207A'][0]:0)+(perm['Na\u207A(auto)']?perm['Na\u207A(auto)'][0]:0);
+  const na1=(result.species['Na\u207A']?result.species['Na\u207A'][0]:0)+(result.species['Na\u207A(auto)']?result.species['Na\u207A(auto)'][0]:0);
+  const cl0=(perm['Cl\u207B']?perm['Cl\u207B'][0]:0)+(perm['Cl\u207B(auto)']?perm['Cl\u207B(auto)'][0]:0);
+  const cl1=(result.species['Cl\u207B']?result.species['Cl\u207B'][0]:0)+(result.species['Cl\u207B(auto)']?result.species['Cl\u207B(auto)'][0]:0);
+  function tRow(label,v0,v1){
+    if(v0<1e-9&&v1<1e-9)return'';
+    return`<div class="total-item"><span class="name">${label}</span><span class="vals"><span>${fmt(v0)}</span><span class="arrow">→</span><span>${fmt(v1)}</span><span class="unit-sm">mM</span></span></div>`;
+  }
+
+  rc.innerHTML=`
+  <div class="metric-grid">
+    <div class="metric-card highlight">
+      <div class="metric-label">Retentate pH</div>
+      <div class="metric-value">${pH1.toFixed(3)}</div>
+      <div class="metric-delta ${dph>0.001?'up':dph<-0.001?'down':'neutral'}">${fmtSign(dph)} shift</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Protein Charge Z</div>
+      <div class="metric-value">${Z1>=0?'+':''}${Z1.toFixed(1)}</div>
+      <div class="metric-delta neutral">at ret. pH</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Charge Conc.</div>
+      <div class="metric-value">${pcc>=0?'+':''}${fmt(pcc,2)}</div>
+      <div class="metric-delta neutral">mM·e</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Ionic Strength</div>
+      <div class="metric-value">${fmt(is1,2)}</div>
+      <div class="metric-delta ${is1>is0?'up':'down'}">${fmtSign(is1-is0,2)} mM</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Water Activity</div>
+      <div class="metric-value">${(water*100).toFixed(1)}%</div>
+      <div class="metric-delta neutral">available vol.</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Osmolality</div>
+      <div class="metric-value">${fmt(os1,0)}</div>
+      <div class="metric-delta neutral">mOsm/kg</div>
+    </div>
+  </div>
+  <div class="section-title">Charged species — retentate vs. permeate</div>
+  <div class="species-list">${charged.map(speciesRow).join('')}</div>
+  ${neutral.length?`<div class="section-title" style="margin-top:16px">Neutral species</div><div class="species-list">${neutral.map(speciesRow).join('')}</div>`:''}
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:rgba(23,169,212,0.22)"></div>Permeate (ghost)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:${CC}"></div>Retentate — cations</div>
+    <div class="legend-item"><div class="legend-dot" style="background:${AC}"></div>Retentate — anions</div>
+  </div>
+  <div class="divider"></div>
+  <div class="section-title">Analytical totals — permeate → retentate</div>
+  <div class="totals-grid">
+    ${tRow('Histidine',his0,his1)}${tRow('Acetate',ac0,ac1)}${tRow('Arginine',arg0,arg1)}
+    ${tRow('Sodium',na0,na1)}${tRow('Chloride',cl0,cl1)}
+    <div class="total-item"><span class="name">Ionic strength</span><span class="vals"><span>${fmt(is0,2)}</span><span class="arrow">→</span><span>${fmt(is1,2)}</span><span class="unit-sm">mM</span></span></div>
+  </div>`;
+}
+
+// ── Info Drawer ──────────────────────────────────────────────────
+function openDrawer() {
+  document.getElementById('infoDrawer').classList.add('open');
+  document.getElementById('drawerBackdrop').classList.add('open');
+}
+function closeDrawer() {
+  document.getElementById('infoDrawer').classList.remove('open');
+  document.getElementById('drawerBackdrop').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+// ── Accordion ────────────────────────────────────────────────────
+function toggleAccordion(btn) {
+  const body = btn.nextElementSibling;
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  btn.classList.toggle('active', !isOpen);
+}
+
+// ── Contact form → mailto ────────────────────────────────────────
+function submitContact(e) {
+  e.preventDefault();
+  const name  = document.getElementById('contactName').value.trim();
+  const email = document.getElementById('contactEmail').value.trim();
+  const msg   = document.getElementById('contactMsg').value.trim();
+  const subject = encodeURIComponent('QATCH Donnan Calculator — Inquiry');
+  const body    = encodeURIComponent('Name: ' + name + '\nEmail: ' + email + '\n\nMessage:\n' + msg);
+  window.location.href = 'mailto:info@qatchtech.com?subject=' + subject + '&body=' + body;
+  document.getElementById('contactConfirm').style.display = 'block';
+}
+</script>
+
+
+</body></html>
