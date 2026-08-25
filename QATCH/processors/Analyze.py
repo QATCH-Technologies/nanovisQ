@@ -8540,8 +8540,10 @@ class AnalyzerWorker(QtCore.QObject):
                     raise ValueError("Calculated mlen is not positive. Check input lengths.")
 
                 # Ensure that the maximum index needed is within bounds.
-                max_required_index = (5 * mlen) - 1  # the maximum index accessed
-                if max_required_index > len(log_velocity_46):
+                required_length = max(
+                    [mlen] + [(hh + 1) * mlen - 1 for hh in range(1, 4)]
+                )
+                if required_length > len(log_velocity_46):
                     raise ValueError("Not enough entries in log_velocity_46 for the computed mlen.")
 
                 # Process the first mlen elements.
@@ -9258,12 +9260,6 @@ class AnalyzerWorker(QtCore.QObject):
 
                     if USE_NEW_FILL_METHOD:
                         # NEW METHOD:
-                        if last_idx == idx:
-                            # See issue #436: Allowing this to proceed uninterrupted would add a NAN value to output data
-                            Log.e(
-                                f"Failed to plot index {idx} for shear point {pt:2.2f}. Already plotted {in_shear_rate[idx]:2.2f} for index {idx}."
-                            )
-                            continue
                         if last_idx == -1:
                             mv = fill_pos[idx] / fill_time[idx]
                             mp = fill_pos[idx] / 2
@@ -9272,7 +9268,7 @@ class AnalyzerWorker(QtCore.QObject):
                                 fill_time[idx] - fill_time[last_idx]
                             )
                             mp = (fill_pos[idx] + fill_pos[last_idx]) / 2
-                        last_idx = idx
+
                         mid_visc = (
                             ST
                             * np.cos(np.radians(CA))
@@ -9283,6 +9279,7 @@ class AnalyzerWorker(QtCore.QObject):
                         mid_shear = (
                             6 * mv / Constants.channel_thickness * (2 / 3 + 1 / 3 / n) * 1e-3
                         )
+
                         # Use to show the old positions:
                         # ax7.scatter(
                         #     in_shear_rate[idx],
@@ -9292,24 +9289,34 @@ class AnalyzerWorker(QtCore.QObject):
                         #     c="red",
                         # )
 
-                        # See issue #436: Add safety guard against adding NAN values in arrays
-                        if np.isfinite(mid_visc):
-                            sm_trendline[idx] = mid_visc
-                        else:
+                        # See issue #436: Allowing this to proceed uninterrupted would add a NAN value to output data
+                        if last_idx == idx:
+                            Log.e(
+                                f"Failed to plot index {idx} for shear point {pt:2.2f}. Already plotted {in_shear_rate[idx]:2.2f}."
+                            )
+                            continue
+
+                        # See issue #436: Add extra safety guards to protect against adding NAN values in arrays
+                        if not np.isfinite(mid_visc):
                             Log.e(
                                 f"Failed to plot index {idx} for shear point {pt:2.2f}. Calculated viscosity is not finite."
                             )
-                        if np.isfinite(mid_shear):
-                            in_shear_rate[idx] = mid_shear
-                        else:
+                            continue
+                        if not np.isfinite(mid_shear):
                             Log.e(
                                 f"Failed to plot index {idx} for shear point {pt:2.2f}. Calculated mid_shear is not finite."
                             )
+                            continue
+
+                        sm_trendline[idx] = mid_visc
+                        in_shear_rate[idx] = mid_shear
+                        last_idx = idx
 
                     local_shear.append(in_shear_rate[idx])
                     local_visc.append(sm_trendline[idx])
                     local_linv.append(lin_viscosity[idx])
                     local_temp.append(in_temp[idx])
+                    
                 if enable_bandaid_3 and high_shear_15x:
                     P1_value = local_visc[-1]
                     P2_value = high_shear_15y  # exists only if high_Shear_15x is not zero
