@@ -2232,6 +2232,11 @@ void QATCH_loop()
               client->println(pos); // echo pos back to user
 
               // Save current POGO positions in persistent memory
+              // Do this regardless of external 5V power detected
+              // so the admin user can send "LID HOLD [angle]" to
+              // force a change to current positions in EEPROM if
+              // the stored value need to change without actually
+              // moving the POGO lid servo beyond its hard limits
               NVMEM.POGO_PosCurrent1 = pogoServo1.read();
               NVMEM.POGO_PosCurrent2 = pogoServo2.read();
               if (nv.isValid())
@@ -4471,6 +4476,10 @@ void pogo_button_pressed(bool init)
     }
 
     // Save current POGO positions in persistent memory
+    // Do this regardless of the presence of a POGO lid
+    // switch to maintain NVMEM state tracking on older
+    // deployed devices that don't have POGO lid switch
+    // HW but still need the smoother POGO movement fix
     NVMEM.POGO_PosCurrent1 = pogoServo1.read();
     NVMEM.POGO_PosCurrent2 = pogoServo2.read();
     if (nv.isValid())
@@ -4478,7 +4487,7 @@ void pogo_button_pressed(bool init)
     else
       client->println("ERROR: Failed to save current POGO positions in EEPROM. NVMEM struct is invalid.");
   } else {
-    client->println("WARN: No external 5V power detected. Not storing new POGO position.");
+    client->println("WARN: No external 5V power detected. Not storing new POGO positions.");
   }
 
   // Detach pogo servos (idle)

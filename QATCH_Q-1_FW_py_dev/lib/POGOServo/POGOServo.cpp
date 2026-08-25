@@ -83,6 +83,7 @@ void POGOServo::writeMicroseconds(int value) {
     // Safety clamp to protect the servo from over-travel physical damage
     if (value < 500) value = 500;
     if (value > 2500) value = 2500;
+    _targetUs = value;
     
     // Convert time duration to hardware timer register ticks and write
     uint32_t ticks = usToTicks(value);
