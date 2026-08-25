@@ -7,20 +7,20 @@ so both model generations can be imported side by side):
     from QATCH.QModel.models.qmodel_v7 import QModelV7, QModelV7Config
 """
 
-__version__ = "7.0.0"
-__release__ = "2026-07-06"
+__version__ = "7.1.1"
+__release__ = "2026-08-25"
 
 try:
     from .v7_yolo import (
-        QModelV7Config,
         QModelV7,
+        QModelV7Config,
         QModelV7Detector,
         QModelV7FillClassifier,
     )
 except (ImportError, ModuleNotFoundError):
     from QATCH.QModel.models.qmodel_v7.v7_yolo import (
-        QModelV7Config,
         QModelV7,
+        QModelV7Config,
         QModelV7Detector,
         QModelV7FillClassifier,
     )
