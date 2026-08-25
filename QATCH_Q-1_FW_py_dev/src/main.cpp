@@ -3870,6 +3870,7 @@ void QATCH_loop()
         if (!is_running)
         {
           pogo_button_pressed(false);
+          tft_msgbox = false; // clear MSGBOX text
           tft_idle(); // update cartridge lock state
         }
         pogo_pressed_flag = false; // Clear flag
