@@ -155,6 +155,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         self.active_ingredients = {}
         self._buffer_ph_spin = None
+        self._protein_charge_spin = None
         self.ml_params = {
             "lr": 0.01,
             "steps": 50,
@@ -629,6 +630,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     self._buffer_ph_spin.setReadOnly(lock_state)
             else:
                 btn_rem.setEnabled(not lock_state)
+                if ing_type == "Protein" and self._protein_charge_spin is not None:
+                    self._protein_charge_spin.setReadOnly(lock_state)
 
         self.slider_temp.setEnabled(not lock_state)
         self.spin_temp.setReadOnly(lock_state)
@@ -666,10 +669,14 @@ class FormulationConfigCard(QtWidgets.QFrame):
                 btn_rem.setEnabled(False)
                 if ing_type == "Buffer" and self._buffer_ph_spin is not None:
                     self._buffer_ph_spin.setReadOnly(True)
+                if ing_type == "Protein" and self._protein_charge_spin is not None:
+                    self._protein_charge_spin.setReadOnly(True)
             else:
                 btn_rem.setEnabled(ing_type != "Buffer")
                 if ing_type == "Buffer" and self._buffer_ph_spin is not None:
                     self._buffer_ph_spin.setReadOnly(False)
+                if ing_type == "Protein" and self._protein_charge_spin is not None:
+                    self._protein_charge_spin.setReadOnly(False)
 
         # Temperature controls
         if hasattr(self, "slider_temp"):
@@ -994,6 +1001,22 @@ class FormulationConfigCard(QtWidgets.QFrame):
             spin_ph.valueChanged.connect(self.trigger_update)
             self._buffer_ph_spin = spin_ph
 
+        # Charge spinbox - Protein rows only, optional (no "unset" sentinel:
+        # a net-neutral protein at its pI is charge 0.0, a real value).
+        if ing_type == "Protein":
+            spin_charge = QtWidgets.QDoubleSpinBox()
+            spin_charge.setProperty("class", "sleek")
+            spin_charge.setRange(-200.0, 200.0)
+            spin_charge.setDecimals(1)
+            spin_charge.setSuffix(" e")
+            spin_charge.setToolTip("Whole protein charge at this formulation's buffer pH")
+            fm_charge = spin_charge.fontMetrics()
+            charge_width = fm_charge.horizontalAdvance("-200.0 e")
+            spin_charge.setMinimumWidth(charge_width + 40)
+            spin_charge.setMaximumWidth(charge_width + 60)
+            spin_charge.valueChanged.connect(self.trigger_update)
+            self._protein_charge_spin = spin_charge
+
         btn_rem = QtWidgets.QPushButton()
         btn_rem.setIcon(
             QtGui.QIcon(
@@ -1019,12 +1042,14 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         btn_rem.clicked.connect(lambda: self.remove_ingredient_row(ing_type, row_widget))
 
-        # Layout: Label | Combo | Conc | [pH] | Edit | [Delete]
+        # Layout: Label | Combo | Conc | [pH/charge] | Edit | [Delete]
         row_layout.addWidget(lbl)
         row_layout.addWidget(combo, stretch=1)
         row_layout.addWidget(spin)
         if ing_type == "Buffer":
             row_layout.addWidget(self._buffer_ph_spin)
+        elif ing_type == "Protein":
+            row_layout.addWidget(self._protein_charge_spin)
         row_layout.addWidget(btn_configure)
         if ing_type != "Buffer":
             row_layout.addWidget(btn_rem)
@@ -1277,6 +1302,13 @@ class FormulationConfigCard(QtWidgets.QFrame):
                         setters[ing_type](
                             ingredient, concentration, units, pH=ph_val if ph_val >= 0.0 else None
                         )
+                    elif ing_type == "Protein" and self._protein_charge_spin is not None:
+                        setters[ing_type](
+                            ingredient,
+                            concentration,
+                            units,
+                            charge=self._protein_charge_spin.value(),
+                        )
                     else:
                         setters[ing_type](ingredient, concentration, units)
                 except TypeError as e:
@@ -1426,6 +1458,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
             }
             if t == "Buffer" and self._buffer_ph_spin is not None:
                 entry["pH"] = self._buffer_ph_spin.value()
+            if t == "Protein" and self._protein_charge_spin is not None:
+                entry["charge"] = self._protein_charge_spin.value()
             formulation_data[t] = entry
 
         config = {
@@ -1527,6 +1561,11 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     if ing_type == "Buffer" and self._buffer_ph_spin is not None:
                         ph = details.get("pH") or details.get("ph")
                         self._buffer_ph_spin.setValue(float(ph) if ph is not None else -1.0)
+                    if ing_type == "Protein" and self._protein_charge_spin is not None:
+                        charge = details.get("charge")
+                        self._protein_charge_spin.setValue(
+                            float(charge) if charge is not None else 0.0
+                        )
 
                     spin.setValue(float(details.get("concentration", 0.0)))
                     comp_name = details.get("component") or details.get("name")

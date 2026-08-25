@@ -416,10 +416,10 @@ class Protein(Ingredient):
 
         Raises:
             TypeError: If `enc_id` is not an integer, or if `name` is not a string,
-                or if any of `molecular_weight`, `pI_mean`, or `pI_range` are not numeric when provided,
-                or if `id` is not an integer or None.
+                or if any of `molecular_weight`, `pI_mean`, or `pI_range`
+                are not numeric when provided, or if `id` is not an integer or None.
             ValueError: If `name` is empty or whitespace-only,
-                or if any numeric property is negative.
+                or if `molecular_weight`, `pI_mean`, or `pI_range` is negative.
         """
         super().__init__(enc_id=enc_id, name=name, id=id)
         self._class_type: ProteinClass = class_type
@@ -524,7 +524,8 @@ class Protein(Ingredient):
         """Check equality between two Protein instances.
 
         Two Proteins are equal if they share the same concrete attributes:
-        base (see Ingredient), molecular_weight, pI_mean, and pI_range
+        base (see Ingredient), molecular_weight, pI_mean, pI_range,
+        and class_type.
 
         Args:
             other (Any): The object to compare.

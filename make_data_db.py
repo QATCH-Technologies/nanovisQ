@@ -43,7 +43,7 @@ logger = logging.getLogger("DB_MAKER")
 
 ADMIN_SPACE_LIMIT = IngredientController.DEV_MAX_ID
 SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
-SOURCE_CSV = "formulation_data_05262026.csv"
+SOURCE_CSV = "formulation_data_08252026.csv"
 
 
 def get_project_paths() -> Tuple[Path, Path]:
@@ -126,7 +126,23 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: The normalized DataFrame ready for import.
     """
-    float_cols = ["MW", "PI_mean", "PI_range"]
+    # Spreadsheet-export artifact: drop rows where every single column is
+    # blank (trailing empty rows at the end of the sheet) before anything
+    # else runs. This must not be confused with a row that has *some* real
+    # data but a genuinely missing required field (e.g. Buffer_type) - that
+    # should still fail loudly during import, not get silently patched.
+    df = df.dropna(how="all").reset_index(drop=True)
+
+    # The source CSV names this column after how it was computed
+    # (net charge derived from sequence/pI at the formulation's buffer pH),
+    # but FormulationController.add_all_from_dataframe() (and the rest of
+    # the import/export pipeline) expects the plain "Protein_charge" name
+    # used everywhere else - rename it before the numeric coercion below so
+    # both operate on the same column.
+    if "Whole_Antibody_Charge_at_Buffer_pH" in df.columns and "Protein_charge" not in df.columns:
+        df = df.rename(columns={"Whole_Antibody_Charge_at_Buffer_pH": "Protein_charge"})
+
+    float_cols = ["MW", "PI_mean", "PI_range", "Protein_charge"]
     for col in float_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
