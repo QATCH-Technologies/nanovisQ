@@ -1,16 +1,47 @@
 """
-avanced_main_widget.py
+QATCH.ui.widgets.advanced_main_widget.py
 
-This module contains the `AdvancedMainWidget` and its supporting UI components
-(`_InfoIcon`, `_AdvancedInnerPanel`). It is designed to render an elegant,
-translucent dropdown panel that can anchor to a specific UI element and house
-advanced configuration controls.
+Advanced settings popup components for QATCH.
+
+Provides the widgets and supporting utilities used to display and interact
+with the application's Advanced Settings popup. The module includes the
+flat-painted popup panel, informational SVG icons, animated perspective
+transitions, and the main popup container used to host advanced and
+device-configuration controls.
+
+The popup is implemented as a translucent, frameless Qt popup with a
+flat-surface inner panel and a soft drop shadow. Advanced and device
+configuration views are hosted side-by-side by :class:`_PerspectiveStage`
+and transition horizontally within the same popup surface.
+
+Entrance animations are handled by :class:`_PerspectiveAnimator`, which
+animates the top-level popup window using `setWindowOpacity` and positional
+movement rather than `QGraphicsOpacityEffect`. This avoids offscreen
+pixmap caching artifacts that can occur when custom-painted child widgets
+are rendered through a graphics effect.
+
+The module also provides role-independent informational icon tinting and
+theme-aware painting so the popup remains visually consistent across light
+and dark application themes.
+
+Classes:
+    _InfoIcon: Theme-aware informational icon that changes tint on hover.
+    _AdvancedInnerPanel: Flat-painted inner surface of the advanced settings
+        popup.
+    _PerspectiveStage: Clipped viewport that hosts and animates the advanced
+        and device perspectives.
+    _PerspectiveAnimator: Entrance animation controller for the popup window.
+    AdvancedMainWidget: Main advanced-settings popup container.
+
+Functions:
+    _tinted_pixmap: Apply a color tint to a pixmap while preserving its alpha
+        channel.
 
 Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-06-19
+    2026-08-21
 """
 
 import contextlib
@@ -27,11 +58,20 @@ from QATCH.ui.styles.typography import FONT_SANS_STACK
 
 
 def _tinted_pixmap(src: QtGui.QPixmap, color: QtGui.QColor) -> QtGui.QPixmap:
-    """Returns a copy of `src` fully painted in `color`, preserving alpha.
+    """Return a copy of a pixmap tinted with the specified color.
 
-    Uses SourceAtop composition so the tint respects the original alpha
-    channel - transparent SVG areas stay transparent. Mirrors the
-    established `_tinted_icon` pattern in account_popup.py.
+    The source pixmap's alpha channel is preserved by using
+    `CompositionMode_SourceAtop` when applying the tint. This ensures
+    transparent regions remain transparent while all visible pixels are
+    replaced by the requested color.
+
+    Args:
+        src: Source pixmap to tint.
+        color: Color applied to the visible pixels of the source pixmap.
+
+    Returns:
+        A tinted copy of `src` with its original alpha channel preserved.
+        If `src` is null, the original pixmap is returned unchanged.
     """
     if src.isNull():
         return src
@@ -46,25 +86,31 @@ def _tinted_pixmap(src: QtGui.QPixmap, color: QtGui.QColor) -> QtGui.QPixmap:
 
 
 class _InfoIcon(QtWidgets.QLabel):
-    """Info icon (SVG) that brightens on hover and shows a tooltip.
+    """Display a themed informational SVG icon with hover highlighting.
 
-    Loads an SVG from the provided path. The icon is tinted with the
-    `flat_text_muted` token at rest and `flat_accent` on hover, refreshing
-    automatically on light/dark theme changes.
+    Loads an icon from the specified path and renders it at a fixed display
+    size. The icon uses the active theme's muted text color in its normal
+    state and switches to the theme accent color while hovered. The icon is
+    automatically refreshed when the application theme changes.
+
+    A tooltip can optionally be displayed when the user hovers over the icon.
+    The source pixmap is tinted while preserving its original alpha channel.
 
     Attributes:
-        _DISPLAY_SIZE (int): The display size (width and height) of the icon in pixels.
+        _DISPLAY_SIZE: Width and height of the rendered icon in pixels.
+        _src: Scaled source pixmap used as the basis for tinted rendering.
+        _hovered: Whether the mouse is currently hovering over the icon.
     """
 
     _DISPLAY_SIZE: int = 16
 
     def __init__(self, icon_path: str, tooltip: str = "", parent=None) -> None:
-        """Initializes the _InfoIcon.
+        """Initialize the informational icon.
 
         Args:
-            icon_path (str): The file path to the SVG or image asset.
-            tooltip (str, optional): The tooltip text to display on hover. Defaults to "".
-            parent (QtWidgets.QWidget, optional): The parent widget. Defaults to None.
+            icon_path: File path to the SVG or image asset used by the icon.
+            tooltip: Optional tooltip text displayed when the icon is hovered.
+            parent: Optional parent widget.
         """
         super().__init__(parent)
         self.setFixedSize(self._DISPLAY_SIZE, self._DISPLAY_SIZE)
@@ -86,54 +132,69 @@ class _InfoIcon(QtWidgets.QLabel):
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the icon tint when the application theme changes.
+
+        Args:
+            _mode: Theme mode identifier emitted by `ThemeManager`. The
+                value is not used directly because the current theme tokens
+                are retrieved by :meth:`_apply_theme`.
+        """
         self._apply_theme()
 
     def _apply_theme(self) -> None:
+        """Apply the current theme color to the icon.
+
+        Uses the theme's accent color while the icon is hovered and the muted
+        text color otherwise. If the source pixmap could not be loaded, no
+        update is performed.
+        """
         if self._src.isNull():
             return
         tok = ThemeManager.instance().tokens()
         color = tok["flat_accent"] if self._hovered else tok["flat_text_muted"]
         self.setPixmap(_tinted_pixmap(self._src, QtGui.QColor(*color)))
 
-    def enterEvent(self, event) -> None:  # noqa: N802
-        """Handles the mouse enter event to brighten the icon.
+    def enterEvent(self, event) -> None:
+        """Highlight the icon when the mouse enters its bounds.
 
         Args:
-            event (QtCore.QEvent): The triggering hover event.
+            event: Qt event generated when the mouse enters the widget.
         """
         self._hovered = True
         self._apply_theme()
 
-    def leaveEvent(self, event) -> None:  # noqa: N802
-        """Handles the mouse leave event to dim the icon back to rest state.
+    def leaveEvent(self, event) -> None:
+        """Restore the icon's muted tint when the mouse leaves.
 
         Args:
-            event (QtCore.QEvent): The triggering hover leave event.
+            event: Qt event generated when the mouse leaves the widget.
         """
         self._hovered = False
         self._apply_theme()
 
 
 class _AdvancedInnerPanel(QtWidgets.QWidget):
-    """Inner panel for the advanced settings popup.
+    """Flat-styled inner panel for the advanced settings popup.
 
-    Styled as a flat card (see QATCH.ui.components.flat_paint) - a solid
-    `flat_surface` fill with a 1px `flat_border` stroke - matching the
-    account popup and the rest of the flat control system, rather than the
-    old frosted-glass recipe. Repaints automatically on light/dark theme
-    changes.
+    Renders the popup's content surface using the application's flat control
+    system. The panel consists of a solid `flat_surface` fill with a
+    one-pixel `flat_border` stroke and rounded corners, matching the visual
+    treatment used by other flat popup panels.
+
+    The panel listens for application theme changes and repaints itself so
+    that its fill and border colors remain synchronized with the active theme.
 
     Attributes:
-        _RADIUS (float): The corner radius of the panel.
+        _RADIUS: Corner radius of the painted panel surface, in pixels.
     """
 
     _RADIUS: float = 12.0
 
     def __init__(self, parent=None) -> None:
-        """Initializes the _AdvancedInnerPanel.
+        """Initialize the advanced settings inner panel.
 
         Args:
-            parent (QtWidgets.QWidget, optional): The parent widget. Defaults to None.
+            parent: Optional parent widget.
         """
         super().__init__(parent)
         self.setAutoFillBackground(False)
@@ -141,13 +202,24 @@ class _AdvancedInnerPanel(QtWidgets.QWidget):
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
-        self.update()
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
-        """Paints the flat card surface (fill + border) on the widget.
+        """Refresh the panel when the application theme changes.
 
         Args:
-            event (QtGui.QPaintEvent): The paint event parameters provided by Qt.
+            _mode: Theme mode identifier emitted by `ThemeManager`. The
+                value is not used directly because the current theme tokens
+                are retrieved during painting.
+        """
+        self.update()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        """Paint the themed flat card surface.
+
+        Draws the panel using the active theme's surface and border tokens
+        through the shared `paint_flat_surface` rendering recipe.
+
+        Args:
+            event: Qt paint event describing the region that requires
+                repainting.
         """
         tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
@@ -163,22 +235,35 @@ class _AdvancedInnerPanel(QtWidgets.QWidget):
 
 
 class _PerspectiveStage(QtWidgets.QWidget):
-    """A clipped, horizontally-scrolling viewport that hosts two perspectives.
+    """Clipped horizontal viewport for animated perspective transitions.
 
-    Both the "advanced" perspective (index 0) and the "device" perspective
-    (index 1) live side-by-side inside a single inner strip that is twice the
-    viewport width. Switching perspectives animates the strip's horizontal
-    offset so the advanced content slides left and reveals the device content
-    as part of the SAME surface - not as a separate popup window sliding in as
-    an overlay.
+    Hosts the advanced and device perspectives side-by-side within a single
+    inner strip that is twice the width of the viewport. Changing perspectives
+    animates the strip horizontally so the outgoing perspective slides away
+    while the incoming perspective is revealed as part of the same surface,
+    rather than appearing as a separate popup overlay.
 
-    The viewport sizes itself to the *currently active* perspective's size hint
-    (the inactive one is laid out but does not inflate the viewport), so the
-    popup footprint matches whichever view is showing rather than the larger of
-    the two.
+    The viewport tracks the size of the currently active perspective when
+    stationary. During a transition, it temporarily sizes itself according to
+    the taller perspective so that neither page is clipped while sliding.
+    This allows the popup footprint to match the visible perspective at rest
+    while preserving a clean transition between differently sized views.
+
+    Signals:
+        transitionFinished: Emitted with the settled perspective index when a
+            slide transition completes or when an immediate perspective change
+            is performed.
 
     Attributes:
-        _DURATION (int): Slide animation duration in milliseconds.
+        _DURATION: Duration of perspective slide animations, in milliseconds.
+        _strip: Transparent container holding both perspective widgets
+            side-by-side.
+        _pages: Two-element list containing the advanced perspective at index
+            0 and the device perspective at index 1.
+        _index: Index of the currently active or destination perspective.
+        _offset: Fractional horizontal transition offset, where `0.0` shows
+            the advanced perspective and `1.0` shows the device perspective.
+        _anim: Animation controlling the horizontal perspective transition.
     """
 
     _DURATION: int = 260
@@ -186,12 +271,16 @@ class _PerspectiveStage(QtWidgets.QWidget):
     transitionFinished = QtCore.pyqtSignal(int)  # emits the settled index
 
     def __init__(self, parent=None) -> None:
+        """Initialize the perspective viewport.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setStyleSheet("background: transparent;")
 
-        # The strip holds the two perspectives left-to-right. It is moved
-        # horizontally inside this (clipping) viewport via setGeometry.
+        # The strip holds the two perspectives left-to-right
         self._strip = QtWidgets.QWidget(self)
         self._strip.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self._strip.setStyleSheet("background: transparent;")
@@ -205,9 +294,18 @@ class _PerspectiveStage(QtWidgets.QWidget):
         self._anim.valueChanged.connect(self._on_anim_value)
         self._anim.finished.connect(self._on_anim_finished)
 
-    # -- page management ---------------------------------------------------
+    #  Page management
     def set_page(self, index: int, widget: QtWidgets.QWidget) -> None:
-        """Adopt `widget` as the perspective at `index` (0=advanced, 1=device)."""
+        """Set a widget as one of the available perspectives.
+
+        Existing content at the specified index is detached before the new
+        widget is adopted by the internal strip.
+
+        Args:
+            index: Perspective index. `0` represents the advanced
+                perspective and `1` represents the device perspective.
+            widget: Widget to display for the selected perspective.
+        """
         old = self._pages[index]
         if old is widget:
             return
@@ -219,13 +317,25 @@ class _PerspectiveStage(QtWidgets.QWidget):
         self._relayout()
 
     def current_index(self) -> int:
+        """Return the index of the currently active perspective.
+
+        Returns:
+            `0` for the advanced perspective or `1` for the device
+            perspective.
+        """
         return self._index
 
-    # -- sizing ------------------------------------------------------------
     def _active_page(self) -> QtWidgets.QWidget | None:
-        # During a transition the viewport sizes to the TALLER of the two pages
-        # so neither clips mid-slide; at rest it tracks the active page so the
-        # popup footprint matches the visible perspective.
+        """Return the page used to determine the current viewport height.
+
+        During an active transition, the taller of the two available pages is
+        used so that neither page is clipped while sliding. When stationary,
+        the currently active page determines the viewport height.
+
+        Returns:
+            The page whose height should currently determine the viewport
+            size, or `None` if no page has been installed.
+        """
         if self._anim.state() == QtCore.QAbstractAnimation.State.Running:
             a, b = self._pages
             if a is not None and b is not None:
@@ -233,49 +343,105 @@ class _PerspectiveStage(QtWidgets.QWidget):
         return self._pages[self._index]
 
     def _page_w(self, p: QtWidgets.QWidget) -> int:
-        """A page's effective width: the larger of its hint and its minimum."""
+        """Return a page's effective width.
+
+        The effective width is the largest value among the page's size hint,
+        minimum size hint, and explicit minimum width.
+
+        Args:
+            p: Page widget whose effective width should be calculated.
+
+        Returns:
+            Effective page width in pixels.
+        """
         return max(p.sizeHint().width(), p.minimumSizeHint().width(), p.minimumWidth())
 
     def _page_h(self, p: QtWidgets.QWidget) -> int:
+        """Return a page's effective height.
+
+        Args:
+            p: Page widget whose effective height should be calculated.
+
+        Returns:
+            Effective page height in pixels.
+        """
         return max(p.sizeHint().height(), p.minimumSizeHint().height())
 
-    def sizeHint(self) -> QtCore.QSize:  # noqa: N802
+    def sizeHint(self) -> QtCore.QSize:
+        """Return the preferred viewport size for the active perspective.
+
+        The width is based on the widest installed page so that each
+        perspective occupies a consistent horizontal slot. The height is
+        determined by the page selected by :meth:`_active_page`.
+
+        Returns:
+            Preferred viewport size in pixels. If no page is installed, a
+            default size of `440 x 320` is returned.
+        """
         page = self._active_page()
         if page is None:
             return QtCore.QSize(440, 320)
-        # Width tracks the widest page so horizontal travel is consistent and
-        # neither page overflows its slot.
         w = 0
         for p in self._pages:
             if p is not None:
                 w = max(w, self._page_w(p))
         return QtCore.QSize(w, self._page_h(page))
 
-    def minimumSizeHint(self) -> QtCore.QSize:  # noqa: N802
+    def minimumSizeHint(self) -> QtCore.QSize:
+        """Return the minimum size required by the active perspective.
+
+        Returns:
+            The same size returned by :meth:`sizeHint`.
+        """
         return self.sizeHint()
 
-    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # noqa: N802
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        """Relayout the perspective strip when the viewport is resized.
+
+        Args:
+            event: Qt resize event generated by Qt.
+        """
         self._relayout()
         super().resizeEvent(event)
 
     def _relayout(self) -> None:
-        """Lay both pages side-by-side and position the strip per the offset."""
+        """Lay out both perspectives and position the transition strip.
+
+        Each installed page occupies one viewport-width slot in the internal
+        strip. The strip itself is positioned according to the current
+        fractional transition offset.
+        """
         vw = self.width()
         vh = self.height()
         if vw <= 0 or vh <= 0:
             return
-        # Strip is two viewport-widths wide; each page occupies one slot.
         self._strip.setGeometry(self._strip_x(), 0, vw * 2, vh)
         for i, page in enumerate(self._pages):
             if page is not None:
                 page.setGeometry(i * vw, 0, vw, vh)
 
     def _strip_x(self) -> int:
+        """Return the strip's horizontal position for the current offset.
+
+        Returns:
+            X-coordinate, in pixels, at which the internal strip should be
+            positioned within the viewport.
+        """
         return int(round(-self._offset * self.width()))
 
-    # -- transitions -------------------------------------------------------
     def slide_to(self, index: int, animated: bool = True) -> None:
-        """Slide to perspective `index` (0=advanced, 1=device)."""
+        """Transition to the requested perspective.
+
+        An animated transition slides the internal strip horizontally. When
+        animation is disabled or the viewport is not visible, the destination
+        perspective is applied immediately.
+
+        Args:
+            index: Target perspective index. Values are normalized to `0`
+                for the advanced perspective and `1` for the device
+                perspective.
+            animated: Whether to animate the transition. Defaults to `True`.
+        """
         index = 1 if index else 0
         target = float(index)
         if not animated or not self.isVisible():
@@ -294,13 +460,22 @@ class _PerspectiveStage(QtWidgets.QWidget):
         self._anim.start()
 
     def _on_anim_value(self, v) -> None:
+        """Update the strip position as the transition animation progresses.
+
+        Args:
+            v: Current animation value representing the fractional horizontal
+                transition offset between the two perspectives.
+        """
         self._offset = float(v)
-        # Re-assert width/height each frame so the viewport can grow/shrink
-        # smoothly as the taller/shorter page comes into view.
         self.updateGeometry()
         self._strip.move(self._strip_x(), 0)
 
     def _on_anim_finished(self) -> None:
+        """Finalize the perspective transition and emit its completion signal.
+
+        Snaps the strip to the destination perspective, updates the viewport
+        geometry, and notifies listeners that the transition has settled.
+        """
         self._offset = float(self._index)
         self.updateGeometry()
         self._relayout()
@@ -308,42 +483,53 @@ class _PerspectiveStage(QtWidgets.QWidget):
 
 
 class _PerspectiveAnimator(QtCore.QObject):
-    """Plays a gentle entrance on a perspective container each time it is shown.
+    """Animate the entrance of a perspective container.
 
-    IMPORTANT: this deliberately does NOT use QGraphicsOpacityEffect. Wrapping a
-    container that holds custom-painted children (combos, toggles,
-    buttons) in a graphics effect caches them into an offscreen pixmap, which
-    causes ghosting, duplicated section labels, and widgets vanishing on hover.
-    Instead the fade is applied to the top-level popup window via
-    setWindowOpacity (no pixmap caching), paired with a brief top-margin slide.
+    Provides a coordinated fade and downward slide whenever the associated
+    container is shown. The animation is applied to the container's top-level
+    window using `setWindowOpacity` rather than `QGraphicsOpacityEffect`.
+
+    Avoiding a graphics opacity effect is intentional because containers may
+    contain custom-painted Qt widgets such as combo boxes, toggles, and
+    buttons. Graphics effects can cache such widgets into an offscreen pixmap,
+    causing rendering artifacts including ghosted content, duplicated labels,
+    and widgets disappearing during hover interactions.
+
+    The animator listens for `Show` events on the container and schedules a
+    single entrance animation for each show cycle. A guard prevents multiple
+    `Show` events generated during a single popup opening from starting
+    duplicate animations.
 
     Attributes:
-        _container (QtWidgets.QWidget): The target widget container to animate.
-        _slide (QtCore.QVariantAnimation): Animation for the vertical sliding movement.
-        _fade (QtCore.QVariantAnimation): Animation for the window opacity transition.
+        _container: Widget whose top-level window is animated.
+        _start_pending: Whether an entrance animation has already been
+            scheduled for the current show cycle.
+        _slide: Animation controlling the window's vertical movement.
+        _slide_from: Starting position of the current slide animation.
+        _slide_to: Final position of the current slide animation.
+        _slide_offset: Number of pixels above the final position from which the
+            window begins its entrance.
+        _fade: Animation controlling the top-level window opacity.
     """
 
     def __init__(self, container: QtWidgets.QWidget) -> None:
-        """Initializes the animator and attaches an event filter to the container.
+        """Initialize the perspective animator.
+
+        Installs an event filter on `container` so that its show events can
+        trigger the entrance animation.
 
         Args:
-            container: The widget container whose window will be animated.
+            container: Widget whose top-level window should be animated when
+                the container becomes visible.
         """
         super().__init__(container)
         self._container = container
 
         # Guard flag: ensures only one _begin_slide is ever scheduled per show
-        # event cycle.  Multiple ShowEvents can fire on the container during a
-        # single open (e.g. from set_page's show() and set_advanced_perspective's
-        # show()), particularly on the first open when the container transitions
-        # from a hidden top-level widget.  Without this guard the animation
-        # starts twice, producing the "doubly renders and animates" glitch.
+        # event cycle.
         self._start_pending: bool = False
 
-        # Slide the whole popup window DOWN into place (start 12px above the
-        # final position), matching the account menu. Animating the inner
-        # top-margin instead made content rise up from the bottom, which read
-        # as a bottom-up animation.
+        # Slide the whole popup window down into place
         self._slide = QtCore.QVariantAnimation(self)
         self._slide.setDuration(220)
         self._slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
@@ -365,10 +551,14 @@ class _PerspectiveAnimator(QtCore.QObject):
         container.installEventFilter(self)
 
     def _apply_slide(self, t: float) -> None:
-        """Calculates and applies the window position during the slide animation.
+        """Apply the current vertical position of the slide animation.
+
+        Interpolates between the starting and final window positions using the
+        supplied normalized animation progress.
 
         Args:
-            t (float): Normalized time value (0.0 to 1.0).
+            t: Normalized animation progress, typically ranging from `0.0`
+                to `1.0`.
         """
         win = self._container.window()
         if win is None or self._slide_to is None:
@@ -382,49 +572,59 @@ class _PerspectiveAnimator(QtCore.QObject):
         win.move(x, y)
 
     def _apply_fade(self, v: float) -> None:
-        """Applies the window opacity during the fade animation.
+        """Apply the current opacity value to the top-level window.
 
         Args:
-            v (float): Opacity value (0.0 to 1.0).
+            v: Opacity value, normally ranging from `0.0` to `1.0`.
         """
         win = self._container.window()
         if win is not None:
             win.setWindowOpacity(float(v))
 
     def _finish_fade(self) -> None:
-        """Ensures the window is fully opaque and at the final position upon finish."""
+        """Finalize the entrance animation at full opacity and final position.
+
+        Ensures the top-level window is fully opaque and positioned exactly at
+        the destination coordinates after the fade animation completes.
+        """
         win = self._container.window()
         if win is not None:
             win.setWindowOpacity(1.0)
             if self._slide_to is not None:
                 win.move(self._slide_to)
 
-    def eventFilter(self, obj, event) -> bool:  # noqa: N802
-        """Filters show events to trigger animations after the widget is visible.
+    def eventFilter(self, obj, event) -> bool:
+        """Monitor the container for show events that start the animation.
+
+        A zero-delay timer is used to defer animation startup until queued
+        `Show` events have been processed. A guard prevents multiple show
+        events during a single opening cycle from scheduling duplicate
+        animations.
 
         Args:
-            obj: The object the event is sent to.
-            event: The QEvent object.
+            obj: Object whose event is being filtered.
+            event: Qt event being processed.
 
         Returns:
-            True if the event was handled, otherwise the base class result.
+            The result returned by the base class event-filter
+            implementation.
         """
         if obj is self._container and event.type() == QtCore.QEvent.Type.Show:
-            # Deduplicate: only schedule _begin_slide once per open cycle.
-            # The fade is NOT started here - _begin_slide starts both animations
-            # together after the popup window is confirmed visible, preventing
-            # the fade from running ahead of the slide (and ahead of show()).
             if not self._start_pending:
                 self._start_pending = True
                 QtCore.QTimer.singleShot(0, self._begin_slide)
         return super().eventFilter(obj, event)
 
     def _begin_slide(self) -> None:
-        """Calculates start/end positions and starts both fade and slide animations.
+        """Prepare and start the coordinated entrance animations.
 
-        Called once per open cycle via a zero-delay singleShot, after all
-        queued ShowEvents have been processed.  Resets the _start_pending
-        guard so the next open cycle can arm again.
+        Determines the window's final position, places it slightly above that
+        position, and starts the fade and slide animations together. The
+        pending-start guard is cleared so a subsequent show cycle can schedule
+        another entrance animation.
+
+        If the container's top-level window is unavailable or no longer
+        visible when the deferred callback executes, no animation is started.
         """
         self._start_pending = False
         win = self._container.window()
@@ -441,18 +641,49 @@ class _PerspectiveAnimator(QtCore.QObject):
 
 
 class AdvancedMainWidget(QtWidgets.QWidget):
-    """Frosted-glass dropdown panel for the Advanced Settings.
+    """Dropdown popup containing the application's advanced settings surface.
 
-    This widget owns the entire advanced-settings surface: the frosted popup
-    shell, the orange warning banner, and the container that hosts the controls.
-    Callers build the individual controls (combo boxes, buttons, etc.) in their
-    own grid layout and hand that layout to `build_content`; this widget
-    wraps it inside the owned `content_container`.
+    Owns the complete advanced-settings popup, including its translucent
+    top-level shell, flat inner panel, drop shadow, perspective transition
+    stage, warning content, and dynamically injected controls.
+
+    Callers construct the individual advanced-settings controls and provide
+    their layout through :meth:`build_content`. The widget wraps that content
+    in its own container while retaining ownership of the overall popup
+    surface and its presentation behavior.
+
+    The popup supports multiple perspectives through
+    :class:`_PerspectiveStage`, allowing the advanced and device views to
+    slide horizontally within the same surface rather than appearing as
+    separate popup windows.
+
+    Signals:
+        closed: Emitted when the advanced-settings popup is closed.
 
     Attributes:
-        content_container (QtWidgets.QWidget | None): The lazily-built container holding
-            the dynamically injected content.
-        content_layout (QtWidgets.QVBoxLayout): The internal layout managing the panel items.
+        content_container: Lazily-created container holding dynamically
+            injected advanced-settings content.
+        content_layout: Layout managing the popup's main content, including
+            the perspective stage.
+        stage: Perspective viewport containing the advanced and device
+            settings views.
+        _main_window: Main application window associated with the popup.
+        _anchor: Widget used to anchor the popup when it is displayed.
+        _panel: Inner painted panel containing the popup content.
+        _on_device_back: Optional callback invoked after returning from the
+            device perspective.
+
+    Class Attributes:
+        _SHADOW_MARGIN_L: Left margin reserved around the inner panel for the
+            drop shadow.
+        _SHADOW_MARGIN_T: Top margin reserved around the inner panel for the
+            drop shadow.
+        _SHADOW_MARGIN_R: Right margin reserved around the inner panel for the
+            drop shadow.
+        _SHADOW_MARGIN_B: Bottom margin reserved around the inner panel for
+            the drop shadow and its positive Y offset.
+        _INFO_TEXT: Warning text displayed to users when viewing advanced
+            settings.
     """
 
     closed = QtCore.pyqtSignal()
@@ -468,6 +699,15 @@ class AdvancedMainWidget(QtWidgets.QWidget):
     )
 
     def __init__(self, parent=None) -> None:
+        """Initialize the advanced-settings popup.
+
+        Creates the translucent popup shell, inner panel, drop shadow, content
+        layout, and perspective stage. The individual advanced-settings
+        controls are added later through the content-building interface.
+
+        Args:
+            parent: Optional parent widget.
+        """
         flags = (
             QtCore.Qt.WindowType.Popup
             | QtCore.Qt.WindowType.FramelessWindowHint
@@ -505,8 +745,7 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         self.content_layout = QtWidgets.QVBoxLayout(self._panel)
         self.content_layout.setContentsMargins(14, 14, 14, 14)
 
-        # Perspective stage: hosts the advanced + device views side-by-side and
-        # slides horizontally between them inside this single popup surface.
+        # Perspective stage
         self.stage = _PerspectiveStage(self._panel)
         self.content_layout.addWidget(self.stage)
         self.stage.transitionFinished.connect(self._on_stage_transition_finished)
@@ -631,21 +870,43 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         self.stage.set_page(0, widget)
         widget.show()
 
-    # -- perspective hosting --------------------------------------------------
     def set_advanced_perspective(self, widget: QtWidgets.QWidget) -> None:
-        """Registers `widget` as the advanced (index 0) perspective."""
+        """Set the widget used for the advanced-settings perspective.
+
+        Registers `widget` as perspective index `0` in the internal
+        :class:`_PerspectiveStage` and makes it the current advanced-settings
+        content container.
+
+        Args:
+            widget: Widget containing the advanced-settings controls.
+        """
         self.content_container = widget
         self.stage.set_page(0, widget)
         widget.show()
 
     def set_device_perspective(self, widget: QtWidgets.QWidget) -> None:
-        """Registers `widget` as the device-config (index 1) perspective."""
+        """Set the widget used for the device-configuration perspective.
+
+        Registers `widget` as perspective index `1` in the internal
+        :class:`_PerspectiveStage` and stores it as the device configuration
+        container.
+
+        Args:
+            widget: Widget containing the device-configuration controls.
+        """
         self.device_container = widget
         self.stage.set_page(1, widget)
         widget.show()
 
     def show_device_perspective(self, animated: bool = True) -> None:
-        """Slide the panel left to reveal the device-config perspective."""
+        """Switch to the device-configuration perspective.
+
+        Slides the perspective stage horizontally to reveal the device
+        configuration view.
+
+        Args:
+            animated: Whether to animate the transition. Defaults to `True`.
+        """
         self.stage.slide_to(1, animated=animated)
 
     def show_advanced_perspective(self, animated: bool = True, on_finished=None) -> None:
@@ -660,8 +921,18 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         self.stage.slide_to(0, animated=animated)
 
     def _on_stage_transition_finished(self, index: int) -> None:
-        # Keep the popup tightly sized to whichever perspective settled, then
-        # re-anchor so it doesn't drift off the anchor as the height changes.
+        """Finalize the popup after a perspective transition completes.
+
+        Resizes the popup to match the settled perspective and re-anchors it to
+        the original anchor so changes in perspective height do not cause the
+        popup to drift. When returning to the advanced perspective, invokes the
+        pending device-back callback once and clears it.
+
+        Args:
+            index: Index of the perspective that has finished transitioning.
+                `0` represents the advanced perspective and `1` represents
+                the device-configuration perspective.
+        """
         self.adjustSize()
         self._reanchor()
         if index == 0 and self._on_device_back is not None:
@@ -746,7 +1017,21 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         self.show()
 
     def _compute_anchored_pos(self, anchor: QtWidgets.QWidget) -> tuple:
-        """Computes the clamped top-left position for the current popup size."""
+        """Compute the clamped top-left position for the current popup size.
+
+        Positions the popup relative to the bottom-right corner of `anchor`,
+        accounting for the transparent shadow margins around the inner panel.
+        The resulting position is clamped to the containing top-level window when
+        necessary. If the popup would extend below the window, it is repositioned
+        above the anchor when sufficient space is available.
+
+        Args:
+            anchor: Widget to which the popup should be anchored.
+
+        Returns:
+            A `(x, y)` tuple containing the popup's top-left position in global
+            screen coordinates.
+        """
         popup_w, popup_h = self.width(), self.height()
         anchor_br = anchor.mapToGlobal(QtCore.QPoint(anchor.width(), anchor.height()))
 
@@ -781,13 +1066,18 @@ class AdvancedMainWidget(QtWidgets.QWidget):
         return x, y
 
     def _reanchor(self) -> None:
-        """Re-pin the popup to its anchor after its size changes."""
+        """Reposition the popup relative to its anchor after a size change.
+
+        Does nothing when no anchor has been assigned. Otherwise, recalculates the
+        clamped popup position using the current popup dimensions and moves the
+        popup to the resulting global coordinates.
+        """
         if getattr(self, "_anchor", None) is None:
             return
         x, y = self._compute_anchored_pos(self._anchor)
         self.move(x, y)
 
-    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
         """Filters events on the main window to automatically close the popup.
 
         Triggers closure on main window movements or resizes to prevent floating UI.
@@ -808,7 +1098,7 @@ class AdvancedMainWidget(QtWidgets.QWidget):
             self.close()
         return super().eventFilter(watched, event)
 
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         """Cleans up event filters when the popup is closed.
 
         Args:

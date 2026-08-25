@@ -1,5 +1,32 @@
+"""
+QATCH.ui.widgets.account_popup.py
+
+Account toolbar popup widgets and role-based avatar styling.
+
+Provides the custom Qt widgets and supporting helpers used to display the
+application's account dropdown. The account interface includes a role-aware
+avatar, session information, role badge, and context-sensitive account
+actions such as user preferences, user management, and sign-out.
+
+The popup uses the application's flat surface styling and theme token system
+to remain visually consistent across light and dark themes. Its inner panel
+is custom painted with rounded geometry and a themed border, while a
+drop-shadow effect provides separation from the underlying application
+without relying on the operating system's rectangular popup shadow.
+
+The module also provides role-specific color palettes for account avatars and
+badges, entrance fade/slide animations, popup anchoring and boundary
+clamping, and automatic dismissal when the associated main window moves,
+resizes, or changes window state.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-21
+"""
+
 import os
-from typing import Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -12,9 +39,33 @@ from QATCH.ui.styles.typography import FONT_SANS_STACK
 
 
 class AvatarLabel(QtWidgets.QWidget):
-    """Circular avatar rendered with the active user's role color + initials."""
+    """Display a circular user avatar using role-based colors and initials.
+
+    The avatar renders the user's initials centered within a circular,
+    role-colored background. The background includes a radial gradient,
+    border, and subtle shimmer effect. Colors are resolved from the active
+    theme and the currently assigned user role.
+
+    Args:
+        initials: Text used to identify the user. At most the first two
+            characters are displayed in uppercase. If empty, `"?"` is
+            displayed.
+        parent: Optional parent widget.
+
+    Attributes:
+        _initials: The uppercase initials displayed in the avatar, limited to
+            two characters.
+        _role_name: Name of the user's current role, used to select the
+            avatar's color palette.
+    """
 
     def __init__(self, initials: str, parent=None) -> None:
+        """Initialize the avatar label.
+
+        Args:
+            initials: Text used to derive the displayed user initials.
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self._initials = initials[:2].upper() if initials else "?"
         self._role_name = "NONE"
@@ -22,13 +73,37 @@ class AvatarLabel(QtWidgets.QWidget):
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def set_role_name(self, role_name: str) -> None:
+        """Set the user's role and refresh the avatar appearance.
+
+        Args:
+            role_name: Name of the role whose color palette should be used
+                when rendering the avatar.
+        """
         self._role_name = role_name
         self.update()
 
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the avatar when the application theme changes.
+
+        Args:
+            _mode: Theme mode identifier emitted by `ThemeManager`. The
+                value is not used directly because the current theme tokens
+                are queried during painting.
+        """
         self.update()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        """Paint the circular avatar and its initials.
+
+        The avatar is rendered using the current theme's text color and the
+        color palette associated with the user's role. A radial gradient forms
+        the avatar background, while a translucent linear gradient provides a
+        subtle shimmer effect across the upper portion.
+
+        Args:
+            event: Qt paint event describing the region that requires
+                repainting.
+        """
         tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing)
@@ -64,6 +139,31 @@ class AvatarLabel(QtWidgets.QWidget):
 
 
 def _role_colors(role_name: str) -> dict:
+    """Return the color palette associated with a user role.
+
+    Role matching is case-insensitive and is based on whether the supplied
+    role name contains a recognized role identifier. Each palette provides
+    colors for role indicators, borders, text, avatar gradients, and the
+    avatar shimmer effect.
+
+    Args:
+        role_name: User role name used to select the appropriate color
+            palette. Recognized roles include `ADMIN`, `OPERATE`,
+            `CAPTURE`, and `ANALYZE`. Unrecognized or empty role names
+            use the default neutral palette.
+
+    Returns:
+        A dictionary containing RGBA color tuples for the selected role.
+        The dictionary contains the following keys:
+
+        * `bg`: Semi-transparent background color.
+        * `border`: Semi-transparent border color.
+        * `text`: Role text color.
+        * `avatar_start`: Opaque starting color for the avatar gradient.
+        * `avatar_end`: Opaque ending color for the avatar gradient.
+        * `shimmer`: Semi-transparent white color used for the avatar
+          shimmer effect.
+    """
     role_upper = str(role_name).upper()
     if "ADMIN" in role_upper:
         base = (220, 53, 69)
@@ -93,30 +193,63 @@ def _role_colors(role_name: str) -> dict:
 
 
 class AccountInnerPanel(QtWidgets.QWidget):
-    """Inner panel for the account popup, styled to match the app's flat
-    control system (see QATCH.ui.components.flat_paint) - a flat card with
-    a 1px border, not the frosted-glass recipe used elsewhere.
+    """Inner panel used by the account popup.
 
-    The outer :class:`AccountPopup` applies a :class:`QGraphicsDropShadowEffect`
-    to this widget so the shadow follows the painted alpha mask, producing
-    a soft, rounded drop shadow.  This mirrors the pattern used by
-    `RecoveryFilterWidget` to avoid the rectangular OS popup outline. Safe
-    here (unlike hover-animated custom-painted widgets) because this panel
-    only repaints on theme change, never on a hover/animation cycle.
+    Provides the painted surface for the account popup using the application's
+    flat control-system styling. The panel renders as a rounded card with a
+    one-pixel themed border rather than using the recipe
+    used by other application panels.
+
+    The containing :class:`AccountPopup` applies a
+    :class:`QGraphicsDropShadowEffect` to this widget. Because the panel is
+    custom-painted with a transparent background and rounded geometry, the
+    resulting shadow follows the painted alpha mask instead of producing a
+    rectangular operating-system popup outline.
+
+    The panel only repaints when the application theme changes, making the
+    custom-painted surface safe for use with the shadow effect without the
+    repaint overhead associated with hover-animated widgets.
+
+    Attributes:
+        _RADIUS: Corner radius, in pixels, used when painting the panel
+            surface.
     """
 
     _RADIUS: float = 12.0
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        """Initialize the account popup's inner panel.
+
+        Args:
+            parent: Optional parent widget that owns this panel.
+        """
         super().__init__(parent)
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the panel when the application theme changes.
+
+        Args:
+            _mode: Theme mode identifier emitted by `ThemeManager`. The
+                value is not used directly because the current theme tokens
+                are retrieved during painting.
+        """
         self.update()
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        """Paint the themed flat panel surface.
+
+        The surface fill and border colors are retrieved from the active
+        theme and rendered using the shared `paint_flat_surface` recipe.
+        Antialiasing and smooth pixmap transformation are enabled to preserve
+        smooth rounded corners and surface edges.
+
+        Args:
+            event: Qt paint event describing the region that requires
+                repainting.
+        """
         tok = ThemeManager.instance().tokens()
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
@@ -131,23 +264,72 @@ class AccountInnerPanel(QtWidgets.QWidget):
 
 
 class AccountPopup(QtWidgets.QWidget):
-    """Frosted-glass dropdown panel for the Account toolbar button.
+    """Display the account dropdown for the currently active user.
 
-    Displays the active user's avatar, full name, and role badge.  Admin users
-    additionally see a "Manage Users…" shortcut.  The popup uses `Qt.Popup`
-    so it closes automatically on any outside click.
+    The popup presents the active user's avatar, name, initials, role, and
+    session status, along with context-appropriate account actions. Signed-in
+    users can access user preferences and sign out, while administrators also
+    receive a shortcut for managing users.
 
-    Implementation notes
-    --------------------
-    The popup is built as a transparent outer `QWidget` (this class) wrapping
-    an inner :class:`_GlassAccountInnerPanel`.  The outer widget reserves margin
-    space around the inner panel so a :class:`QGraphicsDropShadowEffect` applied
-    to the inner panel renders a soft, rounded shadow that follows the panel's
-    border-radius - exactly the trick used by `RecoveryFilterWidget` to fix
-    the sharp shadow corners produced by manual painted shadows.
+    The widget uses `Qt.Popup` with a frameless, translucent outer container
+    so that it closes automatically when the user clicks outside the popup.
+    The outer widget reserves space around an :class:`AccountInnerPanel` for
+    its drop shadow. The shadow is applied directly to the inner panel so its
+    shape follows the panel's rounded painted surface rather than producing a
+    rectangular operating-system window shadow.
 
-    The popup also tracks its main window: when the main window is resized or
-    moved, the popup closes itself so it never floats outside the application.
+    The popup also supports animated entrance behavior using a fade and
+    positional slide animation. When anchored to the application's main
+    window, the popup tracks that window and can close itself if the main
+    window is moved or resized.
+
+    Callback arguments are invoked when the corresponding account actions are
+    selected. Session information is resolved during initialization using a
+    lazy import of the user-profile subsystem to avoid circular dependencies.
+
+    Signals:
+        closed: Emitted when the popup closes.
+
+    Attributes:
+        _SHADOW_MARGIN_L: Horizontal space reserved on the left for the panel
+            drop shadow.
+        _SHADOW_MARGIN_T: Vertical space reserved above the panel for the drop
+            shadow.
+        _SHADOW_MARGIN_R: Horizontal space reserved on the right for the panel
+            drop shadow.
+        _SHADOW_MARGIN_B: Vertical space reserved below the panel for the drop
+            shadow and its positive Y offset.
+        _open_manager_cb: Optional callback invoked when the Manage Users
+            action is selected.
+        _open_preferences_cb: Optional callback invoked when the User
+            Preferences action is selected.
+        _sign_out_cb: Optional callback invoked when the Sign Out action is
+            selected.
+        _main_window: Main application window associated with the popup after
+            it is anchored.
+        _panel: Inner painted account panel containing all visible content.
+        _role_name: Role name associated with the current session.
+        _name_lbl: Label displaying the current user's full name.
+        _initials_lbl: Label displaying the user's initials.
+        _role_badge: Label displaying the user's role.
+        _last_lbl: Optional label displaying the user's last access time.
+        _status_lbl: Optional label displayed when there is no active session.
+        _divider: Optional horizontal divider separating account information
+            from available actions.
+        _preferences_btn: Optional button for opening user preferences.
+        _manage_btn: Optional button for opening user management.
+        _sign_out_btn: Optional button for signing out.
+        _enter_fade: Animation controlling the popup's entrance opacity.
+        _enter_slide: Animation controlling the popup's entrance position.
+
+    Args:
+        open_manager_cb: Optional callback invoked when the user selects
+            `Manage Users`.
+        open_preferences_cb: Optional callback invoked when the user selects
+            `User Preferences`.
+        sign_out_cb: Optional callback invoked when the user selects
+            `Sign Out`.
+        parent: Optional parent widget.
     """
 
     closed = QtCore.pyqtSignal()
@@ -164,8 +346,24 @@ class AccountPopup(QtWidgets.QWidget):
         open_manager_cb=None,
         open_preferences_cb=None,
         sign_out_cb=None,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
+        """Initialize the account popup and populate its session content.
+
+        The constructor creates the transparent popup container, configures
+        the inner painted panel and drop shadow, initializes the entrance
+        animations, resolves the current user session, and creates the
+        account information and action controls appropriate for that session.
+
+        Args:
+            open_manager_cb: Optional callback invoked when `Manage Users`
+                is selected.
+            open_preferences_cb: Optional callback invoked when
+                `User Preferences` is selected.
+            sign_out_cb: Optional callback invoked when `Sign Out` is
+                selected.
+            parent: Optional parent widget.
+        """
         super().__init__(
             parent,
             QtCore.Qt.WindowType.Popup
@@ -179,9 +377,9 @@ class AccountPopup(QtWidgets.QWidget):
         self._open_manager_cb = open_manager_cb
         self._open_preferences_cb = open_preferences_cb
         self._sign_out_cb = sign_out_cb
-        self._main_window: Optional[QtWidgets.QWidget] = None  # set by show_anchored_to
+        self._main_window: QtWidgets.QWidget | None = None  # set by show_anchored_to
 
-        # -- outer container with shadow margins --
+        # Outer container with shadow margins
         self._panel = AccountInnerPanel(self)
         self._panel.setObjectName("AccountPopupInner")
 
@@ -195,14 +393,14 @@ class AccountPopup(QtWidgets.QWidget):
         outer_layout.setSpacing(0)
         outer_layout.addWidget(self._panel)
 
-        # Soft drop shadow that follows the inner panel's painted alpha mask
+        # Drop shadow that follows the inner panel's painted alpha mask
         shadow = QtWidgets.QGraphicsDropShadowEffect(self._panel)
         shadow.setBlurRadius(28)
         shadow.setOffset(0, 4)
         shadow.setColor(QtGui.QColor(0, 20, 40, 110))
         self._panel.setGraphicsEffect(shadow)
 
-        # -- entrance animation --
+        # Entrance animation
         self._enter_fade = QtCore.QVariantAnimation(self)
         self._enter_fade.setDuration(200)
         self._enter_fade.setEasingCurve(QtCore.QEasingCurve.OutCubic)
@@ -214,9 +412,9 @@ class AccountPopup(QtWidgets.QWidget):
         self._enter_slide.setDuration(220)
         self._enter_slide.setEasingCurve(QtCore.QEasingCurve.OutCubic)
 
-        # -- resolve current session info (lazy import avoids circular deps) --
+        # Resolve current session info
         # session_info() returns: [name, initials, role.name, created, modified, accessed]
-        accessed: Optional[str] = None
+        accessed: str | None = None
         try:
             from QATCH.common.userProfiles import (  # noqa: PLC0415
                 UserProfiles,
@@ -241,12 +439,12 @@ class AccountPopup(QtWidgets.QWidget):
 
         self._role_name = role_name
 
-        # -- inner panel layout (all visible content lives here) --
+        # Inner panel layout (all visible content lives here)
         layout = QtWidgets.QVBoxLayout(self._panel)
         layout.setContentsMargins(14, 14, 14, 12)
         layout.setSpacing(8)
 
-        # Avatar + name/role column
+        # Avatar, name/role column
         header_row = QtWidgets.QHBoxLayout()
         header_row.setSpacing(12)
 
@@ -268,7 +466,6 @@ class AccountPopup(QtWidgets.QWidget):
 
         self._role_badge = QtWidgets.QLabel(role_name)
         self._role_badge.setFixedHeight(17)
-        # Wrap the badge so it doesn't stretch to full column width
         role_row = QtWidgets.QHBoxLayout()
         role_row.setContentsMargins(0, 2, 0, 0)
         role_row.setSpacing(0)
@@ -280,8 +477,8 @@ class AccountPopup(QtWidgets.QWidget):
         layout.addLayout(header_row)
 
         # Last sign-in / status line
-        self._last_lbl: Optional[QtWidgets.QLabel] = None
-        self._status_lbl: Optional[QtWidgets.QLabel] = None
+        self._last_lbl: QtWidgets.QLabel | None = None
+        self._status_lbl: QtWidgets.QLabel | None = None
         if is_signed_in and accessed:
             self._last_lbl = QtWidgets.QLabel(f"Last access: {accessed}")
             layout.addWidget(self._last_lbl)
@@ -293,13 +490,13 @@ class AccountPopup(QtWidgets.QWidget):
         show_preferences = is_signed_in
         show_manage = is_admin
         show_sign_out = is_signed_in
-        self._divider: Optional[QtWidgets.QFrame] = None
+        self._divider: QtWidgets.QFrame | None = None
         if show_preferences or show_manage or show_sign_out:
             self._divider = QtWidgets.QFrame()
             self._divider.setFrameShape(QtWidgets.QFrame.HLine)
             layout.addWidget(self._divider)
 
-        self._preferences_btn: Optional[QATCHPushButton] = None
+        self._preferences_btn: QATCHPushButton | None = None
         if show_preferences:
             self._preferences_btn = QATCHPushButton("User Preferences", variant="ghost")
             self._preferences_btn.set_menu_row(True)
@@ -308,7 +505,7 @@ class AccountPopup(QtWidgets.QWidget):
             self._preferences_btn.clicked.connect(self._on_preferences)
             layout.addWidget(self._preferences_btn)
 
-        self._manage_btn: Optional[QATCHPushButton] = None
+        self._manage_btn: QATCHPushButton | None = None
         if show_manage:
             self._manage_btn = QATCHPushButton("Manage Users", variant="ghost")
             self._manage_btn.set_menu_row(True)
@@ -317,7 +514,7 @@ class AccountPopup(QtWidgets.QWidget):
             self._manage_btn.clicked.connect(self._on_manage_users)
             layout.addWidget(self._manage_btn)
 
-        self._sign_out_btn: Optional[QATCHPushButton] = None
+        self._sign_out_btn: QATCHPushButton | None = None
         if show_sign_out:
             self._sign_out_btn = QATCHPushButton("Sign Out", variant="ghost_danger")
             self._sign_out_btn.set_menu_row(True)
@@ -331,12 +528,27 @@ class AccountPopup(QtWidgets.QWidget):
         self._apply_theme()
         ThemeManager.instance().themeChanged.connect(self._on_theme_changed)
 
-    # -- theming ----------------------------------------------------------------
-
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the popup styling when the application theme changes.
+
+        Args:
+            _mode: Theme mode identifier emitted by `ThemeManager`. The value
+                is not used directly because the current theme tokens are
+                retrieved by :meth:`_apply_theme`.
+        """
         self._apply_theme()
 
     def _apply_theme(self) -> None:
+        """Apply the current theme styling to the account popup controls.
+
+        Updates labels, the role badge, session status indicators, divider, and
+        action-button icons using the active theme tokens. Role-specific colors
+        are applied to the role badge, while action icons use the theme's accent
+        or error color as appropriate.
+
+        Missing icon files are ignored, allowing the corresponding buttons to
+        remain functional without an icon.
+        """
         tok = ThemeManager.instance().tokens()
 
         self._name_lbl.setStyleSheet(
@@ -395,21 +607,26 @@ class AccountPopup(QtWidgets.QWidget):
                     tinted_icon(icon_path, QtGui.QColor(*tok["flat_error"][:3]))
                 )
 
-    # -- public API -----------------------------------------------------------
-
     def show_anchored_to(
         self,
         anchor: QtWidgets.QWidget,
-        main_window: Optional[QtWidgets.QWidget] = None,
+        main_window: QtWidgets.QWidget | None = None,
     ) -> None:
-        """Show the popup pinned to `anchor` and constrained to `main_window`.
+        """Show the popup anchored to a widget and constrained to a main window.
 
-        The popup's *visible* right edge aligns with the anchor button's right
-        edge; the visible top edge sits 2 px below the anchor's bottom.  If the
-        popup would extend past the main window's frame, its position is clamped
-        so the visible panel stays inside the main window.  When the main window
-        is later resized or moved while the popup is open, the popup closes
-        itself to avoid floating outside the application.
+        The visible right edge of the popup aligns with the right edge of
+        `anchor`, and the visible top edge is positioned 2 pixels below the
+        anchor's bottom edge. The popup position is clamped when necessary so the
+        visible panel remains within the bounds of `main_window`.
+
+        The main window is monitored while the popup is open. If it is moved or
+        resized, the popup can close itself rather than remain detached from the
+        application window.
+
+        Args:
+            anchor: Widget to which the popup should be anchored.
+            main_window: Optional main application window used to constrain the
+                popup position and monitor subsequent window movement or resizing.
         """
         self._main_window = main_window
         self.adjustSize()
@@ -419,31 +636,19 @@ class AccountPopup(QtWidgets.QWidget):
 
         # Anchor at the bottom-right corner of the button (in screen coords)
         anchor_br = anchor.mapToGlobal(QtCore.QPoint(anchor.width(), anchor.height()))
-
-        # Position so the *visible* panel right edge aligns with the button's
-        # right edge, 2 px below the button.  Account for the transparent
-        # shadow margins on the outer widget.
         x = anchor_br.x() + self._SHADOW_MARGIN_R - popup_w
         y = anchor_br.y() + 2 - self._SHADOW_MARGIN_T
 
         # Clamp so the visible panel stays inside the main window
         x, y = self._clamp_to_main_window(x, y, popup_w, popup_h, anchor)
 
-        # Track resize/move events on the main window so the popup never
-        # ends up floating outside the application after a resize.
+        # Track resize/move events on the main window.
         if self._main_window is not None:
             self._main_window.installEventFilter(self)
 
-        # Entrance animation: start slightly above the final position and fade
-        # in as it slides down to (x, y) - same feel as the advanced menu.
+        # Entrance animation
         final_pos = QtCore.QPoint(x, y)
         start_pos = QtCore.QPoint(x, y - 12)
-
-        # Show off-screen at opacity=0 so the unavoidable one-frame DWM flash
-        # (ShowWindow fires before SetLayeredWindowAttributes can commit alpha=0)
-        # occurs at an invisible position.  By the time singleShot(0) fires the
-        # event loop has processed SetLayeredWindowAttributes, so opacity=0 is
-        # committed before we move the window into the visible anchor area.
         self.setWindowOpacity(0.0)
         self.move(QtCore.QPoint(-9999, -9999))
         self.show()
@@ -460,13 +665,22 @@ class AccountPopup(QtWidgets.QWidget):
 
         QtCore.QTimer.singleShot(0, _start)
 
-    # -- positioning helpers --------------------------------------------------
-
     def _visible_rect_for(self, x: int, y: int, w: int, h: int) -> QtCore.QRect:
-        """Return the *visible* panel rect for an outer-widget position.
+        """Return the visible panel rectangle for an outer-widget position.
 
-        The outer widget reserves transparent shadow margins, so the visible
-        rect is the outer rect minus those margins.
+        The popup's outer widget includes transparent margins reserved for the
+        drop shadow. This method converts the outer widget geometry into the
+        rectangle occupied by the visible inner panel by removing those margins.
+
+        Args:
+            x: X-coordinate of the outer popup widget in screen coordinates.
+            y: Y-coordinate of the outer popup widget in screen coordinates.
+            w: Width of the outer popup widget.
+            h: Height of the outer popup widget.
+
+        Returns:
+            A `QRect` describing the visible inner panel's geometry in screen
+            coordinates.
         """
         return QtCore.QRect(
             x + self._SHADOW_MARGIN_L,
@@ -483,14 +697,27 @@ class AccountPopup(QtWidgets.QWidget):
         popup_h: int,
         anchor: QtWidgets.QWidget,
     ) -> tuple:
-        """Adjust `(x, y)` so the visible panel stays inside the main window.
+        """Adjust the popup position so its visible panel remains in bounds.
 
-        Falls back to the anchor's screen geometry if no main window is set.
+        The anchor widget's top-level window is preferred as the bounding
+        rectangle, followed by the configured main window and finally the
+        available geometry of the screen containing the anchor. Horizontal
+        overflow is corrected by shifting the popup into the bounds. If the
+        popup would extend below the window, it is flipped above the anchor when
+        there is sufficient space; otherwise, its position is clamped to the
+        bottom edge.
+
+        Args:
+            x: Proposed X-coordinate of the outer popup widget.
+            y: Proposed Y-coordinate of the outer popup widget.
+            popup_w: Width of the outer popup widget.
+            popup_h: Height of the outer popup widget.
+            anchor: Widget to which the popup is anchored and whose top-level
+                window is preferred for determining the available bounds.
+
+        Returns:
+            A `(x, y)` tuple containing the adjusted popup position.
         """
-        # Prefer the anchor widget's own top-level window (content geometry, screen
-        # coords) so the popup is always clamped against the window that actually
-        # contains the button - regardless of which QWidget was passed as
-        # main_window.  Fall back to main_window, then the screen.
         top_level = anchor.window() if anchor is not None else None
         if top_level is not None:
             bounds = top_level.geometry()
@@ -513,8 +740,7 @@ class AccountPopup(QtWidgets.QWidget):
             x += bounds.left() - visible.left()
             visible = self._visible_rect_for(x, y, popup_w, popup_h)
 
-        # Vertical clamp - if the popup spills off the bottom, flip it above
-        # the anchor button.
+        # Vertical clamp
         if visible.bottom() > bounds.bottom():
             anchor_top = anchor.mapToGlobal(QtCore.QPoint(0, 0)).y()
             y_above = anchor_top - 2 - popup_h + self._SHADOW_MARGIN_B
@@ -522,22 +748,26 @@ class AccountPopup(QtWidgets.QWidget):
             if visible_above.top() >= bounds.top():
                 y = y_above
             else:
-                # Neither orientation fits - just clamp to the bottom edge
+                # Neither orientation fits, just clamp to the bottom edge
                 y -= visible.bottom() - bounds.bottom()
 
         return x, y
 
-    # -- event handling -------------------------------------------------------
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        """Close the popup when its associated main window changes geometry.
 
-    def eventFilter(  # noqa: N802 - Qt naming
-        self, watched: QtCore.QObject, event: QtCore.QEvent
-    ) -> bool:
-        """Close the popup if the main window is resized or moved.
+        The popup is positioned in screen coordinates when shown and is not
+        continuously re-anchored while the main window is being laid out. Closing
+        the popup on resize, move, or window-state changes avoids race conditions
+        with the layout engine and ensures the popup does not become detached from
+        its anchor.
 
-        The popup is positioned in screen coordinates against the anchor at the
-        time of show.  Re-anchoring on every resize would race the layout
-        engine, so the safer behaviour is to dismiss the popup and let the user
-        re-open it once the new window geometry has settled.
+        Args:
+            watched: Object whose event is being filtered.
+            event: Event being processed by the filter.
+
+        Returns:
+            The result of the base class event-filter implementation.
         """
         if watched is self._main_window and event.type() in (
             QtCore.QEvent.Type.Resize,
@@ -547,7 +777,16 @@ class AccountPopup(QtWidgets.QWidget):
             self.close()
         return super().eventFilter(watched, event)
 
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 - Qt naming
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        """Clean up the main-window event filter and emit the close signal.
+
+        Removes the popup from the associated main window's event-filter chain
+        before completing the normal Qt close-event handling. The
+        :attr:`closed` signal is emitted after the base implementation completes.
+
+        Args:
+            event: Qt close event generated when the popup is being closed.
+        """
         if self._main_window is not None:
             try:
                 self._main_window.removeEventFilter(self)
@@ -557,19 +796,38 @@ class AccountPopup(QtWidgets.QWidget):
         super().closeEvent(event)
         self.closed.emit()
 
-    # -- slots ----------------------------------------------------------------
-
     def _on_manage_users(self) -> None:
+        """Close the popup and invoke the user-management callback.
+
+        The popup is closed before invoking the callback so that the account menu
+        does not remain visible while the user-management interface is opened.
+
+        If no management callback was provided, the method only closes the popup.
+        """
         self.close()
         if self._open_manager_cb:
             self._open_manager_cb()
 
     def _on_preferences(self) -> None:
+        """Close the popup and invoke the user-preferences callback.
+
+        The popup is closed before invoking the callback so that the account menu
+        does not remain visible while the preferences interface is opened.
+
+        If no preferences callback was provided, the method only closes the popup.
+        """
         self.close()
         if self._open_preferences_cb:
             self._open_preferences_cb()
 
     def _on_sign_out(self) -> None:
+        """Close the popup and invoke the sign-out callback.
+
+        The popup is closed before invoking the callback so that the account menu
+        is dismissed before the active session is changed.
+
+        If no sign-out callback was provided, the method only closes the popup.
+        """
         self.close()
         if self._sign_out_cb:
             self._sign_out_cb()

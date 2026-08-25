@@ -1,19 +1,67 @@
+"""
+QATCH.ui.widgets.device_info_main_widget.py
+
+Popup widget for Device Info configuration.
+
+Provides the visual container used to display Device Info configuration
+content as an anchored, frameless popup. The module defines a rounded inner
+panel with custom painting, translucent backgrounds, dual borders, and
+a drop shadow.
+
+The popup supports dynamically injected content and automatically clamps
+its position to the associated application window. It also closes when
+the main window moves, resizes, or changes window state so the popup does
+not become detached from its anchor or parent window.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-21
+"""
+
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 
 
-class _GlassDeviceInfoInnerPanel(QtWidgets.QWidget):
-    """Inner glass-morphism panel for the device info popup."""
+class _DeviceInfoInnerPanel(QtWidgets.QWidget):
+    """Render the surface used inside the device info popup.
+
+    Provides a rounded, translucent panel with a frosted white base,
+    top-edge shimmer, and dual border treatment. The panel is intended to
+    serve as the visual surface inside `DeviceInfoMainWidget` while the
+    parent widget provides the surrounding shadow margins.
+    """
 
     _RADIUS: float = 10.0
 
     def __init__(self, parent=None) -> None:
+        """Initialize the frosted-glass device information panel.
+
+        Disables automatic background filling and the system background so the
+        panel can render its custom translucent surface entirely through
+        `paintEvent`.
+
+        Args:
+            parent (QtWidgets.QWidget, optional): The parent widget for the
+                panel. Defaults to `None`.
+        """
         super().__init__(parent)
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        """Paint  panel surface.
+
+        Renders the panel using antialiased painting with a rounded clipping
+        path. The surface consists of a translucent white base, a subtle cool
+        tint, a top-edge shimmer, and dual light and gray borders.
+
+        Args:
+            event (QtGui.QPaintEvent): The Qt paint event requesting the panel
+                to be redrawn.
+        """
         p = QtGui.QPainter(self)
         p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.SmoothPixmapTransform)
 
@@ -46,7 +94,18 @@ class _GlassDeviceInfoInnerPanel(QtWidgets.QWidget):
 
 
 class DeviceInfoMainWidget(QtWidgets.QWidget):
-    """Frosted-glass dropdown panel for the Device Info Configuration."""
+    """Display a device information popup.
+
+    Provides a popup container for the device information configuration
+    content. The popup uses a translucent outer surface, shadow margins,
+    a rounded inner panel, and a drop shadow to create the application's
+    dropdown appearance.
+
+    Content is injected dynamically through :meth:`set_content_widget`.
+    The popup can be positioned relative to an anchor widget and is
+    automatically closed when its associated main window moves, resizes,
+    or changes window state.
+    """
 
     _SHADOW_MARGIN_L = 22
     _SHADOW_MARGIN_T = 18
@@ -54,6 +113,17 @@ class DeviceInfoMainWidget(QtWidgets.QWidget):
     _SHADOW_MARGIN_B = 26
 
     def __init__(self, parent=None) -> None:
+        """Initialize the device information popup.
+
+        Configures the widget as a frameless popup with a translucent
+        background, creates the inner panel, applies its drop shadow,
+        and initializes the layout used for dynamically supplied
+        content.
+
+        Args:
+            parent (QtWidgets.QWidget, optional): The parent widget for the
+                popup. Defaults to `None`.
+        """
         super().__init__(
             parent,
             QtCore.Qt.WindowType.Popup
@@ -67,7 +137,7 @@ class DeviceInfoMainWidget(QtWidgets.QWidget):
         self._main_window = None
 
         # Outer container with shadow margins
-        self._panel = _GlassDeviceInfoInnerPanel(self)
+        self._panel = _DeviceInfoInnerPanel(self)
         outer_layout = QtWidgets.QVBoxLayout(self)
         outer_layout.setContentsMargins(
             self._SHADOW_MARGIN_L,
@@ -90,12 +160,40 @@ class DeviceInfoMainWidget(QtWidgets.QWidget):
         self.content_layout.setContentsMargins(14, 14, 14, 14)
 
     def set_content_widget(self, widget: QtWidgets.QWidget):
-        """Injects the existing device info container into the popup."""
+        """Add an existing device information widget to the popup.
+
+        Inserts the supplied widget into the popup's content layout and makes
+        the widget visible. The widget is not recreated or otherwise modified
+        beyond being added to the popup.
+
+        Args:
+            widget (QtWidgets.QWidget): The device information container to
+                display inside the popup.
+        """
         self.content_layout.addWidget(widget)
         widget.show()
 
     def show_anchored_to(self, anchor: QtWidgets.QWidget, main_window=None) -> None:
-        """Shows the popup pinned to the anchor, clamped to the main window."""
+        """Show the popup anchored to a widget within the application window.
+
+        Sizes the popup to its current content, positions it relative to the
+        bottom-right corner of the anchor, and clamps the resulting visible
+        panel to the bounds of the anchor's top-level window or the supplied
+        main window. If there is insufficient space below the anchor, the
+        popup is positioned above it when possible.
+
+        The main window is monitored while the popup is visible so that the
+        popup can close automatically if the window moves, resizes, or changes
+        window state.
+
+        Args:
+            anchor (QtWidgets.QWidget): The widget to which the popup should be
+                visually anchored.
+            main_window (QtWidgets.QWidget, optional): The main application
+                window whose geometry should be used for clamping and whose
+                movement or resizing should close the popup. Defaults to
+                `None`.
+        """
         self._main_window = main_window
         self.adjustSize()
 
@@ -138,7 +236,19 @@ class DeviceInfoMainWidget(QtWidgets.QWidget):
         self.show()
 
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        # Auto-close if the main window moves or resizes
+        """Close the popup when its associated main window changes geometry.
+
+        Monitors the configured main window for resize, move, and window-state
+        change events. When one of these events occurs, the popup is closed to
+        prevent it from becoming detached from the application window.
+
+        Args:
+            watched (QtCore.QObject): The object that generated the event.
+            event (QtCore.QEvent): The Qt event being processed.
+
+        Returns:
+            bool: The result of the base class event-filter implementation.
+        """
         if watched is self._main_window and event.type() in (
             QtCore.QEvent.Type.Resize,
             QtCore.QEvent.Type.Move,
@@ -148,6 +258,15 @@ class DeviceInfoMainWidget(QtWidgets.QWidget):
         return super().eventFilter(watched, event)
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        """Clean up the main-window event filter when the popup closes.
+
+        Removes the popup's event filter from the associated main window and
+        clears the stored window reference before allowing the base class to
+        complete the close operation.
+
+        Args:
+            event (QtGui.QCloseEvent): The Qt close event being processed.
+        """
         if self._main_window is not None:
             try:
                 self._main_window.removeEventFilter(self)

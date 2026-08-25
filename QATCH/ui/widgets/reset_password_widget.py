@@ -1,21 +1,24 @@
 """
-reset_password_widget.py
+QATCH.ui.widgets.reset_password_widget.py
 
-Glassmorphism overlay widget for resetting a NanovisQ user's password.
+Overlay widget for resetting a user password.
 
-Structure mirrors create_user_widget.py exactly: same card geometry, same
-open/close animation (scrim fade + slide-up), same inline error system, and
-the same x close / → submit button conventions.
+Provides the `ResetPasswordWidget` overlay used by administrators to
+reset an existing user's password. The interface follows the visual and
+interaction conventions established by the user-creation workflow,
+including the centered glass card, translucent scrim, animated
+open/close transitions, inline validation feedback, close control, and
+arrow-based submit control.
 
-Signal
-------
-  password_confirmed(str)  - emitted with the validated plaintext password
-                             before the close animation starts.
+The overlay emits the validated plaintext password through
+`password_confirmed` immediately before beginning its close animation.
 
-Usage
------
+Typical usage::
+
     overlay = ResetPasswordWidget(
-        name="Jane Smith", initials="JS", role="ADMIN",
+        name="Jane Smith",
+        initials="JS",
+        role="ADMIN",
         parent=self,
     )
     overlay.resize(self.size())
@@ -24,13 +27,18 @@ Usage
     overlay.password_confirmed.connect(
         lambda pwd: self._update_user_xml(filename, new_pwd_plain=pwd)
     )
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-08-21
 """
 
 from __future__ import annotations
 
 import os
 import re
-from typing import List, Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -55,22 +63,24 @@ from QATCH.ui.styles.theme_manager import (
     tok_css,
 )
 
-# ---------------------------------------------------------------------------
-# Constants - kept in sync with create_user_widget.py
-# ---------------------------------------------------------------------------
 _INPUT_H: int = 34
-_CARD_W: int = 420  # slightly narrower than CreateUserWidget (440) - fewer fields
+_CARD_W: int = 420
 
 
 class ResetPasswordWidget(QtWidgets.QWidget):
-    """Full-screen overlay for resetting an existing user's password.
+    """Display a full-screen overlay for resetting an existing user's password.
 
-    Sits on top of UserProfilesManagerWidget's glass panel.  The admin sees
-    the target user's profile card, two disabled placeholder fields (email /
-    username - backend not yet implemented), and the two live password inputs.
+    Presents an administrative password-reset interface over the parent
+    user-profile panel. The overlay displays the target user's profile
+    information, disabled placeholder fields for backend-dependent account
+    details, and live controls for entering and confirming a new password.
+
+    The widget manages its own translucent scrim, opening animation, theme
+    updates, and validation state. A validated password is emitted through
+    `password_confirmed` before the overlay closes.
 
     Attributes:
-        is_accepted (bool):  True if the admin submitted a valid new password.
+        is_accepted (bool): Whether a valid new password has been submitted.
     """
 
     # Emitted with the validated plaintext password before the close animation.
@@ -81,8 +91,25 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         name: str,
         initials: str,
         role: str,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
+        """Initialize the password-reset overlay.
+
+        Stores the target user's display information, initializes the overlay
+        state and animation tracking, configures the widget for custom
+        translucent background painting, and builds the reset-password UI.
+        The widget also subscribes to theme changes and begins its opening
+        animation.
+
+        Args:
+            name (str): Display name of the user whose password is being reset.
+            initials (str): User initials displayed in the profile card.
+            role (str): User role displayed in the profile card.
+            parent (QtWidgets.QWidget, optional): Parent widget over which the
+                reset-password overlay is displayed. When provided, the overlay
+                tracks the parent's size and event lifecycle. Defaults to
+                `None`.
+        """
         super().__init__(parent)
 
         self._name = name
@@ -90,16 +117,9 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self._role = role
 
         self.is_accepted: bool = False
-
-        # Keeps shake animations alive for their full duration
-        self._shake_anims: List[QtCore.QPropertyAnimation] = []
-        # Controls the scrim alpha painted in paintEvent
+        self._shake_anims: list[QtCore.QPropertyAnimation] = []
         self._bg_alpha: int = 0
-        # (frame, field_lbl, placeholder_lbl, soon_badge) tuples from
-        # _make_future_field, re-styled in _apply_theme.
         self._future_fields: list = []
-
-        # Overlay must be transparent (scrim is drawn manually in paintEvent)
         self.setAutoFillBackground(False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
@@ -113,17 +133,30 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.raise_()
         self._animate_open()
 
-    # ------------------------------------------------------------------
-    # Theming
-    # ------------------------------------------------------------------
     def _on_theme_changed(self, _mode: str) -> None:
+        """Refresh the widget styling after a theme change.
+
+        Reapplies all theme-dependent styles and icons so the password-reset
+        overlay immediately reflects the newly selected application theme.
+
+        Args:
+            _mode (str): Theme mode reported by `ThemeManager`. The value is
+                not used directly because the active theme is retrieved from
+                `ThemeManager` when styles are reapplied.
+        """
         self._apply_theme()
 
     def _apply_theme(self) -> None:
-        """Re-applies every themed style on this card to the active palette -
-        wired to ThemeManager.themeChanged so switching light/dark live
-        re-colors it instead of only picking up the new theme on next
-        construction."""
+        """Apply the active theme to all password-reset overlay elements.
+
+        Refreshes the glass card, shadow, buttons, title, profile information,
+        disabled placeholder fields, password visibility icons, validation
+        message, and submit icon using the current theme tokens and shared
+        application styling helpers.
+
+        This method is intended to be called both during initial widget setup
+        and when `ThemeManager.themeChanged` signals a live theme change.
+        """
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
         tok = ThemeManager.instance().tokens()
 
@@ -167,17 +200,23 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         )
         self.btn_submit.setStyleSheet(gradient_button_qss())
 
-    # ------------------------------------------------------------------
-    # UI Construction
-    # ------------------------------------------------------------------
     def _setup_ui(self) -> None:
+        """Build and configure the password-reset overlay interface.
+
+        Constructs the centered card and all of its child controls,
+        including the close button, reset-password header, target-user
+        information card, disabled future account fields, password inputs,
+        validation message, and submit button.
+
+        Initializes password visibility controls and connects the relevant
+        input and button signals to their handlers. The resulting glass card
+        is added to the overlay's centered base layout.
+        """
         icons_dir = os.path.join(Architecture.get_path(), "QATCH", "icons")
 
-        # ── Outer centred layout ───────────────────────────────────────
+        # Outer centred layout
         self.base_layout = QtWidgets.QVBoxLayout(self)
         self.base_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        # ── Glass card ─────────────────────────────────────────────────
         self.glass_frame = QtWidgets.QFrame(self)
         self.glass_frame.setObjectName("resetPwdView")
         self.glass_frame.setFixedWidth(_CARD_W)
@@ -193,7 +232,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.main_layout.setContentsMargins(28, 14, 28, 28)
         self.main_layout.setSpacing(6)
 
-        # ── Row 1: x close button ──────────────────────────────────────
+        # close button
         close_row = QtWidgets.QHBoxLayout()
         close_row.setContentsMargins(0, 0, 0, 0)
         close_row.addStretch()
@@ -206,7 +245,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         close_row.addWidget(self.btn_close)
         self.main_layout.addLayout(close_row)
 
-        # ── Row 2: header icon ─────────────────────────────────────────
+        # Header icon
         icon_lbl = QtWidgets.QLabel()
         icon_lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         icon_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -217,13 +256,12 @@ class ResetPasswordWidget(QtWidgets.QWidget):
                 tinted_pixmap(os.path.join(icons_dir, "reset-password.svg"), icon_color, size=48)
             )
         else:
-            icon_lbl.setText("🔑")
             icon_lbl.setStyleSheet("font-size: 30px; background: transparent;")
         icon_lbl.setFixedHeight(52)
         self._icon_lbl = icon_lbl
         self.main_layout.addWidget(icon_lbl, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
-        # ── Row 3: title ───────────────────────────────────────────────
+        # Title
         lbl_title = QtWidgets.QLabel("Reset Password")
         lbl_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         lbl_title.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -232,25 +270,26 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.main_layout.addWidget(lbl_title)
         self.main_layout.addSpacing(12)
 
-        # ── Row 4: user info card ──────────────────────────────────────
+        # User info card
         self.main_layout.addWidget(self._build_user_info_card())
         self.main_layout.addSpacing(10)
 
-        # ── Separator ─────────────────────────────────────────────────
+        # Separator
         self.main_layout.addWidget(self._make_separator())
         self.main_layout.addSpacing(10)
 
-        # ── Row 5 & 6: placeholder fields (future backend) ────────────
+        # Placeholder fields
+        # TODO: Implement backend support
         self.main_layout.addWidget(self._make_future_field("Email", "example@domain.com"))
         self.main_layout.addSpacing(5)
         self.main_layout.addWidget(self._make_future_field("Username", "optional username"))
         self.main_layout.addSpacing(10)
 
-        # ── Separator ─────────────────────────────────────────────────
+        # Separator
         self.main_layout.addWidget(self._make_separator())
         self.main_layout.addSpacing(10)
 
-        # ── Row 7 & 8: password inputs ─────────────────────────────────
+        # Password inputs
         eye_color = QtGui.QColor(*ThemeManager.instance().tokens()["flat_text_muted"])
         self._eye_on = tinted_icon(os.path.join(icons_dir, "eye-on.svg"), eye_color)
         self._eye_off = tinted_icon(os.path.join(icons_dir, "eye-off.svg"), eye_color)
@@ -284,7 +323,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
         self.main_layout.addSpacing(10)
 
-        # ── Row 9: submit button ───────────────────────────────────────
+        # Submit button
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
@@ -305,11 +344,17 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
         self.base_layout.addWidget(self.glass_frame)
 
-    # ------------------------------------------------------------------
-    # Sub-widget builders
-    # ------------------------------------------------------------------
     def _build_user_info_card(self) -> QtWidgets.QFrame:
-        """Returns a mini profile card showing the target user's identity."""
+        """Build a compact profile card for the target user.
+
+        Creates a themed information card containing the user's initials in an
+        avatar, followed by their display name and role badge. The card styling
+        and its child widgets are stored on the instance so they can be
+        refreshed when the application theme changes.
+
+        Returns:
+            QtWidgets.QFrame: The constructed user information card.
+        """
         card = QtWidgets.QFrame()
         card.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         card.setStyleSheet(info_wash_card_qss())
@@ -319,7 +364,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(14)
 
-        # ── Initials avatar ───────────────────────────────────────────
+        # Initials avatar
         avatar = QtWidgets.QLabel(self._initials)
         avatar.setFixedSize(46, 46)
         avatar.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -327,7 +372,7 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         avatar.setStyleSheet(accent_avatar_qss())
         self._avatar = avatar
 
-        # ── Name + role column ────────────────────────────────────────
+        # Name, role column
         col = QtWidgets.QVBoxLayout()
         col.setSpacing(5)
         col.setContentsMargins(0, 0, 0, 0)
@@ -351,17 +396,36 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         return card
 
     def _make_role_badge(self, role_name: str) -> QtWidgets.QLabel:
-        """Returns a colour-coded role pill label matching the table's role badges."""
+        """Create a themed role badge for the target user.
+
+        Creates a compact label displaying the supplied role name and applies
+        the role-specific badge styling used by the user profile interface.
+
+        Args:
+            role_name (str): Name of the user's role to display.
+
+        Returns:
+            QtWidgets.QLabel: The styled role badge label.
+        """
         badge = QtWidgets.QLabel(role_name)
         badge.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         badge.setStyleSheet(role_badge_qss(role_name))
         return badge
 
     def _make_future_field(self, label_text: str, placeholder: str) -> QtWidgets.QFrame:
-        """Returns a non-interactive pill matching the GlassLineEdit shape.
+        """Create a disabled-looking placeholder field for future account data.
 
-        Visually dimmed relative to the active password fields to clearly
-        signal that these fields are placeholders pending a backend feature.
+        Builds a non-interactive pill-shaped field that visually matches the
+        active glass line-edit controls while using dimmed styling to indicate
+        that the associated backend feature is not yet available.
+
+        Args:
+            label_text (str): Descriptive label identifying the future field.
+            placeholder (str): Placeholder text displayed alongside the field
+                label.
+
+        Returns:
+            QtWidgets.QFrame: The constructed placeholder field.
         """
         frame = QtWidgets.QFrame()
         frame.setFixedHeight(_INPUT_H)
@@ -394,7 +458,14 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
     @staticmethod
     def _make_separator() -> QtWidgets.QWidget:
-        """Returns a 1 px horizontal glass rule."""
+        """Create a thin horizontal separator for the reset-password form.
+
+        Creates a 1-pixel-high translucent widget using the shared glass
+        separator styling.
+
+        Returns:
+            QtWidgets.QWidget: A themed horizontal separator.
+        """
         sep = QtWidgets.QWidget()
         sep.setFixedHeight(1)
         sep.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -403,7 +474,14 @@ class ResetPasswordWidget(QtWidgets.QWidget):
 
     @staticmethod
     def _make_error_label() -> QtWidgets.QLabel:
-        """Returns a compact inline error label, hidden by default."""
+        """Create a hidden inline error message label.
+
+        Creates a word-wrapped label using the shared error styling. The label
+        is initially hidden and can be shown when password validation fails.
+
+        Returns:
+            QtWidgets.QLabel: A hidden, styled error message label.
+        """
         lbl = QtWidgets.QLabel("")
         lbl.setWordWrap(True)
         lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -411,14 +489,21 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         lbl.setVisible(False)
         return lbl
 
-    # ------------------------------------------------------------------
-    # Error helpers  (ported verbatim from CreateUserWidget)
-    # ------------------------------------------------------------------
     def _clear_field_errors(
         self,
         fields: list,
         error_label: QtWidgets.QLabel,
     ) -> None:
+        """Clear validation errors from the specified password fields.
+
+        Resets the error state of any `QATCHLineEdit` instances in the
+        supplied field collection and hides the associated error message.
+
+        Args:
+            fields (list): Fields whose validation error state should be
+                cleared.
+            error_label (QtWidgets.QLabel): Error message label to hide.
+        """
         for f in fields:
             if isinstance(f, QATCHLineEdit):
                 f.set_error(False)
@@ -429,8 +514,23 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         fields: list,
         error_label: QtWidgets.QLabel,
         message: str,
-        shake_target: Optional[QtWidgets.QWidget] = None,
+        shake_target: QtWidgets.QWidget | None = None,
     ) -> None:
+        """Display a validation error for the specified fields.
+
+        Marks applicable `QATCHLineEdit` widgets as invalid, displays the
+        supplied error message, and provides visual feedback by shaking the
+        specified widget or, when no target is provided, the first field.
+
+        Args:
+            fields (list): Fields to mark as having validation errors.
+            error_label (QtWidgets.QLabel): Label used to display the error
+                message.
+            message (str): Validation message to display.
+            shake_target (QtWidgets.QWidget, optional): Widget to animate as
+                error feedback. If omitted, the first field is used when
+                available. Defaults to `None`.
+        """
         for f in fields:
             if isinstance(f, QATCHLineEdit):
                 f.set_error(True)
@@ -438,8 +538,18 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         error_label.setVisible(True)
         self._shake_widget(shake_target or (fields[0] if fields else None))
 
-    def _shake_widget(self, widget: Optional[QtWidgets.QWidget]) -> None:
-        """Horizontal jiggle animation for error feedback."""
+    def _shake_widget(self, widget: QtWidgets.QWidget | None) -> None:
+        """Animate a horizontal jiggle to provide error feedback.
+
+        Applies a short left-to-right positional animation to the supplied
+        visible widget. The animation is retained in `_shake_anims` until it
+        finishes to ensure its lifetime extends through the complete
+        animation.
+
+        Args:
+            widget (QtWidgets.QWidget, optional): Widget to shake. No action is
+                taken when the widget is `None` or not visible.
+        """
         if not widget or not widget.isVisible():
             return
 
@@ -460,10 +570,13 @@ class ResetPasswordWidget(QtWidgets.QWidget):
             lambda: self._shake_anims.remove(anim) if anim in self._shake_anims else None
         )
 
-    # ------------------------------------------------------------------
-    # Password visibility toggles
-    # ------------------------------------------------------------------
     def _toggle_pwd1(self) -> None:
+        """Toggle visibility of the new-password field.
+
+        Switches the first password input between masked and plain-text echo
+        modes and updates its trailing visibility icon to reflect the current
+        state.
+        """
         self._pwd1_visible = not self._pwd1_visible
         self.inp_pwd1.setEchoMode(
             QtWidgets.QLineEdit.Normal if self._pwd1_visible else QtWidgets.QLineEdit.Password
@@ -471,16 +584,30 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self._act_eye1.setIcon(self._eye_off if self._pwd1_visible else self._eye_on)
 
     def _toggle_pwd2(self) -> None:
+        """Toggle visibility of the password-confirmation field.
+
+        Switches the second password input between masked and plain-text echo
+        modes and updates its trailing visibility icon to reflect the current
+        state.
+        """
         self._pwd2_visible = not self._pwd2_visible
         self.inp_pwd2.setEchoMode(
             QtWidgets.QLineEdit.Normal if self._pwd2_visible else QtWidgets.QLineEdit.Password
         )
         self._act_eye2.setIcon(self._eye_off if self._pwd2_visible else self._eye_on)
 
-    # ------------------------------------------------------------------
-    # Validation & acceptance
-    # ------------------------------------------------------------------
     def _validate_and_accept(self) -> None:
+        """Validate the new password and accept the reset when valid.
+
+        Clears any existing validation errors, validates the new password
+        against the required minimum length and character composition, and
+        verifies that the confirmation password matches. Validation failures
+        are displayed through the shared field-error mechanism.
+
+        When validation succeeds, marks the reset as accepted, emits the
+        validated password through `password_confirmed`, and begins the
+        overlay's close animation.
+        """
         self._clear_field_errors([self.inp_pwd1, self.inp_pwd2], self.err_password)
 
         pwd1 = self.inp_pwd1.text()
@@ -508,14 +635,20 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self._close_with_animation()
 
     def _reject(self) -> None:
+        """Reject the password reset and close the overlay.
+
+        Marks the reset as not accepted and begins the overlay's close
+        animation without emitting a confirmed password.
+        """
         self.is_accepted = False
         self._close_with_animation()
 
-    # ------------------------------------------------------------------
-    # Open / close animations  (identical to CreateUserWidget)
-    # ------------------------------------------------------------------
     def _animate_open(self) -> None:
-        """Fades in the scrim and slides the card up into place."""
+        """Animate the password-reset overlay into view.
+
+        Fades in the overlay scrim while transitioning the glass card upward
+        into its centered resting position using an eased animation.
+        """
         self.anim_in = QtCore.QVariantAnimation(self)
         self.anim_in.setDuration(300)
         self.anim_in.setStartValue(0.0)
@@ -525,7 +658,12 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.anim_in.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _close_with_animation(self) -> None:
-        """Disables interactions then reverses the animation before destruction."""
+        """Animate the password-reset overlay out of view before closing.
+
+        Disables interaction with the glass card, reverses the opening
+        animation to fade out the scrim and move the card downward, and closes
+        the widget when the animation completes.
+        """
         self.glass_frame.setEnabled(False)
 
         self.anim_out = QtCore.QVariantAnimation(self)
@@ -538,30 +676,64 @@ class ResetPasswordWidget(QtWidgets.QWidget):
         self.anim_out.start(QtCore.QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _on_anim_frame(self, progress: float) -> None:
-        """Drives both the scrim fade and the card slide-up."""
-        # Slightly lower max alpha (100 vs 130) - this overlay sits on top of
-        # the manager's own scrim so the combined darkness stays comfortable.
+        """Update the overlay appearance for an animation frame.
+
+        Uses the supplied animation progress to adjust the scrim opacity and
+        vertically offset the centered card, creating the combined fade and
+        slide transition used when opening and closing the overlay.
+
+        Args:
+            progress (float): Normalized animation progress, typically ranging
+                from `0.0` to `1.0`.
+        """
         self._bg_alpha = int(100 * progress)
         offset = int(50 * (1.0 - progress))
         self.base_layout.setContentsMargins(0, offset, 0, 0)
         self.update()
 
-    # ------------------------------------------------------------------
-    # Qt overrides
-    # ------------------------------------------------------------------
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        """Paint the translucent scrim behind the password-reset card.
+
+        Fills the entire overlay with a black color whose alpha channel is
+        controlled by `_bg_alpha`. This provides the dimmed backdrop used
+        during the overlay's opening and closing animations.
+
+        Args:
+            event (QtGui.QPaintEvent): The Qt paint event requesting the overlay
+                to be repainted.
+        """
         p = QtGui.QPainter(self)
         p.fillRect(self.rect(), QtGui.QColor(0, 0, 0, self._bg_alpha))
         p.end()
 
     def eventFilter(self, obj, event) -> bool:
-        """Keeps the overlay filling its parent if the parent is resized."""
+        """Keep the overlay sized to its parent during resize events.
+
+        Detects resize events from the overlay's parent widget and updates the
+        overlay size to match the parent's new dimensions.
+
+        Args:
+            obj (QtCore.QObject): Object that generated the event.
+            event (QtCore.QEvent): Event being processed.
+
+        Returns:
+            bool: The result of the base class event-filter implementation.
+        """
         if obj is self.parent() and event.type() == QtCore.QEvent.Type.Resize:
             self.resize(event.size())
         return super().eventFilter(obj, event)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Clicking the scrim outside the card dismisses the overlay."""
+        """Dismiss the overlay when the scrim outside the card is clicked.
+
+        Treats clicks outside the glass card as a request to reject the
+        password reset. Clicks occurring inside the card are passed to the
+        base class implementation for normal child-widget handling.
+
+        Args:
+            event (QtGui.QMouseEvent): Mouse press event received by the
+                overlay.
+        """
         if not self.glass_frame.geometry().contains(event.pos()):
             self._reject()
         else:

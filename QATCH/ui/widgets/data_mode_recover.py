@@ -5,8 +5,8 @@ inside the mode-page contract so the container can treat it like any other mode.
 No logic to port.
 """
 
-from QATCH.ui.widgets.data_mode_base import DataModeWidget
 from QATCH.ui.dialogs import RunRecoveryDialog
+from QATCH.ui.widgets.data_mode_base import DataModeWidget
 
 
 class RecoverMode(DataModeWidget):

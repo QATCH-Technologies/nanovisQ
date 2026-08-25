@@ -1,17 +1,21 @@
-"""QATCH.ui.widgets.splash_screen_widget
+"""
+QATCH.ui.widgets.splash_screen_widget.py
 
-Animated QATCH splash screen: the brand's mosaic-circle mark with a
-shimmering brightness sweep across its tiles and a soft pulsing glow,
-floating over a fully transparent background (no backdrop, no separate
-loader) - ported from the "QATCH Splash.dc.html" design's shimmer motion /
-transparent background / no-loader variant, with the design's own wordmark
-added beneath the mark plus a smaller version/build caption (carried over
-from the previous plain-text splash, restyled to match the wordmark).
+Animated QATCH splash screen.
 
-Runs as its own subprocess (see app.py's "--splash" launch path), so its
-entire public surface is just "construct it and show() it" - the main
-process never calls any method on this instance directly, it only
-terminates the subprocess once the real UI is ready.
+Displays the brand's mosaic-circle mark with a shimmering brightness sweep
+across its tiles and a soft pulsing glow. The splash screen floats over a fully
+transparent background (no backdrop, no separate loader). It includes the QATCH
+wordmark and a smaller version/build caption.
+
+Runs as its own subprocess, so its entire public surface is constructing
+and showing it; the main process terminates the subprocess once the UI is ready.
+
+Author(s):
+    Paul MacNichol
+
+Date:
+    2026-08-21
 """
 
 import sys
@@ -22,12 +26,6 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.core.constants import Constants
 from QATCH.ui.styles.typography import make_qfont
 
-# Tile geometry + base fill color, sampled directly from the QATCH
-# mosaic-circle brand mark (the logo corner of QATCH/icons/qatch-splash.png)
-# via the design file's own TILES table. Kept as literal data instead of an
-# SVG/PNG asset so the whole splash paints itself with QPainter - no
-# bundled image needed, and no image-loading failure mode in the
-# subprocess.
 _TILES = [
     # (x, y, base_color, row, col)
     (89, 7, "#72ccf2", 0, 1),
@@ -55,59 +53,72 @@ _TILES = [
 ]
 _TILE_SIZE = 29.0
 _TILE_RADIUS = 1.2
-_VIEWBOX = 273.0  # native SVG width the coordinates above were sampled at
+_VIEWBOX = 273.0
 _CIRCLE_CX, _CIRCLE_CY, _CIRCLE_R = 139.5, 139.0, 119.0
 _GRADIENT_TOP = QtGui.QColor("#17aeef")
 _GRADIENT_BOTTOM = QtGui.QColor("#0698e0")
 _GLOW_COLOR = QtGui.QColor(10, 164, 229)
 
-_SHIMMER_PERIOD_S = 3.2  # matches the design file's default "speed" prop
-_SHIMMER_DELAY_STEP_S = 0.13  # per (row + col) step, same as the design's shimmer branch
+_SHIMMER_PERIOD_S = 3.2
+_SHIMMER_DELAY_STEP_S = 0.13
 _GLOW_PERIOD_S = 4.0
-_TICK_MS = 33  # ~30fps, same cadence used elsewhere in this app's hand-rolled animations
+_TICK_MS = 33  # ~30fps
 
-_LOGO_SIZE = 240.0  # rendered logo diameter, matches the design's own preview size
-_GLOW_SIZE = 280.0  # matches the design's glow layer size
-_MIN_WINDOW_SIZE = 320  # floor size (also the old window's fixed size) in case the text below is narrower than the glow
-_TOP_CLEARANCE = (
-    _MIN_WINDOW_SIZE - _GLOW_SIZE
-) / 2  # space above the glow's resting radius; unchanged from the old fixed-size window so the mark itself isn't affected by the text added below it
+_LOGO_SIZE = 240.0  # rendered logo diameter
+_GLOW_SIZE = 280.0
+_MIN_WINDOW_SIZE = 320  # floor size
+_TOP_CLEARANCE = (_MIN_WINDOW_SIZE - _GLOW_SIZE) / 2  # space above the glow's resting radius
 
-# Wordmark ("QATCH" + "Technologies"): geometry and color straight from the
-# design file's wordmarkStyle/-Strong/-Light for the transparent/light
-# background variant (the only variant this splash renders).
+# Wordmark ("QATCH", "Technologies")
 _WORDMARK_COLOR_HEX = "#0d3d55"
 _WORDMARK_FONT_PX = 25
 _WORDMARK_LETTER_SPACING_EM = 0.14
 _WORDMARK_MARGIN_TOP = 26
 _WORDMARK_LIGHT_OPACITY = 0.85
 
-# Version/build caption: the two lines the previous plain-text splash
-# showed ("Version: ..." / "Build Date: ..."), restyled smaller and
-# uppercase/letter-spaced/translucent to read as a secondary line under
-# the wordmark rather than competing with it.
+# Version/build caption
 _BUILD_FONT_PX = 11
 _BUILD_LETTER_SPACING_EM = 0.10
 _BUILD_MARGIN_TOP = 12
 _BUILD_LINE_GAP = 3
 _BUILD_OPACITY = 0.62
 
-_SIDE_PADDING = 26  # horizontal clearance so wide text never touches the window edge
+_SIDE_PADDING = 26  # horizontal clearance
 _BOTTOM_PADDING = 22
 
 
 def _lerp(a: float, b: float, t: float) -> float:
+    """Linearly interpolates between two values.
+
+    Args:
+        a (float): The starting value.
+        b (float): The ending value.
+        t (float): The interpolation factor (typically between 0.0 and 1.0).
+
+    Returns:
+        float: The interpolated value.
+    """
     return a + (b - a) * t
 
 
-def _apply_css_filters(color: QtGui.QColor, brightness: float, saturate: float) -> QtGui.QColor:
-    """Reproduces CSS `filter: brightness(b) saturate(s)` applied in that
-    order, matching qc-shimmer's `brightness(1.5) saturate(1.25)` peak.
+def _apply_css_filters(
+    color: QtGui.QColor,
+    brightness: float,
+    saturate: float,
+) -> QtGui.QColor:
+    """Reproduces CSS `filter: brightness(b) saturate(s)` applied in that order.
 
+    Matches qc-shimmer's `brightness(1.5) saturate(1.25)` peak.
     brightness() is a per-channel linear scale; saturate() is the standard
-    luminance-preserving saturation matrix - both per the CSS Filter
-    Effects spec, not just an HSV value/saturation nudge, so the shimmer
-    peak matches what a browser would actually render.
+    luminance-preserving saturation matrix per the CSS Filter Effects spec.
+
+    Args:
+        color (QtGui.QColor): The base color to manipulate.
+        brightness (float): The brightness scale factor.
+        saturate (float): The saturation scale factor.
+
+    Returns:
+        QtGui.QColor: The new color with the simulated CSS filters applied.
     """
     r, g, b, a = color.getRgb()
     r = min(255.0, r * brightness)
@@ -128,21 +139,19 @@ def _apply_css_filters(color: QtGui.QColor, brightness: float, saturate: float) 
 
 
 class QatchSplashScreen(QtWidgets.QWidget):
-    """Animated, transparent-backdrop QATCH splash: a shimmering
-    mosaic-circle logo with a soft pulsing glow, the QATCH Technologies
-    wordmark, and a small version/build caption - no separate loader chrome.
+    """Animated, transparent-backdrop QATCH splash.
+
+    Features a shimmering mosaic-circle logo with a soft pulsing glow, the QATCH
+    Technologies wordmark, and a small version/build caption with no separate loader chrome.
     """
 
     def __init__(self) -> None:
-        # Qt.SplashScreen + WA_TranslucentBackground is a known bad
-        # combination on Windows - it can fail to composite at all (the
-        # window never becomes visible), since Qt.SplashScreen's own
-        # native-window setup doesn't reliably enable the layered-window
-        # style translucency needs. Frameless + StaysOnTop + Tool is the
-        # combination already proven elsewhere in this app for translucent
-        # top-level floating windows (see AccountPopup/AdvancedMainWidget),
-        # so this uses that instead. Tool keeps it out of the taskbar/
-        # alt-tab list, same as SplashScreen would.
+        """Initializes the QatchSplashScreen instance.
+
+        Uses FramelessWindowHint, WindowStaysOnTopHint, and Tool window flags to ensure
+        reliable translucency on Windows while keeping the splash screen out of the taskbar.
+        Starts a timer at 33ms intervals for ~30fps animations.
+        """
         super().__init__(
             None,
             QtCore.Qt.WindowType.FramelessWindowHint
@@ -168,6 +177,10 @@ class QatchSplashScreen(QtWidgets.QWidget):
         self.activateWindow()
 
     def _center_on_screen(self) -> None:
+        """Centers the splash screen window on the primary screen.
+
+        If the primary screen cannot be retrieved, defaults to centering on a 1920x1080 boundary.
+        """
         screen = QtWidgets.QApplication.primaryScreen()
         geo = screen.geometry() if screen is not None else QtCore.QRect(0, 0, 1920, 1080)
         self.move(
@@ -176,14 +189,15 @@ class QatchSplashScreen(QtWidgets.QWidget):
         )
 
     def _build_fonts(self) -> None:
+        """Constructs and configures the QFont instances for the splash screen.
+
+        Sets up the bold and light variants of the wordmark font to sit on the same baseline
+        with matching metrics, and configures the smaller version/build font.
+        """
         self._wordmark_bold_font = make_qfont(pixel_size=_WORDMARK_FONT_PX, weight=QtGui.QFont.Bold)
         self._wordmark_bold_font.setLetterSpacing(
             QtGui.QFont.AbsoluteSpacing, _WORDMARK_FONT_PX * _WORDMARK_LETTER_SPACING_EM
         )
-
-        # Same family/size as the bold run so the two sit on one baseline
-        # with matching metrics - only the weight differs, per the design's
-        # wordmarkStrong (700) / wordmarkLight (300) split.
         self._wordmark_light_font = QtGui.QFont(self._wordmark_bold_font)
         self._wordmark_light_font.setWeight(QtGui.QFont.Light)
 
@@ -195,12 +209,13 @@ class QatchSplashScreen(QtWidgets.QWidget):
     def _compute_layout(self) -> types.SimpleNamespace:
         """Lays out the wordmark + version/build caption beneath the logo.
 
-        Computed from live QFontMetrics rather than hard-coded pixel widths
-        so the window sizes itself correctly regardless of the actual build
-        string's length (e.g. a "_nightly" suffix) or platform font metrics.
-        The logo/glow itself keeps the exact center point it had in the old
-        fixed 320x320 window - only the window grows downward (and wider if
-        the text needs it) to make room for the text below.
+        Computed from live QFontMetrics rather than hard-coded pixel widths so the window
+        sizes itself correctly regardless of the actual build string's length or platform
+        font metrics.
+
+        Returns:
+            types.SimpleNamespace: A namespace containing layout coordinates, dimensions,
+                and calculated text positions.
         """
         fm_bold = QtGui.QFontMetricsF(self._wordmark_bold_font)
         fm_light = QtGui.QFontMetricsF(self._wordmark_light_font)
@@ -260,20 +275,43 @@ class QatchSplashScreen(QtWidgets.QWidget):
         )
 
     def _on_tick(self) -> None:
+        """Handles the animation timer tick.
+
+        Increments the elapsed time and triggers a widget update to advance the animation frame.
+        """
         self._elapsed += _TICK_MS / 1000.0
         self.update()
 
-    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        # Not a QSplashScreen, so nothing auto-hides on click - ignore
-        # defensively anyway so a stray click can't do anything unexpected.
+    def mousePressEvent(self, event) -> None:
+        """Ignores mouse press events defensively.
+
+        Ensures that stray clicks do not auto-hide the splash screen or cause unexpected behavior.
+
+        Args:
+            event (QtGui.QMouseEvent): The mouse press event payload.
+        """
         event.ignore()
 
-    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        # Triggered gracefully when the main app calls splash_process.terminate();
-        # we want an instant, clean close, so just let it pass.
+    def closeEvent(self, event) -> None:
+        """Handles the window close event cleanly.
+
+        Accepts the event to allow for an instant, clean close when the main app process
+        calls `splash_process.terminate()`.
+
+        Args:
+            event (QtGui.QCloseEvent): The close event payload.
+        """
         event.accept()
 
-    def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
+    def paintEvent(self, event) -> None:
+        """Main rendering routine for the splash screen.
+
+        Enables antialiasing and delegates rendering to specific paint methods for the
+        glow, logo, and text.
+
+        Args:
+            event (QtGui.QPaintEvent): The paint event payload.
+        """
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
 
@@ -287,10 +325,14 @@ class QatchSplashScreen(QtWidgets.QWidget):
         painter.end()
 
     def _paint_text(self, painter: QtGui.QPainter) -> None:
-        """Wordmark ("QATCH" bold + "TECHNOLOGIES" light) plus the smaller
-        version/build caption beneath it, per the design's wordmarkStyle/
-        -Strong/-Light triple and the previous plain-text splash's build
-        info respectively."""
+        """Paints the wordmark and version/build caption.
+
+        Draws the "QATCH" bold text, "TECHNOLOGIES" light text, and the restyled version/build
+        caption beneath the logo.
+
+        Args:
+            painter (QtGui.QPainter): The active painter instance used for drawing.
+        """
         layout = self._layout
         painter.setPen(QtCore.Qt.NoPen)
 
@@ -321,12 +363,15 @@ class QatchSplashScreen(QtWidgets.QWidget):
         )
 
     def _paint_glow(self, painter: QtGui.QPainter, cx: float, cy: float) -> None:
-        """qc-glow: a soft pulsing radial glow behind the logo.
+        """Paints qc-glow: a soft pulsing radial glow behind the logo.
 
-        The CSS also applies `filter: blur(26px)` on top of the gradient;
-        rather than render-to-pixmap-then-blur for a plain QWidget
-        paintEvent, the gradient's own smooth falloff already reads as a
-        soft glow at this scale, so the blur step is skipped.
+        Simulates a blur using the gradient's own smooth falloff. Dynamically scales
+        opacity and radius based on animation progress.
+
+        Args:
+            painter (QtGui.QPainter): The active painter instance used for drawing.
+            cx (float): The center X coordinate for the radial gradient.
+            cy (float): The center Y coordinate for the radial gradient.
         """
         progress = (self._elapsed % _GLOW_PERIOD_S) / _GLOW_PERIOD_S
         if progress <= 0.5:
@@ -353,6 +398,16 @@ class QatchSplashScreen(QtWidgets.QWidget):
         painter.drawEllipse(QtCore.QPointF(cx, cy), radius, radius)
 
     def _paint_logo(self, painter: QtGui.QPainter, cx: float, cy: float) -> None:
+        """Paints the QATCH mosaic-circle logo.
+
+        Draws the base circular gradient background and clips the animated mosaic tiles
+        so they do not poke outside the circular silhouette.
+
+        Args:
+            painter (QtGui.QPainter): The active painter instance used for drawing.
+            cx (float): The scaled X offset for the logo's center.
+            cy (float): The scaled Y offset for the logo's center.
+        """
         scale = _LOGO_SIZE / _VIEWBOX
         offset_x = cx - _CIRCLE_CX * scale
         offset_y = cy - _CIRCLE_CY * scale
@@ -360,8 +415,7 @@ class QatchSplashScreen(QtWidgets.QWidget):
         circle_center = QtCore.QPointF(_CIRCLE_CX * scale + offset_x, _CIRCLE_CY * scale + offset_y)
         circle_radius = _CIRCLE_R * scale
 
-        # Base circle: vertical linear gradient, unclipped (it defines its
-        # own circular shape already).
+        # Base circle
         base_gradient = QtGui.QLinearGradient(
             circle_center.x(),
             circle_center.y() - circle_radius,
@@ -374,9 +428,7 @@ class QatchSplashScreen(QtWidgets.QWidget):
         painter.setBrush(QtGui.QBrush(base_gradient))
         painter.drawEllipse(circle_center, circle_radius, circle_radius)
 
-        # Tiles: clipped to the same circle so ones near the rim don't
-        # poke outside the circular silhouette (mirrors the SVG's own
-        # <g clip-path="url(#qc-clip)"> group).
+        # Tiles
         painter.save()
         clip_path = QtGui.QPainterPath()
         clip_path.addEllipse(circle_center, circle_radius, circle_radius)
@@ -393,19 +445,26 @@ class QatchSplashScreen(QtWidgets.QWidget):
         painter.restore()
 
     def _shimmer_color(self, base_hex: str, row: int, col: int) -> QtGui.QColor:
-        """qc-shimmer: a brightness/saturation pulse that sweeps across the
-        tile grid, each tile's pulse offset by `(row + col) * 0.13`s so the
-        peak travels diagonally rather than flashing all tiles at once."""
+        """Calculates the animated shimmer color for a specific tile.
+
+        Applies a brightness/saturation pulse that sweeps across the tile grid, using an offset
+        delay to create a diagonal travel effect rather than flashing all tiles at once.
+
+        Args:
+            base_hex (str): The starting hex color of the tile.
+            row (int): The row index of the tile.
+            col (int): The column index of the tile.
+
+        Returns:
+            QtGui.QColor: The calculated, filtered color for the current animation frame.
+        """
         delay = (row + col) * _SHIMMER_DELAY_STEP_S
         t_local = self._elapsed - delay
         if t_local < 0:
-            # Hasn't started its first cycle yet - the 0% keyframe is just
-            # the base color (opacity 1, brightness 1), so render as-is.
             return QtGui.QColor(base_hex)
 
         progress = (t_local % _SHIMMER_PERIOD_S) / _SHIMMER_PERIOD_S
-        # Envelope from the qc-shimmer keyframes: flat at base until 38%,
-        # ramps up to the peak at 50%, back down to base by 62%, flat to 100%.
+        # Envelope from the qc-shimmer keyframes
         if progress < 0.38:
             peak = 0.0
         elif progress < 0.50:
@@ -424,8 +483,12 @@ class QatchSplashScreen(QtWidgets.QWidget):
 
 
 def main():
+    """Entry point for testing the splash screen independently.
+
+    Initializes the QApplication, constructs the QatchSplashScreen, and executes the event loop.
+    """
     app = QtWidgets.QApplication(sys.argv)
-    splash = QatchSplashScreen()  # noqa: F841 (keeps a strong ref alive for app.exec_())
+    splash = QatchSplashScreen()  # noqa: F841
     sys.exit(app.exec_())
 
 
