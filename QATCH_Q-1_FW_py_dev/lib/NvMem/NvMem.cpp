@@ -56,6 +56,8 @@ NvMem_RAM NvMem::defaults(void)
   defaults.POGO_PosOpened2 = DEFAULT_POS_OPENED_2;
   defaults.POGO_PosClosed2 = DEFAULT_POS_CLOSED_2;
   defaults.POGO_MoveDelay = DEFAULT_MOVE_DELAY;
+  defaults.POGO_PosCurrent1 = DEFAULT_POS_CURRENT_1;
+  defaults.POGO_PosCurrent2 = DEFAULT_POS_CURRENT_2;
   // defaults.NewValue = 42;
 
   struct_is_valid = true; // required for saving defaults, which is required to come soon after this call
@@ -183,6 +185,35 @@ byte NvMem::update(void)
   {
     mem.POGO_MoveDelay = DEFAULT.POGO_MoveDelay;
     modified_entries++;
+  }
+  if (mem.POGO_PosCurrent1 == 0xFF && DEFAULT.POGO_PosCurrent1 != 0xFF)
+  {
+    // Assume the midpoint of OPENED and CLOSED positions is a good start
+    mem.POGO_PosCurrent1 = (mem.POGO_PosOpened1 / 2) + (mem.POGO_PosClosed1 / 2);
+    if (mem.POGO_PosCurrent1 > 180)  // enforce 0 to 180 degree angle
+      mem.POGO_PosCurrent1 = DEFAULT.POGO_PosCurrent1;
+    modified_entries++;
+
+    // Reset ALL lid cal to NEW defaults when updating to new POGO FW:
+    Serial.println("LID CAL reset Servo 1 to NEW defaults");
+    mem.POGO_PosOpened1 = DEFAULT.POGO_PosOpened1;
+    mem.POGO_PosClosed1 = DEFAULT.POGO_PosClosed1;
+    mem.POGO_MoveDelay = DEFAULT.POGO_MoveDelay;
+
+  }
+  if (mem.POGO_PosCurrent2 == 0xFF && DEFAULT.POGO_PosCurrent2 != 0xFF)
+  {
+    // Assume the midpoint of OPENED and CLOSED positions is a good start
+    mem.POGO_PosCurrent2 = (mem.POGO_PosOpened2 / 2) + (mem.POGO_PosClosed2 / 2);
+    if (mem.POGO_PosCurrent2 > 180)  // enforce 0 to 180 degree angle
+      mem.POGO_PosCurrent2 = DEFAULT.POGO_PosCurrent2;
+    modified_entries++;
+
+    // Reset ALL lid cal to NEW defaults when updating to new POGO FW:
+    Serial.println("LID CAL reset Servo 2 to NEW defaults");
+    mem.POGO_PosOpened2 = DEFAULT.POGO_PosOpened2;
+    mem.POGO_PosClosed2 = DEFAULT.POGO_PosClosed2;
+    mem.POGO_MoveDelay = DEFAULT.POGO_MoveDelay;
   }
   // if (mem.NewValue == 0xFF && DEFAULT.NewValue != 0xFF)
   // {
