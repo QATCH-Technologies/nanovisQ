@@ -3985,7 +3985,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     Log.e(e)
                     Log.e(
                         TAG,
-                        f"Error using 'QModel Indus'... Using a fallback model for auto-fitting.",
+                        "Error using 'QModel Indus'... Using a fallback model for auto-fitting.",
                     )
                     # raise e  # debug only
                     self.model_result = -1  # try fallback model
@@ -9685,6 +9685,12 @@ class AnalyzerWorker(QtCore.QObject):
                 if type(in_temp) is not list:
                     in_temp = in_temp.tolist()
 
+                # Convert all output lists from strings to floats (remove error cell indicators)
+                out_shear_rate = [float(str(out).strip("*")) for out in in_shear_rate]
+                out_viscosity_avg = [float(str(out).strip("*")) for out in in_viscosity]
+                out_viscosity_err = [float(str(out).strip("*")) for out in err_viscosity]
+                out_temp = [float(str(out).strip("*")) for out in in_temp]
+
                 # export output data to csv
                 export_path = data_path
                 export_path = export_path.replace(".csv", Constants.export_file_format)
@@ -9695,11 +9701,11 @@ class AnalyzerWorker(QtCore.QObject):
                     export_path,
                     np.column_stack(
                         [
-                            in_shear_rate,
-                            in_viscosity,
-                            in_viscosity,
-                            err_viscosity,
-                            in_temp,
+                            out_shear_rate,
+                            out_viscosity_avg,
+                            out_viscosity_avg,
+                            out_viscosity_err,
+                            out_temp,
                         ]
                     ),
                     fmt="%.2f",
