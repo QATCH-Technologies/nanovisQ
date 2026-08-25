@@ -361,7 +361,7 @@ class OfflineViewer(QWebEngineView):
             self._retry_timer.start(1500)  # 1.5s grace before retry
             return
 
-        if self.offline_url and self._retry_count == self._max_retries:
+        if self.offline_url and not self._offline:
             self.setUrl(QUrl(self.offline_url))
         else:
             self.show_offline_page()
