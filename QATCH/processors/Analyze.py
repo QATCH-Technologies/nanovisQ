@@ -24,6 +24,7 @@ from PyQt5.QtWidgets import QCompleter
 from scipy import interpolate
 from scipy.interpolate import interp1d
 from scipy.signal import argrelextrema, savgol_filter
+from traceback import format_tb
 
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
@@ -1832,12 +1833,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             self.step_direction = "backwards"
             self.goBack()
+
         except Exception as e:
             Log.e(f"An error occurred while moving to the prior step: {str(e)}")
 
             limit = None
             t, v, tb = sys.exc_info()
-            from traceback import format_tb
 
             a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
@@ -1851,12 +1852,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             self.step_direction = "forwards"
             self.getPoints()
+
         except Exception as e:
             Log.e(f"An error occurred while moving to the next step: {str(e)}")
 
             limit = None
             t, v, tb = sys.exc_info()
-            from traceback import format_tb
 
             a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
@@ -1916,12 +1917,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.stateStep = 6  # skip to show
             self.getPoints()  # show summary
             self.getPoints()  # show analysis
+
         except Exception as e:
             Log.e(f"An error occurred while analyzing the selected run: {str(e)}")
 
             limit = None
             t, v, tb = sys.exc_info()
-            from traceback import format_tb
 
             a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
@@ -3877,13 +3878,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_result = -1  # Invalid result format
 
                 except Exception as e:
-                    import traceback
-
                     Log.e(TAG, f"Error using 'QModel Onyx': {e}")
-                    for line in traceback.format_tb(sys.exc_info()[2]):
+                    for line in format_tb(sys.exc_info()[2]):
                         Log.d(line.strip())
+
                     self.model_result = -1  # Trigger fallback handling
                     # raise e
+
             if self.model_result == -1 and Constants.QModel6_predict:
                 Log.w("Auto-fitting points with QModel Volta... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
@@ -3928,13 +3929,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_result = -1  # Invalid result format
 
                 except Exception as e:
-                    import traceback
-
                     Log.e(TAG, f"Error using 'QModel Volta': {e}")
-                    for line in traceback.format_tb(sys.exc_info()[2]):
+                    for line in format_tb(sys.exc_info()[2]):
                         Log.d(line.strip())
+
                     self.model_result = -1  # Trigger fallback handling
                     # raise e
+
             if self.model_result == -1 and Constants.QModel4_predict:
                 Log.w("Auto-fitting points with QModel Indus... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
@@ -3970,22 +3971,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 poi_vals[2] = poi_vals[1] + 2
                         else:
                             self.model_result = -1  # try fallback model
+
                 except Exception as e:
                     limit = None
                     t, v, tb = sys.exc_info()
-                    from traceback import format_tb
 
                     a_list = ["Traceback (most recent call last):"]
                     a_list = a_list + format_tb(tb, limit)
                     a_list.append(f"{t.__name__}: {str(v)}")
                     for line in a_list:
                         Log.d(line)
+
                     Log.e(e)
                     Log.e(
                         TAG,
                         f"Error using 'QModel Indus'... Using a fallback model for auto-fitting.",
                     )
-                    raise e  # debug only
+                    # raise e  # debug only
                     self.model_result = -1  # try fallback model
 
             if self.model_result == -1 and Constants.ModelData_predict:
@@ -4039,10 +4041,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             "Model encountered an unexpected response. Please manually select points."
                         )
                         pass
+
                 except:
                     limit = None
                     t, v, tb = sys.exc_info()
-                    from traceback import format_tb
 
                     a_list = ["Traceback (most recent call last):"]
                     a_list = a_list + format_tb(tb, limit)
@@ -4085,7 +4087,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             limit = None
             t, v, tb = sys.exc_info()
-            from traceback import format_tb
 
             a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
@@ -4245,14 +4246,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
                     except Exception as e:
                         # --- ERROR HANDLING ---
-                        import traceback
-
                         Log.e(TAG, f"Error using 'QModel Onyx': {e}")
                         # Print full stack trace to debug log
-                        for line in traceback.format_tb(sys.exc_info()[2]):
+                        for line in format_tb(sys.exc_info()[2]):
                             Log.d(line.strip())
+
                         self.model_result = -1  # Trigger fallback handling
                         # raise e # Uncomment for strict debugging
+
                 if self.model_result == -1 and Constants.QModel6_predict:
                     Log.w("Auto-fitting points with QModel Volta... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
@@ -4299,14 +4300,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
                     except Exception as e:
                         # --- ERROR HANDLING ---
-                        import traceback
-
                         Log.e(TAG, f"Error using 'QModel Volta': {e}")
                         # Print full stack trace to debug log
-                        for line in traceback.format_tb(sys.exc_info()[2]):
+                        for line in format_tb(sys.exc_info()[2]):
                             Log.d(line.strip())
+
                         self.model_result = -1  # Trigger fallback handling
                         # raise e # Uncomment for strict debugging
+
                 if self.model_result == -1 and Constants.QModel4_predict:
                     Log.w("Auto-fitting points with QModel Indus... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
@@ -4342,21 +4343,22 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                     poi_vals[2] = poi_vals[1] + 2
                             else:
                                 self.model_result = -1  # try fallback model
+
                     except Exception as e:
                         limit = None
                         t, v, tb = sys.exc_info()
-                        from traceback import format_tb
 
                         a_list = ["Traceback (most recent call last):"]
                         a_list = a_list + format_tb(tb, limit)
                         a_list.append(f"{t.__name__}: {str(v)}")
                         for line in a_list:
                             Log.d(line)
+
                         Log.e(e)
                         Log.e(
                             "Error using 'QModel Indus'... Using a fallback model for auto-fitting."
                         )
-                        raise e  # debug only
+                        # raise e  # debug only
                         self.model_result = -1  # try fallback model
 
                 if self.model_result == -1 and Constants.ModelData_predict:
@@ -4403,10 +4405,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 "Model encountered an unexpected response. Please manually select points."
                             )
                             pass
+
                     except:
                         limit = None
                         t, v, tb = sys.exc_info()
-                        from traceback import format_tb
 
                         a_list = ["Traceback (most recent call last):"]
                         a_list = a_list + format_tb(tb, limit)
@@ -8256,7 +8258,9 @@ class AnalyzerWorker(QtCore.QObject):
             for x in range(1, len(times)):
                 this_window_size = xs[times[x]] - xs[times[last_x]]
                 # Log.e(f"Compare {times[x]} to {na_val}...")
-                if this_window_size < 0.75 * last_window_size or na_val in times[last_x : x + 1]:
+                if not initial_fill_only and (
+                    this_window_size < 0.75 * last_window_size or na_val in times[last_x : x + 1]
+                ):
                     bad_x = x
                     if bad_x == 5:  # trust channel 1 pt more than estimated 80% point
                         bad_x = 4
@@ -8311,41 +8315,46 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            norm_fit_xs = xs[start_stop[1] : times[-1]]
-            norm_fit_dists = ys_fit[start_stop[1] : times[-1]]
-            norm_fit_dists -= norm_fit_dists[0]
-            norm_fit_dists /= norm_fit_dists[-1]
-            norm_fit_dists *= distances[-1] - distances[0]
-            norm_fit_dists += distances[0]
+            if not initial_fill_only:
+                norm_fit_xs = xs[start_stop[1] : times[-1]]
+                norm_fit_dists = ys_fit[start_stop[1] : times[-1]]
+                norm_fit_dists -= norm_fit_dists[0]
+                norm_fit_dists /= norm_fit_dists[-1]
+                norm_fit_dists *= distances[-1] - distances[0]
+                norm_fit_dists += distances[0]
 
             # Generate log() plot curves for velocity and position^-1
             log_velocity = np.concatenate((line1_y / line1_x, distances / xs[times]))
             log_position = np.concatenate((1 / line1_y, 1 / distances))
 
-            raw_velocity = norm_fit_dists / norm_fit_xs
-            raw_position = 1 / norm_fit_dists
+            if not initial_fill_only:
+                raw_velocity = norm_fit_dists / norm_fit_xs
+                raw_position = 1 / norm_fit_dists
 
             self.update(status_label)
 
             log_velocity = np.log10(log_velocity)
             log_position = np.log10(log_position)
 
-            raw_velocity = np.log10(raw_velocity)
-            raw_position = np.log10(raw_position)
+            if not initial_fill_only:
+                raw_velocity = np.log10(raw_velocity)
+                raw_position = np.log10(raw_position)
 
             self.update(status_label)
 
             log_velocity[np.isnan(log_velocity)] = 0
             log_position[np.isnan(log_position)] = 0
 
-            raw_velocity[np.isnan(raw_velocity)] = 0
-            raw_position[np.isnan(raw_position)] = 0
+            if not initial_fill_only:
+                raw_velocity[np.isnan(raw_velocity)] = 0
+                raw_position[np.isnan(raw_position)] = 0
 
             log_velocity[np.isinf(log_velocity)] = 0
             log_position[np.isinf(log_position)] = 0
 
-            raw_velocity[np.isinf(raw_velocity)] = 0
-            raw_position[np.isinf(raw_position)] = 0
+            if not initial_fill_only:
+                raw_velocity[np.isinf(raw_velocity)] = 0
+                raw_position[np.isinf(raw_position)] = 0
 
             # fit_ignore = next(x for x,y in enumerate(log_velocity) if y > 0)
             # log_velocity = log_velocity[fit_ignore:]
@@ -9383,7 +9392,8 @@ class AnalyzerWorker(QtCore.QObject):
             std_viscosity = np.std(in_viscosity)
             # lin_viscosity = np.flip(lin_viscosity)
             for i in range(-len(distances), 0):
-                if initial_fill_only: break  # skip
+                if initial_fill_only: 
+                    break  # skip
                 percent_error = (
                     abs((viscosity[i] - viscosity[-len(distances)]) / viscosity[-len(distances)])
                     * 100
@@ -9686,8 +9696,8 @@ class AnalyzerWorker(QtCore.QObject):
                     np.column_stack(
                         [
                             in_shear_rate,
-                            lin_viscosity,
-                            lin_viscosity,
+                            in_viscosity,
+                            in_viscosity,
                             err_viscosity,
                             in_temp,
                         ]
@@ -10142,7 +10152,6 @@ class AnalyzerWorker(QtCore.QObject):
         except:
             limit = None
             t, v, tb = sys.exc_info()
-            from traceback import format_tb
 
             a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
@@ -10454,7 +10463,6 @@ class AnalyzerWorker(QtCore.QObject):
         except:
             limit = None
             t, v, tb = sys.exc_info()
-            from traceback import format_tb
 
             a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
