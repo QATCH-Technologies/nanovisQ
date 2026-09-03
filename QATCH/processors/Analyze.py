@@ -9325,7 +9325,7 @@ class AnalyzerWorker(QtCore.QObject):
                     local_visc.append(sm_trendline[idx])
                     local_linv.append(lin_viscosity[idx])
                     local_temp.append(in_temp[idx])
-                    
+
                 if enable_bandaid_3 and high_shear_15x:
                     P1_value = local_visc[-1]
                     P2_value = high_shear_15y  # exists only if high_Shear_15x is not zero

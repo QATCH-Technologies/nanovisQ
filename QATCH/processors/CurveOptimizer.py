@@ -668,7 +668,7 @@ def estimate_step_delta(
 
     #  evaluate both trends at the midpoint of the gap
     t_mid = 0.5 * (t_pre_edge + float(times[post_lo]))
-    
+
     # Sanity-check the implied step slope against the pre/post trend slopes.
     # A large overcorrection can appear if the gap is extrapolated across a
     # transient whose local smoothed trend is effectively linear on both sides.
@@ -1542,7 +1542,7 @@ class DropEffectCorrection(CurveOptimizer):
             idx = i % 2  # maps to `axs` index 
             axs[idx].axvspan(xmin=relative_time[core[0]], xmax=relative_time[core[1]], 
                              color="green", alpha=0.3)
-                           
+
         # Plot debug metrics (pre/post slope)
         for i, slope in enumerate(self._pre_slopes):
             idx = i % 2  # maps to `axs` index

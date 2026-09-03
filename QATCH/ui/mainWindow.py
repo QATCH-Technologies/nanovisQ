@@ -7551,7 +7551,7 @@ class MainWindow(QtWidgets.QMainWindow):
             Log.e("ERROR: Unable to update resources!")
             Log.e("Reason: OFFLINE")
             return False
-        
+
         except Exception as e:
             Log.e("ERROR: Unable to update resources!")
             Log.e("Reason: " + str(e))
