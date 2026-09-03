@@ -43,7 +43,7 @@ logger = logging.getLogger("DB_MAKER")
 
 ADMIN_SPACE_LIMIT = IngredientController.DEV_MAX_ID
 SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
-SOURCE_CSV = "formulation_data_05262026.csv"
+SOURCE_CSV = "formulation_data_08252026.csv"
 
 
 def get_project_paths() -> Tuple[Path, Path]:
@@ -126,7 +126,12 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: The normalized DataFrame ready for import.
     """
-    float_cols = ["MW", "PI_mean", "PI_range"]
+    df = df.dropna(how="all").reset_index(drop=True)
+
+    if "Whole_Antibody_Charge_at_Buffer_pH" in df.columns and "Protein_charge" not in df.columns:
+        df = df.rename(columns={"Whole_Antibody_Charge_at_Buffer_pH": "Protein_charge"})
+
+    float_cols = ["MW", "PI_mean", "PI_range", "Protein_charge"]
     for col in float_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")

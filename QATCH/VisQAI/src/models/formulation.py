@@ -195,6 +195,7 @@ class Component:
         concentration: float,
         units: str,
         pH: Optional[float] = None,
+        charge: Optional[float] = None,
     ) -> None:
         """Initialize a Component.
 
@@ -204,9 +205,15 @@ class Component:
             units (str): A non-empty string specifying units of concentration.
             pH (Optional[float]): pH value, only applicable to buffer components.
                 Must be between 0 and 14 if provided, or None.
+            charge (Optional[float]): Net whole-protein charge (in elementary
+                charge units) at this formulation's buffer pH, only
+                applicable to protein components. Unlike pH this may be
+                negative, and unlike the other numeric fields it has no
+                lower bound - a net-neutral protein (charge 0.0) is a real,
+                meaningful value, not "unset".
 
         Raises:
-            TypeError: If `pH` is not numeric or None.
+            TypeError: If `pH` or `charge` is not numeric or None.
             ValueError: If `pH` is outside the range 0–14.
         """
         if not isinstance(ingredient, Ingredient):
@@ -222,11 +229,14 @@ class Component:
                 raise TypeError("pH must be a number or None")
             if not (0.0 <= pH <= 14.0):
                 raise ValueError("pH must be between 0 and 14")
+        if charge is not None and not isinstance(charge, (int, float)):
+            raise TypeError("charge must be a number or None")
 
         self.ingredient: Ingredient = ingredient
         self.concentration: float = float(concentration)
         self.units: str = units.strip()
         self.pH: Optional[float] = float(pH) if pH is not None else None
+        self.charge: Optional[float] = float(charge) if charge is not None else None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the component to a dictionary representation.
@@ -244,14 +254,17 @@ class Component:
         }
         if self.pH is not None:
             d["pH"] = self.pH
+        if self.charge is not None:
+            d["charge"] = self.charge
         return d
 
     def __repr__(self) -> str:
         cls = self.ingredient.__class__.__name__
         ph_str = f", pH={self.pH}" if self.pH is not None else ""
+        charge_str = f", charge={self.charge}" if self.charge is not None else ""
         return (
             f"Component({cls}={self.ingredient.name!r}, "
-            f"conc={self.concentration}, units={self.units!r}{ph_str})"
+            f"conc={self.concentration}, units={self.units!r}{ph_str}{charge_str})"
         )
 
 
@@ -379,19 +392,27 @@ class Formulation:
             raise TypeError("signature must be a string")
         self._signature = value
 
-    def set_protein(self, protein: Protein, concentration: float, units: str) -> None:
+    def set_protein(
+        self,
+        protein: Protein,
+        concentration: float,
+        units: str,
+        charge: Optional[float] = None,
+    ) -> None:
         """Assign a protein component to the formulation.
 
         Args:
             protein (Protein): An instance of `Protein` to include.
             concentration (float): Concentration of the protein (must be ≥ 0).
             units (str): Units for the concentration (non-empty string).
+            charge (Optional[float]): Net whole-protein charge (in elementary
+                charge units) at this formulation's buffer pH, or None.
 
         Raises:
             TypeError: If `protein` is not a `Protein`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
-        self._components["protein"] = Component(protein, concentration, units)
+        self._components["protein"] = Component(protein, concentration, units, charge=charge)
 
     def set_buffer(
         self,
@@ -626,6 +647,7 @@ class Formulation:
             "MW",
             "PI_mean",
             "PI_range",
+            "Protein_charge",
             "Protein_conc",
             "Temperature",
             "Buffer_type",
@@ -684,6 +706,7 @@ class Formulation:
             "MW": safe_get(prot, "molecular_weight", 0),
             "PI_mean": safe_get(prot, "pI_mean", 0),
             "PI_range": safe_get(prot, "pI_range", 0),
+            "Protein_charge": (prot.charge if prot is not None and prot.charge is not None else 0),
             "Protein_conc": prot.concentration if prot else 0.0,
             "Buffer_pH": buff.pH if buff is not None else 0,
             "Buffer_conc": buff.concentration if buff else 0.0,
