@@ -7,7 +7,9 @@ uses temporary directories to simulate real-world usage and ensure that errors
 are raised appropriately when invalid operations are attempted.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
+
 Date:
     2025-06-02
 

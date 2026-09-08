@@ -9,7 +9,8 @@ these operations in a separate QThread, the main GUI remains responsive
 during large batch imports.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -184,7 +185,8 @@ class ImportWorker(QThread):
                                         formulation.missing_fields
                                     )
                             else:
-                                success = controller.add_formulation(formulation)
+                                success = controller.add_formulation(
+                                    formulation)
                                 if success:
                                     final_formulation = formulation
                         else:

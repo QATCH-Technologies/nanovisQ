@@ -13,7 +13,9 @@ Dependencies:
 - scipy.signal (medfilt)
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
+
 Date:
     2026-07-06
 
@@ -386,7 +388,9 @@ class QModelV7DataProcessor:
         return img
 
     @classmethod
-    def generate_channel_det(cls, df: pd.DataFrame, img_w: int, img_h: int) -> np.ndarray:
+    def generate_channel_det(
+        cls, df: pd.DataFrame, img_w: int, img_h: int
+    ) -> np.ndarray:
         """
         Generates the visualization input for the YOLO Detection Model.
 

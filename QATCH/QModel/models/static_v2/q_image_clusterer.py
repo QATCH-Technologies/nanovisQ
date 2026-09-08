@@ -57,7 +57,8 @@ Raises:
     IOError: If a file or directory cannot be accessed.
 
 Author:
-    Paul MacNichol (paulmacnichol@gmail.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 """
 
 import os

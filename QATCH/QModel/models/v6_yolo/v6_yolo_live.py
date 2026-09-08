@@ -8,7 +8,9 @@ wrapper to handle execution in a separate process, ensuring non-blocking perform
 for the main application.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
+
 Date:
     2026-05-22
 
@@ -91,8 +93,14 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     # Key   : channel count (matches current_prediction after state change)
     # Value : (threshold_seconds, display_message)
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min since Initial Fill confirmed, no ch1 yet
-        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min since Initial Fill confirmed, no ch2 yet
+        0: (
+            60.0,
+            "Data Ready, You Can Stop",
+        ),  # >= 1 min since Initial Fill confirmed, no ch1 yet
+        1: (
+            120.0,
+            "Data Ready, You Can Stop",
+        ),  # >= 2 min since Initial Fill confirmed, no ch2 yet
         3: (None, "Data Ready, Stop"),  # always on 3-channel confirmation
     }
 
@@ -129,7 +137,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         # Primary source is the UI-provided drop-applied timestamp; channel-0
         # confirmation only seeds this as a fallback if no drop epoch was provided.
         self._fill_epoch: Optional[float] = None
-        self._fill_epoch_source: Optional[str] = None  # "drop_timestamp" or "channel_0_confirm"
+        self._fill_epoch_source: Optional[str] = (
+            None  # "drop_timestamp" or "channel_0_confirm"
+        )
         # Tracks which channels have already had their timed duration warning fired so
         # that _evaluate_duration_threshold never double-emits for the same channel.
         self._channel_warning_fired: Dict[int, bool] = {}
@@ -138,7 +148,11 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         self._initial_fill_timeout_fired: bool = False
         self._cal_csv_written: bool = False
         self._cal_csv_path: str = os.path.join(
-            Architecture.get_path(), "QATCH", "QModel", "logs", "fill_calibration_30s.csv"
+            Architecture.get_path(),
+            "QATCH",
+            "QModel",
+            "logs",
+            "fill_calibration_30s.csv",
         )
         self._cached_baseline_freq: Optional[float] = None
         self._cached_baseline_diss: Optional[float] = None
@@ -293,7 +307,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             self._data = new_data.copy()
             self._prediction_buffer_size = len(self._data)
         else:
-            new_data_filtered = new_data[new_data["Relative_time"] > self._last_max_time]
+            new_data_filtered = new_data[
+                new_data["Relative_time"] > self._last_max_time
+            ]
 
             if new_data_filtered.empty and not new_data.empty:
                 Log.w(
@@ -304,7 +320,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                 )
             elif not new_data_filtered.empty:
                 new_data_aligned = new_data_filtered.reindex(columns=self._data.columns)
-                self._data = pd.concat([self._data, new_data_aligned], ignore_index=True)
+                self._data = pd.concat(
+                    [self._data, new_data_aligned], ignore_index=True
+                )
                 self._prediction_buffer_size += len(new_data_filtered)
 
         if self._data is not None and not self._data.empty:
@@ -381,7 +399,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                 Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
 
         except Exception as e:
-            Log.e(self.TAG, f"Inference failed at buffer size {len(self._data)}: {str(e)}")
+            Log.e(
+                self.TAG, f"Inference failed at buffer size {len(self._data)}: {str(e)}"
+            )
 
         return self.current_prediction
 
@@ -593,7 +613,9 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         v6_base_path = os.path.join(
             Architecture.get_path(), "QATCH", "QModel", "assets", "qmodel_v6_yolo"
         )
-        type_cls_asset = os.path.join(v6_base_path, "classifiers", "fill_classifier", "type_cls.pt")
+        type_cls_asset = os.path.join(
+            v6_base_path, "classifiers", "fill_classifier", "type_cls.pt"
+        )
         self.model_path = type_cls_asset
         self.buffer_window_size = buffer_window_size if buffer_window_size else 2000
 
@@ -605,7 +627,8 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         """Executes the main inference loop for the live fill classification process."""
         try:
             ctypes.windll.kernel32.SetThreadDescription(
-                ctypes.windll.kernel32.GetCurrentThread(), "QATCH nanovisQ-LiveFillDetection"
+                ctypes.windll.kernel32.GetCurrentThread(),
+                "QATCH nanovisQ-LiveFillDetection",
             )
         except Exception:
             pass
@@ -704,7 +727,9 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                         continue
 
                     try:
-                        df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(chunk)
+                        df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(
+                            chunk
+                        )
                         if df_chunk is not None and not df_chunk.empty:
 
                             # Monotonicity check
@@ -712,11 +737,15 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                             if not time_series.is_monotonic_increasing:
                                 time_error_latched = True
                                 Log.w(
-                                    self.TAG, "Non-monotonic time detected within a single chunk!"
+                                    self.TAG,
+                                    "Non-monotonic time detected within a single chunk!",
                                 )
 
                             chunk_start = time_series.iloc[0]
-                            if last_processed_time >= 0 and chunk_start <= last_processed_time:
+                            if (
+                                last_processed_time >= 0
+                                and chunk_start <= last_processed_time
+                            ):
                                 time_error_latched = True
                                 Log.w(
                                     self.TAG,
@@ -754,14 +783,18 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                             img = self._classifier._last_image
                             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                             im_display.set_data(img_rgb)
-                            ax.set_title(f"Prediction: {pred_str}, {pred_int}", fontweight="bold")
+                            ax.set_title(
+                                f"Prediction: {pred_str}, {pred_int}", fontweight="bold"
+                            )
                             if (
                                 self._classifier._data is not None
                                 and not self._classifier._data.empty
                             ):
                                 t_min = self._classifier._data["Relative_time"].min()
                                 t_max = self._classifier._data["Relative_time"].max()
-                                time_text.set_text(f"Window: {t_min:.2f}s - {t_max:.2f}s")
+                                time_text.set_text(
+                                    f"Window: {t_min:.2f}s - {t_max:.2f}s"
+                                )
                             if time_error_latched:
                                 warning_text.set_text("TIME ERROR: NON-MONOTONIC")
                                 warning_text.set_visible(True)

@@ -6,7 +6,8 @@ pI mean, and pI range. It features real-time validation and visual cues
 for mandatory fields.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -104,7 +105,8 @@ class ProteinConfigDialog(QtWidgets.QDialog):
 
         # Header
         lbl_header = QtWidgets.QLabel("Protein Properties")
-        lbl_header.setStyleSheet("font-weight: bold; font-size: 11pt; color: #00adee;")
+        lbl_header.setStyleSheet(
+            "font-weight: bold; font-size: 11pt; color: #00adee;")
         layout.addWidget(lbl_header)
 
         self.lbl_incomplete = QtWidgets.QLabel(
@@ -351,7 +353,8 @@ class ProteinConfigDialog(QtWidgets.QDialog):
         """
         name = self.edit_name.text().strip()
         if not name:
-            QtWidgets.QMessageBox.warning(self, "Invalid Input", "Name is required.")
+            QtWidgets.QMessageBox.warning(
+                self, "Invalid Input", "Name is required.")
             return
 
         if self.has_incomplete_fields():
@@ -380,7 +383,8 @@ class ProteinConfigDialog(QtWidgets.QDialog):
                 self.existing_protein.molecular_weight = self.spin_mw.value()
                 self.existing_protein.pI_mean = self.spin_pi_mean.value()
                 self.existing_protein.pI_range = self.spin_pi_range.value()
-                self.controller.update(self.existing_protein.id, self.existing_protein)
+                self.controller.update(
+                    self.existing_protein.id, self.existing_protein)
                 self.result_ingredient = self.existing_protein
             else:
                 new_protein = Protein(

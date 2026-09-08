@@ -10,7 +10,7 @@ lineage of models stored in a directory.
 
 Author(s):
     Alexander J. Ross (alexander.ross@qatchtech.com)
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -248,7 +248,8 @@ class ModelSelectionDialog(QDialog):
         self.all_models.sort(key=lambda x: x["created"], reverse=True)
 
         # Separate pinned and unpinned
-        pinned = [m for m in self.all_models if m["filename"] in self.pinned_models]
+        pinned = [m for m in self.all_models if m["filename"]
+                  in self.pinned_models]
         unpinned = [
             m for m in self.all_models if m["filename"] not in self.pinned_models
         ]
@@ -278,7 +279,8 @@ class ModelSelectionDialog(QDialog):
             str: Formatted two-line display string for the list item.
         """
 
-        age_days = (datetime.now() - datetime.fromtimestamp(model["created"])).days
+        age_days = (datetime.now() -
+                    datetime.fromtimestamp(model["created"])).days
         if age_days <= 7:
             # if this week, show relative time (e.g., "3 days ago")
             if age_days == 0:
@@ -319,7 +321,8 @@ class ModelSelectionDialog(QDialog):
             size_value /= 1024
             size_units = "GB"
 
-        model_text: str = self.pinned_names.get(model["filename"], model["filename"])
+        model_text: str = self.pinned_names.get(
+            model["filename"], model["filename"])
         created_text: str = f"Created: {created_time}"
         parent_text: str = f"Parent Model: {parent_model}"
         runs_text: str = f"Runs: {num_runs}"
@@ -522,7 +525,8 @@ class ModelSelectionDialog(QDialog):
             (m for m in self.all_models if m["filename"] == model_name), None
         )
         if not model_info:
-            Log.e(TAG, f'Selected model "{model_name}" not found in model list')
+            Log.e(
+                TAG, f'Selected model "{model_name}" not found in model list')
             return
         sha = model_info["sha"]
 
@@ -592,7 +596,8 @@ class ModelSelectionDialog(QDialog):
             (m for m in self.all_models if m["filename"] == model_name), None
         )
         if not model_info:
-            Log.e(TAG, f'Selected model "{model_name}" not found in model list')
+            Log.e(
+                TAG, f'Selected model "{model_name}" not found in model list')
             return
         sha = model_info["sha"]
 
@@ -686,7 +691,8 @@ class ModelSelectionDialog(QDialog):
             (m for m in self.all_models if m["filename"] == model_name), None
         )
         if not model_info:
-            Log.e(TAG, f'Selected model "{model_name}" not found in model list')
+            Log.e(
+                TAG, f'Selected model "{model_name}" not found in model list')
             return
         sha = model_info["sha"]
 
@@ -754,7 +760,8 @@ class ModelSelectionDialog(QDialog):
                         training_tree[key_index] = []
                     for child in children:
                         child_model = next(
-                            (m for m in self.all_models if m["sha"] == child), None
+                            (m for m in self.all_models if m["sha"]
+                             == child), None
                         )
                         if not child_model:
                             Log.w(
@@ -765,7 +772,8 @@ class ModelSelectionDialog(QDialog):
                         child_name = self.pinned_names.get(
                             child_model["filename"], child_model["filename"]
                         )
-                        training_tree[key_index].append((model_name, child_name))
+                        training_tree[key_index].append(
+                            (model_name, child_name))
                     if parent:
                         key_index -= 1
                         if not key_index in training_tree:
@@ -774,14 +782,16 @@ class ModelSelectionDialog(QDialog):
                             parent_name = "Base Model"
                         else:
                             parent_model = next(
-                                (m for m in self.all_models if m["sha"] == parent), None
+                                (m for m in self.all_models if m["sha"]
+                                 == parent), None
                             )
                             if not parent_model:
                                 Log.w(
                                     TAG,
                                     f'Parent model sha "{parent}" not found in model list',
                                 )
-                                parent_name = f"Unknown ({parent[:7]})"  # Fallback to truncated SHA
+                                # Fallback to truncated SHA
+                                parent_name = f"Unknown ({parent[:7]})"
                             else:
                                 parent_name = self.pinned_names.get(
                                     parent_model["filename"], parent_model["filename"]

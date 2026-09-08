@@ -11,7 +11,8 @@ model file.  Layout conventions mirror ``GenerateSampleWidget`` and
 ``EvaluationWidget`` so the three overlays feel visually consistent.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -147,7 +148,8 @@ class OptimizeWidget(QtWidgets.QFrame):
         super().__init__(parent)
         self.ingredients_by_type = ingredients_by_type
 
-        self.assets_path = os.path.join(Architecture.get_path(), "QATCH", "VisQAI", "assets")
+        self.assets_path = os.path.join(
+            Architecture.get_path(), "QATCH", "VisQAI", "assets")
         os.makedirs(self.assets_path, exist_ok=True)
 
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -220,7 +222,8 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.btn_select_model = QtWidgets.QPushButton()
         self.btn_select_model.setFixedSize(40, 26)
         self.btn_select_model.setIcon(QtGui.QIcon(_icon_import))
-        self.btn_select_model.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_select_model.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_select_model.setToolTip("Import new model (.visq)")
         self.btn_select_model.clicked.connect(self.browse_model_file)
 
@@ -233,12 +236,14 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.spin_maxiter.setValue(10)
         self.spin_maxiter.setFixedWidth(100)
         self.spin_maxiter.setFixedHeight(26)
-        self.spin_maxiter.setToolTip("Maximum iterations for differential evolution")
+        self.spin_maxiter.setToolTip(
+            "Maximum iterations for differential evolution")
         cfg_form.addRow("Max Iterations:", self.spin_maxiter)
         layout.addWidget(grp_cfg)
 
         # Viscosity Targets
-        grp_tgt = QtWidgets.QGroupBox("Viscosity Targets  (1 - 5 shear-rate / target pairs)")
+        grp_tgt = QtWidgets.QGroupBox(
+            "Viscosity Targets  (1 - 5 shear-rate / target pairs)")
         tgt_vbox = QtWidgets.QVBoxLayout(grp_tgt)
         tgt_vbox.setContentsMargins(15, 15, 15, 10)
         tgt_vbox.setSpacing(6)
@@ -288,9 +293,11 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        self.scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.constraints_container = QtWidgets.QWidget()
-        self.constraints_layout = QtWidgets.QVBoxLayout(self.constraints_container)
+        self.constraints_layout = QtWidgets.QVBoxLayout(
+            self.constraints_container)
         self.constraints_layout.setContentsMargins(0, 0, 5, 0)
         self.constraints_layout.setSpacing(8)
 
@@ -314,7 +321,8 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.btn_add_target.clicked.connect(self.add_target_row)
 
         self.btn_add_constraint = QtWidgets.QPushButton("+ Add Constraint")
-        self.btn_add_constraint.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_add_constraint.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_add_constraint.setFixedHeight(34)
         self.btn_add_constraint.clicked.connect(self.add_constraint_row)
 
@@ -373,7 +381,8 @@ class OptimizeWidget(QtWidgets.QFrame):
             dlg.setFileMode(QtWidgets.QFileDialog.ExistingFile)
             dlg.setNameFilter("VisQAI Models (*.visq)")
             dlg.setViewMode(QtWidgets.QFileDialog.Detail)
-            mp = os.path.join(Architecture.get_path(), "QATCH", "VisQAI", "assets")
+            mp = os.path.join(Architecture.get_path(),
+                              "QATCH", "VisQAI", "assets")
             if os.path.exists(mp):
                 dlg.setDirectory(mp)
             if dlg.exec_():
@@ -451,7 +460,8 @@ class OptimizeWidget(QtWidgets.QFrame):
         insert_at = max(0, self.targets_layout.count() - 1)
         self.targets_layout.insertWidget(insert_at, row_w)
 
-        row_data = {"widget": row_w, "shear_cb": cb_shear, "visc_spin": spin_visc}
+        row_data = {"widget": row_w,
+                    "shear_cb": cb_shear, "visc_spin": spin_visc}
         self.target_rows.append(row_data)
 
         btn_del.clicked.connect(lambda: self._remove_target_row(row_data))
@@ -564,8 +574,10 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.constraint_rows.append(row_data)
 
         btn_del.clicked.connect(lambda: self._remove_constraint_row(row_data))
-        cb_ingredient.currentIndexChanged.connect(lambda: self._on_ingredient_changed(row_data))
-        cb_attribute.currentIndexChanged.connect(lambda: self._on_attribute_changed(row_data))
+        cb_ingredient.currentIndexChanged.connect(
+            lambda: self._on_ingredient_changed(row_data))
+        cb_attribute.currentIndexChanged.connect(
+            lambda: self._on_attribute_changed(row_data))
         cb_condition.currentIndexChanged.connect(self._validate)
         cb_value.model().dataChanged.connect(self._validate)
         spin_value.valueChanged.connect(lambda _: self._validate())
@@ -704,14 +716,16 @@ class OptimizeWidget(QtWidgets.QFrame):
                             getattr(
                                 p.class_type,
                                 "value",
-                                getattr(p.class_type, "name", str(p.class_type)),
+                                getattr(p.class_type, "name",
+                                        str(p.class_type)),
                             )
                         )
                         if c_val != "-":
                             classes.add(c_val)
                 items = sorted(classes)
             else:
-                items = [obj.name for obj in self.ingredients_by_type.get(ing_type, [])]
+                items = [
+                    obj.name for obj in self.ingredients_by_type.get(ing_type, [])]
                 if ing_type not in ("Protein", "Buffer") and "None" not in items:
                     items.insert(0, "None")
             val_cb.addItems(items)
@@ -791,7 +805,8 @@ class OptimizeWidget(QtWidgets.QFrame):
                 break
 
         self.btn_add_constraint.setEnabled(constraints_ok)
-        self.btn_optimize.setEnabled(has_targets and has_model and constraints_ok)
+        self.btn_optimize.setEnabled(
+            has_targets and has_model and constraints_ok)
 
     def emit_optimize(self):
         """Collect form data and emit ``optimize_requested``.
@@ -812,8 +827,10 @@ class OptimizeWidget(QtWidgets.QFrame):
         targets = []
         for row in self.target_rows:
             idx = row["shear_cb"].currentIndex()
-            shear = SHEAR_RATE_OPTIONS[idx] if 0 <= idx < len(SHEAR_RATE_OPTIONS) else 10_000
-            targets.append({"shear_rate": shear, "viscosity": row["visc_spin"].value()})
+            shear = SHEAR_RATE_OPTIONS[idx] if 0 <= idx < len(
+                SHEAR_RATE_OPTIONS) else 10_000
+            targets.append(
+                {"shear_rate": shear, "viscosity": row["visc_spin"].value()})
 
         constraints_data = []
         for row in self.constraint_rows:
@@ -831,7 +848,8 @@ class OptimizeWidget(QtWidgets.QFrame):
                 }
             )
 
-        self.optimize_requested.emit(self.model_combo.currentText(), targets, constraints_data)
+        self.optimize_requested.emit(
+            self.model_combo.currentText(), targets, constraints_data)
 
     def close_widget(self):
         """Hide the overlay and notify the parent dashboard.

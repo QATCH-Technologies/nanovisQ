@@ -5,7 +5,8 @@ Extended version of the Metrics class with additional statistical and performanc
 for comprehensive model evaluation.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2025-03-16
@@ -525,7 +526,8 @@ class Metrics:
                     continue
 
                 try:
-                    shear_metrics[metric_name] = self.metrics[metric_name](shear_df)
+                    shear_metrics[metric_name] = self.metrics[metric_name](
+                        shear_df)
                 except Exception as e:
                     Log.w(
                         TAG,

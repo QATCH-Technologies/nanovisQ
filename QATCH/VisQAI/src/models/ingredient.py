@@ -17,7 +17,8 @@ Each class includes validation logic for its attributes, conversion to dictionar
 representations, and comparison methods to support sorting and equality checks.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -423,7 +424,8 @@ class Protein(Ingredient):
         """
         super().__init__(enc_id=enc_id, name=name, id=id)
         self._class_type: ProteinClass = class_type
-        self._molecular_weight: float = self._validate_number(molecular_weight, "molecular_weight")
+        self._molecular_weight: float = self._validate_number(
+            molecular_weight, "molecular_weight")
         self._pI_mean: float = self._validate_number(pI_mean, "pI_mean")
         self._pI_range: float = self._validate_number(pI_range, "pI_range")
 

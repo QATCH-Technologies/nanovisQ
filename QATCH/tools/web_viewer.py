@@ -17,7 +17,8 @@ Classes:
         with a status bar and a 60 FPS render timer.
 
 Author(s):
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-06-03

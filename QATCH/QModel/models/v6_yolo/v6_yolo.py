@@ -18,7 +18,8 @@ Dependencies:
 - QATCH internal modules (Logger, DataProcessor, FillClassifier)
 
 Author(s):
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-06-11
@@ -66,9 +67,13 @@ except (ImportError, ModuleNotFoundError):
 
     Log.i(tag="[HEADLESS OPERATION]", msg="Running...")
     try:
-        from QATCH.QModel.models.v6_yolo.v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
+        from QATCH.QModel.models.v6_yolo.v6_yolo_dataprocessor import (
+            QModelV6YOLO_DataProcessor,
+        )
     except ImportError:
-        from QATCH.QModel.models.v6_yolo.v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
+        from QATCH.QModel.models.v6_yolo.v6_yolo_dataprocessor import (
+            QModelV6YOLO_DataProcessor,
+        )
 
 try:
     # New project requirement as of 2026-01-12
@@ -83,7 +88,9 @@ except ImportError:
 # decode_config path in QModelV6YOLO.predict degrades to a no-op and the
 # pipeline behaves exactly as before.
 try:
-    from QATCH.QModel.models.v6_yolo.v6_yolo_spacing_prior import QModelV6YOLO_SpacingPrior
+    from QATCH.QModel.models.v6_yolo.v6_yolo_spacing_prior import (
+        QModelV6YOLO_SpacingPrior,
+    )
     from QATCH.QModel.models.v6_yolo.v6_yolo_decode import (
         Candidate,
         dp_decode,
@@ -93,7 +100,9 @@ try:
     _DECODE_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     try:
-        from QATCH.QModel.models.v6_yolo.v6_yolo_spacing_prior import QModelV6YOLO_SpacingPrior
+        from QATCH.QModel.models.v6_yolo.v6_yolo_spacing_prior import (
+            QModelV6YOLO_SpacingPrior,
+        )
         from QATCH.QModel.models.v6_yolo.v6_yolo_decode import (
             Candidate,
             dp_decode,
@@ -348,7 +357,9 @@ class QModelV6YOLO_Detector:
         img_base = QModelV6YOLO_DataProcessor.generate_channel_det(
             df, img_w=QModelV6Config.IMG_WIDTH, img_h=QModelV6Config.IMG_HEIGHT
         )
-        results = self.model(img_base, verbose=False, conf=QModelV6Config.CONF_THRESHOLD)
+        results = self.model(
+            img_base, verbose=False, conf=QModelV6Config.CONF_THRESHOLD
+        )
         col_time = "Relative_time"
         if col_time not in df.columns:
             col_time = "time" if "time" in df.columns else df.columns[0]
@@ -416,7 +427,9 @@ class QModelV6YOLO_Detector:
         img_base = QModelV6YOLO_DataProcessor.generate_channel_det(
             df, img_w=QModelV6Config.IMG_WIDTH, img_h=QModelV6Config.IMG_HEIGHT
         )
-        results = self.model(img_base, verbose=False, conf=QModelV6Config.CONF_THRESHOLD)
+        results = self.model(
+            img_base, verbose=False, conf=QModelV6Config.CONF_THRESHOLD
+        )
         col_time = "Relative_time"
         if col_time not in df.columns:
             col_time = "time" if "time" in df.columns else df.columns[0]
@@ -623,7 +636,9 @@ class QModelV6YOLO:
                 abs(c.time - float(greedy_pick["time"])) < 1e-9 for c in pool
             ):
                 pool.append(
-                    Candidate(time=float(greedy_pick["time"]), conf=float(greedy_pick["conf"]))
+                    Candidate(
+                        time=float(greedy_pick["time"]), conf=float(greedy_pick["conf"])
+                    )
                 )
             if pool:
                 cands[name] = pool
@@ -631,7 +646,9 @@ class QModelV6YOLO:
         if not any(name in cands for name in present):
             return {"used": False, "reason": "no candidates harvested"}
 
-        greedy_times = {name: max(cs, key=lambda c: c.conf).time for name, cs in cands.items()}
+        greedy_times = {
+            name: max(cs, key=lambda c: c.conf).time for name, cs in cands.items()
+        }
 
         # Snapshot the cascade's (pre-decode) placements in chain space so a
         # single predict() call carries both A/B arms: callers (e.g. the
@@ -674,7 +691,11 @@ class QModelV6YOLO:
             if name in present
         }
         margin = QModelV6Config.DECODE_MIN_MARGIN
-        if margin > 0 and result.chosen and set(result.chosen.keys()) == set(cascade_chosen.keys()):
+        if (
+            margin > 0
+            and result.chosen
+            and set(result.chosen.keys()) == set(cascade_chosen.keys())
+        ):
             cascade_score = score_configuration(
                 cascade_chosen,
                 prior,
@@ -738,7 +759,8 @@ class QModelV6YOLO:
             {"indices": [-1], "confidences": [-1]}.
         """
         return {
-            poi_name: {"indices": [-1], "confidences": [-1]} for poi_name in self.POI_MAP.values()
+            poi_name: {"indices": [-1], "confidences": [-1]}
+            for poi_name in self.POI_MAP.values()
         }
 
     def _format_output(
@@ -867,7 +889,11 @@ class QModelV6YOLO:
         final_save_path = f"{base_name}_{timestamp}{ext}"
 
         time = df["Relative_time"].values
-        signal = df["Dissipation"].values if "Dissipation" in df.columns else df.iloc[:, 1].values
+        signal = (
+            df["Dissipation"].values
+            if "Dissipation" in df.columns
+            else df.iloc[:, 1].values
+        )
 
         plt.figure(figsize=(12, 6))
         plt.plot(time, signal, color="gray", alpha=0.6, label="Raw Signal")
@@ -1008,7 +1034,9 @@ class QModelV6YOLO:
             final_results = {}
             current_df = master_df.copy()
             col_time = (
-                "Relative_time" if "Relative_time" in current_df.columns else current_df.columns[0]
+                "Relative_time"
+                if "Relative_time" in current_df.columns
+                else current_df.columns[0]
             )
             cut_history = []
             # decode_config consumes the harvest, so it implies harvesting.
@@ -1038,7 +1066,9 @@ class QModelV6YOLO:
                     return None
                 latest: Optional[float] = None
                 try:
-                    cands = detector.predict_candidates(slice_df, target_class_map=class_map)
+                    cands = detector.predict_candidates(
+                        slice_df, target_class_map=class_map
+                    )
                 except Exception as exc:
                     Log.w(self.TAG, f"Candidate harvest failed: {exc}")
                     return None
@@ -1144,7 +1174,9 @@ class QModelV6YOLO:
                         progress_signal.emit(90, "Applying Fine Adjustment...")
                     anchor_time = final_results[5]["time"]
                     fine_slice = master_df[master_df[col_time] >= anchor_time]
-                    res_fine = det_fine.predict_single(fine_slice, target_class_map={0: 6})
+                    res_fine = det_fine.predict_single(
+                        fine_slice, target_class_map={0: 6}
+                    )
                     harvest_stage(det_fine, fine_slice, {0: 6})
 
                     if 6 in res_fine:

@@ -10,7 +10,8 @@ parent's container to implement a specific API: `start_drag`, `update_drag`,
 and `finish_drag`.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16

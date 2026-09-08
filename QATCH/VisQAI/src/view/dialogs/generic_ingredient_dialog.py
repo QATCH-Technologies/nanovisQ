@@ -9,7 +9,8 @@ It utilizes a factory pattern to instantiate the correct model subclass based
 on the provided type string.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -110,7 +111,8 @@ class GenericIngredientDialog(QtWidgets.QDialog):
 
         # Header
         lbl_header = QtWidgets.QLabel(f"{ingredient_type} Properties")
-        lbl_header.setStyleSheet("font-weight: bold; font-size: 11pt; color: #00adee;")
+        lbl_header.setStyleSheet(
+            "font-weight: bold; font-size: 11pt; color: #00adee;")
         layout.addWidget(lbl_header)
 
         # Form
@@ -118,7 +120,8 @@ class GenericIngredientDialog(QtWidgets.QDialog):
         form_layout.setSpacing(10)
 
         self.edit_name = QtWidgets.QLineEdit()
-        self.edit_name.setPlaceholderText(self._get_placeholder(ingredient_type))
+        self.edit_name.setPlaceholderText(
+            self._get_placeholder(ingredient_type))
         self.edit_name.setReadOnly(is_edit)
         form_layout.addRow("Name*:", self.edit_name)
 
@@ -209,7 +212,8 @@ class GenericIngredientDialog(QtWidgets.QDialog):
         elif self.ingredient_type == "Excipient":
             return Excipient(enc_id=-1, name=name)
         else:
-            raise ValueError(f"Unknown ingredient type: {self.ingredient_type}")
+            raise ValueError(
+                f"Unknown ingredient type: {self.ingredient_type}")
 
     def save_and_accept(self):
         """Validates input, updates database via controller, and closes dialog.
@@ -220,7 +224,8 @@ class GenericIngredientDialog(QtWidgets.QDialog):
         """
         name = self.edit_name.text().strip()
         if not name:
-            QtWidgets.QMessageBox.warning(self, "Invalid Input", "Name is required.")
+            QtWidgets.QMessageBox.warning(
+                self, "Invalid Input", "Name is required.")
             return
 
         try:

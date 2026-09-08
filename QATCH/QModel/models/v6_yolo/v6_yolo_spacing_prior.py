@@ -16,7 +16,8 @@ log-normal (gaps are positive and right-skewed), which the DP turns into an
 additive quadratic-in-log penalty. Nothing here needs the raw signal.
 
 Author(s):
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-06-11
@@ -153,7 +154,10 @@ class QModelV6YOLO_SpacingPrior:
         span = np.where(span < 1e-9, np.nan, span)
         pairs = [f"{POI_ORDER[i]}->{POI_ORDER[i+1]}" for i in range(P - 1)]
         prior = QModelV6YOLO_SpacingPrior(
-            pairs=pairs, frac_blend=frac_blend, bound_lo_pct=bound_lo_pct, bound_hi_pct=bound_hi_pct
+            pairs=pairs,
+            frac_blend=frac_blend,
+            bound_lo_pct=bound_lo_pct,
+            bound_hi_pct=bound_hi_pct,
         )
         for i in range(P - 1):
             g_sec = configs_sec[:, i + 1] - configs_sec[:, i]
@@ -323,7 +327,9 @@ class QModelV6YOLO_SpacingPrior:
         """
         return self._stat_loglik(self.gap[self.pairs[pair_idx]], gap_sec, span_sec)
 
-    def gap_loglik_between(self, i: int, j: int, gap_sec: float, span_sec: float) -> float:
+    def gap_loglik_between(
+        self, i: int, j: int, gap_sec: float, span_sec: float
+    ) -> float:
         """Compute the plausibility of a gap between two global POI indices.
 
         Evaluates an observed gap against the expected spacing distribution
@@ -359,7 +365,13 @@ class QModelV6YOLO_SpacingPrior:
         return self._stat_loglik(self.composed_stat(i, j), gap_sec, span_sec)
 
     def gap_loglik_scoped(
-        self, i: int, j: int, gap_sec: float, span_sec: float, span_lo: int, span_hi: int
+        self,
+        i: int,
+        j: int,
+        gap_sec: float,
+        span_sec: float,
+        span_lo: int,
+        span_hi: int,
     ) -> float:
         """Compute a scoped spacing likelihood for a POI gap.
 
@@ -425,7 +437,8 @@ class QModelV6YOLO_SpacingPrior:
         if full or span_sec <= 0:
             return self._stat_loglik(base, gap_sec, span_sec)
         p_med = sum(
-            float(np.exp(self.gap[self.pairs[k]].log_mu_sec)) for k in range(span_lo, span_hi)
+            float(np.exp(self.gap[self.pairs[k]].log_mu_sec))
+            for k in range(span_lo, span_hi)
         )
         if p_med <= 0:
             return self._stat_loglik(base, gap_sec, 0.0)
@@ -474,10 +487,14 @@ class QModelV6YOLO_SpacingPrior:
         """
         gs = self.gap[self.pairs[pair_idx]]
         return (
-            gap_sec > 0 and gap_sec >= gs.min_gap_sec / slack and gap_sec <= gs.max_gap_sec * slack
+            gap_sec > 0
+            and gap_sec >= gs.min_gap_sec / slack
+            and gap_sec <= gs.max_gap_sec * slack
         )
 
-    def gap_feasible_between(self, i: int, j: int, gap_sec: float, slack: float = 1.5) -> bool:
+    def gap_feasible_between(
+        self, i: int, j: int, gap_sec: float, slack: float = 1.5
+    ) -> bool:
         """Check whether a gap between two global POIs is feasible.
 
         Applies a hard feasibility test to the observed gap between
@@ -520,7 +537,9 @@ class QModelV6YOLO_SpacingPrior:
         """
         gs = self.composed_stat(i, j)
         return (
-            gap_sec > 0 and gap_sec >= gs.min_gap_sec / slack and gap_sec <= gs.max_gap_sec * slack
+            gap_sec > 0
+            and gap_sec >= gs.min_gap_sec / slack
+            and gap_sec <= gs.max_gap_sec * slack
         )
 
     def config_loglik(self, times_sec: List[float]) -> float:

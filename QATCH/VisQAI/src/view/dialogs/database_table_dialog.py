@@ -8,7 +8,8 @@ QTableWidget with built-in support for searching, row deletion via context
 menus, and interactive checkbox columns.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -95,7 +96,8 @@ class DatabaseTableDialog(QtWidgets.QDialog):
         # Connect signals
         if self.delete_callback:
             self.table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-            self.table.customContextMenuRequested.connect(self.show_context_menu)
+            self.table.customContextMenuRequested.connect(
+                self.show_context_menu)
         if self.check_callback:
             self.table.itemChanged.connect(self.on_item_changed)
         self.populate_table(data_rows)
@@ -109,7 +111,8 @@ class DatabaseTableDialog(QtWidgets.QDialog):
             export_btn = QtWidgets.QPushButton("Export All to CSV")
             export_btn.clicked.connect(export_callback)
 
-            btn_box.addButton(export_btn, QtWidgets.QDialogButtonBox.ActionRole)
+            btn_box.addButton(
+                export_btn, QtWidgets.QDialogButtonBox.ActionRole)
 
         layout.addWidget(btn_box)
 
@@ -122,7 +125,8 @@ class DatabaseTableDialog(QtWidgets.QDialog):
         Args:
             data_rows (list[list]): The data to display.
         """
-        self.table.blockSignals(True)  # Prevent itemChanged firing during setup
+        self.table.blockSignals(
+            True)  # Prevent itemChanged firing during setup
         self.table.setRowCount(len(data_rows))
 
         for r_idx, row_data in enumerate(data_rows):

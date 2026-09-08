@@ -28,7 +28,8 @@ Dependencies:
 - QATCH internal modules (Logger, DataProcessor, FillClassifier)
 
 Author(s):
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-07-06
@@ -429,7 +430,9 @@ class QModelV7Detector:
             img_base = QModelV7DataProcessor.generate_channel_det(
                 df, img_w=QModelV7Config.IMG_WIDTH, img_h=QModelV7Config.IMG_HEIGHT
             )
-        results = self.model(img_base, verbose=False, conf=QModelV7Config.CONF_THRESHOLD)
+        results = self.model(
+            img_base, verbose=False, conf=QModelV7Config.CONF_THRESHOLD
+        )
         col_time = "Relative_time"
         if col_time not in df.columns:
             col_time = "time" if "time" in df.columns else df.columns[0]
@@ -505,7 +508,9 @@ class QModelV7Detector:
             img_base = QModelV7DataProcessor.generate_channel_det(
                 df, img_w=QModelV7Config.IMG_WIDTH, img_h=QModelV7Config.IMG_HEIGHT
             )
-        results = self.model(img_base, verbose=False, conf=QModelV7Config.CONF_THRESHOLD)
+        results = self.model(
+            img_base, verbose=False, conf=QModelV7Config.CONF_THRESHOLD
+        )
         col_time = "Relative_time"
         if col_time not in df.columns:
             col_time = "time" if "time" in df.columns else df.columns[0]
@@ -714,7 +719,9 @@ class QModelV7:
                 abs(c.time - float(greedy_pick["time"])) < 1e-9 for c in pool
             ):
                 pool.append(
-                    Candidate(time=float(greedy_pick["time"]), conf=float(greedy_pick["conf"]))
+                    Candidate(
+                        time=float(greedy_pick["time"]), conf=float(greedy_pick["conf"])
+                    )
                 )
             if pool:
                 cands[name] = pool
@@ -722,7 +729,9 @@ class QModelV7:
         if not any(name in cands for name in present):
             return {"used": False, "reason": "no candidates harvested"}
 
-        greedy_times = {name: max(cs, key=lambda c: c.conf).time for name, cs in cands.items()}
+        greedy_times = {
+            name: max(cs, key=lambda c: c.conf).time for name, cs in cands.items()
+        }
 
         # Snapshot the cascade's (pre-decode) placements in chain space so a
         # single predict() call carries both A/B arms: callers (e.g. the
@@ -742,7 +751,10 @@ class QModelV7:
             lam_eff: Any = QModelV7Config.DECODE_LAMBDA
             if QModelV7Config.DECODE_LAMBDA_PAIRS:
                 base = float(QModelV7Config.DECODE_LAMBDA)
-                lam_eff = {p: QModelV7Config.DECODE_LAMBDA_PAIRS.get(p, base) for p in prior.pairs}
+                lam_eff = {
+                    p: QModelV7Config.DECODE_LAMBDA_PAIRS.get(p, base)
+                    for p in prior.pairs
+                }
             result = dp_decode(
                 cands,
                 present,
@@ -769,7 +781,11 @@ class QModelV7:
             if name in present
         }
         margin = QModelV7Config.DECODE_MIN_MARGIN
-        if margin > 0 and result.chosen and set(result.chosen.keys()) == set(cascade_chosen.keys()):
+        if (
+            margin > 0
+            and result.chosen
+            and set(result.chosen.keys()) == set(cascade_chosen.keys())
+        ):
             cascade_score = score_configuration(
                 cascade_chosen,
                 prior,
@@ -840,11 +856,16 @@ class QModelV7:
         """
         meta: Dict[str, Any] = {"used": False, "moved": {}}
         if not any(
-            self.model_assets.get("detectors", {}).get(n) for n in self.ZOOM_REFINE_MAP.values()
+            self.model_assets.get("detectors", {}).get(n)
+            for n in self.ZOOM_REFINE_MAP.values()
         ):
             meta["reason"] = "no zoom detector assets"
             return meta
-        col_time = "Relative_time" if "Relative_time" in master_df.columns else master_df.columns[0]
+        col_time = (
+            "Relative_time"
+            if "Relative_time" in master_df.columns
+            else master_df.columns[0]
+        )
         tv = master_df[col_time].to_numpy(dtype=float)
         t_lo, t_hi = float(tv.min()), float(tv.max())
         half_w = QModelV7Config.REFINE_WINDOW_S / 2.0
@@ -891,7 +912,9 @@ class QModelV7:
                 ),
                 None,
             )
-            if (prev_t is not None and t_new <= prev_t) or (next_t is not None and t_new >= next_t):
+            if (prev_t is not None and t_new <= prev_t) or (
+                next_t is not None and t_new >= next_t
+            ):
                 continue
             meta["used"] = True
             meta["moved"][self.POI_MAP[poi_id]] = {
@@ -921,7 +944,8 @@ class QModelV7:
             {"indices": [-1], "confidences": [-1]}.
         """
         return {
-            poi_name: {"indices": [-1], "confidences": [-1]} for poi_name in self.POI_MAP.values()
+            poi_name: {"indices": [-1], "confidences": [-1]}
+            for poi_name in self.POI_MAP.values()
         }
 
     def _format_output(
@@ -1050,7 +1074,11 @@ class QModelV7:
         final_save_path = f"{base_name}_{timestamp}{ext}"
 
         time = df["Relative_time"].values
-        signal = df["Dissipation"].values if "Dissipation" in df.columns else df.iloc[:, 1].values
+        signal = (
+            df["Dissipation"].values
+            if "Dissipation" in df.columns
+            else df.iloc[:, 1].values
+        )
 
         plt.figure(figsize=(12, 6))
         plt.plot(time, signal, color="gray", alpha=0.6, label="Raw Signal")
@@ -1193,7 +1221,9 @@ class QModelV7:
             final_results = {}
             current_df = master_df.copy()
             col_time = (
-                "Relative_time" if "Relative_time" in current_df.columns else current_df.columns[0]
+                "Relative_time"
+                if "Relative_time" in current_df.columns
+                else current_df.columns[0]
             )
             cut_history = []
             # decode_config consumes the harvest, so it implies harvesting.
@@ -1223,7 +1253,9 @@ class QModelV7:
                     return None
                 latest: Optional[float] = None
                 try:
-                    cands = detector.predict_candidates(slice_df, target_class_map=class_map)
+                    cands = detector.predict_candidates(
+                        slice_df, target_class_map=class_map
+                    )
                 except Exception as exc:
                     Log.w(self.TAG, f"Candidate harvest failed: {exc}")
                     return None
