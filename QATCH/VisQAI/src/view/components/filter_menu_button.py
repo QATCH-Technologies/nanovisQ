@@ -9,7 +9,8 @@ filter a dataset by multiple categories, providing visual feedback on
 the current selection state directly on the button text.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -112,7 +113,8 @@ class FilterMenuButton(QtWidgets.QPushButton):
         Sets the border to red if no items are selected to indicate an invalid
         filter state.
         """
-        selected = [name for name, act in self.items_map.items() if act.isChecked()]
+        selected = [name for name, act in self.items_map.items()
+                    if act.isChecked()]
         total = len(self.items_map)
 
         if len(selected) == 0:

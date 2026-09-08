@@ -9,7 +9,8 @@ Unit tests for the SecureOpen class in `src.io.file_storage`, verifying:
     - get_namelist behavior for valid and non-existent ZIP archives
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2025-06-02

@@ -7,7 +7,8 @@ Displays a tinted icon and a short instructional message whenever a panel has
 no data to present.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16

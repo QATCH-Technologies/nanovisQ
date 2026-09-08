@@ -15,7 +15,8 @@ References:
         ^ Also see: https://numpy.org/doc/2.1/reference/generated/numpy.roll.html
 
 Author(s):
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-05-20
@@ -38,7 +39,9 @@ class RingBuffer:
         size (int): The current number of valid samples written to the buffer.
     """
 
-    def __init__(self, size_max: int, default_value: Any = 0, dtype: npt.DTypeLike = float) -> None:
+    def __init__(
+        self, size_max: int, default_value: Any = 0, dtype: npt.DTypeLike = float
+    ) -> None:
         """Initializes the RingBuffer.
 
         Args:
@@ -51,7 +54,9 @@ class RingBuffer:
             ValueError: If ``size_max`` is less than or equal to zero.
         """
         if not isinstance(size_max, int):
-            raise TypeError(f"size_max must be an integer, got {type(size_max).__name__}")
+            raise TypeError(
+                f"size_max must be an integer, got {type(size_max).__name__}"
+            )
         if size_max <= 0:
             raise ValueError(f"size_max must be strictly positive, got {size_max}")
 

@@ -8,8 +8,8 @@ based on the XML structure. The parser is designed to work with the expected XML
 that contains a `<params>` section with multiple `<param>` entries.
 
 Author(s):
-    Paul MacNichol (paul.macnichol@qatchtech.com)
     Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 
 Date:
@@ -185,7 +185,8 @@ class Parser:
             try:
                 self._load_state(str(xml_file))
                 if not self.is_bioformulation():
-                    Log.i(TAG, f"Skipping non-bioformulation file: {xml_file.name}")
+                    Log.i(
+                        TAG, f"Skipping non-bioformulation file: {xml_file.name}")
                     continue
                 form = self.get_formulation()
                 if form:
@@ -232,7 +233,8 @@ class Parser:
                 )
             self.xml_path = xml_candidates[0]
         if not self.xml_path.exists():
-            raise FileNotFoundError(f"XML not found at path `{self.xml_path}`.")
+            raise FileNotFoundError(
+                f"XML not found at path `{self.xml_path}`.")
         tree = ET.parse(self.xml_path)
         self.root = tree.getroot()
 
@@ -288,7 +290,8 @@ class Parser:
         try:
             return cast_type(val)
         except ValueError as e:
-            raise ValueError(f"Cannot cast param '{name}' value '{val}' to {cast_type}") from e
+            raise ValueError(
+                f"Cannot cast param '{name}' value '{val}' to {cast_type}") from e
 
     def get_param_attr(self, name: str, attr: str, required: bool = False) -> Optional[str]:
         """Retrieves a specific attribute from a `<param>` element.
@@ -387,7 +390,8 @@ class Parser:
         except Exception:
             conc = 0.0
 
-        units = self.get_param_attr("protein_concentration", "units", required=False)
+        units = self.get_param_attr(
+            "protein_concentration", "units", required=False)
         if units is None:
             units = "mg/mL"
 
@@ -500,8 +504,10 @@ class Parser:
                   'name', 'conc', and 'units' were present in the parameters.
         """
         name = self.get_param("stabilizer_type", str, required=False)
-        conc = self.get_param("stabilizer_concentration", float, required=False)
-        units = self.get_param_attr("stabilizer_concentration", "units", required=False)
+        conc = self.get_param("stabilizer_concentration",
+                              float, required=False)
+        units = self.get_param_attr(
+            "stabilizer_concentration", "units", required=False)
         found = {
             "name": name is not None,
             "conc": conc is not None,
@@ -539,8 +545,10 @@ class Parser:
                   'name', 'conc', and 'units' were present in the parameters.
         """
         name = self.get_param("surfactant_type", str, required=False)
-        conc = self.get_param("surfactant_concentration", float, required=False)
-        units = self.get_param_attr("surfactant_concentration", "units", required=False)
+        conc = self.get_param("surfactant_concentration",
+                              float, required=False)
+        units = self.get_param_attr(
+            "surfactant_concentration", "units", required=False)
         found = {
             "name": name is not None,
             "conc": conc is not None,
@@ -578,7 +586,8 @@ class Parser:
         """
         name = self.get_param("excipient_type", str, required=False)
         conc = self.get_param("excipient_concentration", float, required=False)
-        units = self.get_param_attr("excipient_concentration", "units", required=False)
+        units = self.get_param_attr(
+            "excipient_concentration", "units", required=False)
         found = {
             "name": name is not None,
             "conc": conc is not None,
@@ -602,7 +611,8 @@ class Parser:
         """Construct and return a `Salt` object with concentration and units from `<params>`."""
         name = self.get_param("salt_type", str, required=False)
         conc = self.get_param("salt_concentration", float, required=False)
-        units = self.get_param_attr("salt_concentration", "units", required=False)
+        units = self.get_param_attr(
+            "salt_concentration", "units", required=False)
         found = {
             "name": name is not None,
             "conc": conc is not None,
@@ -788,10 +798,12 @@ class Parser:
             raise FileNotFoundError(f"Base path not found: {self.base_path}")
 
         all_files = os.listdir(self.base_path)
-        analyze_zips = [f for f in all_files if re.match(r"analyze-\d+\.zip$", f)]
+        analyze_zips = [f for f in all_files if re.match(
+            r"analyze-\d+\.zip$", f)]
 
         if not analyze_zips:
-            raise FileNotFoundError(f"No analyze-*.zip files found in {self.base_path}")
+            raise FileNotFoundError(
+                f"No analyze-*.zip files found in {self.base_path}")
         largest_zip_name = max(
             analyze_zips,
             key=lambda n: int(re.search(r"analyze-(\d+)\.zip", n).group(1)),
@@ -804,12 +816,14 @@ class Parser:
 
         csv_files = [n for n in namelist if n.endswith("_analyze_out.csv")]
         if not csv_files:
-            raise FileNotFoundError(f"No *_analyze_out.csv found inside {largest_zip_name}")
+            raise FileNotFoundError(
+                f"No *_analyze_out.csv found inside {largest_zip_name}")
 
         csv_file_name = csv_files[0]
         csv_path = os.path.join(self.base_path, csv_file_name)
         with SecureOpen(csv_path, "r", zipname=zip_base_name, insecure=True) as csv_f:
-            csv_data = np.loadtxt(csv_f, delimiter=",", skiprows=1, usecols=(0, 2, 4))
+            csv_data = np.loadtxt(csv_f, delimiter=",",
+                                  skiprows=1, usecols=(0, 2, 4))
             # Handle case where csv has only one row
             if csv_data.ndim == 1:
                 csv_data = csv_data.reshape(1, -1)
@@ -823,7 +837,8 @@ class Parser:
         temp_profile = ViscosityProfile(
             shear_rates=shear_rates_list, viscosities=viscosities_list, units="cP"
         )
-        interpolated_viscosities = [temp_profile.get_viscosity(sr) for sr in self.profile_shears]
+        interpolated_viscosities = [
+            temp_profile.get_viscosity(sr) for sr in self.profile_shears]
         profile = ViscosityProfile(
             shear_rates=self.profile_shears,
             viscosities=interpolated_viscosities,

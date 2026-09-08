@@ -13,7 +13,7 @@ Core behavior for this module include,
 
 Author(s):
     Alexander Ross (alexander.ross@qatchtech.com)
-    Paul MacNichol  (paul.macnichol@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-05-22
@@ -243,15 +243,21 @@ class ElaborateProcess(multiprocessing.Process):
             window_size = np.abs(int(window_size))
             order = np.abs(int(order))
         except ValueError as msg:
-            raise ValueError("WARNING: window size and order have to be of type int!") from msg
+            raise ValueError(
+                "WARNING: window size and order have to be of type int!"
+            ) from msg
         if window_size % 2 != 1 or window_size < 1:
             raise ValueError("WARNING: window size must be a positive odd number!")
         if window_size < order + 2:
-            raise ValueError("WARNING: window size is too small for the polynomials order!")
+            raise ValueError(
+                "WARNING: window size is too small for the polynomials order!"
+            )
         order_range = range(order + 1)
         half_window = (window_size - 1) // 2
         # precompute coefficients
-        b = np.asmatrix([[k**i for i in order_range] for k in range(-half_window, half_window + 1)])
+        b = np.asmatrix(
+            [[k**i for i in order_range] for k in range(-half_window, half_window + 1)]
+        )
         m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
         # pad the signal at the extremes with values taken from the signal itself
         firstvals = y[0] - np.abs(y[1 : half_window + 1][::-1] - y[0])
@@ -349,9 +355,12 @@ class ElaborateProcess(multiprocessing.Process):
                     self._maxFREQ_down = stop
                 _min = self._minFREQ_down
                 _max = self._maxFREQ_down
-            self._readFREQ = np.linspace(_min, _max, Constants.argument_default_samples - 1)
+            self._readFREQ = np.linspace(
+                _min, _max, Constants.argument_default_samples - 1
+            )
             baseline_offset = min(
-                self._convertMagnitudeToADC(np.polyval(baseline_coeffs, peak_freq)), peak_mag
+                self._convertMagnitudeToADC(np.polyval(baseline_coeffs, peak_freq)),
+                peak_mag,
             )
             mag_result_fit = ElaborateProcess.build_curve(
                 self._readFREQ, peak_mag - baseline_offset, peak_freq, left, right
@@ -413,11 +422,22 @@ class ElaborateProcess(multiprocessing.Process):
             path = FileStorage.DEV_populate_path(path, 0)
             if not phase is None:
                 FileStorage.TXT_sweeps_save(
-                    0, filename, path, self._readFREQ, filtered_mag, phase, appendNameToPath=False
+                    0,
+                    filename,
+                    path,
+                    self._readFREQ,
+                    filtered_mag,
+                    phase,
+                    appendNameToPath=False,
                 )
             else:
                 FileStorage.TXT_sweeps_save(
-                    0, filename, path, self._readFREQ, filtered_mag, appendNameToPath=False
+                    0,
+                    filename,
+                    path,
+                    self._readFREQ,
+                    filtered_mag,
+                    appendNameToPath=False,
                 )
             self._count += 1
 
@@ -440,9 +460,13 @@ class ElaborateProcess(multiprocessing.Process):
                     self._dissipation_buffer.append(dissipation)
             self._temperature_buffer.append(temperature)
 
-            filenameCSV = "{}_{}".format(Constants.csv_filename, self._overtone_name.split(" ")[0])
+            filenameCSV = "{}_{}".format(
+                Constants.csv_filename, self._overtone_name.split(" ")[0]
+            )
             write_interval = (
-                1000 if w_time < Constants.downsample_after else Constants.downsample_file_count
+                1000
+                if w_time < Constants.downsample_after
+                else Constants.downsample_file_count
             )
 
             FileStorage.CSVsave(

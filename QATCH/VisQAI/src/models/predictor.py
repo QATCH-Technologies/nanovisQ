@@ -5,7 +5,8 @@ Provides the Predictor class for loading a packaged viscosity model
 and performing inference.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-04-03
@@ -145,7 +146,8 @@ class Predictor:
                     pass
 
                 sklearn.compose._column_transformer._RemainderColsList = _RemainderColsList
-                Log.w(TAG, "Applied sklearn._RemainderColsList for legacy model support.")
+                Log.w(
+                    TAG, "Applied sklearn._RemainderColsList for legacy model support.")
         except ImportError:
             pass
         except Exception as e:
@@ -153,7 +155,8 @@ class Predictor:
 
         if not SECURITY_AVAILABLE:
             Log.e(TAG, "SecurePackageLoader unavailable - cannot load package.")
-            raise RuntimeError("SecurePackageLoader unavailable - cannot load package.")
+            raise RuntimeError(
+                "SecurePackageLoader unavailable - cannot load package.")
         try:
             loader = create_secure_loader_for_extracted_package(
                 self.extracted_path, enforce_signatures=True
@@ -192,7 +195,8 @@ class Predictor:
 
         # Resolve init kwargs from manifest (supports $PACKAGE_DIR token)
         modules_section = self.manifest.get("modules", {})
-        raw_kwargs = modules_section.get("entry_point", {}).get("init_kwargs", {})
+        raw_kwargs = modules_section.get(
+            "entry_point", {}).get("init_kwargs", {})
         init_kwargs = {
             k: (str(self.extracted_path) if v == "$PACKAGE_DIR" else v)
             for k, v in raw_kwargs.items()
@@ -220,7 +224,8 @@ class Predictor:
         """
         mod = loader.load_inference_module()
         self.model_type = "CNP"
-        self.engine = mod.ViscosityPredictorCNP(model_dir=str(self.extracted_path))
+        self.engine = mod.ViscosityPredictorCNP(
+            model_dir=str(self.extracted_path))
         Log.i(TAG, "Engine initialized successfully (legacy single-module path).")
 
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -387,29 +392,35 @@ class Predictor:
                     shear_rate = None
                 # Position within the canonical target list used to index
                 # per-target CI arrays returned by predict_with_uncertainty.
-                ci_idx = _canonical_targets.index(target) if target in _canonical_targets else None
+                ci_idx = _canonical_targets.index(
+                    target) if target in _canonical_targets else None
                 for row_idx in range(len(actuals_df)):
                     actual = actuals_df.iloc[row_idx][target]
                     predicted = pred_df.iloc[row_idx][target]
                     abs_err = abs(predicted - actual)
-                    pct_err = abs_err / abs(actual) * 100 if abs(actual) > 1e-9 else 0.0
+                    pct_err = abs_err / abs(actual) * \
+                        100 if abs(actual) > 1e-9 else 0.0
                     lower = (
-                        unc_dict.get("lower_ci", [None] * len(actuals_df))[row_idx]
+                        unc_dict.get(
+                            "lower_ci", [None] * len(actuals_df))[row_idx]
                         if "lower_ci" in unc_dict
                         else None
                     )
                     upper = (
-                        unc_dict.get("upper_ci", [None] * len(actuals_df))[row_idx]
+                        unc_dict.get(
+                            "upper_ci", [None] * len(actuals_df))[row_idx]
                         if "upper_ci" in unc_dict
                         else None
                     )
                     if isinstance(lower, np.ndarray):
                         lower = (
-                            lower[ci_idx] if ci_idx is not None and ci_idx < len(lower) else None
+                            lower[ci_idx] if ci_idx is not None and ci_idx < len(
+                                lower) else None
                         )
                     if isinstance(upper, np.ndarray):
                         upper = (
-                            upper[ci_idx] if ci_idx is not None and ci_idx < len(upper) else None
+                            upper[ci_idx] if ci_idx is not None and ci_idx < len(
+                                upper) else None
                         )
 
                     results.append(
@@ -471,11 +482,13 @@ class Predictor:
             processed_indices = set()
             unique_types = eval_data["Protein_type"].unique()
             eval_types = (
-                eval_data["Protein_type"].unique() if "Protein_type" in eval_data.columns else []
+                eval_data["Protein_type"].unique(
+                ) if "Protein_type" in eval_data.columns else []
             )
             all_types = set(unique_types).union(eval_types)
 
-            Log.i(TAG, f"Starting evaluation with fine-tuning on {len(all_types)} types.")
+            Log.i(
+                TAG, f"Starting evaluation with fine-tuning on {len(all_types)} types.")
 
             for p_type in all_types:
                 hist_subset = history_df[history_df["Protein_type"] == p_type]
@@ -489,7 +502,8 @@ class Predictor:
                     f"Calibrating for protein type: {p_type} (History: {len(hist_subset)}, Eval: {len(eval_subset)})",
                 )
 
-                context_for_learn = pd.concat([hist_subset, eval_subset], ignore_index=True)
+                context_for_learn = pd.concat(
+                    [hist_subset, eval_subset], ignore_index=True)
 
                 if (
                     self.model_type == "CNP"
@@ -523,16 +537,19 @@ class Predictor:
 
                 self.reset()
 
-            remaining_eval = eval_data.drop(index=list(processed_indices), errors="ignore")
+            remaining_eval = eval_data.drop(
+                index=list(processed_indices), errors="ignore")
             if not remaining_eval.empty:
-                Log.i(TAG, f"Predicting remaining {len(remaining_eval)} samples with base model.")
+                Log.i(
+                    TAG, f"Predicting remaining {len(remaining_eval)} samples with base model.")
                 pred_input = prepare_prediction_input(remaining_eval, targets)
                 preds = self.predict(pred_input)
                 try:
                     _, unc_dict = self.predict_with_uncertainty(pred_input)
                 except Exception:
                     unc_dict = {}
-                results_list.append(calc_metrics(remaining_eval, preds, unc_dict))
+                results_list.append(calc_metrics(
+                    remaining_eval, preds, unc_dict))
 
         else:
             # Standard evaluation (no fine-tuning)
@@ -612,7 +629,8 @@ class Predictor:
             import copy
 
             Log.i(TAG, "Resetting engine state (fast in-place restore)...")
-            self.engine.model.load_state_dict(copy.deepcopy(self.engine._original_state))
+            self.engine.model.load_state_dict(
+                copy.deepcopy(self.engine._original_state))
             self.engine.memory_vector = None
             self.engine.context_t = None
             Log.i(TAG, "Engine reset complete.")

@@ -8,7 +8,7 @@ file-based and archive-based I/O operations.
 
 Author:
     Alexander Ross (alexander.ross@qatchtech.com)
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2025-06-02
@@ -131,7 +131,8 @@ class SecureOpen:
                 if "encrypted" in str(e):
                     print("Accessing secured records...")
                     # Derive password from the archive comment via SHA-256
-                    zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
+                    zf.setpassword(hashlib.sha256(
+                        zf.comment).hexdigest().encode())
                     password_protected = True
                 else:
                     print("ZIP RuntimeError: " + str(e))
@@ -278,7 +279,8 @@ class SecureOpen:
 
         zip_file_path = os.path.join(archive_dir, f"{zip_name}.zip")
         if not os.path.isfile(zip_file_path):
-            raise FileNotFoundError(f"The zip file {zip_file_path} does not exist.")
+            raise FileNotFoundError(
+                f"The zip file {zip_file_path} does not exist.")
 
         with pyzipper.AESZipFile(
             zip_file_path,

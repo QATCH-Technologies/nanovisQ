@@ -11,7 +11,8 @@ Unit tests for the Parser class, verifying:
     - Initialization with a sample XML file if available
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2025-06-02

@@ -13,7 +13,8 @@ Example:
     >>> bounds, encoding = constraints.build()
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -209,7 +210,8 @@ class Constraints:
                 f"Unknown numeric feature '{feature}'.  Only {self._NUMERIC} are allowed in add_range()."
             )
         if feature != "Temperature" and (low < 0.0 or high < 0.0):
-            raise ValueError(f"Negative values are not allowed for numeric feature {feature}")
+            raise ValueError(
+                f"Negative values are not allowed for numeric feature {feature}")
         self._ranges[feature] = (float(low), float(high))
 
     def add_choices(self, feature: str, choices: List[Ingredient]) -> None:
@@ -298,12 +300,15 @@ class Constraints:
                 # fall back to all ingredients rather than raising ValueError.
                 if not chosen:
                     cls = self._FEATURE_CLASS[feat]
-                    chosen = [ing for ing in all_ingredients if isinstance(ing, cls)]
+                    chosen = [
+                        ing for ing in all_ingredients if isinstance(ing, cls)]
                 if not chosen:
                     raise ValueError(f"No choices available for '{feat}'.")
 
-                names = ListUtils.unique_case_insensitive_sort([ing.name for ing in chosen])
-                encoding.append({"feature": feat, "type": "cat", "choices": names})
+                names = ListUtils.unique_case_insensitive_sort(
+                    [ing.name for ing in chosen])
+                encoding.append(
+                    {"feature": feat, "type": "cat", "choices": names})
                 bounds.append((0.0, float(len(names) - 1)))
 
             elif feat in self._NUMERIC:
@@ -312,7 +317,8 @@ class Constraints:
                 else:
                     low, high = self._DEFAULT_RANGES[feat]
                 if not (math.isfinite(low) and math.isfinite(high)):
-                    raise ValueError(f"Bounds for '{feat}' must be finite. Got ({low}, {high}).")
+                    raise ValueError(
+                        f"Bounds for '{feat}' must be finite. Got ({low}, {high}).")
                 encoding.append({"feature": feat, "type": "num"})
                 bounds.append((low, high))
 

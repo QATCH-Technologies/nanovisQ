@@ -12,7 +12,8 @@ declares a load order and entry point so each .visq package is
 self-describing.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-04-03
@@ -119,7 +120,8 @@ class SecureModuleLoader:
         if not manifest_path.exists():
             raise SecurityError(f"Manifest not found: {manifest_path}")
         if not signature_path.exists():
-            raise SecurityError(f"Manifest signature not found: {signature_path}")
+            raise SecurityError(
+                f"Manifest signature not found: {signature_path}")
 
         try:
             public_key = serialization.load_pem_public_key(
@@ -207,7 +209,8 @@ class SecureModuleLoader:
             sys.modules[module_name] = module
             spec.loader.exec_module(module)
             return module
-        raise ImportError(f"Could not load module {module_name} from {file_path}")
+        raise ImportError(
+            f"Could not load module {module_name} from {file_path}")
 
 
 class SecurePackageLoader:
@@ -302,7 +305,8 @@ class SecurePackageLoader:
                 file_path = self.root / filename
                 if "sha256" in meta:
                     try:
-                        self.loader.verify_file_integrity(file_path, meta["sha256"])
+                        self.loader.verify_file_integrity(
+                            file_path, meta["sha256"])
                     except (SecurityError, Exception) as e:
                         Log.w(TAG, f"Integrity Check Failed (Ignored): {e}")
 
@@ -388,7 +392,8 @@ class SecurePackageLoader:
                     f"Module path '{filename}' escapes the package root — load rejected."
                 )
             if not module_path.exists():
-                raise FileNotFoundError(f"Declared module '{filename}' not found in package.")
+                raise FileNotFoundError(
+                    f"Declared module '{filename}' not found in package.")
 
             # Derive a clean module name (e.g. "inference")
             module_name = f"visq_pkg.{module_path.stem}"
@@ -490,7 +495,8 @@ class SecurePackageLoader:
 
         module_path = self.root / module_filename
         if not module_path.exists():
-            raise FileNotFoundError(f"Inference module {module_filename} not found.")
+            raise FileNotFoundError(
+                f"Inference module {module_filename} not found.")
 
         Log.i(TAG, f"Loading inference logic from: {module_filename}")
         return self.loader.load_module_from_path("visq_inference", module_path)

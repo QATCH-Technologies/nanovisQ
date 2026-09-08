@@ -9,7 +9,8 @@ where users can mix categorical and numeric filters to guide the sample
 generation engine.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -112,7 +113,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         super().__init__(parent)
         self.ingredients_by_type = ingredients_by_type
 
-        self.assets_path = os.path.join(Architecture.get_path(), "QATCH", "VisQAI", "assets")
+        self.assets_path = os.path.join(
+            Architecture.get_path(), "QATCH", "VisQAI", "assets")
         if not os.path.exists(self.assets_path):
             os.makedirs(self.assets_path, exist_ok=True)
 
@@ -181,7 +183,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self.btn_select_model = QtWidgets.QPushButton()
         self.btn_select_model.setFixedWidth(40)
         self.btn_select_model.setFixedHeight(26)
-        self.btn_select_model.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_select_model.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_select_model.setToolTip("Import New Model (.visq)")
         self.btn_select_model.setIcon(
             QtGui.QIcon(
@@ -222,10 +225,12 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        self.scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.constraints_container = QtWidgets.QWidget()
-        self.constraints_layout = QtWidgets.QVBoxLayout(self.constraints_container)
+        self.constraints_layout = QtWidgets.QVBoxLayout(
+            self.constraints_container)
         self.constraints_layout.setContentsMargins(0, 0, 5, 0)
         self.constraints_layout.setSpacing(8)
 
@@ -244,7 +249,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         btn_layout = QtWidgets.QHBoxLayout()
 
         self.btn_add_constraint = QtWidgets.QPushButton("+ Add Constraint")
-        self.btn_add_constraint.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_add_constraint.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_add_constraint.setFixedHeight(34)
         self.btn_add_constraint.clicked.connect(self.add_constraint_row)
 
@@ -291,7 +297,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
             model_dialog.setNameFilter("VisQAI Models (*.visq)")
             model_dialog.setViewMode(QtWidgets.QFileDialog.Detail)
 
-            model_path = os.path.join(Architecture.get_path(), "QATCH", "VisQAI", "assets")
+            model_path = os.path.join(
+                Architecture.get_path(), "QATCH", "VisQAI", "assets")
             if os.path.exists(model_path):
                 model_dialog.setDirectory(model_path)
 
@@ -381,7 +388,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                 break
 
         self.btn_add_constraint.setEnabled(all_complete)
-        self.btn_generate.setEnabled(all_complete and self.model_combo.isEnabled())
+        self.btn_generate.setEnabled(
+            all_complete and self.model_combo.isEnabled())
 
     def add_constraint_row(self):
         """Adds a new row of configuration widgets to the constraint layout."""
@@ -445,7 +453,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         row_layout.addWidget(val_stack, stretch=1)
         row_layout.addWidget(btn_delete)
 
-        self.constraints_layout.insertWidget(len(self.constraint_rows), row_widget)
+        self.constraints_layout.insertWidget(
+            len(self.constraint_rows), row_widget)
 
         row_data = {
             "widget": row_widget,
@@ -459,9 +468,12 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self.constraint_rows.append(row_data)
 
         # Cascading Logic
-        btn_delete.clicked.connect(lambda: self.remove_constraint_row(row_data))
-        cb_ingredient.currentIndexChanged.connect(lambda: self._on_ingredient_changed(row_data))
-        cb_attribute.currentIndexChanged.connect(lambda: self._on_attribute_changed(row_data))
+        btn_delete.clicked.connect(
+            lambda: self.remove_constraint_row(row_data))
+        cb_ingredient.currentIndexChanged.connect(
+            lambda: self._on_ingredient_changed(row_data))
+        cb_attribute.currentIndexChanged.connect(
+            lambda: self._on_attribute_changed(row_data))
         cb_condition.currentIndexChanged.connect(self._validate_rows)
 
         # Ensure validation triggers when values change
@@ -575,14 +587,16 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                             getattr(
                                 p.class_type,
                                 "value",
-                                getattr(p.class_type, "name", str(p.class_type)),
+                                getattr(p.class_type, "name",
+                                        str(p.class_type)),
                             )
                         )
                         if c_val != "-":
                             classes.add(c_val)
                 items = sorted(list(classes))
             else:
-                items = [obj.name for obj in self.ingredients_by_type.get(ing_type, [])]
+                items = [
+                    obj.name for obj in self.ingredients_by_type.get(ing_type, [])]
                 if ing_type not in ["Protein", "Buffer"]:
                     if "None" not in items:
                         items.insert(0, "None")
@@ -624,7 +638,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
             )
 
         model_file = self.model_combo.currentText()
-        self.generate_requested.emit(self.spin_samples.value(), model_file, constraints_data)
+        self.generate_requested.emit(
+            self.spin_samples.value(), model_file, constraints_data)
 
     def close_widget(self):
         """Hides the panel and emits the closed signal."""

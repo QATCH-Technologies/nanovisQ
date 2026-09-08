@@ -13,7 +13,7 @@ Key features include:
 
 Author(s):
     Alexander J. Ross (alexander.ross@qatchtech.com)
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16

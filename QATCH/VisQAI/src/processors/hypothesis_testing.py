@@ -26,7 +26,8 @@ Key Features:
       prevent high-shear data from skewing geometric area calculations.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -125,7 +126,8 @@ class HypothesisTesting:
         upper_ci = upper_ci.flatten()
         lower_ci = lower_ci.flatten()
         # Create mean predictions dictionary
-        mean_predictions = {sr: mean_pred[i] for i, sr in enumerate(shear_rates)}
+        mean_predictions = {sr: mean_pred[i]
+                            for i, sr in enumerate(shear_rates)}
 
         # Route to appropriate test method
         if hypothesis_type == "upper" and bounds[0] == -np.inf:
@@ -145,7 +147,8 @@ class HypothesisTesting:
                 shear_rates=shear_rates,
             )
         elif (
-            hypothesis_type == "between" and bounds[0] > -np.inf and bounds[1] < np.inf
+            hypothesis_type == "between" and bounds[0] > -
+                np.inf and bounds[1] < np.inf
         ):
             result = self._between_bound_test(
                 mean_pred=mean_pred,
@@ -219,9 +222,11 @@ class HypothesisTesting:
 
             # Handle infinite bounds
             if lower_bound == -np.inf:
-                lower_bound = min(lower_ci) - abs(min(lower_ci)) * 0.1  # Extend below
+                lower_bound = min(lower_ci) - \
+                    abs(min(lower_ci)) * 0.1  # Extend below
             if upper_bound == np.inf:
-                upper_bound = max(upper_ci) + abs(max(upper_ci)) * 0.1  # Extend above
+                upper_bound = max(upper_ci) + \
+                    abs(max(upper_ci)) * 0.1  # Extend above
 
             # Create bounding box and find intersection
             bounding_box = box(min_x, lower_bound, max_x, upper_bound)

@@ -8,7 +8,8 @@ bundled (reference) SQLite database against a local user database and
 forward-migrates the local copy to match the bundled schema and seed data.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-04-14
@@ -124,10 +125,12 @@ class DatabaseSynchronizer:
             bundled_version = bundled_db.metadata.get("db_version", 0)
 
             if bundled_version <= local_version:
-                Log.i(TAG, f"Database is up to date (Version {local_version}).")
+                Log.i(
+                    TAG, f"Database is up to date (Version {local_version}).")
                 return False
 
-            Log.i(TAG, f"Updating database from version {local_version} to {bundled_version}...")
+            Log.i(
+                TAG, f"Updating database from version {local_version} to {bundled_version}...")
             DatabaseSynchronizer._sync_schema(c)
 
             local_db.begin_bulk()
@@ -136,7 +139,8 @@ class DatabaseSynchronizer:
 
             local_db.update_metadata_version(bundled_version)
             if dry_run:
-                Log.i(TAG, "DRY RUN Schema and seed changes previewed - no commit performed.")
+                Log.i(
+                    TAG, "DRY RUN Schema and seed changes previewed - no commit performed.")
                 local_db.conn.rollback()
                 return False
 
@@ -308,8 +312,10 @@ class DatabaseSynchronizer:
         )
         subclass_tables = [row[0] for row in c.fetchall()]
         for table in subclass_tables:
-            c.execute(f"INSERT OR IGNORE INTO main.{table} SELECT * FROM bundled.{table};")
+            c.execute(
+                f"INSERT OR IGNORE INTO main.{table} SELECT * FROM bundled.{table};")
 
         # Sync formulation data
         for table in ("formulation", "formulation_component", "viscosity_profile"):
-            c.execute(f"INSERT OR IGNORE INTO main.{table} SELECT * FROM bundled.{table};")
+            c.execute(
+                f"INSERT OR IGNORE INTO main.{table} SELECT * FROM bundled.{table};")

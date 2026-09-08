@@ -3,9 +3,15 @@ test_database_migration.py
 
 Comprehensive unit tests for the DatabaseMigrator system.
 
-Author: Paul MacNichol (paulmacnichol@qatchtech.com)
-Date: 2025-08-27
-Version: 1.0
+Author(s):
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
+
+Date:
+    2025-08-27
+
+Version:
+    1.0
 
 Note: If the MigrationVersion class is missing comparison operators, add these to the class:
     def __le__(self, other) -> bool:

@@ -4,9 +4,15 @@ database_migration.py
 A comprehensive database migration system for handling version upgrades,
 data preservation, and automatic field population for the QATCH database.
 
-Author: Paul MacNichol
-Date: 2025-08-27
-Version: 1.1
+Author(s):
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
+
+Date:
+    2025-08-27
+
+Version:
+    1.1
 """
 
 import sqlite3

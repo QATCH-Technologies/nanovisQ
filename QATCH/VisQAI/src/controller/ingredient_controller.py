@@ -7,7 +7,8 @@ in the database. The controller handles adding new ingredients with auto-assigne
 retrieving by ID or name, updating, and deleting both single and all instances of a given type.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-18
@@ -533,7 +534,8 @@ class IngredientController:
                 return self.update_protein(existing.id, protein)
             return existing
 
-        protein.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Protein")
+        protein.enc_id = self._get_next_enc_id(
+            is_user=self._user_mode, ing_type="Protein")
         db_id = self.db.add_ingredient(protein)
         protein.id = db_id
         self._cache[db_id] = protein
@@ -557,7 +559,8 @@ class IngredientController:
                 return self.update_buffer(existing.id, buffer)
             return existing
 
-        buffer.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Buffer")
+        buffer.enc_id = self._get_next_enc_id(
+            is_user=self._user_mode, ing_type="Buffer")
         db_id = self.db.add_ingredient(buffer)
         buffer.id = db_id
         self._cache[db_id] = buffer
@@ -581,7 +584,8 @@ class IngredientController:
                 return self.update_salt(existing.id, salt)
             return existing
 
-        salt.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Salt")
+        salt.enc_id = self._get_next_enc_id(
+            is_user=self._user_mode, ing_type="Salt")
         db_id = self.db.add_ingredient(salt)
         salt.id = db_id
         self._cache[db_id] = salt
@@ -605,7 +609,8 @@ class IngredientController:
                 return self.update_stabilizer(existing.id, stabilizer)
             return existing
 
-        stabilizer.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Stabilizer")
+        stabilizer.enc_id = self._get_next_enc_id(
+            is_user=self._user_mode, ing_type="Stabilizer")
         db_id = self.db.add_ingredient(stabilizer)
         stabilizer.id = db_id
         self._cache[db_id] = stabilizer
@@ -629,7 +634,8 @@ class IngredientController:
                 return self.update_surfactant(existing.id, surfactant)
             return existing
 
-        surfactant.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Surfactant")
+        surfactant.enc_id = self._get_next_enc_id(
+            is_user=self._user_mode, ing_type="Surfactant")
         db_id = self.db.add_ingredient(surfactant)
         surfactant.id = db_id
         self._cache[db_id] = surfactant
@@ -653,7 +659,8 @@ class IngredientController:
                 return self.update_excipient(existing.id, excipient)
             return existing
 
-        excipient.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Excipient")
+        excipient.enc_id = self._get_next_enc_id(
+            is_user=self._user_mode, ing_type="Excipient")
         db_id = self.db.add_ingredient(excipient)
         excipient.id = db_id
         self._cache[db_id] = excipient
@@ -1223,7 +1230,8 @@ class IngredientController:
         #         )
         #     return next_id
         if is_user:
-            max_id = self.db.get_max_enc_id(ing_type, self.USER_START_ID, 2**63 - 1)
+            max_id = self.db.get_max_enc_id(
+                ing_type, self.USER_START_ID, 2**63 - 1)
             return (max_id + 1) if max_id is not None else self.USER_START_ID
         else:
             max_id = self.db.get_max_enc_id(ing_type, 1, self.DEV_MAX_ID)
@@ -1231,5 +1239,6 @@ class IngredientController:
                 return 1
             next_id = max_id + 1
             if next_id > self.DEV_MAX_ID:
-                raise RuntimeError(f"No developer enc_id available for type '{ing_type}'.")
+                raise RuntimeError(
+                    f"No developer enc_id available for type '{ing_type}'.")
             return next_id

@@ -5,7 +5,8 @@ that opens the hosted Injection Force Calculator single-page application in a
 sandboxed, offline-aware Chromium web view inside the nanovisQ application.
 
 Author(s):
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-06-03

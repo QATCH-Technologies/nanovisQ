@@ -27,7 +27,8 @@ Inputs / outputs are plain dicts so this drops in alongside the existing
 predictor without depending on its internals.
 
 Author(s):
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-06-11
@@ -241,7 +242,12 @@ def _score_config(
     spacing_ll = 0.0
     for a, b in zip(placed[:-1], placed[1:]):
         spacing_ll += prior.gap_loglik_scoped(
-            g_index[a], g_index[b], chosen[b].time - chosen[a].time, span, span_lo, span_hi
+            g_index[a],
+            g_index[b],
+            chosen[b].time - chosen[a].time,
+            span,
+            span_lo,
+            span_hi,
         )
     return conf_sum + lam * spacing_ll, spacing_ll, conf_sum
 
@@ -325,9 +331,13 @@ def _dp_pass(
                 gap = cb.time - ca.time
                 if gap <= 0:
                     continue  # hard: strict ordering
-                if require_feasible and not prior.gap_feasible_between(gi, gj, gap, feas_slack):
+                if require_feasible and not prior.gap_feasible_between(
+                    gi, gj, gap, feas_slack
+                ):
                     continue  # hard: gap bounds
-                ll = prior.gap_loglik_scoped(gi, gj, gap, span_for_frac, span_lo, span_hi)
+                ll = prior.gap_loglik_scoped(
+                    gi, gj, gap, span_for_frac, span_lo, span_hi
+                )
                 score = dp[j - 1][kp] + lam * ll + conf_weight * _clip01(cb.conf)
                 if score > best:
                     best = score
@@ -581,13 +591,17 @@ def dp_decode(
             # Even strict ordering has no complete path -> production-safe
             # floor: per-POI greedy, never worse than current behaviour.
             return _greedy_result(cand, placeable, prior, lam, conf_weight)
-        total, sll, csum = _score_config(relaxed, placeable, prior, lam, conf_weight, use_frac)
+        total, sll, csum = _score_config(
+            relaxed, placeable, prior, lam, conf_weight, use_frac
+        )
         return DecodeResult(relaxed, total, sll, csum, False, True)
 
     if chosen1 is None:
         return DecodeResult({}, -1e18, 0.0, 0.0, False, True)
 
-    total, sll, csum = _score_config(chosen1, placeable, prior, lam, conf_weight, use_frac)
+    total, sll, csum = _score_config(
+        chosen1, placeable, prior, lam, conf_weight, use_frac
+    )
     return DecodeResult(chosen1, total, sll, csum, True, False)
 
 
