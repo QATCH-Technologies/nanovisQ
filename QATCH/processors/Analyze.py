@@ -9,6 +9,7 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
+from enum import IntEnum, auto, unique
 from io import BytesIO
 from time import localtime, monotonic, sleep, strftime
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
@@ -52,8 +53,23 @@ from QATCH.ui.runInfo import QueryRunInfo
 # import matplotlib.pyplot as plt # lazy load
 
 TAG = "[Analyze]"
+
+# New method calculates shear-rate and viscosity using instantaneous fill velocities.
 USE_NEW_FILL_METHOD = True
 
+
+@unique
+class DataSource(IntEnum):
+    """
+    Enum representing supported data sources with automatic values (internal only)
+    """
+    resonance_frequency = auto()
+    dissipation = auto()
+    difference = auto()
+
+
+# The raw data source to use for performing the initial fill region portion analysis.
+INITIAL_FILL_DATA_SOURCE = DataSource.difference
 
 # A shared thread pool used exclusively for heavy background operations
 # (e.g., preloading machine learning models, batch processing file I/O).
@@ -7626,9 +7642,19 @@ class AnalyzerWorker(QtCore.QObject):
             def monoCurve(x, a, b, c, d):
                 return a * np.exp(b * x + c) + d
 
+            # Determine the data source to use for initial fill analysis.
+            if INITIAL_FILL_DATA_SOURCE is DataSource.resonance_frequency:
+                ys_init = ys_freq  # frequency
+            elif INITIAL_FILL_DATA_SOURCE is DataSource.dissipation:
+                ys_init = ys  # dissipation
+            elif INITIAL_FILL_DATA_SOURCE is DataSource.difference:
+                ys_init = ys_diff  # difference
+            else:
+                raise ValueError(f"Unknown DataSource: {INITIAL_FILL_DATA_SOURCE}")
+
             # calculate normalized curve
             normal_x = xs[t0 : t1 + 1]
-            normal_y = ys_freq[t0 : t1 + 1]
+            normal_y = ys_init[t0 : t1 + 1]
             n_max = np.amax(normal_y)
             n_min = np.amin(normal_y)
 
