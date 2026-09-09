@@ -4,5 +4,6 @@ v2.6r63
 v2.7r1
 v2.7r2
 v2.7r3
+v2.7r8
 
 [Add new versions above this line]
