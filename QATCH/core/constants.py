@@ -413,7 +413,7 @@ class Constants:
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
-    TensorFlow_predict = True
+    TensorFlow_predict = False
     # NOTE: If multiple models are enabled, they will be run
     # in the same priority order as they are listed above.
     # In general, the first model to return a valid result will
