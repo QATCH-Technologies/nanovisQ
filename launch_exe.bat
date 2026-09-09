@@ -23,13 +23,24 @@ echo Verifying application checksum...
 REM REPORT EXPECTED APPLICATION CHECKSUM WHILE CALCULATING ACTUAL
 set "expect=" & REM unset first to be sure
 set /p expect=<app.checksum
-echo Expect: %expect%
+
+REM Calculate checksum length to determine verification type
+call :getLength "%expect%" len
+set "hash=" & REM unset first to be sure
+if %len%==32 (
+    set "hash=MD5"
+) else if %len%==64 (
+    set "hash=SHA256"
+) else (
+    goto error
+)
+echo Expect %hash%: %expect%
 
 REM CALCULATE THE ACTUAL APPLICATION CHECKSUM FROM BINARY SOURCE
-certutil -hashfile "QATCH nanovisQ.exe" MD5 | find /i /v "md5" | find /i /v "certutil" > calc.checksum
+certutil -hashfile "QATCH nanovisQ.exe" %hash% | find /i /v "%hash%" | find /i /v "certutil" > calc.checksum
 set "actual=" & REM unset first to be sure
 set /p actual=<calc.checksum
-echo Actual: %actual%
+echo Actual %hash%: %actual%
 
 REM VERIFY THE ACTUAL CHECKSUM MATCHES THE EXPECTED CHECKSUM
 if NOT "%actual%" == "%expect%" (goto error)
@@ -82,6 +93,16 @@ REM timeout 10 >nul 2>&1
 
 REM SELF-DESTRUCT THIS SCRIPT
 (goto) 2>nul & del "%~f0"
+
+REM --- Subroutine to calculate length without delayed expansion ---
+:getLength
+set "s=%~1"
+set "len=0"
+:loop
+if "%s%"=="" goto :eof
+set "s=%s:~1%"
+set /A len+=1
+goto loop
 
 :error
 REM INDICATE CHECKSUM ERROR TO USER
