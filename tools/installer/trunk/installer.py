@@ -18,7 +18,7 @@ import win32com.client
 import win32process
 
 # NOTE: When changing version, also modify `version.rc` file
-INSTALLER_VERSION = "v1.0.2.3"
+INSTALLER_VERSION = "v1.1.0.0"
 
 CHECKSUM_METHOD = "hashlib" # enter 'hashlib' or 'certutil'
 
@@ -1372,16 +1372,27 @@ class InstallWorker(QtCore.QThread):
                 else:
                     # app.checksum file exists, check it
                     with open(checksum_path, "r") as f:
-                        expect_md5 = f.readline().strip()
+                        expect_checksum = f.readline().strip()
                     # self.update_progress("Verifying application checksum...", 60)
+
+                    # Calculate checksum length to determine verification type
+                    hash = ""
+                    if len(expect_checksum) == 32:
+                        hash = "MD5"
+                    elif len(expect_checksum) == 64:
+                        hash = "SHA256"
+                    else:
+                        expect_checksum = ""  # invalidate
+                        pass  # allow continue (it will fail)
+                    Log.debug(f"Expect {hash} = {expect_checksum}")
 
                     ### PRIMARY METHOD: WORKS, BUT FASTER, MAYBE?
                     if CHECKSUM_METHOD == "certutil":
                         calculated_path = os.path.join(copy_dst, "calc.checksum")
-                        os.system(f'certutil -hashfile "{exe_path}" MD5 | find /i /v "md5" | find /i /v "certutil" > "{calculated_path}"')
+                        os.system(f'certutil -hashfile "{exe_path}" {hash} | find /i /v "{hash}" | find /i /v "certutil" > "{calculated_path}"')
                         if os.path.exists(calculated_path):
                             with open(calculated_path, "r") as f:
-                                actual_md5 = f.readline().strip()
+                                actual_checksum = f.readline().strip()
 
                     ### ALTERNATIVE METHOD: WORKS, BUT SLOWER, MAYBE?
                     if CHECKSUM_METHOD == "hashlib":
@@ -1391,20 +1402,19 @@ class InstallWorker(QtCore.QThread):
                         this_step = 0
                         upd_inter = int(1 / step_size) # update interval (1 update per every 1%)
                         with open(exe_path, "rb", buffering=8192) as f:
-                            file_hash = hashlib.md5()
+                            file_hash = hashlib.md5() if hash == "MD5" else hashlib.sha256()
                             while chunk := f.read(8192):
                                 this_step += 1
                                 if this_step % upd_inter == 1:
                                     percentage = 50 + int(step_size * this_step)
                                     self.update_progress("Verifying application checksum...", percentage)
                                 file_hash.update(chunk)
-                            actual_md5 = file_hash.hexdigest()
+                            actual_checksum = file_hash.hexdigest()
                         # print(step_size)
                         # print(this_step)
 
-                    Log.debug(f"Expect MD5 = {expect_md5}")
-                    Log.debug(f"Actual MD5 = {actual_md5}")
-                    if expect_md5 == actual_md5:
+                    Log.debug(f"Actual {hash} = {actual_checksum}")
+                    if expect_checksum == actual_checksum:
                         Log.info("App checksum verified!")
                         os.remove(checksum_path)
                         if CHECKSUM_METHOD == 'certutil':

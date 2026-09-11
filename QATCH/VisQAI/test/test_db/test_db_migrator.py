@@ -709,7 +709,7 @@ class TestDatabaseMigrator(unittest.TestCase):
 
         # Calculate actual checksum
         with open(backup_path, 'rb') as f:
-            actual_checksum = hashlib.md5(f.read()).hexdigest()
+            actual_checksum = hashlib.sha256(f.read()).hexdigest()
 
         self.assertEqual(metadata['checksum'], actual_checksum)
 

@@ -555,7 +555,7 @@ class DatabaseMigrator:
 
         # Create checksum for verification
         with open(backup_path, 'rb') as f:
-            checksum = hashlib.md5(f.read()).hexdigest()
+            checksum = hashlib.sha256(f.read()).hexdigest()
 
         # Store backup metadata
         metadata_path = backup_path.with_suffix('.json')
