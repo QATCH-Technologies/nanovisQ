@@ -415,13 +415,11 @@ class SerialProcess(multiprocessing.Process):
                         Log.d(TAG, f"Lid reply: {lid_reply}")
 
                         if "supported" in lid_reply:
-                            Log.w(
-                                "LID command not supported by device. Continuing anyway."
-                            )
+                            Log.w(TAG, 
+                                "LID command not supported by device. Continuing anyway.")
                         elif "CLOSED" not in lid_reply:
                             raise PermissionError(
-                                "Cannot proceed! Lid state is not closed."
-                            )
+                                "Cannot proceed! Lid state is not closed.")
                     ### END AUTO-LOCK BLOCK ###
 
                     if len(self._serial) == 1:

@@ -13,10 +13,13 @@ data_files = [
     ( "QATCH\\*.pdf", "QATCH" ),
     ( "QATCH\\icons", "QATCH\\icons" ),
     ( "QATCH\\models", "QATCH\\models" ),
-    ( "QATCH\\QModel\\SavedModels", "QATCH\\QModel\\SavedModels" ),
+    ( "QATCH\\QModel\\assets", "QATCH\\QModel\\assets" ),
     ( "QATCH\\resources", "QATCH\\resources" ),
+    ( "QATCH\\tools\\offline_calcs", "QATCH\\tools\\offline_calcs" ),
     ( "QATCH\\VisQAI\\assets\\app.db", "QATCH\\VisQAI\\assets" ),
-    ( "QATCH\\VisQAI\\assets\\VisQAI-base.zip", "QATCH\\VisQAI\\assets" ),
+    ( "QATCH\\VisQAI\\assets\\VisQAI-base.visq", "QATCH\\VisQAI\\assets" ),
+    ( "QATCH\\VisQAI\\src\\view\\icons", "QATCH\\VisQAI\\src\\view\\icons" ),
+    ( "QATCH\\VisQAI\\src\\view\\styles\\theme.qss", "QATCH\\VisQAI\\src\\view\\styles" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.hex", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.pdf", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( "tools\\tool-teensy", "tools\\tool-teensy" ),
@@ -42,6 +45,15 @@ upx_exclude = [
     'Qt5Svg.dll',
     'Qt5Multimedia.dll',
     'PyQt5',
+
+# PyQtWebEngine Core DLLs and plugins (for integrated browser widgets)
+    'QtWebEngineProcess.exe',
+    'Qt5WebEngineCore.dll',
+    'Qt5WebEngineWidgets.dll',
+    'Qt5WebEngineCore.pyd',
+    'Qt5WebEngineWidgets.pyd',
+    'sip.*.pyd',
+    'icudtl.dat',
 
 # Torch and ultralytics YOLO dependencies (fail when compressed)
     'torch.dll',

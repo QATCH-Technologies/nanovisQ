@@ -4,8 +4,12 @@ Unit tests for predictor.py module
 Tests the Predictor class for loading packaged viscosity models,
 performing inference, uncertainty estimation, and incremental updates.
 
-Author: Paul MacNichol
-Date: 2025-10-16
+Author(s):
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
+
+Date:
+    2025-10-16
 """
 import unittest
 import tempfile

@@ -11,7 +11,7 @@ Integration tests for the Database class, verifying:
 
 Author:
     Alexander Ross (alexander.ross@qatchtech.com)
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2025-10-20

@@ -9,7 +9,8 @@ filter dimensions: prediction state (measured vs. predicted), model name
 substring, temperature range, and per-ingredient-type multi-selection.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16

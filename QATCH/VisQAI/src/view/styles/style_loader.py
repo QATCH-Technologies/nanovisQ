@@ -6,7 +6,8 @@ hardcoded absolute paths in CSS by allowing placeholders like {{ICON_NAME}}
 within the QSS file, which are replaced with absolute paths at runtime.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16
@@ -142,7 +143,8 @@ class StyleLoader:
         """
         for placeholder, relative_path in self.icon_paths.items():
             abs_path = self._resolve_icon_path(relative_path)
-            qss_content = qss_content.replace(f"{{{{{placeholder}}}}}", abs_path)
+            qss_content = qss_content.replace(
+                f"{{{{{placeholder}}}}}", abs_path)
             qss_content = qss_content.replace(f"__{placeholder}__", abs_path)
 
         return qss_content

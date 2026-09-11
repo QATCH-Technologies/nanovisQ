@@ -8,7 +8,8 @@ update, and delete formulations, as well as bulk import/export to and from panda
 DataFrame representations.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-18
@@ -75,7 +76,8 @@ class FormulationController:
                 and their related ingredients.
         """
         self.db: Database = db
-        self.ingredient_controller: IngredientController = IngredientController(self.db)
+        self.ingredient_controller: IngredientController = IngredientController(
+            self.db)
 
     def get_all_formulations(self) -> List[Formulation]:
         """Retrieve all stored formulations.
@@ -149,7 +151,8 @@ class FormulationController:
         for f in formulations:
             if f == formulation:
                 return f.id
-        raise ValueError(f"Formulation with params\n\t'{formulation.to_dict()}'\nnot found.")
+        raise ValueError(
+            f"Formulation with params\n\t'{formulation.to_dict()}'\nnot found.")
 
     @staticmethod
     def _normalize_label(value) -> str:
@@ -203,16 +206,20 @@ class FormulationController:
                 return existing
 
         # Ensure each ingredient is persisted and update the formulation's component references
-        formulation.buffer.ingredient = self._ensure_ingredient(formulation.buffer.ingredient)
-        formulation.protein.ingredient = self._ensure_ingredient(formulation.protein.ingredient)
-        formulation.salt.ingredient = self._ensure_ingredient(formulation.salt.ingredient)
+        formulation.buffer.ingredient = self._ensure_ingredient(
+            formulation.buffer.ingredient)
+        formulation.protein.ingredient = self._ensure_ingredient(
+            formulation.protein.ingredient)
+        formulation.salt.ingredient = self._ensure_ingredient(
+            formulation.salt.ingredient)
         formulation.surfactant.ingredient = self._ensure_ingredient(
             formulation.surfactant.ingredient
         )
         formulation.stabilizer.ingredient = self._ensure_ingredient(
             formulation.stabilizer.ingredient
         )
-        formulation.excipient.ingredient = self._ensure_ingredient(formulation.excipient.ingredient)
+        formulation.excipient.ingredient = self._ensure_ingredient(
+            formulation.excipient.ingredient)
 
         # Otherwise, add a new formulation record
         self.db.add_formulation(formulation)
@@ -262,12 +269,17 @@ class FormulationController:
             return f_new
 
         # Ensure each ingredient is persisted before saving the updated formulation
-        f_new.buffer.ingredient = self._ensure_ingredient(f_new.buffer.ingredient)
-        f_new.protein.ingredient = self._ensure_ingredient(f_new.protein.ingredient)
+        f_new.buffer.ingredient = self._ensure_ingredient(
+            f_new.buffer.ingredient)
+        f_new.protein.ingredient = self._ensure_ingredient(
+            f_new.protein.ingredient)
         f_new.salt.ingredient = self._ensure_ingredient(f_new.salt.ingredient)
-        f_new.surfactant.ingredient = self._ensure_ingredient(f_new.surfactant.ingredient)
-        f_new.stabilizer.ingredient = self._ensure_ingredient(f_new.stabilizer.ingredient)
-        f_new.excipient.ingredient = self._ensure_ingredient(f_new.excipient.ingredient)
+        f_new.surfactant.ingredient = self._ensure_ingredient(
+            f_new.surfactant.ingredient)
+        f_new.stabilizer.ingredient = self._ensure_ingredient(
+            f_new.stabilizer.ingredient)
+        f_new.excipient.ingredient = self._ensure_ingredient(
+            f_new.excipient.ingredient)
 
         # Delete the old formulation and re-add the new data
         self.db.delete_formulation(id)
@@ -416,20 +428,24 @@ class FormulationController:
                     Buffer(enc_id=0, name=self._normalize_label(row.Buffer_type))
                 )
                 stabilizer = self.ingredient_controller.add_stabilizer(
-                    Stabilizer(enc_id=0, name=self._normalize_label(row.Stabilizer_type))
+                    Stabilizer(enc_id=0, name=self._normalize_label(
+                        row.Stabilizer_type))
                 )
                 surfactant = self.ingredient_controller.add_surfactant(
-                    Surfactant(enc_id=0, name=self._normalize_label(row.Surfactant_type))
+                    Surfactant(enc_id=0, name=self._normalize_label(
+                        row.Surfactant_type))
                 )
                 salt = self.ingredient_controller.add_salt(
                     Salt(enc_id=0, name=self._normalize_label(row.Salt_type))
                 )
                 excipient = self.ingredient_controller.add_excipient(
-                    Excipient(enc_id=0, name=self._normalize_label(row.Excipient_type))
+                    Excipient(enc_id=0, name=self._normalize_label(
+                        row.Excipient_type))
                 )
 
                 # BUILD VISCOSITY PROFILE
-                vis_values = [getattr(row, f"Viscosity_{r}") for r in shear_rates]
+                vis_values = [
+                    getattr(row, f"Viscosity_{r}") for r in shear_rates]
                 if any(pd.notna(v) for v in vis_values):
                     vp = ViscosityProfile(
                         shear_rates=shear_rates, viscosities=vis_values, units="cP"
@@ -446,7 +462,11 @@ class FormulationController:
                     buffer=buffer,
                     concentration=row.Buffer_conc,
                     units="mM",
-                    pH=float(row.Buffer_pH) if pd.notna(row.Buffer_pH) and str(row.Buffer_pH).strip() != "" else None,
+                    pH=(
+                        float(row.Buffer_pH)
+                        if pd.notna(row.Buffer_pH) and str(row.Buffer_pH).strip() != ""
+                        else None
+                    ),
                 )
                 form.set_protein(
                     protein=protein,
@@ -483,6 +503,9 @@ class FormulationController:
         finally:
             self.db._defer_commit = False
             self.db._defer_backup = False
+            if self.db.conn.in_transaction:
+                self.db.conn.rollback()
+
             self.db.end_bulk()
             if verbose_print:
                 p_bar.close()

@@ -9,7 +9,8 @@ active learning (UCB) and user-defined constraints to suggest new formulation
 candidates for testing.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16

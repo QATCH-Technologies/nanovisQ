@@ -12,7 +12,8 @@ Comprehensive integration tests for the IngredientController, verifying CRUD ope
     - User mode filtering
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2025-10-21

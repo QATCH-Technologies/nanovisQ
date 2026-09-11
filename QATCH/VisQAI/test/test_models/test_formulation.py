@@ -13,7 +13,9 @@ Verifies:
     - to_dict(), __repr__(), and __eq__() for Formulation, including id handling
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
+
 Date:
     2025-06-03
 

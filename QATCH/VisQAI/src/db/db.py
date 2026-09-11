@@ -12,7 +12,7 @@ schema initialization, and optional encryption/decryption of the entire database
 
 Author:
     Alexander Ross (alexander.ross@qatchtech.com)
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-04-14
@@ -82,7 +82,8 @@ except (ModuleNotFoundError, ImportError):
     )
 
 DB_PATH = Path(
-    os.path.join(os.path.expandvars(r"%LOCALAPPDATA%"), "QATCH", "nanovisQ", "database", "app.db")
+    os.path.join(os.path.expandvars(r"%LOCALAPPDATA%"),
+                 "QATCH", "nanovisQ", "database", "app.db")
 )
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -244,7 +245,8 @@ class Database:
             )
         """
         )
-        c.execute("CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)")
         c.execute(
             rf"""
             CREATE TABLE IF NOT EXISTS formulation_component (
@@ -273,8 +275,10 @@ class Database:
             )
         """
         )
-        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)")
         self._commit()
 
     def add_ingredient(self, ing: Ingredient) -> int:
@@ -354,7 +358,8 @@ class Database:
                 with all properties populated, or `None` if no ingredient exists with this ID.
         """
         c = self.conn.cursor()
-        c.execute("SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?", (id,))
+        c.execute(
+            "SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?", (id,))
         row = c.fetchone()
         if not row:
             return None
@@ -381,7 +386,8 @@ class Database:
                 molecular_weight=mw,
                 pI_mean=mean,
                 pI_range=rng,
-                class_type=(ProteinClass.from_value(class_str) if class_str is not None else None),
+                class_type=(ProteinClass.from_value(class_str)
+                            if class_str is not None else None),
                 id=id,
             )
         elif typ == "Buffer":
@@ -571,9 +577,11 @@ class Database:
                 "INSERT INTO formulation (name, signature, temperature, icl, last_model) VALUES (?, ?, ?, ?, ?)",
                 (f.name, f.signature, f.temperature, int(f.icl), f.last_model),
             )
-            f.id = c.lastrowid  # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
+            # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
+            f.id = c.lastrowid
         comp_rows = [
-            (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units, comp.pH)
+            (f.id, comp_type, comp.ingredient.id,
+             comp.concentration, comp.units, comp.pH)
             for f in forms
             for comp_type, comp in f._components.items()
             if comp is not None
@@ -716,7 +724,8 @@ class Database:
             comp_type, iid, conc, units, ph = r
             ingredient = self.get_ingredient(iid)
             if ingredient and comp_type in form._components:
-                form._components[comp_type] = Component(ingredient, conc, units, pH=ph)
+                form._components[comp_type] = Component(
+                    ingredient, conc, units, pH=ph)
 
         c.execute(
             "SELECT shear_rates, viscosities, units, is_measured "
@@ -849,7 +858,8 @@ class Database:
             bool: True if the update was successful, False if the signature was not found.
         """
         c = self.conn.cursor()
-        c.execute("UPDATE formulation SET name = ? WHERE signature = ?", (new_name, signature))
+        c.execute("UPDATE formulation SET name = ? WHERE signature = ?",
+                  (new_name, signature))
 
         if c.rowcount > 0:
             self._commit()
@@ -924,7 +934,8 @@ class Database:
             with open(self.db_path, "rb") as f:
                 magic_header = f.read(16)
                 if magic_header == b"SQLite format 3\x00":
-                    Log.i(TAG, "Standard SQLite binary format detected. Bypassing encryption.")
+                    Log.i(
+                        TAG, "Standard SQLite binary format detected. Bypassing encryption.")
                     self.use_encryption = False
                     return
 
@@ -962,7 +973,8 @@ class Database:
                 self._has_metadata = True
 
         except Exception as e:
-            Log.e(TAG, f"No readable metadata found in database file. Error: {e}")
+            Log.e(
+                TAG, f"No readable metadata found in database file. Error: {e}")
             self._has_metadata = False
             self._enc_metadata = b"\x45{}\n"  # Restore default so we don't write garbage later
 
@@ -1046,16 +1058,20 @@ class Database:
                 result.append(chr((ord(char) - base + shift) % 26 + base))
             elif ord(char) in range(32, 48):
                 base = 32
-                result.append(chr((ord(char) - base + shift) % len(range(32, 48)) + base))
+                result.append(chr((ord(char) - base + shift) %
+                              len(range(32, 48)) + base))
             elif ord(char) in range(58, 65):
                 base = 58
-                result.append(chr((ord(char) - base + shift) % len(range(58, 65)) + base))
+                result.append(chr((ord(char) - base + shift) %
+                              len(range(58, 65)) + base))
             elif ord(char) in range(91, 97):
                 base = 91
-                result.append(chr((ord(char) - base + shift) % len(range(91, 97)) + base))
+                result.append(chr((ord(char) - base + shift) %
+                              len(range(91, 97)) + base))
             elif ord(char) in range(123, 127):
                 base = 123
-                result.append(chr((ord(char) - base + shift) % len(range(123, 127)) + base))
+                result.append(chr((ord(char) - base + shift) %
+                              len(range(123, 127)) + base))
         return "".join(result)
 
     def _xor_cipher(self, data: bytes, key: str) -> bytes:
@@ -1072,7 +1088,8 @@ class Database:
         data_arr = np.frombuffer(data, dtype=np.uint8)
         # Tile key to match data length, then XOR in one vectorized op
         repeats = len(data) // len(key_bytes) + 1
-        key_arr = np.frombuffer(key_bytes * repeats, dtype=np.uint8)[: len(data)]
+        key_arr = np.frombuffer(key_bytes * repeats,
+                                dtype=np.uint8)[: len(data)]
         return (data_arr ^ key_arr).tobytes()
 
     def _open_cdb(self, filepath: str, password: str) -> sqlite3.Connection:
@@ -1102,10 +1119,12 @@ class Database:
             secure_bytes = self.file_handle.read()
             if password:
                 # Decrypt the file content
-                decrypted_text = self._xor_cipher(secure_bytes, self._caesar_cipher(password))
+                decrypted_text = self._xor_cipher(
+                    secure_bytes, self._caesar_cipher(password))
             else:
                 decrypted_text = secure_bytes
-            decrypted_text = decrypted_text.decode(self.metadata.get("app_encoding", "utf-8"))
+            decrypted_text = decrypted_text.decode(
+                self.metadata.get("app_encoding", "utf-8"))
             con.executescript(decrypted_text)
             con.commit()
         return con
@@ -1121,9 +1140,11 @@ class Database:
             password (str): Encryption key used to encrypt.
         """
         encoding = self.metadata.get("app_encoding", "utf-8")
-        dump_bytes = b"".join((line + "\n").encode(encoding) for line in self.conn.iterdump())
+        dump_bytes = b"".join((line + "\n").encode(encoding)
+                              for line in self.conn.iterdump())
         if password:
-            encrypted = self._xor_cipher(dump_bytes, self._caesar_cipher(password))
+            encrypted = self._xor_cipher(
+                dump_bytes, self._caesar_cipher(password))
         else:
             encrypted = dump_bytes
         with open(filepath, "wb") as f:
@@ -1169,7 +1190,8 @@ class Database:
             - The file descriptor is closed immediately after creation.
         """
         try:
-            temp_fd, temp_path = tempfile.mkstemp(suffix=".db", prefix="app_temp_")
+            temp_fd, temp_path = tempfile.mkstemp(
+                suffix=".db", prefix="app_temp_")
             temp_path = Path(temp_path)
             os.close(temp_fd)
             try:
@@ -1211,7 +1233,8 @@ class Database:
         random.shuffle(indices)
         shuffled = "".join(ciphered[i] for i in indices)
         enc_encoding = self.metadata.get("app_encoding", "utf-8")
-        self._enc_metadata = (chr(seed) + shuffled).encode(enc_encoding) + b"\n"
+        self._enc_metadata = (
+            chr(seed) + shuffled).encode(enc_encoding) + b"\n"
 
     def cleanup_temp_decrypt(self, temp_path: Optional[Path] = None) -> bool:
         """Remove one or all temporary decrypted database files.

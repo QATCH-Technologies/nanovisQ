@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6b70_FLUX"
-#define RELEASE_DATE "2026-05-28"
+#define CODE_VERSION "v2.7r9_FLUX"
+#define RELEASE_DATE "2026-09-09"
 
 /************************** LIBRARIES **************************/
 
@@ -144,6 +144,7 @@
 #define POGO_BTN_LED_PIN 35
 #define POGO_BUTTON_PIN_N 36 // active low
 #define POGO_LID_SW_PIN_N 37 // active low
+#define POGO_TYP_UNSET 255 // not yet set
 
 /*********************** DEFINE CONSTANTS **********************/
 
@@ -423,10 +424,10 @@ unsigned long temp_correct_adjust_delta_at = 0; // time to auto-adjust (after la
 #endif
 #endif
 
-// Create servo object for POGO lid
-#include <Servo.h>
-Servo pogoServo1;
-Servo pogoServo2;
+// Create servo objects for POGO lid servos
+#include "POGOServo.h"  // optimized for our use-case, better than <Servo.h>
+POGOServo pogoServo1;
+POGOServo pogoServo2;
 
 // Debounce variables for POGO button
 volatile bool pogo_isr_hit_flag = false;
@@ -437,7 +438,8 @@ const unsigned long debounceDelay = 100; // debounce delay in ms
 // Create variables for POGO lid servo, button, LED and switch
 bool pogo_lid_opened = false; // true if POGO lid is opened
 bool pogo_sw_exists = false;  // flag for switch hw existence
-uint8_t pogo_switch_pos = 0;  // position where switch activated
+uint8_t pogo_typ_min_1 = POGO_TYP_UNSET; // typical minimum degree angle
+uint8_t pogo_typ_max_1 = POGO_TYP_UNSET; // typical maximum degree angle
 
 // HW-agnostic interface pointer:
 // For TEENSY36: always the Serial port
@@ -1076,6 +1078,10 @@ void QATCH_setup()
 
     // Configure lid switch pin
     pinMode(POGO_LID_SW_PIN_N, INPUT_PULLUP);
+
+    // Set POGO servos current angle positions
+    pogoServo1.setCurrentAngle(NVMEM.POGO_PosCurrent1);
+    pogoServo2.setCurrentAngle(NVMEM.POGO_PosCurrent2);
 
     // Attach POGO button interrupt - triggers on FALLING and RISING edge (button press on LOW)
     attachInterrupt(digitalPinToInterrupt(POGO_BUTTON_PIN_N), pogo_button_ISR, CHANGE);
@@ -2237,9 +2243,9 @@ void QATCH_loop()
             pogoServo2.attach(POGO_SERVO_2_PIN);
           if (message_str.endsWith("ON"))
           {
-            // start at open positions
-            pogoServo1.write(POS_OPENED_1);
-            pogoServo2.write(POS_OPENED_2);
+            // start at last known positions
+            pogoServo1.write(NVMEM.POGO_PosCurrent1);
+            pogoServo2.write(NVMEM.POGO_PosCurrent2);
             client->println("1");
           }
           else
@@ -2252,6 +2258,19 @@ void QATCH_loop()
               pogoServo2.write(pos);
               client->print("LID HOLD @ ");
               client->println(pos); // echo pos back to user
+
+              // Save current POGO positions in persistent memory
+              // Do this regardless of external 5V power detected
+              // so the admin user can send "LID HOLD [angle]" to
+              // force a change to current positions in EEPROM if
+              // the stored value need to change without actually
+              // moving the POGO lid servo beyond its hard limits
+              NVMEM.POGO_PosCurrent1 = pogoServo1.read();
+              NVMEM.POGO_PosCurrent2 = pogoServo2.read();
+              if (nv.isValid())
+                nv.save();
+              else
+                client->println("ERROR: Failed to save current POGO positions in EEPROM. NVMEM struct is invalid.");
             }
             else
             {
@@ -2330,6 +2349,11 @@ void QATCH_loop()
         client->printf("LID SWITCH: %sPRESSED (%u)\n",
                        lid_limit ? "NOT " : "",
                        lid_limit);
+      }
+      else if (message_str.endsWith("CACHE"))
+      {
+        int pogo_current = pogoServo1.read();
+        client->printf("MIN/NOW/MAX: %i/%i/%i\n", pogo_typ_min_1, pogo_current, pogo_typ_max_1); 
       }
       return;
     }
@@ -3874,6 +3898,7 @@ void QATCH_loop()
         if (!is_running)
         {
           pogo_button_pressed(false);
+          tft_msgbox = false; // clear MSGBOX text
           tft_idle(); // update cartridge lock state
         }
         pogo_pressed_flag = false; // Clear flag
@@ -4287,11 +4312,24 @@ void pogo_button_pressed(bool init)
     return;
   }
 
+  // Check if external 5V power is applied
+  int ext_5v_adc = analogRead(PIN_EXT_5V_VOLTAGE);
+  float ext_5v_volts = L298NHB_VOLTAGE_CONVERT(ext_5v_adc);
+
   // Kick the screensaver timer
   time_of_last_msg = micros();
 
   // switch state: open <-> closed
   pogo_lid_opened = !pogo_lid_opened;
+  
+  // only update to known positions if external power is applied
+  if (L298NHB_VOLTAGE_VALID(ext_5v_volts)) {
+    // Set POGO servos current angle positions
+    pogoServo1.setCurrentAngle(NVMEM.POGO_PosCurrent1);
+    pogoServo2.setCurrentAngle(NVMEM.POGO_PosCurrent2);
+  } else {
+    client->println("WARN: No external 5V power detected. Not reading old POGO position.");
+  }
 
   // Attach pogo servos (prep for movement)
   pogoServo1.attach(POGO_SERVO_1_PIN);
@@ -4308,13 +4346,14 @@ void pogo_button_pressed(bool init)
 
     if (init)
     {
+      start1 = pogoServo1.read();
       end1 = 0;  // search for lid switch existence
       dir1 = -1; // force downward toward open position
     }
     else if (pogo_sw_exists)
     {
       uint8_t distance = abs(start1 - end1);
-      start1 = pogo_switch_pos;
+      start1 = pogoServo1.read();
       end1 = dir1 ? start1 + distance : 0;
     }
 
@@ -4323,6 +4362,7 @@ void pogo_button_pressed(bool init)
 
     int pos1 = start1;
     int pos2 = start2;
+    bool pressed = false;
     int loop_counter = 0;
     bool done1 = false, done2 = false;
     while (!done1 || !done2)
@@ -4336,40 +4376,69 @@ void pogo_button_pressed(bool init)
         pogoServo1.write(pos1);
       if (!done2)
         pogoServo2.write(pos2);
-      delay(delayMs);
 
-      if (dir1 == -1)
+      // Move at half-speed if moving away from endstop
+      delay((pressed ? 2 : 1) * delayMs);
+
+      if (dir1 == -1 || pressed)
       {
+        // The open routine (on boot and every time after) involves:
+        // 1. Moving downward toward the limit switch at the open position
+        // 2. Detecting when the limit switch is pressed (5x for debounce)
+        // 3. Once pressed, move upward until the limit switch is released
+        // 4. Once released (5x), the open routine is officially completed
+
         // Require 5 consecutive LOW reads to reject jitter on movement
-        bool pressed = true;
-        for (uint8_t i = 0; i < 5; i++)
+        uint8_t waitState = pressed ? LOW : HIGH;
+        for (int i = 4; i >= 0; i--)
         {
-          if (digitalRead(POGO_LID_SW_PIN_N) != LOW) { pressed = false; break; }
-          delayMicroseconds(200);
+          if (digitalRead(POGO_LID_SW_PIN_N) == waitState) {
+            // if "not pressed", check if this is on release
+            // if "on release", we are done opening the lid!
+            // either way, no need to continue polling state
+            break;
+          }
+          // if we make it to the end of the loop
+          // the limit switch is in pressed state
+          // or it was released after pressing it
+          // either way, we wait 5x for debounce.
+          if (i == 0) { 
+            if (pressed) done1 = done2 = true;
+            if (dir1 == -1)  // only on downward movement
+              pogo_sw_exists = pressed = true; 
+            dir1 = 1;  // change servo direction
+            loop_counter = 135;  // 45 more steps, max
+            break;
+          }
+          delayMicroseconds(100);
         }
-        if (pressed)
-        {
-          pogo_sw_exists = done1 = done2 = true;  // abort early
-          if (DEBUG)
+
+        if (DEBUG) {
+          if (pressed)
             client->printf("Servo limit switch hit @ pos %i\n", pos1);
+          if (done1 && done2)
+            client->printf("Servo limit switch released @ pos %i\n", pos1);
         }
       }
       if (!done1)
       {
-        if (pos1 == end1 || loop_counter > 180)
+        if (pos1 == end1 || pos1 < 0 || pos1 > 180 || loop_counter > 180)
           done1 = true;
         else
           pos1 += dir1;
       }
       if (!done2)
       {
-        if (pos2 == end2 || loop_counter > 180)
+        if (pos2 == end2 || pos2 < 0 || pos2 > 180 || loop_counter > 180)
           done2 = true;
         else
           pos2 += dir2;
       }
     }
-    pogo_switch_pos = pos1;  // store position for next time
+    if (init && !pressed)
+    {
+      client->println("WARN: LID state switch not found. Using fixed LID CAL for open/close positions.");
+    }
   };
 
   // Move pogo servos to target(s)
@@ -4387,6 +4456,67 @@ void pogo_button_pressed(bool init)
   { // opened -> closed
     move_servos(POS_OPENED_1, POS_CLOSED_1, POS_OPENED_2, POS_CLOSED_2, MOVE_DELAY, init);
     digitalWrite(POGO_BTN_LED_PIN, HIGH); // LED on after movement
+  }
+
+  // only save current position if external power is applied
+  if (L298NHB_VOLTAGE_VALID(ext_5v_volts)) {
+    if (pogo_sw_exists) {
+      bool report_pogo_anomaly = false;
+      byte pogo_current = pogoServo1.read();
+      if (pogo_typ_min_1 != POGO_TYP_UNSET && pogo_typ_min_1 != pogo_typ_max_1) {
+        uint8_t distance = abs(POS_CLOSED_1 - POS_OPENED_1);
+        if (pogo_current <= pogo_typ_min_1 - distance) {
+          pogo_current = pogo_typ_min_1;
+          report_pogo_anomaly = true;
+        }
+        if (pogo_current >= pogo_typ_max_1 + distance) {
+          pogo_current = pogo_typ_max_1;
+          report_pogo_anomaly = true;
+        }
+        if (POS_OPENED_1 == POS_OPENED_2 || POS_OPENED_1 == DEFAULT_POS_OPENED_1) {
+          // Update ROUGH stored calibration with ACTUAL min/max servo positions
+          client->println("NOTE: LID CAL fine-tuned with typical positions.");
+          if (POS_OPENED_1 < POS_CLOSED_1) {
+            NVMEM.POGO_PosOpened1 = pogo_typ_min_1;  // open is most accurate
+            NVMEM.POGO_PosClosed1 = pogo_typ_min_1 + distance;
+          } else {
+            NVMEM.POGO_PosOpened1 = pogo_typ_max_1;  // open is most accurate
+            NVMEM.POGO_PosClosed1 = pogo_typ_max_1 - distance;
+          }
+        }
+        if (abs(pogo_current - pogo_typ_min_1) < abs(pogo_current - pogo_typ_max_1)) {
+          pogo_typ_min_1 = (pogo_typ_min_1 / 2) + (pogo_current / 2);
+          pogoServo1.write(pogo_typ_min_1); 
+        } else {
+          pogo_typ_max_1 = (pogo_typ_max_1 / 2) + (pogo_current / 2);
+          pogoServo1.write(pogo_typ_max_1);
+        }
+      } else {
+      if (pogo_typ_min_1 == POGO_TYP_UNSET || pogo_typ_min_1 > pogo_current)
+        pogo_typ_min_1 = pogo_current;
+      if (pogo_typ_max_1 == POGO_TYP_UNSET || pogo_typ_max_1 < pogo_current)
+        pogo_typ_max_1 = pogo_current;
+      }
+      if (report_pogo_anomaly) {
+        // NOTE: Command `LID CACHE` will return these MIN/NOW/MAX values as well...
+        client->println("WARN: Anomalous POGO movement detected. Not storing new POGO position.");  
+        client->printf("MIN/NOW/MAX: %i/%i/%i\n", pogo_typ_min_1, pogo_current, pogo_typ_max_1);
+      }
+    }
+
+    // Save current POGO positions in persistent memory
+    // Do this regardless of the presence of a POGO lid
+    // switch to maintain NVMEM state tracking on older
+    // deployed devices that don't have POGO lid switch
+    // HW but still need the smoother POGO movement fix
+    NVMEM.POGO_PosCurrent1 = pogoServo1.read();
+    NVMEM.POGO_PosCurrent2 = pogoServo2.read();
+    if (nv.isValid())
+      nv.save();
+    else
+      client->println("ERROR: Failed to save current POGO positions in EEPROM. NVMEM struct is invalid.");
+  } else {
+    client->println("WARN: No external 5V power detected. Not storing new POGO positions.");
   }
 
   // Detach pogo servos (idle)

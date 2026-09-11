@@ -8,11 +8,12 @@ import numpy as np
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants, OperationType
-from QATCH.core.ringBuffer import RingBuffer
+from QATCH.core.ring_buffer import RingBuffer
 from QATCH.processors.Calibration import CalibrationProcess
 from QATCH.processors.Parser import ParserProcess
 from QATCH.processors.Serial import SerialProcess
-from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import QModelV6YOLO_LiveProcess
+from QATCH.QModel.models.v6_yolo.v6_yolo_live import QModelV6YOLO_LiveProcess
+from QATCH.QModel.models.qmodel_v7.v7_yolo_live import QModelV7LiveProcess
 
 TAG = ""  # "[Worker]"
 
@@ -178,9 +179,7 @@ class Worker:
                 self._reconstruct,
             )
         elif self._source == OperationType.calibration:
-            self._acquisition_process = CalibrationProcess(
-                self._queueLog, self._parser_process
-            )
+            self._acquisition_process = CalibrationProcess(self._queueLog, self._parser_process)
 
         port_and_peak_check = self._acquisition_process.open(
             port=self._port, speed=self._speed, pid=self._pid, portnum=self._portnum, lid_auto=self._lid_auto
@@ -239,9 +238,15 @@ class Worker:
                         self._samples, self._pid
                     )
 
-                # Setup QModelV6YOLO_LiveProcess live fill process.
+                # Setup QModelV6YOLO_LiveProcess live fill process (v7 takes
+                # priority over v6 when enabled; both remain fully wired).
                 if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-                    self._forecaster_process = QModelV6YOLO_LiveProcess(
+                    LiveProcessCls = (
+                        QModelV7LiveProcess
+                        if Constants.QModel7_predict
+                        else QModelV6YOLO_LiveProcess
+                    )
+                    self._forecaster_process = LiveProcessCls(
                         self._queueLog, self._forecaster_in, self._forecaster_out
                     )
                     self._forecaster_process.start()
@@ -262,9 +267,7 @@ class Worker:
                 Log.i(TAG, "Frequency stop:  {} Hz".format(int(self._readFREQ[-1])))
                 Log.i(
                     TAG,
-                    "Frequency range: {} Hz".format(
-                        int(self._readFREQ[-1] - self._readFREQ[0])
-                    ),
+                    "Frequency range: {} Hz".format(int(self._readFREQ[-1] - self._readFREQ[0])),
                 )
                 Log.i(TAG, "Number of samples: {}".format(int(self._samples - 1)))
                 Log.i(TAG, "Sample rate: {} Hz".format(int(self._fStep)))
@@ -300,13 +303,9 @@ class Worker:
                 )
                 Log.i(
                     TAG,
-                    "Number of samples: {}".format(
-                        int(Constants.calibration_default_samples - 1)
-                    ),
+                    "Number of samples: {}".format(int(Constants.calibration_default_samples - 1)),
                 )
-                Log.i(
-                    TAG, "Sample rate: {} Hz".format(int(Constants.calibration_fStep))
-                )
+                Log.i(TAG, "Sample rate: {} Hz".format(int(Constants.calibration_fStep)))
             Log.i(TAG, "Starting processes...\n")
             # Starts processes
             self._acquisition_process.start()
@@ -346,8 +345,12 @@ class Worker:
 
         if self._forecaster_process is not None:
             self._forecaster_process.stop()
-            self._forecaster_process.terminate()
-            self._forecaster_process.join()
+            self._forecaster_process.join(timeout=2.0)
+            if self._forecaster_process.is_alive():
+                self._forecaster_process.terminate()
+                self._forecaster_process.join(timeout=5.0)
+                if self._forecaster_process.is_alive():
+                    Log.w(TAG, "Forecaster process did not exit cleanly after 5s.")
 
         Log.i(TAG, "Processes finished")
 
@@ -539,10 +542,7 @@ class Worker:
 
     def is_running(self):
         # :return: True if a process is running :rtype: bool.
-        return (
-            self._acquisition_process is not None
-            and self._acquisition_process.is_alive()
-        )
+        return self._acquisition_process is not None and self._acquisition_process.is_alive()
 
     ###########################################################################
     # Gets the available ports for specified source
@@ -625,21 +625,13 @@ class Worker:
             self._data2_buffer.append(np.zeros(samples))  # phase
             # Resonance frequency
             self._d1_buffer.append(RingBuffer(Constants.ring_buffer_samples))
-            self._d2_buffer.append(
-                RingBuffer(Constants.ring_buffer_samples)
-            )  # Dissipation
-            self._d3_buffer.append(
-                RingBuffer(Constants.ring_buffer_samples)
-            )  # temperature
+            self._d2_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # Dissipation
+            self._d3_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # temperature
             self._d4_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # ambient
             # time (Resonance frequency)
             self._t1_buffer.append(RingBuffer(Constants.ring_buffer_samples))
-            self._t2_buffer.append(
-                RingBuffer(Constants.ring_buffer_samples)
-            )  # time (Dissipation)
-            self._t3_buffer.append(
-                RingBuffer(Constants.ring_buffer_samples)
-            )  # time (temperature)
+            self._t2_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # time (Dissipation)
+            self._t3_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # time (temperature)
 
         # Initialises supporting variables
         self._d1_store = 0
@@ -668,9 +660,7 @@ class Worker:
         :return: overtone :type overtone: float.
         :return: frequency range :type readFREQ: float list.
         """
-        return (
-            self._readFREQ
-        )  # stale after peak tracking kicks in (use _data0_buffer instead)
+        return self._readFREQ  # stale after peak tracking kicks in (use _data0_buffer instead)
 
     ############################################################################
     # Gets overtones name, value and frequency step

@@ -11,7 +11,8 @@ placeholder slides to the correct position in real time as the user drags,
 giving immediate visual feedback before the drop is committed.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16

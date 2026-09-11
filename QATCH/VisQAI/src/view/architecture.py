@@ -4,7 +4,8 @@ architecture.py
 Minimal Architecture module for VisQ.AI application to run headless.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2026-03-16

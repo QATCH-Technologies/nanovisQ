@@ -1072,6 +1072,8 @@ class ModelData():
             try:
                 idx_quad1 = next(x for x, y in enumerate(xs) if y >= t_quad1)
                 idx_quad2 = next(x for x, y in enumerate(xs) if y >= t_quad2)
+                if idx_quad1 > idx_quad2:
+                    return -1  # no points found: bad run
                 min_diss_zone2_1 = np.argmin(
                     super_smooth_diss_1st[idx_quad1:idx_quad2])
                 min_freq_zone2_1 = np.argmin(

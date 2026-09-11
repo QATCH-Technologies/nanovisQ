@@ -4,7 +4,8 @@ test_metrics.py
 Comprehensive unit tests for the Metrics class.
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2025-11-03

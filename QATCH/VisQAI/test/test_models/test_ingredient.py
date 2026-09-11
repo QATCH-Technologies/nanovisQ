@@ -8,7 +8,8 @@ Unit tests for the Ingredient model classes, verifying:
     - Behavior of simple subclasses (Stabilizer, Surfactant, Salt, Excipient) for type, repr, ordering, and equality
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2025-06-02

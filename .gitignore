@@ -1,17 +1,21 @@
+/.claude
 /.venv
 /.vscode
+/CLAUDE.md
 /bat2exe.bat
 /build
 /dist
 /logged_data
 /logged_data_test
+/graphify-out
 /QATCH_Q-1_FW_py_v*
 **/__pycache__
 **/*.log
 
-# Ignore all files in "assets" folder
-**/assets/**
-
-# But explicitly include "VisQAI-base.zip" and "app.db" assets
-!**/assets/VisQAI-base.zip
-!**/assets/app.db
+# Ignore all files in "assets" folders, EXCEPT QATCH/QModel/assets 
+QATCH/VisQAI/assets/**
+QATCH/VisQAI/test/assets/**
+QATCH/VisQAI/test/test_models/assets/**
+!QATCH/VisQAI/assets/VisQAI-base.visq
+!QATCH/VisQAI/assets/app.db
+!QATCH/VisQAI/test/assets/app.db

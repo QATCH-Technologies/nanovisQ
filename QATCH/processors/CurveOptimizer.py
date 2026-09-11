@@ -8,23 +8,25 @@ processing, numerical operations, plotting, and optimization.
 
 Author(s):
     Alexander Ross (alexander.ross@qatchtech.com)
-    Paul MacNichol (paul.macnichol@qatchtech.com)
-    
+    Paul MacNichol
+
 Date:
-Date:
-    2026-04-29
+    2026-07-07
 
 Version:
-    v12.0.1
+    v12.1.0
 """
 
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from scipy.optimize import minimize
 from scipy.signal import savgol_filter
+from scipy.interpolate import PchipInterpolator
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
+from time import localtime, strftime
+from os.path import basename, splitext
 
 """ The percentage of the run data to ignore from the head of a difference curve. """
 HEAD_TRIM_PERCENTAGE = 0.05
@@ -95,7 +97,10 @@ class CurveOptimizer:
         try:
             self._data_buffer = self._initialize_file_buffer(file_buffer)
             self._dataframe = pd.read_csv(self._data_buffer)
-            Log.d(self.TAG, f"Run data loaded successfully from {self._strip_filename(file_path)}.")
+            Log.d(
+                self.TAG,
+                f"Run data loaded successfully from {self._strip_filename(file_path)}.",
+            )
         except Exception as e:
             Log.e(self.TAG, f"Failed to load data file: {e}")
             raise
@@ -106,6 +111,11 @@ class CurveOptimizer:
         self._optimal_difference_factor = None
         self._head_trim = -1
         self._set_bounds(bounds=bounds)
+
+        # Used in plotting metrics
+        self._region_cores = []
+        self._pre_slopes = []
+        self._post_slopes = []
 
     def _strip_filename(self, full_path):
         # Convert a full file path to just the file name part.
@@ -189,8 +199,13 @@ class CurveOptimizer:
         try:
             difference_factor = difference_factor or self._initial_diff_factor
             required_columns = ["Dissipation", "Resonance_Frequency", "Relative_time"]
-            if not all(column in self._dataframe.columns for column in required_columns):
-                Log.e(self.TAG, f"Input CSV must contain the following columns: {required_columns}")
+            if not all(
+                column in self._dataframe.columns for column in required_columns
+            ):
+                Log.e(
+                    self.TAG,
+                    f"Input CSV must contain the following columns: {required_columns}",
+                )
                 raise ValueError(
                     f"Input CSV must contain the following columns: {required_columns}"
                 )
@@ -205,17 +220,23 @@ class CurveOptimizer:
             avg_dissipation = self._dataframe["Dissipation"][i:j].mean()
 
             self._dataframe["ys_diss"] = (
-                (self._dataframe["Dissipation"] - avg_dissipation) * avg_resonance_frequency / 2
+                (self._dataframe["Dissipation"] - avg_dissipation)
+                * avg_resonance_frequency
+                / 2
             )
             self._dataframe["ys_freq"] = (
                 avg_resonance_frequency - self._dataframe["Resonance_Frequency"]
             )
             self._dataframe["Difference"] = (
-                self._dataframe["ys_freq"] - difference_factor * self._dataframe["ys_diss"]
+                self._dataframe["ys_freq"]
+                - difference_factor * self._dataframe["ys_diss"]
             )
 
             self._difference_curve = np.stack(
-                (self._dataframe["Relative_time"].values, self._dataframe["Difference"].values),
+                (
+                    self._dataframe["Relative_time"].values,
+                    self._dataframe["Difference"].values,
+                ),
                 axis=1,
             )
             Log.d(self.TAG, "Curve generated successfully.")
@@ -224,7 +245,9 @@ class CurveOptimizer:
             Log.e(self.TAG, f"Error generating curve: {e}")
             raise
 
-    def _find_region(self, difference: np.ndarray, relative_time: pd.Series, mode: str) -> float:
+    def _find_region(
+        self, difference: np.ndarray, relative_time: pd.Series, mode: str
+    ) -> float:
         """
         Searches for the initial fill region to perform smoothness optimization at.
 
@@ -282,16 +305,25 @@ class CurveOptimizer:
                 adjusted_difference = difference - trend
 
                 # Report global minima over shortened data.
-                index = int(np.argmin(adjusted_difference) + (len(relative_time) * BASE_OFFSET))
+                index = int(
+                    np.argmin(adjusted_difference) + (len(relative_time) * BASE_OFFSET)
+                )
                 import math
 
                 index = index + math.floor(INIT_DROP_SETBACK * index)
-                Log.d(self.TAG, f"Left bound found at time: {relative_time.iloc[index]}.")
+                Log.d(
+                    self.TAG, f"Left bound found at time: {relative_time.iloc[index]}."
+                )
                 return relative_time.iloc[index], index + head_trim
             elif mode == "right":
                 # Report global max from downtrended data.
-                index = int(np.argmax(adjusted_difference) + 0.1 * np.argmax(adjusted_difference))
-                Log.d(self.TAG, f"Right bound found at time: {relative_time.iloc[index]}.")
+                index = int(
+                    np.argmax(adjusted_difference)
+                    + 0.1 * np.argmax(adjusted_difference)
+                )
+                Log.d(
+                    self.TAG, f"Right bound found at time: {relative_time.iloc[index]}."
+                )
                 return relative_time.iloc[index], index + head_trim
             else:
                 raise ValueError(f"Invalid search bound requested {mode}.")
@@ -313,13 +345,16 @@ class CurveOptimizer:
 
             # Get index of first timestamp value > seconds.
             right_mask = (
-                self._dataframe["Relative_time"] > REGION_RIGHT_BOUND_SEC + self._left_bound["time"]
+                self._dataframe["Relative_time"]
+                > REGION_RIGHT_BOUND_SEC + self._left_bound["time"]
             )
 
             # Check if there is a time that meets the criteria.
             if right_mask.any():
                 right_index = right_mask.idxmax()
-                self._right_bound["time"] = self._dataframe["Relative_time"].iloc[right_index]
+                self._right_bound["time"] = self._dataframe["Relative_time"].iloc[
+                    right_index
+                ]
                 self._right_bound["index"] = right_index
                 return
 
@@ -334,14 +369,18 @@ class CurveOptimizer:
         # Establish right bound
         # IMPORTANT: this must be done before the left bound is established.
         rb_time, rb_idx = self._find_region(
-            self._dataframe["Difference"].values, self._dataframe["Relative_time"], mode="right"
+            self._dataframe["Difference"].values,
+            self._dataframe["Relative_time"],
+            mode="right",
         )
         self._right_bound["time"] = rb_time
         self._right_bound["index"] = rb_idx
 
         # Establish left bound
         lb_time, lb_idx = self._find_region(
-            self._dataframe["Difference"].values, self._dataframe["Relative_time"], mode="left"
+            self._dataframe["Difference"].values,
+            self._dataframe["Relative_time"],
+            mode="left",
         )
         self._left_bound["time"] = lb_time
         self._left_bound["index"] = lb_idx
@@ -358,10 +397,14 @@ class DifferenceFactorOptimizer(CurveOptimizer):
         initial_diff_factor: float = Constants.default_diff_factor,
     ):
         super().__init__(
-            file_path=file_path, file_buffer=file_buffer, initial_diff_factor=initial_diff_factor
+            file_path=file_path,
+            file_buffer=file_buffer,
+            initial_diff_factor=initial_diff_factor,
         )
 
-    def _objective(self, difference_factor: float, left_bound: float, right_bound: float) -> float:
+    def _objective(
+        self, difference_factor: float, left_bound: float, right_bound: float
+    ) -> float:
         """
         Computes a penalty metric based on sudden changes in the first 20% of the ROI of the difference
         curve computed using the provided difference factor.
@@ -404,7 +447,10 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             # Compute first differences on the restricted subset.
             diffs = np.diff(sub_values)
             if len(diffs) == 0:
-                Log.d(self.TAG, "Not enough differences in the subset; returning a high penalty.")
+                Log.d(
+                    self.TAG,
+                    "Not enough differences in the subset; returning a high penalty.",
+                )
                 return np.inf
 
             # Calculate the typical delta using the median.
@@ -422,7 +468,8 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             excess = np.maximum(np.abs(diffs - typical_delta) - tolerance, 0)
             penalty = np.sum(excess**2)
             Log.d(
-                self.TAG, f"Penalty computed for difference factor {difference_factor}: {penalty}"
+                self.TAG,
+                f"Penalty computed for difference factor {difference_factor}: {penalty}",
             )
             return penalty
 
@@ -457,10 +504,13 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             if 0.5 <= optimal_difference_factor <= 3.0:
                 self._optimal_difference_factor = optimal_difference_factor
                 Log.d(
-                    self.TAG, f"Optimal difference factor found: {self._optimal_difference_factor}"
+                    self.TAG,
+                    f"Optimal difference factor found: {self._optimal_difference_factor}",
                 )
             else:
-                self._optimal_difference_factor = max(0.5, min(optimal_difference_factor, 3.0))
+                self._optimal_difference_factor = max(
+                    0.5, min(optimal_difference_factor, 3.0)
+                )
                 Log.d(
                     self.TAG,
                     f"Optimal difference factor {optimal_difference_factor} out of bounds [0.5, 3.0], "
@@ -514,6 +564,321 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             raise
 
 
+GUARD_SAMPLES = 3
+
+# Flank window length (samples) for the pre-drop trend fit.
+FLANK_SAMPLES = 30
+
+# Flank window length (samples) for the post-drop (settled-side) trend fit.
+POST_FLANK_SAMPLES = 20
+
+# Region-significance guard.
+DIRECTIONALITY_SIGMA = 4.0
+DIRECTIONALITY_NOISE_WINDOW = 60
+
+# Upper bound on an accepted step
+MAX_DELTA_EXCURSION_FACTOR = 2.0
+
+# Knots per flank for the core patch interpolant.
+PATCH_KNOTS = 4
+
+# Patch-knot flank reach (samples).
+PATCH_FLANK = 12
+
+# Seam crossfade length (samples).
+FEATHER_SAMPLES = 3
+
+# Scale on resampled flank residuals used as noise texture in the patch.
+RESIDUAL_SCALE = 0.5
+
+# Merge nearby correction regions when the gap between them is this small.
+REGION_GAP_MERGE_TOLERANCE = 5
+
+# Expand correction region left/right by a given number of timesteps.
+REGION_EXPAND_LEFT_BY = 4
+REGION_EXPAND_RIGHT_BY = 7
+
+# Percentage weight of pre- vs post-slope in delta slope calculation.
+PRE_WEIGHT = 0.75
+
+# Seed for reproducible results from Numpy random number generators.
+REPRODUCIBLE_SEED = 42
+
+
+def _pre_window_start(ysm, left_bound, pre_hi, flank=None, seed=3, k=4.0):
+    """Left edge of a pre-drop window containing no regime change.
+
+    Grows leftward from just before the drop while the smoothed signal stays
+    locally homogeneous, stopping at the first sample whose first difference
+    exceeds `k` times the median difference of the window accumulated so far.
+    """
+    if flank is None:
+        flank = FLANK_SAMPLES
+    pre_hi = int(pre_hi)
+    lo = max(int(left_bound), pre_hi - int(seed))
+    if lo >= pre_hi:
+        return max(int(left_bound), pre_hi - 1)
+    diffs = np.abs(np.diff(ysm))
+    limit = max(int(left_bound), pre_hi - int(flank))
+    while lo > limit:
+        cand = lo - 1
+        if cand >= len(diffs):
+            break
+        med = float(np.median(diffs[lo:pre_hi])) if pre_hi > lo else 0.0
+        if med > 0 and diffs[cand] > k * med:
+            break
+        lo = cand
+    return lo
+
+
+def _ols_pred_var(times, fit_vals, resid_vals, t_eval):
+    """Variance of an OLS linear fit's predicted value at `t_eval`.
+
+    Standard prediction variance: resid_var * (1/n + (t_eval - tbar)^2 / Sxx).
+    The second term grows with extrapolation distance, which is exactly what
+    the significance gate needs. A delta built from two fits extrapolated
+    across a gap is far less certain than the raw point noise suggests, so
+    gating on point noise alone lets small spurious steps through on regions
+    that contain no real discontinuity.
+    """
+    n = len(fit_vals)
+    if n < 3:
+        return float("inf")
+    tbar = float(np.mean(times))
+    sxx = float(np.sum((times - tbar) ** 2))
+    if sxx <= 0:
+        return float("inf")
+    p = np.polyfit(times, fit_vals, 1)
+    resid = np.asarray(resid_vals) - np.polyval(p, times)
+    resid_var = float(np.sum(resid**2)) / max(1, n - 2)
+    return resid_var * (1.0 / n + (float(t_eval) - tbar) ** 2 / sxx)
+
+
+def estimate_step_delta(
+    times, raw, ysm, core_start, core_end, left_bound=0, min_plateau=5, return_se=False
+):
+    """Boundary-aware trend-compensated step height across the transient core.
+
+    Two local linear trend fits -- one on the clean pre-drop flank, one on the
+    settled post-drop flank -- are both evaluated at the midpoint of the gap
+    between those windows. Their difference is the step: because each fit is
+    evaluated at the same instant, the genuine fill trend cancels and only the
+    artifact height remains.
+
+
+    Args:
+        times: full Relative_time array.
+        raw: original (uncorrected) signal.
+        ysm: savgol-smoothed version of the working corrected array.
+        core_start, core_end: tight detected core of the transient.
+        left_bound: index of start-of-fill; the pre-window never reaches
+            below this, preventing onset-ramp contamination.
+        min_plateau: minimum samples required to fit a pre-side trend.
+
+    Returns:
+        float: estimated additive step height (post minus pre).
+    """
+    n = len(raw)
+
+    #  pre-drop window: grown back from the drop, stopping at any regime change
+    pre_hi = min(core_start - GUARD_SAMPLES, n - 1)
+    pre_lo = max(0, _pre_window_start(ysm, left_bound, pre_hi))
+
+    if pre_hi - pre_lo < min_plateau:
+        # Too little clean signal between onset and drop to fit a trend:
+        # fall back to a flat level at the last good sample.
+        idx = max(0, min(pre_hi - 1, n - 1))
+        pre_at = lambda tt: float(np.interp(tt, times, ysm))
+        t_pre_edge = float(times[idx])
+        prestd = float(np.std(raw[max(0, idx - min_plateau) : idx + 1]))
+        pre_slope = (ysm[pre_hi] - ysm[pre_lo]) / (times[pre_hi] - times[pre_lo])
+    else:
+        p_pre = np.polyfit(times[pre_lo:pre_hi], ysm[pre_lo:pre_hi], 1)
+        pre_at = lambda tt: float(np.polyval(p_pre, tt))
+        t_pre_edge = float(times[pre_hi])
+        prestd = float(np.std(raw[pre_lo:pre_hi]))
+        pre_slope = float(p_pre[0])
+
+    tol = 2.0 * max(prestd, 1e-12)
+
+    #  post-settled window: anchored where raw reconverges with smooth
+    si = min(core_end + 1, n - 4)
+    while si < n - 4 and not np.all(np.abs(raw[si : si + 3] - ysm[si : si + 3]) < tol):
+        si += 1
+    post_hi = min(n - 1, si + abs(pre_hi - pre_lo))
+    post_lo = min(n - 1, si + 1)
+    if post_hi - post_lo < 2:
+        return (
+            (0.0, np.nan, np.nan, float("inf")) if return_se else (0.0, np.nan, np.nan)
+        )
+    p_post = np.polyfit(times[post_lo:post_hi], ysm[post_lo:post_hi], 1)
+    post_slope = float(p_post[0])
+
+    #  evaluate both trends at the midpoint of the gap
+    t_mid = 0.5 * (t_pre_edge + float(times[post_lo]))
+
+    # Sanity-check the implied step slope against the pre/post trend slopes.
+    # A large overcorrection can appear if the gap is extrapolated across a
+    # transient whose local smoothed trend is effectively linear on both sides.
+    # In that case, use the average of the two neighboring slopes, which keeps
+    # the fill interpolation consistent with the surrounding trend instead of a
+    # spurious vertical jump.
+    left_time = float(times[core_start])
+    right_time = float(times[core_end])
+    span = float(right_time - left_time)
+    delta_slope = (PRE_WEIGHT * pre_slope) + ((1.0 - PRE_WEIGHT) * post_slope)
+    post_at = ysm[core_start] + (delta_slope * span)
+    delta = float(ysm[core_end] - post_at)
+    if span > 0.0 and np.isfinite(delta_slope):
+        slope_lo = min(pre_slope, post_slope)
+        slope_hi = max(pre_slope, post_slope)
+        if delta_slope < slope_lo or delta_slope > slope_hi:
+            Log.d(DropEffectCorrection.TAG, "Delta slope restriction is out-of-bounds.")
+            delta = float(np.polyval(p_post, t_mid)) - pre_at(t_mid)
+
+    max_delta = ysm[core_end] - ysm[core_start]
+    if abs(delta) > abs(max_delta):
+        Log.d(DropEffectCorrection.TAG, f"Delta magnitude is greater than allowed.")
+        delta = max_delta
+    if (delta < 0 and max_delta > 0) or (delta > 0 and max_delta < 0):
+        Log.d(DropEffectCorrection.TAG, f"Delta sense is inconsistent with max delta.")
+        delta = 0.0
+
+    if not return_se:
+        return delta, pre_slope, post_slope
+
+    # Uncertainty of the difference of two independent extrapolated fits.
+    var_post = _ols_pred_var(times[si:post_hi], ysm[si:post_hi], raw[si:post_hi], t_mid)
+    if pre_hi - pre_lo < min_plateau:
+        var_pre = float(prestd) ** 2
+    else:
+        var_pre = _ols_pred_var(
+            times[pre_lo:pre_hi], ysm[pre_lo:pre_hi], raw[pre_lo:pre_hi], t_mid
+        )
+    return delta, pre_slope, post_slope, float(np.sqrt(max(0.0, var_pre + var_post)))
+
+
+def remove_drop_step(
+    times,
+    raw,
+    corrected,
+    ysm,
+    core_start,
+    core_end,
+    rng=None,
+    min_significance=3.0,
+    left_bound=0,
+):
+    """Remove one drop-effect step from `corrected` in place; returns delta.
+
+    Args:
+        times: full Relative_time array.
+        raw: original (uncorrected) signal -- used only to find the drop instant.
+        corrected: working corrected array; modified in place. The step
+            estimate is computed on THIS array's smooth trend so multi-region
+            (right-to-left) processing chains correctly.
+        ysm: savgol-smoothed version of `corrected` (window ~11, poly 3).
+            Recompute between regions when processing multiple drops.
+        core_start, core_end: tight detected core of the transient (use the
+            detection streak, NOT a padded region -- padding was a bridge
+            concept; step removal wants the shortest interval containing the
+            discontinuity so trend extrapolation distances stay small).
+        rng: numpy Generator (seed for reproducible reanalysis).
+        min_significance: skip correction if |delta| is below this multiple of
+            the pre-flank residual noise sigma (guards against "correcting"
+            regions that are noise-level, which would inject a spurious step).
+            NOTE: this gate only guards against noise-level deltas. It cannot
+            catch a delta that is large but wrong (e.g. sign-inverted), since
+            such a delta clears the threshold easily. The separate direction
+            gate below covers that failure mode.
+        left_bound: start-of-fill index, forwarded to estimate_step_delta so
+            the pre-drop window never reaches back into the fill-onset ramp.
+
+    Returns:
+        float: applied delta (0.0 if skipped as insignificant or as
+        inconsistent with the observed level change across the core).
+    """
+    if rng is None:
+        rng = np.random.default_rng(seed=REPRODUCIBLE_SEED)
+    n = len(corrected)
+    anchor_idx = max(0, core_start - 1)
+    post_idx = min(core_end + 1, n - 1)
+
+    delta, pre_slope, post_slope, delta_se = estimate_step_delta(
+        times, raw, ysm, core_start, core_end, left_bound=left_bound, return_se=True
+    )
+
+    # Significance gate
+    resid_lo = max(0, anchor_idx - 4 * FLANK_SAMPLES)
+    flank_resid = (corrected - ysm)[resid_lo:anchor_idx]
+    noise_sigma = np.std(flank_resid) if flank_resid.size > 5 else 0.0
+    gate = min_significance * max(float(noise_sigma), float(delta_se))
+    if gate > 0 and abs(delta) < gate:
+        Log.d(DropEffectCorrection.TAG, "Significance gate check failed")
+        delta = 0.0  # proceed to feather
+
+    # Magnitude bound
+    core_hi = min(n, post_idx + POST_FLANK_SAMPLES)
+    core_excursion = (
+        float(np.ptp(raw[core_start:core_hi])) if core_hi > core_start else 0.0
+    )
+    if core_excursion > 0 and abs(delta) > MAX_DELTA_EXCURSION_FACTOR * core_excursion:
+        Log.d(
+            DropEffectCorrection.TAG,
+            f"Rejected step delta {delta:.4e}: exceeds "
+            f"{MAX_DELTA_EXCURSION_FACTOR:.1f}x the core excursion "
+            f"{core_excursion:.4e} across [{core_start}, {core_end}].",
+        )
+        delta = 0.0  # proceed to feather
+
+    # Step removal
+    corrected[post_idx:] -= delta
+    sm_shift = ysm.copy()
+    sm_shift[post_idx:] -= delta
+
+    # Patch the core
+    li = np.unique(
+        np.linspace(max(0, anchor_idx - PATCH_FLANK), anchor_idx, PATCH_KNOTS).astype(
+            int
+        )
+    )
+    ri = np.unique(
+        np.linspace(post_idx, min(n - 1, post_idx + PATCH_FLANK), PATCH_KNOTS).astype(
+            int
+        )
+    )
+    knot_t = np.concatenate([times[li], times[ri]])
+    knot_v = np.concatenate([ysm[li], sm_shift[ri]])
+    keep = np.concatenate([[True], np.diff(knot_t) > 0])
+    patch = PchipInterpolator(knot_t[keep], knot_v[keep])(
+        times[core_start : core_end + 1]
+    )
+
+    # Noise texture from real pre-flank residuals.
+    if flank_resid.size > 5:
+        patch = patch + RESIDUAL_SCALE * rng.choice(
+            flank_resid, size=patch.size, replace=True
+        )
+
+    corrected[core_start : core_end + 1] = patch
+
+    # Feather both seams
+    f = min(FEATHER_SAMPLES, patch.size // 4)
+    if f > 0:
+        w = np.linspace(0.0, 1.0, f + 2)[1:-1]
+        raw_left = raw[core_start : core_start + f]
+        corrected[core_start : core_start + f] = (1 - w) * raw_left + w * corrected[
+            core_start : core_start + f
+        ]
+        shifted_right = raw[core_end - f + 1 : core_end + 1] - delta
+        corrected[core_end - f + 1 : core_end + 1] = (
+            w[::-1] * corrected[core_end - f + 1 : core_end + 1]
+            + (1 - w[::-1]) * shifted_right
+        )
+
+    return delta, pre_slope, post_slope
+
+
 class DropEffectCorrection(CurveOptimizer):
     """
     Class to mitigate drop effects in dissipation and resonance frequency curves
@@ -563,14 +928,21 @@ class DropEffectCorrection(CurveOptimizer):
             raise ValueError("The dataframe does not contain a 'Dissipation' column.")
 
         if "Resonance_Frequency" not in self._dataframe.columns:
-            Log.e(self.TAG, "The dataframe does not contain a 'Resonance_Frequency' column.")
-            raise ValueError("The dataframe does not contain a 'Resonance_Frequency' column.")
+            Log.e(
+                self.TAG,
+                "The dataframe does not contain a 'Resonance_Frequency' column.",
+            )
+            raise ValueError(
+                "The dataframe does not contain a 'Resonance_Frequency' column."
+            )
 
         if not ("index" in self._left_bound and "index" in self._right_bound):
             Log.e(self.TAG, "Bounds must be properly defined with 'index' keys.")
             raise ValueError("Bounds must be properly defined with 'index' keys.")
 
-        if self._left_bound["index"] < 0 or self._right_bound["index"] >= len(self._dataframe):
+        if self._left_bound["index"] < 0 or self._right_bound["index"] >= len(
+            self._dataframe
+        ):
             Log.e(
                 self.TAG,
                 f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}.",
@@ -610,7 +982,9 @@ class DropEffectCorrection(CurveOptimizer):
                 self.TAG,
                 f"Not enough points in the specified region to compute differences with offset {diff_offset}.",
             )
-            raise ValueError("Not enough points in the specified region to compute differences.")
+            raise ValueError(
+                "Not enough points in the specified region to compute differences."
+            )
 
         region_slice = slice(left_idx, right_idx + 1)
         values = self._dataframe[col_name].values[region_slice]
@@ -631,7 +1005,9 @@ class DropEffectCorrection(CurveOptimizer):
             median_diff = np.median(diffs)
             mad_diff = np.median(np.abs(diffs - median_diff))
             # Use the MAD if positive; otherwise fall back to standard deviation.
-            threshold = starting_threshold_factor * (mad_diff if mad_diff > 0 else np.std(diffs))
+            threshold = starting_threshold_factor * (
+                mad_diff if mad_diff > 0 else np.std(diffs)
+            )
 
             drop_effects = []
             for local_idx in local_indices:
@@ -656,12 +1032,18 @@ class DropEffectCorrection(CurveOptimizer):
                     break
 
             if contiguous_region_found:
-                if last_region_size == len(current_streak) or col_name == "Resonance_Frequency":
+                if (
+                    last_region_size == len(current_streak)
+                    or col_name == "Resonance_Frequency"
+                ):
                     break  # wait for stable result; but skip this delay for rf data
             last_region_size = len(current_streak)
             starting_threshold_factor -= 1
             if starting_threshold_factor <= 0:
-                Log.d(self.TAG, "Reverting to initial region. Reached min threshold factor.")
+                Log.d(
+                    self.TAG,
+                    "Reverting to initial region. Reached min threshold factor.",
+                )
                 current_streak = first_region_found
                 break
         if diff_offset in current_streak:
@@ -671,7 +1053,7 @@ class DropEffectCorrection(CurveOptimizer):
         # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
         if not current_streak:
             Log.d(self.TAG, f"No drop effects detected in {col_name}.")
-            return ([], values)
+            return ([], values, 0)
         min_count = len(current_streak)
         min_drop = min(current_streak)
         sign = 1 if col_name == "Dissipation" else -1
@@ -681,15 +1063,19 @@ class DropEffectCorrection(CurveOptimizer):
             argidx = np.argmin(values[:min_drop])
         base_slope = (values[argidx] - values[0]) / min_drop
         window_size = 3
+
+        # Floor for the leftward scan.
+        ONSET_FLOOR = 4 + GUARD_SAMPLES + 5
         while True:
             min_drop = min_drop - 1
             current_streak.append(min_drop)
             min_drop = min_drop - 1
             # Pretend this step never happened if it fails to find an acceptable edge before the left bound.
-            if min_drop <= 0:
+            if min_drop <= ONSET_FLOOR:
                 Log.d(
                     self.TAG,
-                    "Drop effect using original bounds, scanning left never reached an acceptable edge.",
+                    "Drop effect using original bounds, scanning left reached the "
+                    "start-of-fill floor without finding an acceptable edge.",
                 )
                 current_streak = current_streak[:min_count]
                 break
@@ -703,21 +1089,36 @@ class DropEffectCorrection(CurveOptimizer):
             # If unacceptable, add it to the list for correction.
             current_streak.append(min_drop)
 
-        # DEBUG: Force add extra padding to the right-side of drop effect region.
-        if col_name == "Dissipation":
-            NUM_PTS = diff_offset
-            max_drop = max(current_streak)
-            beat_value = self._dataframe[col_name].values[region_slice][max_drop]
-            beat_count = 0
+        # Extend the drop region rightward until the raw signal reconverges with the
+        # smooth signal.
+        NUM_PTS = diff_offset
+        max_drop = max(current_streak)
+        if max_drop + 1 < len(values) - 1:
+            # Estimate pre-drop variability from the smooth signal before the anomaly.
+            pre_end = min(current_streak)
+            pre_start = max(0, diff_offset)
+            pre_slice = (
+                values[pre_start:pre_end]
+                if pre_end > pre_start
+                else values[: max(1, pre_end)]
+            )
+            pre_std = np.std(pre_slice) if len(pre_slice) > 1 else np.std(values) * 0.05
+            tolerance = max(2.0 * pre_std, 1e-12)  # guard against near-zero std
+
+            raw_full = self._dataframe[col_name].values[region_slice]
+            recovery_count = 0
             total_dist = 0
+            max_total_dist = max(35, 2 * min_count)
             while True:
                 total_dist += 1
+                if max_drop + 1 >= len(values) - 1:
+                    break
                 max_drop += 1
-                if beat_value < values[max_drop]:  # raw < average
-                    beat_count += 1
+                if abs(raw_full[max_drop] - values[max_drop]) < tolerance:
+                    recovery_count += 1
                 else:
-                    beat_count = 0
-                if beat_count > NUM_PTS or total_dist > 25 or max_drop >= len(values) - 1:
+                    recovery_count = 0
+                if recovery_count > NUM_PTS or total_dist > max_total_dist:
                     break
                 current_streak.append(max_drop)
 
@@ -728,7 +1129,10 @@ class DropEffectCorrection(CurveOptimizer):
 
         # Map back to the full dataframe index.
         global_idx = [local_idx + left_idx for local_idx in current_streak]
-        return (global_idx, values)
+        # min_count is the initial streak size BEFORE any left/right expansion.
+        # Callers use it so the skip guard threshold is independent of how far
+        # the region was subsequently expanded.
+        return (global_idx, values, min_count)
 
     def _middle_slice_list(self, whole: list, fraction: float = 0.5) -> list:
         n = len(whole)
@@ -816,11 +1220,16 @@ class DropEffectCorrection(CurveOptimizer):
         corrected_rf = original_rf.copy()
 
         # Detect drop effects independently for each curve.
-        (drop_effects_diss, smooth_diss) = self._detect_drop_effects_for_column(
-            "Dissipation", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
+        drop_effects_diss, smooth_diss, init_count_diss = (
+            self._detect_drop_effects_for_column(
+                "Dissipation", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
+            )
         )
-        (drop_effects_rf, smooth_rf) = self._detect_drop_effects_for_column(
-            "Resonance_Frequency", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
+        drop_effects_rf, smooth_rf, init_count_rf = (
+            self._detect_drop_effects_for_column(
+                "Resonance_Frequency",
+                starting_threshold_factor=STARTING_THRESHOLD_FACTOR,
+            )
         )
         drop_effects = list(set(drop_effects_diss + drop_effects_rf))
 
@@ -848,14 +1257,71 @@ class DropEffectCorrection(CurveOptimizer):
             region = contiguous_regions[0]
             idx = region[0]
             if idx - self._left_bound["index"] < len(region) // 2:
-                Log.d(self.TAG, "Trimming the left region to prevent it from being skipped.")
+                Log.d(
+                    self.TAG,
+                    "Trimming the left region to prevent it from being skipped.",
+                )
                 start_at = max(drop_effects_diss[0], drop_effects_rf[0])
                 end_at = max(drop_effects_diss[-1], drop_effects_rf[-1])
-                contiguous_regions = [np.arange(start_at, end_at + 1, 1, dtype=int).tolist()]
+                contiguous_regions = [
+                    np.arange(start_at, end_at + 1, 1, dtype=int).tolist()
+                ]
                 # if len(drop_effects_diss) < len(drop_effects_rf):
                 #     contiguous_regions = [drop_effects_diss]
                 # else:
                 #     contiguous_regions = [drop_effects_rf]
+        else:
+            # Merge nearby correction regions when the gap between them is this small.
+            merged_regions = []
+            for region in contiguous_regions:
+                if not merged_regions:
+                    merged_regions.append(region)
+                    continue
+
+                prev_region = merged_regions[-1]
+                gap = region[0] - prev_region[-1] - 1
+                allowed_gap = (
+                    max(len(prev_region), len(region)) + REGION_GAP_MERGE_TOLERANCE
+                )
+                if gap <= allowed_gap:
+                    merged_region = list(range(prev_region[0], region[-1] + 1))
+                    merged_regions[-1] = merged_region
+                    Log.d(
+                        self.TAG,
+                        f"Merged nearby correction regions separated by {gap} sample(s): "
+                        f"[{prev_region[0]}, {prev_region[-1]}] and [{region[0]}, {region[-1]}].",
+                    )
+                else:
+                    merged_regions.append(region)
+            contiguous_regions = merged_regions
+
+        init_count = max(
+            1,
+            min(
+                init_count_diss if init_count_diss else len(drop_effects_diss),
+                init_count_rf if init_count_rf else len(drop_effects_rf),
+            ),
+        )
+
+        # Expand the correction region(s) by the given timestep offsets
+        for i, region in enumerate(contiguous_regions):
+            region_lo = region[0] - REGION_EXPAND_LEFT_BY
+            region_hi = region[-1] + REGION_EXPAND_RIGHT_BY
+
+            if region_lo - self._left_bound["index"] < init_count // 2:
+                Log.d(
+                    self.TAG, "No left expansion of region to prevent it being skipped."
+                )
+                region_lo = region[0]
+
+            if self._right_bound["index"] - region_hi < init_count // 2:
+                Log.d(
+                    self.TAG,
+                    "No right expansion of region to prevent it being skipped.",
+                )
+                region_hi = region[-1]
+
+            contiguous_regions[i] = list(range(region_lo, region_hi + 1))
 
         Log.d(
             self.TAG,
@@ -886,133 +1352,191 @@ class DropEffectCorrection(CurveOptimizer):
             polyorder=3,
         )
         super_smooth_rf_full = savgol_filter(
-            original_rf, window_length=self._safe_savgol_win(len(original_rf), 69, 3), polyorder=3
+            original_rf,
+            window_length=self._safe_savgol_win(len(original_rf), 69, 3),
+            polyorder=3,
         )
 
         # Process each detected drop effect region for Dissipation and Resonance Frequency.
+        # Skip guard threshold: use the pre-expansion initial streak size so that the
+        # guard does not grow with the region and incorrectly reject legitimate mid-run drops.
+        SKIP_ON_WARNINGS = False
+        ALLOW_SMOOTH_OVERRIDE = True
         for region in contiguous_regions:
 
-            # Check that the directionality of the region is a spike, not a drop.
-            if smooth_diss_full[region[0]] - smooth_diss_full[region[-1]] > 0:
-                Log.d(
-                    self.TAG,
-                    f"Skipping region from {relative_time[region[0]]} to {relative_time[region[-1]]}",
-                )
-                continue
+            # Skip regions with no meaningful upward excursion in
+            # dissipation.  Compare the peak within the region against the lower of the two
+            # endpoints rather than comparing endpoints directly.  This is robust to the
+            # right expansion having extended the region past the spike peak into recovery
+            # (where the endpoint value can drop below the start value even for a genuine
+            # upward spike, causing the old endpoint comparison to wrongly skip the region).
+            # Significance check: skip regions whose dissipation excursion is not
+            # meaningful. The excursion is compared against the LOCAL noise scale
+            # measured just before the region, not against the full-run dissipation
+            # range.
+            # The peak is compared against the lower of the two endpoints rather
+            # than the endpoints against each other, which stays robust to the
+            # right expansion having extended the region past the spike peak into
+            # recovery (where the end value can fall below the start value even for
+            # a genuine upward spike).
+            region_diss_smooth = smooth_diss_full[region[0] : region[-1] + 1]
+            peak_diss = float(np.max(region_diss_smooth))
+            baseline_diss = min(
+                float(region_diss_smooth[0]), float(region_diss_smooth[-1])
+            )
+            excursion = peak_diss - baseline_diss
 
-            # Skip if the drop effect is at the very beginning.
-            idx = region[0]
-            if idx - self._left_bound["index"] < len(region) // 2:
+            noise_hi = max(region[0] - GUARD_SAMPLES, 0)
+            noise_lo = max(
+                self._left_bound["index"], noise_hi - DIRECTIONALITY_NOISE_WINDOW
+            )
+            if noise_hi - noise_lo >= 6:
+                seg_t = relative_time[noise_lo:noise_hi]
+                seg_v = original_diss[noise_lo:noise_hi]
+                detrended = seg_v - np.polyval(np.polyfit(seg_t, seg_v, 1), seg_t)
+                local_sigma = float(np.std(detrended))
+            else:
+                # Not enough clean signal ahead of the region to characterise the
+                # noise.
+                local_sigma = 0.0
+
+            if local_sigma > 0 and excursion < DIRECTIONALITY_SIGMA * local_sigma:
+                skip_or_not = "Skipping" if SKIP_ON_WARNINGS else "Not skipping"
                 Log.d(
                     self.TAG,
-                    "Skipped correcting an early region that was too close to start-of-fill.",
+                    f"{skip_or_not} region {relative_time[region[0]]:.3f}-{relative_time[region[-1]]:.3f}: "
+                    f"dissipation excursion {excursion:.3e} is only "
+                    f"{excursion / local_sigma:.1f} sigma above local noise "
+                    f"{local_sigma:.3e} (need {DIRECTIONALITY_SIGMA:.1f}).",
                 )
-                continue
+                if SKIP_ON_WARNINGS:
+                    continue
+                else:
+                    pass
+
+            # Skip if the drop starts too close to the start-of-fill boundary.
+            idx = region[0]
+            if idx - self._left_bound["index"] < init_count // 2:
+                skip_or_not = "Skipping" if SKIP_ON_WARNINGS else "Not skipping"
+                Log.d(
+                    self.TAG,
+                    f"{skip_or_not} correcting an early region that was too close to start-of-fill.",
+                )
+                if SKIP_ON_WARNINGS:
+                    continue
+                else:
+                    pass
 
             # Record the indices where the correction is applied.
             correction_indices.extend(region)
 
-            # Calculate the difference trendline prior to the drop region.
-            # Calculate the difference trendline prior to the drop region.
-            prior_right = region[0]
-            prior_left = prior_right - len(region)
-            if prior_left < self._left_bound["index"]:
-                prior_left = self._left_bound["index"]
-            prior_right -= self._left_bound["index"]
-            prior_left -= self._left_bound["index"]
+            # Tight detected core of the transient
+            core_start, core_end = region[0], region[-1]
+            anchor_idx = max(0, core_start + 1)
 
-            # Protect against ZeroDivisionError if bounds overlap
-            prior_denom = prior_right - prior_left
-            prior_diff_diss = (
-                0
-                if prior_denom == 0
-                else (smooth_diss[prior_right] - smooth_diss[prior_left]) / prior_denom
-            )
-            prior_diff_rf = (
-                0
-                if prior_denom == 0
-                else (smooth_rf[prior_right] - smooth_rf[prior_left]) / prior_denom
-            )
-
-            # Calculate the difference trendline after the drop region.
-            after_left = region[-1]
-            after_right = after_left + len(region)
-            if after_right > self._right_bound["index"]:
-                after_right = self._right_bound["index"]
-            after_left -= self._left_bound["index"]
-            after_right -= self._left_bound["index"]
-
-            after_denom = after_right - after_left
-            after_diff_diss = (
-                0
-                if after_denom == 0
-                else (smooth_diss[after_right] - smooth_diss[after_left]) / after_denom
-            )
-            after_diff_rf = (
-                0
-                if after_denom == 0
-                else (smooth_rf[after_right] - smooth_rf[after_left]) / after_denom
-            )
-
-            # Compute average differences before and after for dissipation and rf.
-            avg_diff_diss = len(region) * np.average(
-                [prior_diff_diss, after_diff_diss], weights=[2, 1]
-            )
-            avg_diff_rf = len(region) * np.average([prior_diff_rf, after_diff_rf], weights=[2, 1])
-
-            # Anchor the correction to the last good data point BEFORE the anomaly
-            anchor_idx = max(0, region[0] - 1)
-
-            # Create a smooth linspace bridging from the anchor point.
-            # Using avg_diff / len(region) as the start ensures we step cleanly away from the anchor.
-            insert_diss = corrected_diss[anchor_idx] + np.linspace(
-                avg_diff_diss / len(region), avg_diff_diss, len(region)
-            )
-            insert_rf = corrected_rf[anchor_idx] + np.linspace(
-                avg_diff_rf / len(region), avg_diff_rf, len(region)
-            )
-
-            # Only if end-of-fill is contained in the region.
-            if (
-                len(self.bounds) > 1
+            # Only if end-of-fill is contained in the core
+            used_smooth_override = (
+                ALLOW_SMOOTH_OVERRIDE  # if False, never use smooth override
+                and len(self.bounds) > 1
                 and isinstance(self.bounds[1], int)
-                and region[0] < self.bounds[1] < region[-1]
-            ):  # indices, not timestamps
+                and core_start < self.bounds[1] < core_end
+            )  # indices, not timestamps
+            if used_smooth_override:
                 Log.d(
                     self.TAG,
                     "Correcting drop with smoothed data due to region conflicts with end-of-fill",
                 )
-                insert_diss = super_smooth_diss_full[region[0] : region[-1] + 1]
-                insert_rf = super_smooth_rf_full[region[0] : region[-1] + 1]
+                insert_diss = super_smooth_diss_full[core_start : core_end + 1].copy()
+                insert_rf = super_smooth_rf_full[core_start : core_end + 1].copy()
 
-                # Align the smoothed fallback data to our anchor point to prevent disjoint jumps
+                # Align the smoothed data from our core start anchor point to prevent disjoint jumps
                 insert_diss += corrected_diss[anchor_idx] - insert_diss[0]
                 insert_rf += corrected_rf[anchor_idx] - insert_rf[0]
 
-            # Apply randomness to insert data based on stdev of baseline.
-            # Reduced multiplier from 2.0 to 0.5 to prevent excessive jitter
-            rng = np.random.default_rng()
-            insert_diss = np.asarray(insert_diss) + rng.normal(
-                0.0, 0.5 * base_diss_std, size=len(insert_diss)
+                # Add jitter based on the baseline stdev since the super-smooth
+                # fallback carries no noise texture of its own.
+                rng = np.random.default_rng(seed=REPRODUCIBLE_SEED)
+                insert_diss = insert_diss + rng.normal(
+                    0.0, 0.5 * base_diss_std, size=len(insert_diss)
+                )
+                insert_rf = insert_rf + rng.normal(
+                    0.0, 0.5 * base_rf_std, size=len(insert_rf)
+                )
+
+                # Scale the smoothed data from our core end anchor point to prevent disjoint jumps
+                diss_span = insert_diss[-1] - insert_diss[0]
+                if np.isclose(diss_span, 0.0):
+                    insert_diss[-1] = corrected_diss[core_end]
+                else:
+                    insert_diss = insert_diss[0] + (insert_diss - insert_diss[0]) * (
+                        (corrected_diss[core_end] - insert_diss[0]) / diss_span
+                    )
+
+                rf_span = insert_rf[-1] - insert_rf[0]
+                if np.isclose(rf_span, 0.0):
+                    insert_rf[-1] = corrected_rf[core_end]
+                else:
+                    insert_rf = insert_rf[0] + (insert_rf - insert_rf[0]) * (
+                        (corrected_rf[core_end] - insert_rf[0]) / rf_span
+                    )
+
+                # Apply the smoothed data to the corrected output arrays
+                corrected_diss[core_start : core_end + 1] = insert_diss
+                corrected_rf[core_start : core_end + 1] = insert_rf
+
+                Log.d(
+                    self.TAG,
+                    f"Smoothed drop region [{core_start}, {core_end}] "
+                    "(no permanent step shift; overlaps end-of-fill).",
+                )
+
+                # This should skip even if SKIP_ON_WARNINGS is False
+                self._region_cores.append((core_start, core_end))
+                self._region_cores.append((core_start, core_end))  # yes, do this twice
+                self._pre_slopes.append(np.nan)
+                self._pre_slopes.append(np.nan)
+                self._post_slopes.append(np.nan)
+                self._post_slopes.append(np.nan)
+                continue
+
+            win = self._safe_savgol_win(len(corrected_diss), 11, 3)
+            ysm_diss = savgol_filter(corrected_diss, win, 3)
+            ysm_rf = savgol_filter(corrected_rf, win, 3)
+
+            rng = np.random.default_rng(seed=REPRODUCIBLE_SEED)
+            delta_diss, pre_slope_diss, post_slope_diss = remove_drop_step(
+                relative_time,
+                original_diss,
+                corrected_diss,
+                ysm_diss,
+                core_start,
+                core_end,
+                rng=rng,
+                left_bound=self._left_bound["index"],
             )
-            insert_rf = np.asarray(insert_rf) + rng.normal(
-                0.0, 0.5 * base_rf_std, size=len(insert_rf)
+            delta_rf, pre_slope_rf, post_slope_rf = remove_drop_step(
+                relative_time,
+                original_rf,
+                corrected_rf,
+                ysm_rf,
+                core_start,
+                core_end,
+                rng=rng,
+                left_bound=self._left_bound["index"],
             )
 
-            # Replace the drop effect region with a smoother insert.
-            corrected_diss[region[0] : region[-1] + 1] = insert_diss
-            corrected_rf[region[0] : region[-1] + 1] = insert_rf
+            self._region_cores.append((core_start, core_end))
+            self._region_cores.append((core_start, core_end))  # yes, do this twice
+            self._pre_slopes.append(pre_slope_diss)
+            self._pre_slopes.append(pre_slope_rf)
+            self._post_slopes.append(post_slope_diss)
+            self._post_slopes.append(post_slope_rf)
 
-            # Compute offsets so that the value at the drop matches the previous (good) value.
-            offset_diss = corrected_diss[region[-1]] - original_diss[region[-1]]
-            offset_rf = corrected_rf[region[-1]] - original_rf[region[-1]]
-
-            # Apply the offset correction to the segment.
-            corrected_diss[region[-1] + 1 :] += offset_diss
-            corrected_rf[region[-1] + 1 :] += offset_rf
-
-            Log.d(self.TAG, f"Offset for dissipation data: {offset_diss}")
-            Log.d(self.TAG, f"Offset for resonance data: {offset_rf} Hz")
+            Log.d(
+                self.TAG,
+                f"Step-removed drop region [{core_start}, {core_end}]: "
+                f"delta_diss={delta_diss:.4e}, delta_rf={delta_rf:.2f} Hz",
+            )
 
         if show_corrections or save_corrections:
             self._plot_corrections(
@@ -1030,7 +1554,9 @@ class DropEffectCorrection(CurveOptimizer):
 
         # DEBUG: Write out corrected datas to file for external review.
         if export_corrections_csv:
-            with open(f"{self._strip_filename(self._file_path)}_corrected.csv", "w") as f:
+            with open(
+                f"{self._strip_filename(self._file_path)}_corrected.csv", "w"
+            ) as f:
                 f.write("corrected_diss,corrected_rf\n")
                 for i in range(corrected_diss.size):
                     f.write(f"{corrected_diss[i]},{corrected_rf[i]}\n")
@@ -1055,8 +1581,11 @@ class DropEffectCorrection(CurveOptimizer):
         and marks the indices where corrections occurred.
         """
 
+        runname = self._strip_filename(self._file_path)
         indices = np.arange(len(original_diss))
-        subplots: tuple[plt.Figure, tuple[plt.Axes, plt.Axes]] = plt.subplots(2, 1, figsize=(10, 8))
+        subplots: tuple[plt.Figure, tuple[plt.Axes, plt.Axes]] = plt.subplots(
+            2, 1, figsize=(10, 8)
+        )
         fig, axs = subplots
 
         # zoom_xid = min(correction_indices) - 2*len(correction_indices)
@@ -1066,7 +1595,10 @@ class DropEffectCorrection(CurveOptimizer):
 
         # Plot for Dissipation.
         axs[0].plot(
-            relative_time[indices], original_diss, label="Original Dissipation", color="blue"
+            relative_time[indices],
+            original_diss,
+            label="Original Dissipation",
+            color="blue",
         )
         axs[0].plot(
             relative_time[indices],
@@ -1082,13 +1614,14 @@ class DropEffectCorrection(CurveOptimizer):
             color="yellow",
             linestyle="--",
         )
-        axs[0].axvline(relative_time[self._left_bound["index"]], color="gray", linestyle=":")
-        axs[0].axvline(relative_time[self._right_bound["index"]], color="gray", linestyle=":")
+        axs[0].axvline(
+            relative_time[self._left_bound["index"]], color="gray", linestyle=":"
+        )
+        axs[0].axvline(
+            relative_time[self._right_bound["index"]], color="gray", linestyle=":"
+        )
 
-        # Mark the indices where corrections were applied.
-        for idx in correction_indices:
-            axs[0].axvline(relative_time[idx], color="green", linestyle=":", alpha=0.7)
-        axs[0].set_title("Dissipation Correction")
+        axs[0].set_title(f"{runname}: Dissipation Correction")
         axs[0].set_xlabel("Relative Time (sec)")
         axs[0].set_ylabel("Dissipation")
         axs[0].legend()
@@ -1096,12 +1629,22 @@ class DropEffectCorrection(CurveOptimizer):
         # # Zoom to the region of interest around the correction.
         axs[0].set_xlim(relative_time[zoom_xid], relative_time[zoom_yid])
         axs[0].set_ylim(
-            min(original_diss[zoom_xid:zoom_yid]), max(original_diss[zoom_xid:zoom_yid])
+            min(
+                min(original_diss[zoom_xid:zoom_yid]),
+                min(corrected_diss[zoom_xid:zoom_yid]),
+            ),
+            max(
+                max(original_diss[zoom_xid:zoom_yid]),
+                max(corrected_diss[zoom_xid:zoom_yid]),
+            ),
         )
 
         # Plot for Resonance Frequency.
         axs[1].plot(
-            relative_time[indices], original_rf, label="Original Resonance Frequency", color="blue"
+            relative_time[indices],
+            original_rf,
+            label="Original Resonance Frequency",
+            color="blue",
         )
         axs[1].plot(
             relative_time[indices],
@@ -1117,22 +1660,120 @@ class DropEffectCorrection(CurveOptimizer):
             color="yellow",
             linestyle="--",
         )
-        axs[1].axvline(relative_time[self._left_bound["index"]], color="gray", linestyle=":")
-        axs[1].axvline(relative_time[self._right_bound["index"]], color="gray", linestyle=":")
+        axs[1].axvline(
+            relative_time[self._left_bound["index"]], color="gray", linestyle=":"
+        )
+        axs[1].axvline(
+            relative_time[self._right_bound["index"]], color="gray", linestyle=":"
+        )
 
-        # Mark the same correction indices on the RF plot.
-        for idx in correction_indices:
-            axs[1].axvline(relative_time[idx], color="green", linestyle=":", alpha=0.7)
-        axs[1].set_title("Resonance Frequency Correction")
+        axs[1].set_title(f"{runname}: Resonance Frequency Correction")
         axs[1].set_xlabel("Relative Time (sec)")
         axs[1].set_ylabel("Resonance Frequency (Hz)")
         axs[1].legend()
 
-        # # Zoom to the region of interest around the correction.
+        # Zoom to the region of interest around the correction
         axs[1].set_xlim(relative_time[zoom_xid], relative_time[zoom_yid])
-        axs[1].set_ylim(min(original_rf[zoom_xid:zoom_yid]), max(original_rf[zoom_xid:zoom_yid]))
+        axs[1].set_ylim(
+            min(
+                min(original_rf[zoom_xid:zoom_yid]),
+                min(corrected_rf[zoom_xid:zoom_yid]),
+            ),
+            max(
+                max(original_rf[zoom_xid:zoom_yid]),
+                max(corrected_rf[zoom_xid:zoom_yid]),
+            ),
+        )
+
+        # Mark the correction regions with green background.
+        for i, core in enumerate(self._region_cores):
+            idx = i % 2  # maps to `axs` index
+            axs[idx].axvspan(
+                xmin=relative_time[core[0]],
+                xmax=relative_time[core[1]],
+                color="green",
+                alpha=0.3,
+            )
+
+        # Plot debug metrics (pre/post slope)
+        for i, slope in enumerate(self._pre_slopes):
+            idx = i % 2  # maps to `axs` index
+            core_boundary = self._region_cores[i][0]  # 0 = pre (start)
+            signal = corrected_rf if idx else corrected_diss
+            x_boundary = relative_time[core_boundary]
+            y_boundary = signal[core_boundary]
+            x_min, x_max = axs[idx].get_xlim()
+            y_min = y_boundary + slope * (x_min - x_boundary)
+            y_max = y_boundary + slope * (x_max - x_boundary)
+            if idx < len(axs):
+                axs[idx].plot(
+                    [x_min, x_boundary],
+                    [y_min, y_boundary],
+                    color="black",
+                    linestyle="-",
+                    alpha=0.5,
+                )
+                axs[idx].plot(
+                    [x_boundary, x_max],
+                    [y_boundary, y_max],
+                    color="black",
+                    linestyle=":",
+                    alpha=0.5,
+                )
+            else:
+                Log.d(
+                    DropEffectCorrection.TAG,
+                    f"Cannot plot pre-slope intercepts for non-existent axis {idx}.",
+                )
+
+        for i, slope in enumerate(self._post_slopes):
+            idx = i % 2  # maps to `axs` index
+            core_boundary = self._region_cores[i][1]  # 1 = post (end)
+            signal = corrected_rf if idx else corrected_diss
+            x_boundary = relative_time[core_boundary]
+            y_boundary = signal[core_boundary]
+            x_min, x_max = axs[idx].get_xlim()
+            y_min = y_boundary + slope * (x_min - x_boundary)
+            y_max = y_boundary + slope * (x_max - x_boundary)
+            if idx < len(axs):
+                axs[idx].plot(
+                    [x_min, x_boundary],
+                    [y_min, y_boundary],
+                    color="black",
+                    linestyle=":",
+                    alpha=0.5,
+                )
+                axs[idx].plot(
+                    [x_boundary, x_max],
+                    [y_boundary, y_max],
+                    color="black",
+                    linestyle="-",
+                    alpha=0.5,
+                )
+            else:
+                Log.d(
+                    DropEffectCorrection.TAG,
+                    f"Cannot plot post-slope intercepts for non-existent axis {idx}.",
+                )
 
         fig.tight_layout()
+
+        # Add a footnote below and to the right side of the chart
+        footnote = "Generated by {} {} ({}) at {}."
+        axs[-1].annotate(
+            footnote.format(
+                Constants.app_title,
+                Constants.app_version,
+                Constants.app_date,
+                strftime("%Y-%m-%d %I:%M:%S %p", localtime()),
+            ),
+            xy=(0.5, 1),
+            xycoords=("figure fraction", "figure pixels"),
+            ha="center",
+            va="bottom",
+            color="dimgray",
+            fontsize=8,
+        )
 
         if save:
             # export figure to pdf

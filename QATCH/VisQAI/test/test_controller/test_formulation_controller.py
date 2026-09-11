@@ -9,7 +9,8 @@ Integration tests for the FormulationController, verifying end-to-end behavior o
     - Export to DataFrame (`get_all_as_dataframe`), including empty and multiple-row scenarios
 
 Author:
-    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander J. Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol
 
 Date:
     2025-10-20
