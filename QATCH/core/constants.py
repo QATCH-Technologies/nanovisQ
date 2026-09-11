@@ -42,8 +42,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b70"
-    app_date = "2026-03-03"
+    app_version = "v2.7r9"
+    app_date = "2026-09-09"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -53,7 +53,9 @@ class Constants:
     # RECOMMENDED firmware #
     ########################
     best_fw_version = app_version  # may specify an exact version if needed
-    do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
+    do_legacy_updates = (
+        False  # only use on FW v2.5b23 or older; will break newer devices!
+    )
 
     #################
     # FEATURE FLAGS #
@@ -75,6 +77,8 @@ class Constants:
     downsample_file_count = 20
     # Only plot every X samples to the real-time view (no averaging)
     downsample_plot_count = 3
+    # Post-90s plot update interval in ms (~2 Hz)
+    downsample_plot_ms = 500
 
     ###########################
     # DISSIPATION conversions #
@@ -91,7 +95,7 @@ class Constants:
     - Higher: Increases reliability and noise filtering, but delays detection.
     - Lower: Faster detection, but higher risk of false positives from noise.
     """
-    DRYING_WINDOW_SIZE = 100
+    DRYING_WINDOW_SIZE = 120
     """
     The maximum allowed standard deviation (noise floor) for the normalized
     dissipation signal. Range is [0, 1] due to normalization.
@@ -215,7 +219,7 @@ class Constants:
     ##########################
     serial_default_speed = 2000000
     serial_default_overtone = None
-    serial_default_QCS = "@5MHz"
+    serial_default_QCS = "@5MHz_QCM"
     serial_writetimeout_ms = 3
     serial_timeout_ms = 10  # 0.01
     serial_simulate_device = False
@@ -271,10 +275,16 @@ class Constants:
     )
     csv_calibration_export_path = os.path.join(local_app_data_path, "config")
     user_profiles_path = os.path.join(local_app_data_path, "profiles", "users")
-    run_profiles_path = os.path.join(local_app_data_path, "profiles", "runs")  # future use
+    run_profiles_path = os.path.join(
+        local_app_data_path, "profiles", "runs"
+    )  # future use
     query_info_recall_path = os.path.join(local_app_data_path, "recall.xml")
-    user_constants_path = os.path.join(local_app_data_path, "settings", "userConstants.py")
-    auto_sign_key_path = os.path.join(local_app_data_path, "tokens", "auto_sign_key.pem")
+    user_constants_path = os.path.join(
+        local_app_data_path, "settings", "userConstants.py"
+    )
+    auto_sign_key_path = os.path.join(
+        local_app_data_path, "tokens", "auto_sign_key.pem"
+    )
     license_cache_path = os.path.join(local_app_data_path, "license_cache")
     invalidChars = "\\/:*?\"'<>|"
 
@@ -342,7 +352,9 @@ class Constants:
     new_files_path = csv_export_path + slash + "new_files.txt"
 
     # Log file for storing the output of the TEC temperature controller
-    tec_log_path = csv_export_path + slash + tbd_active_device_name_path + slash + "output_tec.csv"
+    tec_log_path = (
+        csv_export_path + slash + tbd_active_device_name_path + slash + "output_tec.csv"
+    )
 
     ##########################
     # CALIBRATION parameters #
@@ -367,7 +379,11 @@ class Constants:
     ##########################
     # RING BUFFER parameters #
     ##########################
-    ring_buffer_samples = 6000  # @ 50 ms/sample = 5 mins history
+
+    # Increased from 6,000->12,000 on 2026-05-22 to support more efficient RingBuffer implementation
+    # Initially fills at rate limit of <20hz.  Post 90s rate limit is dropped to <10hz.  Rolling
+    # behavior should occur ~18mins into a run.
+    ring_buffer_samples = 12000  # @ 50 ms/sample = 10 mins history
 
     ########################
     # AVERAGING parameters #
@@ -387,11 +403,17 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    list_predict_models = ["ModelData", "QModel v4 (Fusion)", "QModel V6 (YOLO26)"]
+    list_predict_models = [
+        "Tweed",
+        "QModel Indus",
+        "QModel Volta",
+        "QModel Onyx",
+    ]
+    QModel7_predict = True
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
-    TensorFlow_predict = True
+    TensorFlow_predict = False
     # NOTE: If multiple models are enabled, they will be run
     # in the same priority order as they are listed above.
     # In general, the first model to return a valid result will
@@ -550,7 +572,9 @@ class Constants:
         # if given 'param' ALL, return entire list of params for 'batch'
         if param == "ALL":
             if batch_in_csv_file:
-                idx_of_batch = np.where(batches == batch_upper)[0]  # batches.index(batch)
+                idx_of_batch = np.where(batches == batch_upper)[
+                    0
+                ]  # batches.index(batch)
                 all_params = data[idx_of_batch[0]]
                 return dict(zip(params_orig_case, all_params))
             else:
@@ -564,7 +588,9 @@ class Constants:
         # print(f"batch_in_csv_file: {batch_in_csv_file}")
 
         # param does not exist, anywhere
-        if param_in_py_file == False and (param_in_csv_file == False or batch_in_csv_file == False):
+        if param_in_py_file == False and (
+            param_in_csv_file == False or batch_in_csv_file == False
+        ):
             default_val = 0  # getattr(Constants, param)
             Log.e(
                 f"get_batch_param(): PARAM '{param}' is not found (using {default_val}). Please specify a default value in Constants.py."
@@ -572,7 +598,9 @@ class Constants:
             return str(default_val)
 
         # param only exists in Constants.py
-        if param_in_py_file == True and (param_in_csv_file == False or batch_in_csv_file == False):
+        if param_in_py_file == True and (
+            param_in_csv_file == False or batch_in_csv_file == False
+        ):
             default_val = getattr(Constants, param)
             Log.w(
                 f"get_batch_param(): PARAM '{param}' is not found for BATCH '{batch}' (using {default_val}). Please add the batch/param to lookup_BATCH#.csv."
