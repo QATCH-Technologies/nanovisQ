@@ -50,7 +50,7 @@ from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileManager import FileManager
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
-from QATCH.common.fwUpdater import FW_Updater
+from QATCH.common.fwUpdater import FW_Updater, FW_UPDATE
 from QATCH.common.licenseManager import LicenseManager
 from QATCH.common.logger import Logger as Log
 from QATCH.common.tutorials import TutorialPages
@@ -1670,7 +1670,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._plt4 = None  # temperature (combined)
         self.multiplex_plots = 1
         # TODO: update this variable on write to MUX state of primary device
-        self.active_multi_ch = 1
+        self.active_multi_ch = 0
         self._timer_plot = None
         self._readFREQ = None
         self._QCS_installed = None
@@ -2160,7 +2160,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def get_active_multi_port(self):
         # returns 1-6, depending on active 4x6 port on MUX of active device
-        return self.active_multi_ch  # defaults to 1 in non-flux systems
+        return self.active_multi_ch  # defaults to 0 in non-flux systems
 
     ###########################################################################
     # Starts the acquisition of the selected serial port
@@ -2292,7 +2292,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ### END HANDLE ORPHANED FILES ###
 
         # Add TEC output file to new files list (if exists)
-        tec_log_path = FileStorage.DEV_populate_path(Constants.tec_log_path, 0)
+        tec_log_path = FileStorage.DEV_populate_path(Constants.tec_log_path, 0, 0)
         if os.path.exists(tec_log_path) and not self.tecWorker._tec_state == "OFF":
             with open(Constants.new_files_path, "a") as tempFile:
                 tempFile.write(tec_log_path + "\n")
@@ -2349,14 +2349,76 @@ class MainWindow(QtWidgets.QMainWindow):
                 # If the port is initailized, set the valid port to the selected port.
                 selected_port = now_port
 
-        # TODO AJR: This code still requires the existence of `plate-config.json`
-        #           Removing it, for now; this code should create the file if none exists:
-        """
-        # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
-        active_port_dict, active_port_list = self.parse_ports_from_file()
-        Log.d(TAG, active_port_dict)
-        """
         active_port_list = range(self.multiplex_plots)
+        
+        # WIP AJR: This code still requires the existence of `plate-config.json`
+        #           Removing it, for now; this code should create the file if none exists:
+        if self._get_source() == OperationType.measurement:
+            if self.has_active_multi_port() and (
+                self.ControlsWin.ui1.cBox_MultiMode.currentIndex() > 3 or 
+                self.ControlsWin.ui1.cal_multiport_portnum != 0
+            ):
+                # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
+                active_port_dict, active_port_list = self.parse_ports_from_file()
+                Log.d(TAG, active_port_dict)
+
+                try:
+                    next_port_selection = active_port_list[self.ControlsWin.ui1.cal_multiport_portnum]
+                except:
+                    Log.e("No ports left to run. Re-calibrate and try again.")
+                    # Enable UI elements for run
+                    self._enable_ui(True)
+                    # or, call self.stop()
+                    return
+
+                # Mimic UI setup required for running one channel at a time
+                # TODO This needs to be reversed on stop (on cal success)
+                self._restore_multiMode = self.ControlsWin.ui1.cBox_MultiMode.currentIndex()
+                self._restore_multiAuto = self.ControlsWin.ui1.chBox_MultiAuto.isChecked()
+                self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(0)
+                self.ControlsWin.ui1.chBox_MultiAuto.setChecked(False)
+
+                # Select desired port (1-6)
+                # NOTE: Limitations of current implementation: 
+                #     - User must start with PORT 1 selected at sequence start
+                #     - Plate config must use at least one port per column
+                port_changed = False
+                for i in range(6): # up to 6 attempts, likely just 1 or 2
+                    current_port_num = self.ControlsWin.ui1.tool_NextPortRow.value()
+                    if str(current_port_num) != next_port_selection[-1]:
+                        self.ControlsWin.ui1.tool_NextPortRow.advance()
+                        port_changed = True
+                    else:
+                        break # stop searching for the desired port. we found it!
+                if port_changed:
+                    Log.i(f"Selecting port {current_port_num}...")
+                    self.ControlsWin.ui1.action_next_port()
+
+                # Select desired channel (A-D)
+                # current_port_idx = self.ControlsWin.ui1.cBox_Port.currentIndex()
+                desired_port_idx = ["A", "B", "C", "D"].index(next_port_selection[0])
+                for i in range(desired_port_idx):
+                    # include intermediary devices to ACTIVE list remains valid
+                    self.ControlsWin.ui1.cBox_Port.setCurrentIndex(i)
+                    self._port_changed() # call on_change handler
+                self.ControlsWin.ui1.cBox_Port.setCurrentIndex(desired_port_idx)
+                self._port_changed() # call on_change handler
+
+                # recent, age_mins = self._get_cal_age()
+                if True:  # recent:
+                    self.ControlsWin.ui1.cal_multiport_portnum += 1
+
+                # redraw selected port labels accordignly
+                self.set_multi_mode()
+                self.repaint()
+
+                # while QtCore.QCoreApplication.hasPendingEvents():
+                QtCore.QCoreApplication.processEvents()
+
+                # re-select port from the currently selected device data
+                selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
+
+        ### END FLUX AUTO-SELECTOR CODE
 
         # Sets the number of ports to use for a multiplex device.
         if self.multiplex_plots > 1:
@@ -2383,7 +2445,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Check for the latest calibrations.  If the last calibration data is not recent, recomend to the user
         # to recalibrate their device.
-        if self._get_source() == OperationType.measurement:
+        if self._get_source() == OperationType.measurement and not self.has_active_multi_port():
             is_recent, age_in_mins = self._get_cal_age()
             if not is_recent:
                 Log.w(
@@ -2435,6 +2497,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QCS_on=self._QCS_installed,
             port=selected_port,
             pid=self.ControlsWin.ui1.cBox_Port.currentIndex() + 1,
+            portnum=self.get_active_multi_port(),
             speed=self.ControlsWin.ui1.cBox_Speed.currentText(),
             samples=self.ControlsWin.ui1.sBox_Samples.value() + 1,
             source=self._get_source(),
@@ -2445,6 +2508,8 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
         # Check for firmware updates (only if not yet checked this instance)
+        if self._get_source() == OperationType.measurement and self.has_active_multi_port():
+            self.fwUpdater.checkAgain(check=False)
         try:
             do_continue = self.fwUpdater.run(self)
             if self.fwUpdater._port_changed:
@@ -2580,7 +2645,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if self._get_source() == OperationType.measurement:
                 overtones_number = len(
-                    self.worker.get_source_speeds(OperationType.measurement)
+                    self.worker.get_source_speeds(
+                        OperationType.measurement, self.worker._pid, self.worker._portnum
+                    )
                 )
 
                 # Set the quartz sensor
@@ -2590,6 +2657,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     label_quartz = "@10MHz_QCM"
                 elif overtones_number == 2:
                     label_quartz = "@5MHz_QCM"
+                else:
+                    label_quartz = "@Unknown"
 
                 self.InfoWin.ui3.info1a.setText(
                     "<font color=#0000ff > Device Setup </font>" + label_quartz
@@ -2754,6 +2823,31 @@ class MainWindow(QtWidgets.QMainWindow):
             for i in range(len(self._drop_applied)):
                 if self._text4[i] != None:
                     self._text4[i].setText(" ")  # clear plot status message
+
+            if hasattr(self, "_restore_multiMode") and hasattr(self, "_restore_multiAuto"):
+                self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(self._restore_multiMode)
+                self.ControlsWin.ui1.chBox_MultiAuto.setChecked(self._restore_multiAuto)
+                QtCore.QCoreApplication.processEvents()  # handle any pending signals
+
+            Log.e(f"Has active multi ports: {self.has_active_multi_port()}")
+            Log.e(f"Current multimode port: {self.ControlsWin.ui1.cBox_MultiMode.currentIndex()}")
+            if self.has_active_multi_port() and self.ControlsWin.ui1.cBox_MultiMode.currentIndex() > 3:
+                active_port_dict, active_port_list = self.parse_ports_from_file()
+                has_more_ports = True if len(active_port_list) > self.ControlsWin.ui1.cal_multiport_portnum else False
+                Log.e(f"Has more ports: {has_more_ports}")
+                if has_more_ports:
+                    Log.w("Enabling START button for next port in 1 secs")
+                    # TODO: Do these singleshot timer calls in a separate function, do we need the 1s delay?
+                    _current_step = self.ControlsWin.ui1.cal_multiport_portnum
+                    self.ControlsWin.ui1.run_controls.update_progress(
+                        _current_step, len(active_port_list), 
+                        f"Port {_current_step + 1} of {len(active_port_list)}: "
+                        f"{active_port_list[_current_step]}"
+                    )
+                    QtCore.QTimer.singleShot(1000, lambda: self.ControlsWin.ui1.run_controls.pause())
+                else:
+                    # TODO: Do we need to reset the run controls button to idle too?
+                    self.ControlsWin.ui1.action_reset()  # move back to port 1, ready for new Initialize
 
     ###########################################################################
     # Overrides the QTCloseEvent,is connected to the close button of the window
@@ -4584,11 +4678,14 @@ class MainWindow(QtWidgets.QMainWindow):
         title_amplitude = "Plot: Amplitude"
         title_resonance_dissipation = "Plot: Resonance Frequency / Dissipation"
         title_temperature = "Plot: Temperature"
-        get_suffix = lambda i: (
-            f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
-            if self.has_active_multi_port()
-            else f" {i + 1}"
-        )
+
+        def get_suffix(i): 
+            if self.has_active_multi_port():
+                if self.ControlsWin.ui1.cBox_MultiMode.currentIndex() == 0:  # 1 Channel
+                    i = self.ControlsWin.ui1.cBox_Port.currentIndex()
+                return f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
+            else:
+                return f" {i + 1}"
 
         # Configures elements of the PyQtGraph plots: amplitude
         self.PlotsWin.ui2.plt.setAntialiasing(True)
@@ -5880,8 +5977,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Handle X-Axis Padding & Sync
         if slice_time_resonance_frequency.size > 0:
-            x_min, x_max = float(slice_time_resonance_frequency[0]), float(
-                slice_time_resonance_frequency[-1]
+            x_min, x_max = (
+                float(slice_time_resonance_frequency[0]),
+                float(slice_time_resonance_frequency[-1]),
             )
             x_range = (x_max - x_min) or 1.0
             x_pad = x_range * Constants.default_plot_padding
@@ -6287,6 +6385,7 @@ class MainWindow(QtWidgets.QMainWindow):
         before_items = [
             self.ControlsWin.ui1.cBox_Port.itemData(i) for i in range(before_count)
         ]
+
         # Update ports list
         self._source_changed()
 
@@ -6484,6 +6583,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     except:
                         Log.w(TAG, "WARN: Error while generating port names list.")
 
+            remove_ids = []
             for port_name in list(ports):
                 if not port_name in device_ports:
                     # found connected port with no associated device info in config folder
@@ -6504,6 +6604,14 @@ class MainWindow(QtWidgets.QMainWindow):
                         # re-block them itself. (Handled automatically in finally block now)
                         return  # fwUpdater.run() calls _refresh_ports() when devinfo written, stop stop here
                         # NOTE: Each subsequent call to _refresh_ports() will parse one pending device info.
+                    elif ret in [member.value for member in FW_UPDATE]:
+                        Log.w(f"Removing unresponsive device {port_name.split(':')[0]} from port list.")
+                        remove_ids.append(list(ports).index(port_name))
+
+            if len(remove_ids):
+                for id in remove_ids:
+                    ports.pop(id)
+                    port_names.pop(id)
 
             if _use_discover_cache and hasattr(self, "_cached_net_devs"):
                 _net_devs = self._cached_net_devs
@@ -6649,22 +6757,31 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._port_changed()
 
         # Remove FLUX controller from list of PIDs connected (if exists)
-        if "80" in dev_pids:
-            dev_pids.remove("80")
+        # if "80" in dev_pids:
+        #     dev_pids.remove("80")
 
         restore_idx = self.ControlsWin.ui1.cBox_MultiMode.currentIndex()
         self.ControlsWin.ui1.cBox_MultiMode.clear()
         multi_channel_count = 4 * 1
+        channel_options = [1, 2, 3, 4]
         if "A" in dev_pids:
             multi_channel_count = 4 * 6
+            channel_options.extend([8, 12, 16, 20, 24])
         multi_channel_items = [
-            f"{i + 1} Channel" + ("s" if i > 0 else "")
-            for i in range(multi_channel_count)
+            f"{i} Channel" + ("s" if i > 0 else "")
+            for i in channel_options
         ]
         self.ControlsWin.ui1.cBox_MultiMode.addItems(multi_channel_items)
         if self.ControlsWin.ui1.chBox_MultiAuto.isChecked():
-            idx = max(0, min(len(dev_pids), multi_channel_count) - 1)
-            Log.d(f"Auto-Detect Channel Count: {idx + 1}")
+            idx = max(0, min(len(dev_pids), len(channel_options)) - 1)
+            if idx < len(channel_options):
+                if idx > 3:
+                    idx = len(channel_options) - 1  # take last one, we're in FLUX land
+                auto_detect_channels = channel_options[idx]
+            else:
+                Log.w("Channel index is not a valid channel option. Defaulting to 1.")
+                auto_detect_channels = 1
+            Log.d(f"Auto-Detect Channel Count: {auto_detect_channels}")
         else:
             if self.ControlsWin.ui1.cBox_MultiMode.count() > restore_idx:
                 idx = restore_idx
@@ -6673,10 +6790,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 idx = self.ControlsWin.ui1.cBox_MultiMode.count() - 1
         self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(idx)
         for i in range(self.ControlsWin.ui1.cBox_MultiMode.count()):
+            try:
+                num = int(self.ControlsWin.ui1.cBox_MultiMode.model().item(i).text().split()[0])
+            except ValueError:
+                num = -1
             if (
-                i
+                num
                 < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1)
-                - 1
+                - 1  # NOTE: This logic does not account for the FLUX CONTROLLER (0x80)
             ):
                 enable = True
             else:
@@ -6716,7 +6837,7 @@ class MainWindow(QtWidgets.QMainWindow):
         source = self._get_source()
         i = self.ControlsWin.ui1.cBox_Port.currentText()
         i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16) % 9
-        speeds = self.worker.get_source_speeds(source, i)
+        speeds = self.worker.get_source_speeds(source, i, self.get_active_multi_port())
 
         # Store and get the restore index
         if len(speeds) == self.ControlsWin.ui1.cBox_Speed.count():
@@ -6768,7 +6889,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         j = self.ControlsWin.ui1.cBox_Port.currentIndex() + 1
                     # Check age of calibration file, and ask for new cal if older than 15 mins
                     cal_file_path = Constants.cvs_peakfrequencies_path
-                    cal_file_path = FileStorage.DEV_populate_path(cal_file_path, j)
+                    cal_file_path = FileStorage.DEV_populate_path(cal_file_path, j, self.get_active_multi_port())
                     timestamp = os.path.getmtime(cal_file_path)  # may throw OSError
                     last_modified = datetime.fromtimestamp(timestamp, timezone.utc)
                     last_cal_age = datetime.now(timezone.utc) - last_modified
@@ -9122,7 +9243,7 @@ class TECTask(QtCore.QThread):
 
                 # Append to log file for temperature controller
                 # checks the path for the header insertion
-                tec_log_path = FileStorage.DEV_populate_path(Constants.tec_log_path, 0)
+                tec_log_path = FileStorage.DEV_populate_path(Constants.tec_log_path, 0, 0)
                 os.makedirs(os.path.split(tec_log_path)[0], exist_ok=True)
                 header_exists = os.path.exists(tec_log_path)
                 with open(tec_log_path, "a") as tempFile:
@@ -9465,7 +9586,6 @@ class DryingDetection:
 
 
 class LivePlotHelper:
-
     def __init__(self):
 
         plt.ion()

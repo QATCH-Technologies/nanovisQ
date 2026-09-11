@@ -40,6 +40,7 @@ from PyQt5.QtWidgets import (
 from pyqtgraph import GraphicsLayoutWidget
 
 from QATCH.common.architecture import Architecture, OSType
+from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants, OperationType
@@ -1495,6 +1496,13 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.cal_initialized = False
         self.parent = MainWindow1
 
+        self.cal_multiport_timer = QtCore.QTimer()
+        self.cal_multiport_timer.setSingleShot(False)
+        self.cal_multiport_timer.timeout.connect(self._cal_multiport_checker)
+        self.cal_multiport_timer.setInterval(1000)  # every second
+        self.cal_multiport_portnum = 0
+        self.cal_multiport_results = []
+
         MainWindow1.setObjectName("MainWindow1")
         # MainWindow1.setGeometry(50, 50, 975, 70)
         # MainWindow1.setFixedSize(980, 150)
@@ -2269,7 +2277,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                         Log.w(
                             "Prior Flux controller thread still busy; skipping new Next Port request."
                         )
-                        self.tool_NextPortRow.setEnabled(True)
+                        self.action_NextPortRow.setEnabled(True)
                         return
             Log.d("Starting FLUX controller thread.")
             self.fluxThread = QtCore.QThread()
@@ -2298,7 +2306,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             if success:
                 # Write to global port variable
                 self.parent.parent.active_multi_ch = self.tool_NextPortRow.value()
-                self.parent.parent.set_multi_mode()
+                self.parent.parent.set_multi_mode()  # redraw plot labels accordingly
 
             else:
                 self.tool_NextPortRow.setIconError()  # trasient red text, resets on next update
@@ -2314,6 +2322,86 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         except Exception as e:
             Log.e(f"next_port_result ERROR: {e}")
 
+    def _get_multiport_results(self):
+        results = []
+        for i in range(4):  # i = 0..3
+            path = Constants.cvs_peakfrequencies_path
+            path = FileStorage.DEV_populate_path(path, i + 1, self.parent.parent.get_active_multi_port())  # PIDs 1..4
+            results.append(os.path.isfile(path))
+        self.cal_multiport_results.append(results)
+        return results
+
+    def _cal_multiport_checker(self):
+        try:
+            if not self.pButton_Start.isEnabled():
+                Log.d("Timer check ping: calibration is running")
+                return
+
+            if not self.action_NextPortRow.isEnabled():
+                Log.d("Timer check ping: port selector is switching")
+                return
+            
+            if self.tool_NextPortRow.isError():
+                Log.e("Initialize Error changing ports... cannot continue!")
+                self.cal_multiport_timer.stop()
+                return
+            
+            is_pending = (True 
+                if self.cal_multiport_portnum <= self.cBox_MultiMode.currentIndex() - 3
+                else False
+            )
+
+            if self.tool_NextPortRow.value() == self.cal_multiport_portnum:
+                # Get result of port calibration from prior sweep
+                port_result = self._get_multiport_results()
+                Log.d("Result:", port_result)
+                # Update Plate Config
+                for i, success in enumerate(port_result):
+                    if success:
+                        self.wellPlateUI.toggleWellSelection(
+                            self.cal_multiport_portnum - 1, i
+                        )
+
+                self.wellPlateUI.repaint()  # redraw selected
+                QtCore.QCoreApplication.processEvents()
+
+                if is_pending:
+                    Log.i(f"Selecting port {self.tool_NextPortRow.value() + 1}...")
+                    self.tool_NextPortRow.click()  # next
+                    return
+            
+            if not is_pending:              
+                # TODO: Write plate configuration to JSON file
+                Log.d("Overall result:", self.cal_multiport_results)
+
+                Log.i("Finished multiport initialize process!")
+                Log.i(f"Initialize found {self.wellPlateUI.wells_selected} usable wells.")
+                self.cal_multiport_timer.stop()
+            else:
+                self.cal_multiport_portnum += 1
+                Log.i(f"Initializing port {self.cal_multiport_portnum}"
+                      f" of {self.cBox_MultiMode.currentIndex() - 3}...")
+                self.action_initialize()
+
+        except Exception as e:
+            Log.e("ABORT: Error during multiport initialization")
+            self.cal_multiport_timer.stop()
+            raise e
+        
+        finally:
+            if not self.cal_multiport_timer.isActive():
+                Log.d("Timer finished: Re-homing port selector.")
+                # When multiport calibration timer stops,
+                # force immediate re-home to Port 1, regardless
+                # of how many channels were scanned, by setting
+                # the icon error flag and stepping to next port
+                self.tool_NextPortRow.setIconError()
+                self.tool_NextPortRow.click()  # re-home
+                # Reset portnum flag to zero (inactive)
+                self.cal_multiport_portnum = 0
+                # Clear cache copy of cal results on stop
+                self.cal_multiport_results = []
+
     def action_initialize(self):
         """Method to handle initialization UI actions."""
         if self.pButton_Start.isEnabled():
@@ -2324,6 +2412,16 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                 self.run_controls.setEnabled(False)
             self.pButton_Start.clicked.emit()
             self.cal_initialized = True
+
+            # Handle multiport calibration start
+            if self.cBox_MultiMode.currentIndex() > 3 and not self.cal_multiport_timer.isActive():
+                self.cal_multiport_timer.start()
+                self.cal_multiport_portnum = 1
+
+                # Open Plate Config
+                self.doPlateConfig()  # Open plate config, loaded from JSON
+                self.wellPlateUI.selectNone()  # clear all wells
+                self.wellPlateUI.move(130, 165)  # move to top-left, below main UI toolbar
 
     def action_start(self):
         """Method to handle start UI actions."""
@@ -2354,6 +2452,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             "background: white; padding: 1px; border: 1px solid #cccccc"
         )
         self.infostatus.setText("<font color=#333333 > Program Status Standby </font>")
+        
+        # Reset portnum flag to zero (inactive)
+        self.cal_multiport_portnum = 0
 
         self.cal_initialized = False
         if hasattr(self, "run_controls"):
@@ -2363,6 +2464,10 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # at least one device connected
         self.tool_TempControl.setEnabled(self.cBox_Port.count() > 1)
+
+        if self.cal_multiport_timer.isActive():
+            Log.e("Aborting active multiport initialization action.")
+            self.cal_multiport_timer.stop()
 
     def action_tempcontrol(self):
         self.tempController.setEnabled(self.tool_TempControl.isChecked())
@@ -2447,13 +2552,14 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         else:  # 4x6 system
             well_width = 6
             well_height = 4
-        num_channels = (
-            self.cBox_MultiMode.currentIndex() + 1
-        )  # user define device count
+        try:
+            num_channels = int(self.cBox_MultiMode.currentText().split()[0])  # user define device count
+        except ValueError:
+            Log.e("Invalid number of channels selected in device configuration.")
+            num_channels = 0
         if num_ports not in [well_width, well_height] or num_ports == 1:
             PopUp.warning(
                 self.parent,
-                "Plate Configuration",
                 f"<b>Multiplex device(s) are required for plate configuration.</b><br/>"
                 + f"You must have exactly 4 device ports connected for this mode.<br/>"
                 + f"Currently connected device port count is: {num_ports} (not 4)",
@@ -3341,6 +3447,15 @@ class RunControls(QWidget):
         self.btn.is_running = running
         self.btn.update()
 
+    def pause(self):
+        # Leave layout expanded to show "Next Port" for Flux
+        # But "paused" with Green arrow to Continue
+        self.btn.is_complete = False
+        self.btn.is_running = False
+        self.btn.setText("Continue")
+        self.setEnabled(True)  # calls self.btn.update()
+
+
     def update_progress(self, current_step, max_steps, fill_type_text):
         """Updates the progress button and status label text.
 
@@ -3407,6 +3522,10 @@ class NumberIconButton(QtWidgets.QToolButton):
         # Used to get the current port step by the caller
         return self._value
 
+    def isError(self):
+        # Used to get the error state by the caller
+        return self._error
+    
     def setIconError(self):
         self._error = True
         self.updateIcon()  # redraw with error colors, clears on next "advance"
@@ -3527,6 +3646,24 @@ class FLUXControl(QtCore.QThread):
 
             probe = str(next_port_num)
 
+            REMAP_CAM_WHEEL_PORTS = False
+            if REMAP_CAM_WHEEL_PORTS:
+                # MUX map the cam wheel for re-ordered ports (due to shorter wires in OT-2)
+                if step == 0:
+                    step = 0  # rehome, then step 1 (which is really 5)
+                if step == 1:
+                    step = 5  # happens after homing, below
+                elif step == 2:
+                    step = 6
+                elif step == 3:
+                    step = 3
+                elif step == 4:
+                    step = 4
+                elif step == 5:
+                    step = 1
+                elif step == 6:
+                    step = 2
+
             # NOTE: The stepper is interrupted in FW by pending serial
             #       so the STEP command must be last in the order sent
             flux_cmds = f"TEC {tec}\nPROBE {probe}\nSTEP {step}\n"
@@ -3548,6 +3685,25 @@ class FLUXControl(QtCore.QThread):
                 waiting = FLUX_serial.in_waiting
                 if waiting > 0:
                     flux_reply += FLUX_serial.read(waiting).decode(errors="replace")
+
+            if REMAP_CAM_WHEEL_PORTS and step == 0:
+                # Read and show the TEC temp status from the device
+                FLUX_serial.write("STEP 5\n".encode())
+                timeoutAt = time() + Constants.stepper_timeout_sec
+                # flux_reply = ""  # do not clear
+                # timeout needed if old FW
+                while time() < timeoutAt:
+                    # await second DONE reply, count of 2
+                    if flux_reply.count("Stepper: DONE!") > 1:
+                        break
+                    while (
+                        FLUX_serial.in_waiting == 0 and time() < timeoutAt
+                    ):  # timeout needed if old FW:
+                        QtCore.QThread.msleep(5)
+                    waiting = FLUX_serial.in_waiting
+                    if waiting > 0:
+                        flux_reply += FLUX_serial.read(waiting).decode(errors="replace")
+
 
             if time() < timeoutAt:
                 if (

@@ -219,7 +219,7 @@ class Constants:
     ##########################
     serial_default_speed = 2000000
     serial_default_overtone = None
-    serial_default_QCS = "@5MHz"
+    serial_default_QCS = "@5MHz_QCM"
     serial_writetimeout_ms = 3
     serial_timeout_ms = 10  # 0.01
     serial_simulate_device = False
@@ -413,7 +413,7 @@ class Constants:
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
-    TensorFlow_predict = True
+    TensorFlow_predict = False
     # NOTE: If multiple models are enabled, they will be run
     # in the same priority order as they are listed above.
     # In general, the first model to return a valid result will

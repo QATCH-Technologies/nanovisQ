@@ -356,6 +356,7 @@ class FW_Updater:
                         TAG,
                         "WARNING: Attempt to read device firmware and hardware versions failed. Skipping update check.",
                     )
+                    abort = True
 
                 self.close()
 
@@ -415,8 +416,8 @@ class FW_Updater:
     # Parent informs self to check again on next run (port changed)
     ###########################################################################
 
-    def checkAgain(self):
-        self._check = True
+    def checkAgain(self, check=True):
+        self._check = check
 
     ###########################################################################
     # Checks the current version and indicates whether an update is Recommended
@@ -441,7 +442,7 @@ class FW_Updater:
                 # wait for "STOP" reply
                 stopped = 0
                 stop = time()
-                waitFor = 3  # timeout delay (seconds)
+                waitFor = 0.3  # timeout delay (seconds)
                 while time() - stop < waitFor:
                     while time() - stop < waitFor and self._serial.in_waiting == 0:
                         pass
@@ -482,6 +483,14 @@ class FW_Updater:
                                 build, version, date
                             )
                         )
+                        if build != "QATCH Q-1":
+                            Log.w(
+                                "Warning: Device is not running recognized nanovisQ firmware. Removing from device list..."
+                            )
+                            self._hw = HW_TYPE.UNKNOWN
+                            raise ConnectionRefusedError(
+                                f"Bad Device Build: '{build}' != 'QATCH Q-1'"
+                            )
                         branch = Constants.best_fw_version[0:4]
                         if not branch in version:
                             Log.w(
