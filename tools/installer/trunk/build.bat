@@ -20,8 +20,8 @@ pyinstaller --log-level INFO "installer.spec"
 
 cd dist
 set checksum=
-certutil -hashfile "QATCH.installer.exe" MD5 | find /i /v "md5" | find /i /v "certutil" > "installer.checksum"
+certutil -hashfile "QATCH.installer.exe" SHA256 | find /i /v "SHA256" | find /i /v "certutil" > "installer.checksum"
 set /p checksum= <"installer.checksum"
-echo Calculated MD5: %checksum%
+echo Calculated SHA256: %checksum%
 
 pause

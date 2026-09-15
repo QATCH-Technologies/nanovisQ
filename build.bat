@@ -81,13 +81,13 @@ REM modify .spec SPLASH:   text_pos=(10,470), text_size=10
 
 REM capture escape character to replace prior echo line
 for /f %%A in ('echo prompt $E^| cmd') DO SET "ESC=%%A"
-<nul set /p "=Calculating MD5..." & <nul set /p "=%ESC%[G"
+<nul set /p "=Calculating SHA256..." & <nul set /p "=%ESC%[G"
 
 cd dist\QATCH nanovisQ
 set checksum=
-certutil -hashfile "QATCH nanovisQ.exe" MD5 | find /i /v "md5" | find /i /v "certutil" > "app.checksum"
+certutil -hashfile "QATCH nanovisQ.exe" SHA256 | find /i /v "SHA256" | find /i /v "certutil" > "app.checksum"
 set /p checksum= <"app.checksum"
-echo Calculated MD5: %checksum%
+echo Calculated SHA256: %checksum%
 
 REM mkdir "QATCH nanovisQ"
 REM move "QATCH nanovisQ.exe" "QATCH nanovisQ" >NUL & REM move to subdir
