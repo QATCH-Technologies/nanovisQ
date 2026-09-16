@@ -4186,7 +4186,7 @@ class MainWindow(QtWidgets.QMainWindow):
             show_text = new_source != OperationType.measurement
 
             # Source changed, but plot count remained the same -> soft update (no clear or reconfigure, just update titles and dim)
-            if new_count == current_count and plots_already_built:
+            if new_count == current_count and plots_already_built and not self.has_active_multi_port():
                 if current_source != new_source:
                     self._soft_update_plot_layout(new_source)
                     self._last_configured_source = new_source
@@ -4225,6 +4225,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._set_plots_dimmed(
                     amplitude=True, rf_diss=True, temperature=True, animate=False
                 )
+
+            except Exception as e:
+                Log.e(tag=TAG, msg="Unable to set count of multiplex plots.")
+                Log.e(tag=TAG, msg=f"Details: {str(e)}")
+            
             finally:
                 # Re-enable updates. This fires one consolidated repaint reflecting
                 # the final dim state—avoiding any in-between frame flickering.
@@ -6595,7 +6600,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.worker._port = port_name  # used in run()
                     # do NOT ask to update if not ReadyToShow
                     ret = self.fwUpdater.run(self, self.ReadyToShow)
-                    if ret == True or ret >= 0:  # not a failed check
+                    if ret == True and ret >= 0:  # not a failed check
                         Log.d(
                             "Device info queried. Waiting to refresh ports on next call."
                         )
@@ -6714,6 +6719,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if common_port != "":
                 Log.d(f"found pre-selected port = {common_port.split(':')[0]}")
                 selected_port = common_port
+
+        except Exception as e:
+            Log.e(e)
 
         finally:
 

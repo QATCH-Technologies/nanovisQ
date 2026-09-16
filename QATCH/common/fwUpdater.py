@@ -692,17 +692,21 @@ class FW_Updater:
                         and self.transient_err_cnt <= 1
                         and parent.ReadyToShow
                     ):
-                        if PopUp.critical(
-                            parent,
-                            "Hardware Error Detected",
-                            "<b>SERVICE REQUIRED</b>: HARDWARE ERROR DETECTED!<br/>"
-                            + "It is not recommended to use this device until serviced.",
-                            details=f"Error Detected:\n{err}",
-                            btn1_text="Ok",
-                        ):
-                            abort_action = True
-                        # keep showing this error for each action taken
-                        QtCore.QTimer.singleShot(500, self.checkAgain)
+                        # Added check for multiplex flux systems
+                        if ("TFT" in err and pid == 'A') or pid == '80':
+                            pass  # do not warn about TFT or TEMP errors on flux
+                        else:
+                            if PopUp.critical(
+                                parent,
+                                "Hardware Error Detected",
+                                "<b>SERVICE REQUIRED</b>: HARDWARE ERROR DETECTED!<br/>"
+                                + "It is not recommended to use this device until serviced.",
+                                details=f"Error Detected:\n{err}",
+                                btn1_text="Ok",
+                            ):
+                                abort_action = True
+                            # keep showing this error for each action taken
+                            QtCore.QTimer.singleShot(500, self.checkAgain)
                 else:
                     # timeout reading port
                     Log.w(

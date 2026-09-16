@@ -1332,7 +1332,8 @@ class CalibrationProcess(multiprocessing.Process):
                     if self._flag == 0 and self._flag2 == 0:
                         Log.i(TAG, "Initialize success for baseline correction!\n")
 
-                        if k not in [2, 3, 4]:  # base device, not a PID 2-4 device
+                        # base device, not a PID 2-4 device, not a FLUX system
+                        if k not in [2, 3, 4] and self._portnum == 0:
                             # Read and show the TEC temp check from the device
                             Log.d(TAG, "Performing temperature check...")
                             for i in range(3):
