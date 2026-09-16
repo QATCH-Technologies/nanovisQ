@@ -356,6 +356,7 @@ class FW_Updater:
                         TAG,
                         "WARNING: Attempt to read device firmware and hardware versions failed. Skipping update check.",
                     )
+                    abort = True
 
                 self.close()
 
@@ -415,8 +416,8 @@ class FW_Updater:
     # Parent informs self to check again on next run (port changed)
     ###########################################################################
 
-    def checkAgain(self):
-        self._check = True
+    def checkAgain(self, check=True):
+        self._check = check
 
     ###########################################################################
     # Checks the current version and indicates whether an update is Recommended
@@ -441,7 +442,7 @@ class FW_Updater:
                 # wait for "STOP" reply
                 stopped = 0
                 stop = time()
-                waitFor = 3  # timeout delay (seconds)
+                waitFor = 0.3  # timeout delay (seconds)
                 while time() - stop < waitFor:
                     while time() - stop < waitFor and self._serial.in_waiting == 0:
                         pass
@@ -482,6 +483,14 @@ class FW_Updater:
                                 build, version, date
                             )
                         )
+                        if build != "QATCH Q-1":
+                            Log.w(
+                                "Warning: Device is not running recognized nanovisQ firmware. Removing from device list..."
+                            )
+                            self._hw = HW_TYPE.UNKNOWN
+                            raise ConnectionRefusedError(
+                                f"Bad Device Build: '{build}' != 'QATCH Q-1'"
+                            )
                         branch = Constants.best_fw_version[0:4]
                         if not branch in version:
                             Log.w(
@@ -683,17 +692,21 @@ class FW_Updater:
                         and self.transient_err_cnt <= 1
                         and parent.ReadyToShow
                     ):
-                        if PopUp.critical(
-                            parent,
-                            "Hardware Error Detected",
-                            "<b>SERVICE REQUIRED</b>: HARDWARE ERROR DETECTED!<br/>"
-                            + "It is not recommended to use this device until serviced.",
-                            details=f"Error Detected:\n{err}",
-                            btn1_text="Ok",
-                        ):
-                            abort_action = True
-                        # keep showing this error for each action taken
-                        QtCore.QTimer.singleShot(500, self.checkAgain)
+                        # Added check for multiplex flux systems
+                        if ("TFT" in err and pid == 'A') or pid == '80':
+                            pass  # do not warn about TFT or TEMP errors on flux
+                        else:
+                            if PopUp.critical(
+                                parent,
+                                "Hardware Error Detected",
+                                "<b>SERVICE REQUIRED</b>: HARDWARE ERROR DETECTED!<br/>"
+                                + "It is not recommended to use this device until serviced.",
+                                details=f"Error Detected:\n{err}",
+                                btn1_text="Ok",
+                            ):
+                                abort_action = True
+                            # keep showing this error for each action taken
+                            QtCore.QTimer.singleShot(500, self.checkAgain)
                 else:
                     # timeout reading port
                     Log.w(

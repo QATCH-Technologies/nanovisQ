@@ -105,8 +105,8 @@ class serial:
             Log.d("Enumerating COM# devices...")
             # perform serial port COM# lookup
             comports_connected = []
-            ports_avaiable = list(list_ports.comports())
-            for port in ports_avaiable:
+            ports_available = list(list_ports.comports())
+            for port in ports_available:
                 if port[2].startswith("USB VID:PID=16C0:0483"):
                     comports_connected.append(port[0])
             devices.extend(comports_connected)

@@ -54,7 +54,7 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.7r9"
+#define CODE_VERSION "v2.7r9_FLUX"
 #define RELEASE_DATE "2026-09-09"
 
 /************************** LIBRARIES **************************/
@@ -227,6 +227,11 @@
 #define PIN_TEC_C 25
 #define PIN_TEC_R 26
 
+// Flux TEC invert states
+#define INV_TEC_L false
+#define INV_TEC_C true
+#define INV_TEC_R true
+
 // Flux PROBE select pins
 #define PIN_PROBE_1 27
 #define PIN_PROBE_2 28
@@ -234,6 +239,14 @@
 #define PIN_PROBE_4 30
 #define PIN_PROBE_5 31
 #define PIN_PROBE_6 32
+
+// Flux PROBE invert states
+#define INV_PROBE_1 true
+#define INV_PROBE_2 true
+#define INV_PROBE_3 true
+#define INV_PROBE_4 true
+#define INV_PROBE_5 true
+#define INV_PROBE_6 true
 
 double freq_factor = 1.0;
 
@@ -580,10 +593,11 @@ long stepperOffset = -110;          // position of Port 1 relative to L1 switch
 #if STEPPER_MATCH(STEPPER_ROTARY)
 // Circular Rotary Stepper settings
 const bool stepperHomingDir = false; // forwards
-long stepSize = 135;                 // assumes equal step sizes
-long stepperOffset = 60;             // position of Port 1 relative to L1 switch
+long stepSize = 133;                 // assumes equal step sizes
+long stepperOffset = 62;             // position of Port 1 relative to L1 switch
 #endif
 long stepperPositions[6] = {0, stepSize, 2 * stepSize, 3 * stepSize, 4 * stepSize, 5 * stepSize};
+long stepperTweaks[6] = {-5, 0, 0, 0, 0, 0};  // adjust stepper positions by given +/- offset
 void stepper_home(); // prototype
 #endif
 
@@ -1155,12 +1169,25 @@ void QATCH_setup()
     stepper_home();
 #endif
 
-    // Set all FLUX pins low until specified
-    for (int pin = 24; pin <= 32; pin++)
-    {
-      pinMode(pin, OUTPUT);
-      digitalWrite(pin, LOW);
-    }
+    client->println("Setting TEC and PROBE pins to idle.");
+    pinMode(PIN_TEC_L, OUTPUT);
+    pinMode(PIN_TEC_C, OUTPUT);
+    pinMode(PIN_TEC_R, OUTPUT);
+    pinMode(PIN_PROBE_1, OUTPUT);
+    pinMode(PIN_PROBE_2, OUTPUT);
+    pinMode(PIN_PROBE_3, OUTPUT);
+    pinMode(PIN_PROBE_4, OUTPUT);
+    pinMode(PIN_PROBE_5, OUTPUT);
+    pinMode(PIN_PROBE_6, OUTPUT);
+    digitalWrite(PIN_TEC_L, INV_TEC_L);
+    digitalWrite(PIN_TEC_C, INV_TEC_C);
+    digitalWrite(PIN_TEC_R, INV_TEC_R);
+    digitalWrite(PIN_PROBE_1, INV_PROBE_1);
+    digitalWrite(PIN_PROBE_2, INV_PROBE_2);
+    digitalWrite(PIN_PROBE_3, INV_PROBE_3);
+    digitalWrite(PIN_PROBE_4, INV_PROBE_4);
+    digitalWrite(PIN_PROBE_5, INV_PROBE_5);
+    digitalWrite(PIN_PROBE_6, INV_PROBE_6);
   }
 }
 
@@ -1193,8 +1220,9 @@ void stepper_home()
     client->println("Stepper: Failed to find home!");
     return; // Don't move to position without valid home
   }
-  client->printf("Stepper: Moving to position %i\n", stepperPositions[0]);
-  stepper.moveTo(stepperPositions[0]);
+  long position = stepperPositions[0] + stepperTweaks[0];
+  client->printf("Stepper: Moving to position %i\n", position);
+  stepper.moveTo(position);
 }
 #endif
 
@@ -2571,18 +2599,18 @@ void QATCH_loop()
           stepper_home();
           return;
         } // home
-        else if (cmd_value == 1)
-          position = stepperPositions[0];
-        else if (cmd_value == 2)
-          position = stepperPositions[1];
-        else if (cmd_value == 3)
-          position = stepperPositions[2];
-        else if (cmd_value == 4)
-          position = stepperPositions[3];
-        else if (cmd_value == 5)
-          position = stepperPositions[4];
-        else if (cmd_value == 6)
-          position = stepperPositions[5];
+        else if (cmd_value >= 1 && cmd_value <= 6)
+          position = stepperPositions[cmd_value - 1] + stepperTweaks[cmd_value - 1];
+        // else if (cmd_value == 2)
+        //   position = stepperPositions[1];
+        // else if (cmd_value == 3)
+        //   position = stepperPositions[2];
+        // else if (cmd_value == 4)
+        //   position = stepperPositions[3];
+        // else if (cmd_value == 5)
+        //   position = stepperPositions[4];
+        // else if (cmd_value == 6)
+        //   position = stepperPositions[5];
         // catch-all: negative offsets, or greater than 6
         else
           position = stepper.currentPosition() + cmd_value;
@@ -2651,15 +2679,15 @@ void QATCH_loop()
         // set and report outputs:
         if (!read_only)
         {
-          digitalWrite(PIN_TEC_L, _l);
-          digitalWrite(PIN_TEC_C, _c);
-          digitalWrite(PIN_TEC_R, _r);
+          digitalWrite(PIN_TEC_L, INV_TEC_L ? !_l : _l);
+          digitalWrite(PIN_TEC_C, INV_TEC_C ? !_c : _c);
+          digitalWrite(PIN_TEC_R, INV_TEC_R ? !_r : _r);
         }
 
         client->printf("TEC: %u, %u, %u\n",
-                       digitalRead(PIN_TEC_L),
-                       digitalRead(PIN_TEC_C),
-                       digitalRead(PIN_TEC_R));
+                       INV_TEC_L ? !digitalRead(PIN_TEC_L) : digitalRead(PIN_TEC_L),
+                       INV_TEC_C ? !digitalRead(PIN_TEC_C) : digitalRead(PIN_TEC_C),
+                       INV_TEC_R ? !digitalRead(PIN_TEC_R) : digitalRead(PIN_TEC_R));
       }
       else
       {
@@ -2735,21 +2763,21 @@ void QATCH_loop()
         // set and report outputs:
         if (!read_only)
         {
-          digitalWrite(PIN_PROBE_1, _1);
-          digitalWrite(PIN_PROBE_2, _2);
-          digitalWrite(PIN_PROBE_3, _3);
-          digitalWrite(PIN_PROBE_4, _4);
-          digitalWrite(PIN_PROBE_5, _5);
-          digitalWrite(PIN_PROBE_6, _6);
+          digitalWrite(PIN_PROBE_1, INV_PROBE_1 ? !_1 : _1);
+          digitalWrite(PIN_PROBE_2, INV_PROBE_2 ? !_2 : _2);
+          digitalWrite(PIN_PROBE_3, INV_PROBE_3 ? !_3 : _3);
+          digitalWrite(PIN_PROBE_4, INV_PROBE_4 ? !_4 : _4);
+          digitalWrite(PIN_PROBE_5, INV_PROBE_5 ? !_5 : _5);
+          digitalWrite(PIN_PROBE_6, INV_PROBE_6 ? !_6 : _6);
         }
 
         client->printf("PROBE: %u, %u, %u, %u, %u, %u\n",
-                       digitalRead(PIN_PROBE_1),
-                       digitalRead(PIN_PROBE_2),
-                       digitalRead(PIN_PROBE_3),
-                       digitalRead(PIN_PROBE_4),
-                       digitalRead(PIN_PROBE_5),
-                       digitalRead(PIN_PROBE_6));
+                       INV_PROBE_1 ? !digitalRead(PIN_PROBE_1) : digitalRead(PIN_PROBE_1),
+                       INV_PROBE_2 ? !digitalRead(PIN_PROBE_2) : digitalRead(PIN_PROBE_2),
+                       INV_PROBE_3 ? !digitalRead(PIN_PROBE_3) : digitalRead(PIN_PROBE_3),
+                       INV_PROBE_4 ? !digitalRead(PIN_PROBE_4) : digitalRead(PIN_PROBE_4),
+                       INV_PROBE_5 ? !digitalRead(PIN_PROBE_5) : digitalRead(PIN_PROBE_5),
+                       INV_PROBE_6 ? !digitalRead(PIN_PROBE_6) : digitalRead(PIN_PROBE_6));
       }
       else
       {
