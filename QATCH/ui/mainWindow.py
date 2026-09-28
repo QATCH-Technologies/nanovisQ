@@ -377,7 +377,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.ui1 = Ui_Controls()
         self.ui1.setupUi(self)
-        self.ui_export = Ui_Export()
+        self.ui_export = Ui_Export(self)
         # self.ui_configure_data = UIConfigureData()
         self.ui_preferences = PreferencesUI(self)
         # self.userrole

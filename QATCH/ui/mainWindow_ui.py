@@ -511,6 +511,7 @@ class Ui_Main(object):
             ):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if not self.parent.AnalyzeProc.hasUnsavedChanges():
+            self.parent.ControlsWin.ui_export.hide()
             self.parent.ControlsWin.ui_preferences.hide()
             self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
             self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
