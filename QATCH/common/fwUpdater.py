@@ -131,9 +131,8 @@ class FW_Updater:
 
                         check_result = True
                         if UserConstants.REQ_ADMIN_UPDATES:
-                            action_role = UserRoles.ADMIN
-                            check_result = UserProfiles().check(
-                                parent.ControlsWin.userrole, action_role
+                            check_result = parent.ControlsWin.user_has_permission(
+                                UserRoles.ANALYZE
                             )
                         if askPermission and check_result == True:
                             question = "Device is running "

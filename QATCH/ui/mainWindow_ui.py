@@ -586,19 +586,9 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            action_role = UserRoles.CAPTURE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.CAPTURE
             )
-            if check_result is None:  # user check required, but no user signed in
-                Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action."
-                )
-                Log.i("Please sign in to continue.")
-                self.parent.ControlsWin.set_user_profile()  # prompt for sign-in
-                check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role
-                )  # check again
             if check_result:
                 self.parent._enable_ui(True)
                 self.parent.VisQAIWin.enable(False)
@@ -693,9 +683,8 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.injection_ui
         ):
             self.parent.analyze_data()
-            action_role = UserRoles.ANALYZE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.ANALYZE
             )
             if check_result:
                 self.parent._enable_ui(False)
@@ -781,19 +770,9 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.injection_ui
         ):
             self.parent.VisQAIWin.reset()
-            action_role = UserRoles.OPERATE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.OPERATE
             )
-            if check_result is None:  # user check required, but no user signed in
-                Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action."
-                )
-                Log.i("Please sign in to continue.")
-                self.parent.ControlsWin.set_user_profile()  # prompt for sign-in
-                check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role
-                )  # check again
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(True)
@@ -886,19 +865,9 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            action_role = UserRoles.OPERATE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.OPERATE
             )
-            if check_result is None:
-                Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action."
-                )
-                Log.i("Please sign in to continue.")
-                self.parent.ControlsWin.set_user_profile()
-                check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role
-                )
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
@@ -977,19 +946,9 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            action_role = UserRoles.OPERATE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.OPERATE
             )
-            if check_result is None:
-                Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action."
-                )
-                Log.i("Please sign in to continue.")
-                self.parent.ControlsWin.set_user_profile()
-                check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role
-                )
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
