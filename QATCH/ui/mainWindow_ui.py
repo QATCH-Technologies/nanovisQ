@@ -487,12 +487,32 @@ class Ui_Main(object):
 
     def setNoUserMode(self, obj):
 
-        # DO NOT COMMIT
-        # import pyautogui
-        # pyautogui.typewrite("AKM")
-        # pyautogui.press("enter")
-        # pyautogui.typewrite("12345678")
-        # pyautogui.press("enter")
+        # NOTE: LOCAL TEST CREDENTIALS FOR AUTO-LOGIN
+        try:
+            cred_file = "credentials.json"
+            if os.path.exists(cred_file):
+                import sys
+
+                if getattr(sys, "frozen", False):
+                    raise PermissionError(
+                        "Auto-login is not allowed in EXE application"
+                    )
+                import json, pyautogui
+
+                with open(cred_file, "r") as file:
+                    creds = json.load(file)
+                if list(creds.keys()) == ["username", "password"]:
+                    from time import sleep
+
+                    sleep(1)  # wait for app launch
+                    pyautogui.typewrite(creds["username"])
+                    pyautogui.press("enter")
+                    pyautogui.typewrite(creds["password"])
+                    pyautogui.press("enter")
+        except (ModuleNotFoundError, ImportError) as e:
+            Log.e(f"Auto-login error: {e.msg} (missing dependency)")
+        except Exception as e:
+            Log.e(f"Auto-login error: {str(e)}")
 
         if (
             self.splitter.widget(0) == self.userview
@@ -612,16 +632,19 @@ class Ui_Main(object):
                     self.parent.viewTutorialPage([3, 4])
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.w(
-                    f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
-                )
-                Log.e("Please sign in to access Run mode.")
-            else:
-                Log.w(
-                    f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
-                )
-                Log.e("You are not authorized to access Run mode.")
+
+            # NOTE: With the use of `ControlsWin.user_has_permission()` these checks are now redundant
+            # elif check_result is None:
+            #     Log.w(
+            #         f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+            #     )
+            #     Log.e("Please sign in to access Run mode.")
+            # else:
+            #     Log.w(
+            #         f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+            #     )
+            #     Log.e("You are not authorized to access Run mode.")
+
         else:
             if self.splitter.widget(0) == self.analyze:
                 Log.e(

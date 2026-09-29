@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import QDesktopWidget
 
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
-from QATCH.common.userProfiles import UserProfiles
+from QATCH.common.userProfiles import UserPreferences, UserProfiles
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.run_recovery_ui import RunRecoveryDialog
@@ -55,7 +55,7 @@ class Ui_Export(QtWidgets.QWidget):
 
         USE_FULLSCREEN = QDesktopWidget().availableGeometry().width() == 2880
         self.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
-        self.setMinimumSize(750, 666)
+        self.setMinimumSize(750, 600)
         # self.move(500, 50)
 
         self.layout = QtWidgets.QVBoxLayout(self)
@@ -125,7 +125,12 @@ class Ui_Export(QtWidgets.QWidget):
         layout_h14.addWidget(self.import_dest, 1)  # stretch
         layout_h14.addWidget(self.set_import_dest, 0)
 
+        import_note = QtWidgets.QLabel(
+            "<b>NOTE:</b> Changing the Import Destination will also change your currently selected working directory."
+        )
+
         layout_v7 = QtWidgets.QVBoxLayout()
+        layout_v7.addWidget(import_note)
         layout_v7.addLayout(layout_h14)
         layout_v7.addLayout(layout_h12)
 
@@ -207,16 +212,20 @@ class Ui_Export(QtWidgets.QWidget):
         layout_h15.addWidget(self.export_src, 1)  # stretch
         layout_h15.addWidget(self.set_export_src, 0)
 
+        export_note = QtWidgets.QLabel(
+            "<b>NOTE:</b> Changing the Export Source will also change your currently selected working directory."
+        )
+
         layout_v8 = QtWidgets.QVBoxLayout()
+        layout_v8.addWidget(export_note)
         layout_v8.addLayout(layout_h15)
-        layout_v8.addLayout(layout_h12)
 
         self.groupbox8 = QtWidgets.QGroupBox("Export Source")
         self.groupbox8.setCheckable(False)
         self.groupbox8.setChecked(False)
         self.groupbox8.setLayout(layout_v8)
 
-        self.btn4 = QtWidgets.QPushButton("Export to...")
+        self.btn4 = QtWidgets.QPushButton("...")
         self.btn4.pressed.connect(self.select_folder_target)
         self.btn5 = QtWidgets.QLineEdit("[NONE]")
         self.btn5.setReadOnly(True)
@@ -247,13 +256,21 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox1.setLayout(layout_h1)
 
         layout_h2 = QtWidgets.QHBoxLayout()
-        layout_h2.addWidget(self.btn4)
         layout_h2.addWidget(self.btn5)
+        layout_h2.addWidget(self.btn4)
+
+        layout_v9 = QtWidgets.QVBoxLayout()
+        layout_v9.addLayout(layout_h2)
 
         self.groupbox2 = QtWidgets.QGroupBox("Export to Folder")
         self.groupbox2.setCheckable(True)
         self.groupbox2.setChecked(False)
-        self.groupbox2.setLayout(layout_h2)
+        # self.groupbox2.setLayout(layout_h2)
+
+        self.groupbox9 = QtWidgets.QGroupBox("Export Destination")
+        self.groupbox9.setCheckable(False)
+        self.groupbox9.setChecked(False)
+        self.groupbox9.setLayout(layout_v9)
 
         layout_h13 = QtWidgets.QHBoxLayout()
         self.combo_csv_cols = CheckableComboBox(self)
@@ -344,6 +361,9 @@ class Ui_Export(QtWidgets.QWidget):
         layout_h7.addWidget(self.doOverwrite)
         layout_h7.addWidget(self.doSkip)
 
+        # Add "Existing files:" to Export Destination group
+        layout_v9.addLayout(layout_h7)
+
         self.exportAll = QtWidgets.QCheckBox("All Runs")
         self.selection = QtWidgets.QCheckBox("Selection:")
         self.selectRun = QtWidgets.QPushButton("[ALL]")
@@ -379,7 +399,7 @@ class Ui_Export(QtWidgets.QWidget):
         layout_v4.addLayout(layout_h5)
         layout_v4.addLayout(layout_h9)
         layout_v4.addLayout(layout_filter)
-        layout_v4.addLayout(layout_h7)
+        # layout_v4.addLayout(layout_h7)
 
         layout_h14 = QtWidgets.QHBoxLayout()
         layout_h14.addWidget(self.selection, 0)
@@ -415,11 +435,11 @@ class Ui_Export(QtWidgets.QWidget):
         exportGridLayout.addWidget(self.filterLastXDays, 6, 4, 1, 1)
         exportGridLayout.addWidget(self.filterNumDays, 6, 5, 1, 1)
         exportGridLayout.addWidget(self.filterUnits, 6, 6, 1, 1)
-        # row 8: existing files
-        exportGridLayout.addWidget(self.existingExport, 8, 1, 1, 1)
-        exportGridLayout.addWidget(self.doMerge, 8, 2, 1, 1)
-        exportGridLayout.addWidget(self.doOverwrite, 8, 3, 1, 1)
-        exportGridLayout.addWidget(self.doSkip, 8, 4, 1, 3)
+        # row 8: existing files (moved to Export Destination: groupbox9)
+        # exportGridLayout.addWidget(self.existingExport, 8, 1, 1, 1)
+        # exportGridLayout.addWidget(self.doMerge, 8, 2, 1, 1)
+        # exportGridLayout.addWidget(self.doOverwrite, 8, 3, 1, 1)
+        # exportGridLayout.addWidget(self.doSkip, 8, 4, 1, 3)
 
         self.groupbox3 = QtWidgets.QGroupBox("Export Settings")
         self.groupbox3.setCheckable(False)
@@ -463,10 +483,11 @@ class Ui_Export(QtWidgets.QWidget):
 
         layout_v = QtWidgets.QVBoxLayout()
         layout_v.addWidget(self.groupbox8)
+        layout_v.addWidget(self.groupbox9)
         layout_v.addWidget(self.groupbox3)
         layout_v.addWidget(self.groupbox6)
-        layout_v.addWidget(self.groupbox2)
-        layout_v.addWidget(self.groupbox1)
+        # layout_v.addWidget(self.groupbox2)
+        # layout_v.addWidget(self.groupbox1)
         layout_v.addWidget(self.tb)
         layout_v.addWidget(self.pb)
         layout_v.addLayout(layout_h8)
@@ -487,6 +508,18 @@ class Ui_Export(QtWidgets.QWidget):
         export_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         export_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         export_scroll.setWidget(export_tab_content)
+    
+        # Fix the background on Export for not being white when in QScrollArea
+        export_scroll.setStyleSheet("""
+            QScrollArea {
+                background-color: white;
+                border: none;
+            }
+
+            QScrollArea > QWidget > QWidget {
+                background-color: white;
+            }
+        """)
 
         tab2_layout = QtWidgets.QVBoxLayout()
         tab2_layout.setContentsMargins(0, 0, 0, 0)
@@ -544,7 +577,7 @@ class Ui_Export(QtWidgets.QWidget):
         )
         icon = QtGui.QIcon(icon_path)
         self.setWindowIcon(icon)
-        self.setWindowTitle("Import/Export Data")
+        self.setWindowTitle("Import Data")  # also set on tab change
 
         self.usb_add.connect(self.ui_add)
         self.usb_remove.connect(self.ui_remove)
@@ -570,18 +603,23 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox2.setChecked(True)  # default export to folder
         self.checkChanged2(True)  # update enable fields
 
+        # Load and apply preferences object from JSON data
+        # NOTE: `set_preferences` updates `log_prefer_path`
+        UserProfiles.user_preferences = UserPreferences(UserProfiles.get_session_file())
+        UserProfiles.user_preferences.set_preferences()
+
         self.import_dest.setText(Constants.log_prefer_path)
         self.export_src.setText(Constants.log_prefer_path)
 
     def change_working_dir(self):
         # Ask the user for a new working directory selection...
-        local_data_before = os.path.join(Constants.log_prefer_path)
+        local_data_before = Constants.log_prefer_path
         if self.parent:
-            self.parent.set_working_directory()
+            self.parent.set_working_directory()  # changes `log_prefer_path`
         else:
             Log.e("No `parent` set. Cannot change working directory.")
             return
-        local_data_after = os.path.join(Constants.log_prefer_path)
+        local_data_after = Constants.log_prefer_path
 
         # Detect if the user has provided a new working directory
         if local_data_before != local_data_after:
@@ -594,7 +632,6 @@ class Ui_Export(QtWidgets.QWidget):
         # Update text boxes to reflect the new working directory
         self.import_dest.setText(local_data_after)
         self.export_src.setText(local_data_after)
-
 
     def noNameChanged(self, current_state):
         is_enabled = len(self.exportNoName.styleSheet()) == 0
@@ -667,7 +704,8 @@ class Ui_Export(QtWidgets.QWidget):
         self.tabChanged(4)
 
     def tabChanged(self, idx):
-        if idx == 4:  # History
+        if idx == 4:  # History Log
+            self.setWindowTitle("History Log")
             history_path = os.path.join(
                 os.getcwd(), Constants.log_export_path, "export_history.log"
             )
@@ -678,6 +716,8 @@ class Ui_Export(QtWidgets.QWidget):
             else:
                 self.clearAllHistory.setEnabled(False)
                 self.history.setText("No import/export history to show.")
+        else:  # Import/Export/Recover/Advanced Data
+            self.setWindowTitle(f"{self.tabs.tabText(idx)} Data")
 
     def checkChanged1(self, chk):
         # Log.d(f"group1 clicked! {chk}")
@@ -819,10 +859,12 @@ class Ui_Export(QtWidgets.QWidget):
             .replace(":", "")
             .replace("-", "")
             .replace(" ", "_")
+            + "_QATCH_EXPORT_"
         )
         if len(selected_folder) > 0:
-            default_filename = selected_folder
-        default_filename = "QATCH_EXPORT_" + default_filename
+            default_filename += selected_folder
+        else:
+            default_filename += "ALL"
         enabled = self.exportNoName.isChecked() == False
         self.exportNameTxt.setEnabled(enabled)
         self.exportNameTxt.setText(default_filename if enabled else "")
@@ -1037,6 +1079,15 @@ class Ui_Export(QtWidgets.QWidget):
         self.generateExportName()
 
     def select_folder_target(self, no_ask=False):
+        def split_multiple(string: str, delimeters: list | None = None):
+            if delimeters is None:
+                delimeters = ["\\", "/"]
+            for delim in delimeters:
+                if delim == delimeters[0]:
+                    continue  # skip noop replace
+                string = string.replace(delim, delimeters[0])
+            return string.split(delimeters[0])
+
         default_export_folder = os.path.join(
             os.path.dirname(Constants.log_prefer_path), "export"
         )
@@ -1048,6 +1099,37 @@ class Ui_Export(QtWidgets.QWidget):
         )
         if select_path is None:
             return  # self.btn5.setText("[NONE]")
+
+        if Constants.log_export_path in split_multiple(select_path):
+            # Disallow "logged_data" in the export path parts to avoid chaos
+            # default to "export" at same tree depth as "logged_data" folder
+            select_path = os.path.join(
+                select_path[: select_path.find(Constants.log_export_path)],
+                "export",
+            )
+            if no_ask or PopUp.question(
+                self,
+                "Export Destination Not Allowed",
+                f"""
+You cannot export to a folder inside of a parent "logged_data" directory.
+
+Would you like to accept the corrected path:
+"{select_path}"?
+
+Click "Yes" to accept or "No" to undo your selection.
+                """,
+                default=True,
+            ):
+                Log.w(
+                    f"User picked an invalid Export Destination. Correcting to '{select_path}'"
+                )
+                no_ask = True  # create directory structure (if missing)
+            else:
+                Log.w(
+                    f"User picked an invalid Export Destination. Canceling path change requset."
+                )
+                return
+
         if no_ask:
             try:
                 os.makedirs(select_path, exist_ok=True)
@@ -1060,7 +1142,7 @@ class Ui_Export(QtWidgets.QWidget):
                 self.freezeGUI(True)
                 return
         self.drive = select_path
-        self.btn5.setText(self.drive)
+        self.btn5.setText(self.drive)  # NOTE: disallow 'logged_data' in path
         self.freezeGUI(True)
 
     def select_import_folder(self):

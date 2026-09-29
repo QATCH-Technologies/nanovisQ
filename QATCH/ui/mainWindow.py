@@ -393,13 +393,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[0].addAction("&Export Data", self.export_data)
         self.menubar[0].addAction("&Recover Data", self.recover_data)
         # self.menubar[0].addAction('&Configure Data', self.configure_data)
-        self.menubar[0].addAction("&Preferences", self.preferences)
-        self.menubar[0].addAction("&Find Devices", self.scan_subnets)
+        # self.menubar[0].addAction("&Preferences", self.preferences)
+        # self.menubar[0].addAction("&Find Devices", self.scan_subnets)
         self.menubar[0].addAction("E&xit", self.close)
         self.menubar.append(target.menuBar().addMenu("&Users"))
         self.username = self.menubar[1].addAction("User: [NONE]")
         self.username.setEnabled(False)
         self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
+        self.menubar[1].addAction("&Preferences...", self.preferences)
         self.menubar[1].addAction("Select &directory...", self.set_working_directory)
         self.manage = self.menubar[1].addAction(
             "&Manage Users...", self.manage_user_profiles
@@ -572,6 +573,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.parent._port_list_refresh()
 
     def set_working_directory(self):
+        if not self.user_has_permission(UserRoles.ANY):
+            return
+
         # loads global/user prefs
         self.ui_preferences.toggle_global_preferences()
         # force sync read/write
@@ -618,6 +622,20 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 self.parent.AnalyzeProc.tool_User.setText(name)
                 if self.userrole != UserRoles.ADMIN:
                     self.manage.setText("&Change Password...")
+
+                # Mode change if on login screen and sign-in success
+                if (
+                    self.parent.MainWin.ui0.splitter.widget(0)
+                    == self.parent.MainWin.ui0.userview
+                ):
+                    Log.d(
+                        "User sign-in mode is active. Changing mode on sign-in action."
+                    )
+                    if self.user_has_permission(UserRoles.CAPTURE):
+                        self.parent.MainWin.ui0.setRunMode(self)
+                    else:
+                        self.parent.MainWin.ui0.setAnalyzeMode(self)
+
         else:
             if self.parent.MainWin.ui0.setNoUserMode(None):
                 UserProfiles().session_end()
