@@ -354,7 +354,7 @@ class Parser:
         except Exception:
             Log.w(
                 TAG,
-                "<protein_type> param could not be found in run XML; returning default.",
+                "'protein_type' param could not be found in XML; returning default.",
             )
             return {
                 "protein": Protein(
@@ -443,7 +443,7 @@ class Parser:
         except Exception:
             Log.w(
                 TAG,
-                "<buffer_type> param could not be found in XML; returning default.",
+                "'buffer_type' param could not be found in XML; returning default.",
             )
             return {
                 "buffer": Buffer(enc_id=-1, name="None"),
@@ -694,25 +694,26 @@ class Parser:
 
         Returns:
             dict[str, tuple[str, str]]: A dictionary where keys are the 'action'
-                strings (e.g., "Created", "Modified") and values are 2-tuples
-                containing (username, recorded_timestamp). Returns an empty
-                dictionary if no `<audits>` section is found.
+                strings (e.g., "CAPTURE", "ANALYZE") and values are 2-tuples
+                containing (username, recorded). Only the most recent record for
+                each 'action' (if any exists) is returned. Returns an empty
+                dictionary if no `<audits>` tag section is found. No key is
+                guaranteed. Check it exists or specify a default value on `get`.
         """
         audits_list = self.root.findall("audits")
         if not audits_list:
             return {}
 
-        audits_elem = audits_list[-1]  # most recent element
         audits_dict = {}
+        for audits_elem in audits_list:
+            for audit in audits_elem:
+                if audit.tag == "audit":
+                    action = audit.get("action", "")
+                    username = audit.get("username", "")
+                    recorded = audit.get("recorded", "")
 
-        for audit in audits_elem:
-            if audit.tag == "audit":
-                action = audit.get("action", "")
-                username = audit.get("username", "")
-                recorded = audit.get("recorded", "")
-
-                if action:
-                    audits_dict[action] = (username, recorded)
+                    if action:
+                        audits_dict[action] = (username, recorded)
 
         return audits_dict
 
@@ -773,20 +774,74 @@ class Parser:
         value = self.get_param("bioformulation", str, required=False)
         return value == "True" if value else False
 
-    def get_viscosity_profile(self) -> ViscosityProfile:
+    def get_latest_result(self) -> list:
+        """Locates and extracts the last row from the most recent analysis result.
+
+        This method searches the instance's base path for zip archives matching the
+        pattern 'analyze-[INT].zip' and selects the one with the highest integer index.
+        It then reads shear rate, viscosity, and temperature data from the associated
+        '*_analyze_result.csv' file within the archive. The last CSV row is returned.
+
+        Returns:
+            list: The last row from the "*_result.csv" file containing the following:
+                  [shear_rate,viscosity_avg,percent_error,temperature_avg,n_coeff]
+
+        Raises:
+            FileNotFoundError: If the base path is invalid or missing, if no
+                'analyze-*.zip' files are found in the directory, or if the required
+                '*_analyze_result.csv' file is missing from the selected archive.
+        """
+        if not self.base_path or not os.path.isdir(self.base_path):
+            raise FileNotFoundError(f"Base path not found: {self.base_path}")
+
+        all_files = os.listdir(self.base_path)
+        analyze_zips = [f for f in all_files if re.match(
+            r"analyze-\d+\.zip$", f)]
+
+        if not analyze_zips:
+            raise FileNotFoundError(
+                f"No analyze-*.zip files found in {self.base_path}")
+        largest_zip_name = max(
+            analyze_zips,
+            key=lambda n: int(re.search(r"analyze-(\d+)\.zip", n).group(1)),
+        )
+        zip_base_name = largest_zip_name[:-4]
+
+        # Get namelist from the analyze zip
+        dummy_path = os.path.join(self.base_path, "dummy")
+        namelist = SecureOpen.get_namelist(dummy_path, zip_name=zip_base_name)
+
+        csv_files = [n for n in namelist if n.endswith("_analyze_result.csv")]
+        if not csv_files:
+            raise FileNotFoundError(
+                f"No *_analyze_result.csv found inside {largest_zip_name}")
+
+        csv_file_name = csv_files[0]
+        csv_path = os.path.join(self.base_path, csv_file_name)
+        with SecureOpen(csv_path, "r", zipname=zip_base_name, insecure=True) as csv_f:
+            csv_data = np.loadtxt(csv_f, delimiter=",",
+                                  skiprows=1, usecols=(1, 2, 3))
+            # Handle case where csv has only one row
+            if csv_data.ndim == 1:
+                csv_data = csv_data.reshape(1, -1)
+
+        return csv_data[-1]  # return last row only
+
+    def get_viscosity_profile(self) -> tuple[ViscosityProfile, float]:
         """Locates and extracts viscosity data from the most recent analysis archive.
 
         This method searches the instance's base path for zip archives matching the
         pattern 'analyze-[INT].zip' and selects the one with the highest integer index.
         It then reads shear rate, viscosity, and temperature data from the associated
         '*_analyze_out.csv' file within the archive. The extracted viscosities are
-        interpolated to match the predefined shear rates in `self.profile_shears`
+        NOT interpolated to match the predefined shear rates in `self.profile_shears`
         before being packaged into a measured `ViscosityProfile`.
 
         Returns:
             tuple: A tuple containing:
-                - ViscosityProfile: The interpolated viscosity profile marked as
-                  measured data (units in cP).
+                - ViscosityProfile: The parsed viscosity profile containing two lists
+                  of shear rates (units in 1/s) and raw viscosity (units in cP).
+                  The returned profile is marked as measured data.
                 - float: The average temperature calculated from the CSV data.
 
         Raises:
@@ -834,21 +889,23 @@ class Parser:
 
         shear_rates_list = shear_rate.tolist()
         viscosities_list = viscosity.tolist()
-        temp_profile = ViscosityProfile(
+        profile = ViscosityProfile(
             shear_rates=shear_rates_list, viscosities=viscosities_list, units="cP"
         )
-        interpolated_viscosities = [
-            temp_profile.get_viscosity(sr) for sr in self.profile_shears]
-        profile = ViscosityProfile(
-            shear_rates=self.profile_shears,
-            viscosities=interpolated_viscosities,
-            units="cP",
-        )
+
+        # NOTE: Interpolation disabled now that we always return 10 points
+        # interpolated_viscosities = [
+        #     temp_profile.get_viscosity(sr) for sr in self.profile_shears]
+        # profile = ViscosityProfile(
+        #     shear_rates=self.profile_shears,
+        #     viscosities=interpolated_viscosities,
+        #     units="cP",
+        # )
 
         # Mark as measured data
         profile.is_measured = True
 
-        return profile, np.average(temperature)
+        return profile, temperature[-1]
 
     def get_run_name(self) -> Optional[str]:
         """Retrieves the run name from the `<run_info>` XML tag.
@@ -886,6 +943,32 @@ class Parser:
             return None
 
         return run_name
+
+    def get_capture_time(self) -> Optional[str]:
+        """Retrieves the original capture time from the `<audits>` XML tag.
+
+        This method attempts to extract the 'recorded' attribute from the most
+        recent `<audits>` XML element where `action="CAPTURE"` by first checking
+        if the XML element contains any `<audits>`. If it does not, it returns.
+
+        Returns:
+            Optional[str]: The extracted capture time as a string, or None if the
+                `<audits>` tag or the CAPTURE 'action' attribute cannot be found.
+        """
+        return self.get_audits().get("CAPTURE", (None, None))[1]
+
+    def get_analyze_time(self) -> Optional[str]:
+        """Retrieves the most recent analyze time from the `<audits>` XML tag.
+
+        This method attempts to extract the 'recorded' attribute from the most
+        recent `<audits>` XML element where `action="ANALYZE"` by first checking
+        if the XML element contains any `<audits>`. If it does not, it returns.
+
+        Returns:
+            Optional[str]: The extracted analyze time as a string, or None if the
+                `<audits>` tag or the ANALYZE 'action' attribute cannot be found.
+        """
+        return self.get_audits().get("ANALYZE", (None, None))[1]
 
     def get_formulation(self) -> Formulation:
         """Constructs and populates a `Formulation` object using parsed parameters.

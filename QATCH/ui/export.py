@@ -1,12 +1,16 @@
 import csv
 import datetime
 import os
+import pyzipper
 import shutil
 import subprocess
+import sys
 import time
 import zipfile
+
 from datetime import timezone as tz
 from threading import Thread
+from traceback import format_tb
 from xml.dom import minidom
 
 import numpy as np
@@ -130,8 +134,8 @@ class Ui_Export(QtWidgets.QWidget):
         )
 
         layout_v7 = QtWidgets.QVBoxLayout()
-        layout_v7.addWidget(import_note)
         layout_v7.addLayout(layout_h14)
+        layout_v7.addWidget(import_note)
         layout_v7.addLayout(layout_h12)
 
         self.groupbox7 = QtWidgets.QGroupBox("Import Destination")
@@ -217,8 +221,8 @@ class Ui_Export(QtWidgets.QWidget):
         )
 
         layout_v8 = QtWidgets.QVBoxLayout()
-        layout_v8.addWidget(export_note)
         layout_v8.addLayout(layout_h15)
+        layout_v8.addWidget(export_note)
 
         self.groupbox8 = QtWidgets.QGroupBox("Export Source")
         self.groupbox8.setCheckable(False)
@@ -277,6 +281,9 @@ class Ui_Export(QtWidgets.QWidget):
         self.combo_csv_cols.addItems(
             [
                 "Run Name",
+                "Capture Time",
+                "Analyze Time",
+                "Export Time",
                 "Average Viscosity",
                 "Std Dev",
                 "Viscosity Profile",
@@ -508,7 +515,7 @@ class Ui_Export(QtWidgets.QWidget):
         export_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         export_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         export_scroll.setWidget(export_tab_content)
-    
+
         # Fix the background on Export for not being white when in QScrollArea
         export_scroll.setStyleSheet("""
             QScrollArea {
@@ -885,6 +892,9 @@ class Ui_Export(QtWidgets.QWidget):
 
         tool_tip_indicator = "[?]"
         if not self.exportAsFolder.isChecked():
+            if self.exportNoName.isChecked():
+                self.exportNoName.setChecked(False)
+
             # Inject CSS to make the checkbox look completely disabled/grayed out
             self.exportNoName.setStyleSheet("""
                 QCheckBox {
@@ -900,8 +910,6 @@ class Ui_Export(QtWidgets.QWidget):
             """)
 
             # Show the tool tip indicator and set hover text
-            if self.exportNoName.isChecked():
-                self.exportNoName.setChecked(False)
             if not self.exportNoName.text().endswith(tool_tip_indicator):
                 self.exportNoName.setText(
                     self.exportNoName.text() + " " + tool_tip_indicator
@@ -1768,8 +1776,17 @@ Click "Yes" to accept or "No" to undo your selection.
                             )
                             file_time = (last_modified - epoch).total_seconds()
                             os.utime(d, (file_time, file_time))
+
+            if self.exportAsCSV.isChecked():
+                path_to_export = self.csv_report_path
+            elif self.exportAsZIP.isChecked():
+                path_to_export = zip_path
+            else:
+                path_to_export = os.path.dirname(export_path)
+
             Log.i(
-                TAG1, f"[{self.drive}] Exporting to {drive_or_folder} {export_path}..."
+                TAG1,
+                f"[{self.drive}] Exporting to {drive_or_folder} {path_to_export}...",
             )
             self.progress.emit(
                 f"[{self.drive}] Exporting to {drive_or_folder}... please wait...",
@@ -1923,7 +1940,9 @@ Click "Yes" to accept or "No" to undo your selection.
                     Log.w(TAG1, "Overwriting existing ZIP archive")
                 shutil.make_archive(export_path, "zip", export_path)
                 shutil.rmtree(export_path)
-            Log.i(TAG1, "DONE - Exported {} run(s) to {}.".format(copied, export_path))
+            Log.i(
+                TAG1, "DONE - Exported {} run(s) to {}.".format(copied, path_to_export)
+            )
             if skipped > 0:
                 if self.exportAsCSV.isChecked():
                     reason = "there were errors with the analyze results"
@@ -1982,12 +2001,31 @@ Click "Yes" to accept or "No" to undo your selection.
             Log.e(TAG1, "Export error: {}".format(str(e)))
             self.progress.emit("Error exporting local data!", 100, "r", 0)
         finally:
+            if "path_to_export" in locals():
+                Log.d(f"Showing export file(s): {path_to_export}")
+                if os.path.isfile(path_to_export):
+                    subprocess.Popen(
+                        ["explorer.exe", "/select,", os.path.abspath(path_to_export)],
+                        creationflags=subprocess.CREATE_NO_WINDOW,
+                    )
+                else:
+                    subprocess.Popen(
+                        ["explorer.exe", os.path.abspath(path_to_export)],
+                        creationflags=subprocess.CREATE_NO_WINDOW,
+                    )
+            else:
+                Log.e("Unable to open export location.")
             self.freeze_gui.emit(True)
 
     def appendRunToCsvReport(self, run, cols, d_filter=0):
 
+        ELEVATE_LOGGING = False  # DEBUG ONLY
+
         # default values, if error parsing
         run_name = os.path.basename(run)
+        capture_time = None
+        analyze_time = None
+        export_time = None
         viscosity_profile = []
         average_viscosity = np.nan
         std_dev = np.nan
@@ -1997,10 +2035,18 @@ Click "Yes" to accept or "No" to undo your selection.
 
         _success = True
 
+        def time2str(t) -> str:
+            t_str = str(t)
+            t_str = t_str.split("+")[0]  # trim TZINFO
+            t_str = t_str.split(".")[0]  # trim fractional SECS
+            t_str = t_str.replace("T", " ")  # consistent format
+            return t_str
+
         try:
 
             files = os.listdir(run)
-            # Log.w(f"Run {os.path.basename(run)} has files: {files}")
+            if ELEVATE_LOGGING:
+                Log.w(f"Run {os.path.basename(run)} has files: {files}")
 
             if d_filter != 0:
                 # check date filtering if this run can be exported
@@ -2011,8 +2057,14 @@ Click "Yes" to accept or "No" to undo your selection.
                     st_mtime = datetime.datetime.fromtimestamp(
                         timestamp=os.stat(f_path).st_mtime, tz=tz.utc
                     )
+                    if ELEVATE_LOGGING:
+                        Log.w(f"File {f} modified at: {time2str(st_mtime)}")
                     if st_mtime > last_modified:
                         last_modified = st_mtime
+                if ELEVATE_LOGGING:
+                    Log.w(
+                        f"Run {os.path.basename(run)} last modified at: {time2str(last_modified)}"
+                    )
                 if last_modified < d_filter:  # file older than filter
                     return False  # immediate return, silently
 
@@ -2028,6 +2080,59 @@ Click "Yes" to accept or "No" to undo your selection.
                         run_name = parsed_name
                     # else: keep default run_name from os.path.basename(run)
 
+                if "Capture Time" in cols:
+                    ### PULL TIME FROM RUN INFO XML ###
+                    parsed_time = parser.get_capture_time()
+                    if parsed_time:
+                        capture_time = time2str(parsed_time)
+                    else:
+                        capture_time = "NEVER"
+
+                if "Analyze Time" in cols:
+                    ### PULL TIME FROM RUN INFO XML ###
+                    parsed_time = parser.get_analyze_time()
+                    if parsed_time:
+                        analyze_time = time2str(parsed_time)
+                    else:
+                        analyze_time = "NEVER"
+
+                if "Export Time" in cols:
+                    ### USE CURRENT LOCAL TIME ###
+                    export_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                result_csv = [np.nan, np.nan, np.nan]
+                temp = np.nan
+
+                if any(
+                    col in ["Average Viscosity", "Std Dev", "Temperature"]
+                    for col in cols
+                ):
+                    try:
+                        result_csv = parser.get_latest_result()
+
+                        if ELEVATE_LOGGING:
+                            Log.w("RESULT: ", result_csv)
+                    except Exception as e:
+                        if ELEVATE_LOGGING:
+                            Log.e("ERROR:", e)
+
+                if "Average Viscosity" in cols:
+                    ### CALCULATE AVERAGE VISCOSITY FROM MOST RECENT ANALYSIS ###
+                    average_viscosity = result_csv[0]
+
+                if "Std Dev" in cols:
+                    ### CALCULATE STANDARD DEVIATION FROM MOST RECENT ANALYSIS ###
+                    std_dev = result_csv[1]
+
+                if "Viscosity Profile" in cols:
+                    ### CALCULATE VISCOSITY PROFILE FROM MOST RECENT ANALYSIS ###
+                    profile, temp = parser.get_viscosity_profile()
+                    viscosity_profile = [profile.shear_rates, profile.viscosities]
+
+                if "Temperature" in cols:
+                    ### PULL TEMPERATURE FROM FORMULATION INFORMATION ###
+                    temperature = result_csv[2] or temp
+
                 if "Notes" in cols:
                     ### PULL NOTES FROM RUN INFO XML ###
                     notes = parser.get_run_notes()
@@ -2041,45 +2146,45 @@ Click "Yes" to accept or "No" to undo your selection.
                         )
 
                 require_formulation = any(
-                    col
-                    in [
-                        "Temperature",
-                        "Viscosity Profile",
-                        "Average Viscosity",
-                        "Std Dev",
-                    ]
-                    or col.startswith("Formulation_")
+                    # col
+                    # in [
+                    #     "Temperature",
+                    #     "Viscosity Profile",
+                    #     "Average Viscosity",
+                    #     "Std Dev",
+                    # ] or
+                    col.startswith("Formulation_")
                     for col in cols
                 )
                 if require_formulation:
                     # Everything of value relies on this, so pull it always
                     formulation = parser.get_formulation()
 
-                if "Temperature" in cols:
-                    ### PULL TEMPERATURE FROM FORMULATION INFORMATION ###
-                    if formulation and formulation.temperature:
-                        temperature = formulation.temperature
+                # if "Temperature" in cols:
+                #     ### PULL TEMPERATURE FROM FORMULATION INFORMATION ###
+                #     if formulation and formulation.temperature:
+                #         temperature = formulation.temperature
 
-                require_vp = any(
-                    col in ["Viscosity Profile", "Average Viscosity", "Std Dev"]
-                    for col in cols
-                )
-                if require_vp:
-                    ### CALCULATE VISCOSITY PROFILE FROM MOST RECENT ANALYSIS ###
-                    if formulation and formulation.viscosity_profile:
-                        viscosity_profile = formulation.viscosity_profile.viscosities
-                    else:
-                        raise FileNotFoundError(
-                            "Run has no measured Viscosity Profile. Has it been analyzed?"
-                        )
+                # require_vp = any(
+                #     col in ["Viscosity Profile", "Average Viscosity", "Std Dev"]
+                #     for col in cols
+                # )
+                # if require_vp:
+                #     ### CALCULATE VISCOSITY PROFILE FROM MOST RECENT ANALYSIS ###
+                #     if formulation and formulation.viscosity_profile:
+                #         viscosity_profile = formulation.viscosity_profile.viscosities
+                #     else:
+                #         raise FileNotFoundError(
+                #             "Run has no measured Viscosity Profile. Has it been analyzed?"
+                #         )
 
-                if "Average Viscosity" in cols:
-                    ### CALCULATE AVERAGE VISCOSITY FROM MOST RECENT ANALYSIS ###
-                    average_viscosity = np.average(viscosity_profile)
+                # if "Average Viscosity" in cols:
+                #     ### CALCULATE AVERAGE VISCOSITY FROM MOST RECENT ANALYSIS ###
+                #     average_viscosity = np.average(viscosity_profile)
 
-                if "Std Dev" in cols:
-                    ### CALCULATE STANDARD DEVIATION FROM MOST RECENT ANALYSIS ###
-                    std_dev = np.std(viscosity_profile)
+                # if "Std Dev" in cols:
+                #     ### CALCULATE STANDARD DEVIATION FROM MOST RECENT ANALYSIS ###
+                #     std_dev = np.std(viscosity_profile)
 
             else:
                 Log.e(
@@ -2099,6 +2204,15 @@ Click "Yes" to accept or "No" to undo your selection.
         except Exception as e:
             Log.e(f"Run {os.path.basename(run)} encountered an error. Cannot export!")
 
+            limit = None
+            t, v, tb = sys.exc_info()
+
+            a_list = ["Traceback (most recent call last):"]
+            a_list = a_list + format_tb(tb, limit)
+            a_list.append(f"{t.__name__}: {str(v)}")
+            for line in a_list:
+                Log.e(line)
+
             _success = False
 
         try:
@@ -2106,12 +2220,18 @@ Click "Yes" to accept or "No" to undo your selection.
             for col in cols:
                 if col == "Run Name":
                     row.append(run_name)
-                elif col == "Viscosity Profile":
-                    row.append(viscosity_profile)
+                elif col == "Capture Time":
+                    row.append(capture_time)
+                elif col == "Analyze Time":
+                    row.append(analyze_time)
+                elif col == "Export Time":
+                    row.append(export_time)
                 elif col == "Average Viscosity":
                     row.append(average_viscosity)
                 elif col == "Std Dev":
                     row.append(std_dev)
+                elif col == "Viscosity Profile":
+                    row.append(viscosity_profile)
                 elif col == "Temperature":
                     row.append(temperature)
                 elif col == "Formulation_Protein":
@@ -2198,20 +2318,28 @@ Click "Yes" to accept or "No" to undo your selection.
                 except (ValueError, TypeError):
                     return False
 
+            def format_row(value):
+                if isinstance(value, list):
+                    return [format_row(item) for item in value]
+
+                return f"{value:.2f}" if is_float(value) else str(value)
+
             # convert to strings, for join to work
             try:
                 # try to round floats to 2 decimal places
                 for x1, y1 in enumerate(row):
-                    if type(y1) is list:
-                        for x2, y2 in enumerate(y1):
-                            y1[x2] = (
-                                float(f"{y2:2.2f}") if is_float(y2) else str(y2)
-                            )  # as float
                     row[x1] = (
                         f"{y1:2.2f}"
                         if is_float(y1) and cols[x1] != "Notes"
-                        else str(y1)
-                    )  # as str
+                        else format_row(y1)
+                    )
+                    if cols[x1] == "Viscosity Profile":
+                        row[x1] = (
+                            str(row[x1])
+                            .replace("'", "")
+                            .replace("[[", "[")
+                            .replace("]]", "]")
+                        )
             except Exception as e:
                 Log.w(
                     "Error trying to convert row to str; using fallback (without rounding)"
