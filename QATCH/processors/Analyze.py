@@ -111,7 +111,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
-
+        return ST1  # always, not used (calculated during Analyze task)
+    
         if concentration <= 123:  # mg/mL
             return ST1
 
@@ -9174,47 +9175,80 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             Log.d(f"Channel thickness = {Constants.channel_thickness}")
-            viscosity = (
-                ST
-                * np.cos(np.radians(CA))
-                * all_time
-                * Constants.channel_thickness
-                / 6
-                / (all_pos**2)
-                * 1e6
-                * (3 * (n + 1) / (2 * n + 1))
-            )
-            shear_rate = (
-                6
-                * all_velocity
-                / Constants.channel_thickness
-                * (2 / 3 + 1 / 3 / n)
-                * 1e-3
-                / (n + 1)
-                * n
-            )
 
-            fill_visc = (
-                ST
-                * np.cos(np.radians(CA))
-                * fill_time
-                * Constants.channel_thickness
-                / 6
-                / (fill_pos**2)
-                * 1e6
-                * (3 * (n + 1) / (2 * n + 1))
-            )
-            fill_shear = (
-                6
-                * fill_velocity
-                / Constants.channel_thickness
-                * (2 / 3 + 1 / 3 / n)
-                * 1e-3
-                / (n + 1)
-                * n
-            )
+            for i in range(2):
+                FIRST_LOOP = i == 0
 
-            self.update(status_label)
+                # first loop: calculate viscosity using ST = 72
+                if BIOFORMULATION and FIRST_LOOP:
+                    ST = 72
+                # else: use "surface_tension" from XML -or- 
+                # recalculate on 2nd loop with corrected ST
+
+                viscosity = (
+                    ST
+                    * np.cos(np.radians(CA))
+                    * all_time
+                    * Constants.channel_thickness
+                    / 6
+                    / (all_pos**2)
+                    * 1e6
+                    * (3 * (n + 1) / (2 * n + 1))
+                )
+                shear_rate = (
+                    6
+                    * all_velocity
+                    / Constants.channel_thickness
+                    * (2 / 3 + 1 / 3 / n)
+                    * 1e-3
+                    / (n + 1)
+                    * n
+                )
+
+                fill_visc = (
+                    ST
+                    * np.cos(np.radians(CA))
+                    * fill_time
+                    * Constants.channel_thickness
+                    / 6
+                    / (fill_pos**2)
+                    * 1e6
+                    * (3 * (n + 1) / (2 * n + 1))
+                )
+                fill_shear = (
+                    6
+                    * fill_velocity
+                    / Constants.channel_thickness
+                    * (2 / 3 + 1 / 3 / n)
+                    * 1e-3
+                    / (n + 1)
+                    * n
+                )
+
+                self.update(status_label)
+
+                protein_conc = float(xml_params.get("protein_concentration", 0.0))
+                if FIRST_LOOP and BIOFORMULATION and protein_conc > 75:
+                    if initial_fill_only:
+                        A = np.average(fill_visc)
+                    else:
+                        A = np.average(viscosity)
+                    if A <= 5:
+                        CF = 1
+                    elif A < 7.5:
+                        CF = 1 - 0.132*(A - 5)
+                    else:
+                        CF = 0.67
+                    ST *= CF  # adjust surface tension with correction factor
+
+                    Log.d(f"Calculated using 'average_viscosity' = {A}")
+                    Log.d(f"Calculated using 'CF({A:2.2f})' = {CF}")
+                    
+                    continue  # proceed to send loop, recalculate
+                else:
+                    break  # skip second loop
+
+            Log.d(f"Calculated using 'surface_tension' = {ST}")
 
             fig4 = plt.figure(figsize=(12, 6))
             fig4.set_layout_engine(None)  # full control, no auto-layout adjustments
