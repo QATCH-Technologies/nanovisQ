@@ -112,7 +112,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
         return ST1  # always, not used (calculated during Analyze task)
-    
+
         if concentration <= 123:  # mg/mL
             return ST1
 
@@ -7556,6 +7556,7 @@ class AnalyzerWorker(QtCore.QObject):
             distances = np.fromstring(
                 distances, sep=" "
             ).tolist()  # convert string to numpy array and then to a list
+            self.start_distances = distances.copy()
             normal_pts = [0.2, 0.4, 0.6, 0.8]
 
             self.update(status_label)
@@ -9182,7 +9183,7 @@ class AnalyzerWorker(QtCore.QObject):
                 # first loop: calculate viscosity using ST = 72
                 if BIOFORMULATION and FIRST_LOOP:
                     ST = 72
-                # else: use "surface_tension" from XML -or- 
+                # else: use "surface_tension" from XML -or-
                 # recalculate on 2nd loop with corrected ST
 
                 viscosity = (
@@ -9236,14 +9237,14 @@ class AnalyzerWorker(QtCore.QObject):
                     if A <= 5:
                         CF = 1
                     elif A < 7.5:
-                        CF = 1 - 0.132*(A - 5)
+                        CF = 1 - 0.132 * (A - 5)
                     else:
                         CF = 0.67
                     ST *= CF  # adjust surface tension with correction factor
 
                     Log.d(f"Calculated using 'average_viscosity' = {A}")
                     Log.d(f"Calculated using 'CF({A:2.2f})' = {CF}")
-                    
+
                     continue  # proceed to send loop, recalculate
                 else:
                     break  # skip second loop
@@ -9679,7 +9680,7 @@ class AnalyzerWorker(QtCore.QObject):
                     else:
                         flag_warn = True
                     if len(distances) >= abs(i):
-                        distances = np.delete(distances, -i)
+                        distances = np.delete(distances, i)
                     else:
                         flag_warn = True
                     if flag_warn:
@@ -9876,7 +9877,9 @@ class AnalyzerWorker(QtCore.QObject):
                     local_temp.append(in_temp[idx])
 
                 if enable_bandaid_3 and high_shear_15x:
-                    P1_value = local_visc[-1]
+                    P1_value = (
+                        in_viscosity[-len(distances)]  # end of fill point (1st big diamond left of small diamonds)
+                    )
                     P2_value = (
                         high_shear_15y  # exists only if high_Shear_15x is not zero
                     )
@@ -9885,6 +9888,8 @@ class AnalyzerWorker(QtCore.QObject):
                     min_fit_end = min(P1_value, P2_value) * lower_factor
                     max_fit_end = max(P1_value, P2_value) * upper_factor
                     local_visc_array = np.array(local_visc)
+                    Log.d(f"P1 value (End of Initial Fill) is: {P1_value:2.2f}")
+                    Log.d(f"P2 value (High-Shear) is: {P2_value:2.2f}")
                     Log.d(
                         f"Point Factor Limit for Initial Fill is: {point_factor_limit:2.2f}x"
                     )
@@ -10150,8 +10155,16 @@ class AnalyzerWorker(QtCore.QObject):
                         else in_viscosity.tolist()
                     )
                     # Special case: remove asterisk ("*[xx.xx]*") data before casting to float
-                    in_shear_san_60_80 = [float(str(val)) for val in in_shear_san_60_80 if "*" not in str(val)]
-                    in_visco_san_60_80 = [float(str(val)) for val in in_visco_san_60_80 if "*" not in str(val)]
+                    in_shear_san_60_80 = [
+                        float(str(val))
+                        for val in in_shear_san_60_80
+                        if "*" not in str(val)
+                    ]
+                    in_visco_san_60_80 = [
+                        float(str(val))
+                        for val in in_visco_san_60_80
+                        if "*" not in str(val)
+                    ]
                     # Remove 60% and 80% points from data for interpolation
                     if "percent_pts" in locals():
                         for shear, visco in percent_pts.values():
@@ -10198,8 +10211,12 @@ class AnalyzerWorker(QtCore.QObject):
                     # Nearly Newtonian: use current average method
                     # Calculate the average viscosity and standard deviation from POI2 (end-of-fill) to POI6 (ch3)
                     # Special case: remove asterisk ("*[xx.xx]*") data before casting to float
-                    in_shear_local = [float(str(val)) for val in in_shear_rate if "*" not in str(val)]
-                    in_visco_local = [float(str(val)) for val in in_viscosity if "*" not in str(val)]
+                    in_shear_local = [
+                        float(str(val)) for val in in_shear_rate if "*" not in str(val)
+                    ]
+                    in_visco_local = [
+                        float(str(val)) for val in in_viscosity if "*" not in str(val)
+                    ]
                     values_to_average = len(distances)
                     # high_shear_counts = np.count_nonzero(
                     #     [high_shear_5x, high_shear_15x])
@@ -10981,16 +10998,33 @@ class AnalyzerWorker(QtCore.QObject):
         return best_artist
 
     def get_point_index_from_shear_rate(self, shear_rate):
-        idx = 2
         try:
-            if hasattr(self, "last_shear_rates") and hasattr(self, "last_distances"):
-                # initial_fill_pts = len(self.last_shear_rates) - len(self.last_distances)
+            if (
+                hasattr(self, "last_shear_rates")
+                and hasattr(self, "start_distances")
+                and hasattr(self, "last_distances")
+            ):
+                distance_idxs = [
+                    i
+                    for i, d in enumerate(self.start_distances)
+                    if d in self.last_distances
+                ]
+                distance_idxs.reverse()  # sort Channel 3 Fill to High-Shear (left-to-right)
                 shear_index = np.where(self.last_shear_rates == shear_rate)[0][0]
-                if shear_index != len(self.last_shear_rates) - 1:
-                    idx = max(3, 7 - shear_index)
+                if shear_index < len(distance_idxs):
+                    return distance_idxs[shear_index]
+                if shear_index < len(self.last_shear_rates) - 2:
+                    # all points between End of Initial Fill and High-Shear 
+                    # should be marked as Initial Fill on the plot label
+                    return -1
+                # check 2nd to last point for being the 5 MHz High-Shear point
+                if shear_rate < 4e6:  # only consider anything above 4 MHz as High-Shear
+                    return -1  # everything less than 4 MHz is just another Initial Fill
         except:
             Log.w("An exception occurred while updating the index on annotation text.")
-        return idx - 2
+
+        # label anything else as High-Shear, including on error (should only happen once per plot)
+        return -2
 
     def update_annot(self, child, ind):
         """Define the update function"""
@@ -10999,12 +11033,28 @@ class AnalyzerWorker(QtCore.QObject):
             Log.w("No points to annotate.")
             return
         point_labels = {
-            0: "High-Shear",
-            1: "Initial Fill",
-            2: "End of Initial",
-            3: "Channel 1 Fill",
-            4: "Channel 2 Fill",
-            5: "Channel 3 Fill",
+            -2: "High-Shear",
+            -1: "Initial Fill",
+            0: "End of Initial Fill",
+            1: "20% Normal Fill",  # never shown
+            2: "40% Normal Fill",  # never shown
+            3: "60% Normal Fill",
+            4: "80% Normal Fill",  # never shown
+            5: "Channel 1 Fill",
+            6: "Channel 2 Fill",
+            7: "Channel 3 Fill",
+        }
+        label_idx_to_poi = {
+            -2: 0,  # High-Shear
+            -1: 1,  # Initial Fill
+            0: 2,  # End of Initial Fill
+            1: 2,  # 20% Normal Fill
+            2: 2,  # 40% Normal Fill
+            3: 2,  # 60% Normal Fill
+            4: 2,  # 80% Normal Fill
+            5: 3,  # Channel 1 Fill
+            6: 4,  # Channel 2 Fill
+            7: 5,  # Channel 3 Fill
         }
         # If the child is a Scatter plot (PathCollection)
         if hasattr(child, "get_offsets"):
@@ -11019,10 +11069,14 @@ class AnalyzerWorker(QtCore.QObject):
         if tuple(pos) == (0, 0):
             # Log.d("Suppressed annotation update on errorbars hover event.")
             return
-        idx = self.get_point_index_from_shear_rate(pos[0])
+        idx = max(-2, min(self.get_point_index_from_shear_rate(pos[0]), 7))
         self.annot.xy = pos
         self.annot.set_text(
-            f"POI: {idx:.0f}\n{point_labels[idx]}\n{pos[0]:.2f} S⁻¹\n{pos[1]:.2f} cP\n(Click to Modify)"
+            f"POI: {label_idx_to_poi[idx]:.0f}\n" +
+            f"{point_labels[idx]}\n" +
+            f"{pos[0]:.2f} S⁻¹\n" +
+            f"{pos[1]:.2f} cP\n" +
+            "(Click to Modify)"
         )
         self.annot.get_bbox_patch().set_facecolor("lightblue")
 
