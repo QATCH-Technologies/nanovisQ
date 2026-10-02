@@ -610,14 +610,6 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox2.setChecked(True)  # default export to folder
         self.checkChanged2(True)  # update enable fields
 
-        # Load and apply preferences object from JSON data
-        # NOTE: `set_preferences` updates `log_prefer_path`
-        UserProfiles.user_preferences = UserPreferences(UserProfiles.get_session_file())
-        UserProfiles.user_preferences.set_preferences()
-
-        self.import_dest.setText(Constants.log_prefer_path)
-        self.export_src.setText(Constants.log_prefer_path)
-
     def change_working_dir(self):
         # Ask the user for a new working directory selection...
         local_data_before = Constants.log_prefer_path
@@ -639,6 +631,10 @@ class Ui_Export(QtWidgets.QWidget):
         # Update text boxes to reflect the new working directory
         self.import_dest.setText(local_data_after)
         self.export_src.setText(local_data_after)
+
+        # Clear any "selection" by reverting back to "All Runs"
+        self.exportAll.click()    # clear run selection info
+        self.selectChanged(True)  # regenerate Export Name
 
     def noNameChanged(self, current_state):
         is_enabled = len(self.exportNoName.styleSheet()) == 0
@@ -685,6 +681,14 @@ class Ui_Export(QtWidgets.QWidget):
         self.exported = False
         self.do_close = False
         self.drive = None
+
+        # Reload and apply preferences object from JSON data
+        # NOTE: `set_preferences` updates `log_prefer_path`
+        UserProfiles.user_preferences = UserPreferences(UserProfiles.get_session_file())
+        UserProfiles.user_preferences.set_preferences()
+
+        self.import_dest.setText(Constants.log_prefer_path)
+        self.export_src.setText(Constants.log_prefer_path)
 
         self.tabs.setCurrentIndex(tab_idx)
         self.generateExportName()
@@ -2005,21 +2009,25 @@ Click "Yes" to accept or "No" to undo your selection.
             Log.e(TAG1, "Export error: {}".format(str(e)))
             self.progress.emit("Error exporting local data!", 100, "r", 0)
         finally:
-            if "path_to_export" in locals():
-                Log.d(f"Showing export file(s): {path_to_export}")
-                if os.path.isfile(path_to_export):
-                    subprocess.Popen(
-                        ["explorer.exe", "/select,", os.path.abspath(path_to_export)],
-                        creationflags=subprocess.CREATE_NO_WINDOW,
-                    )
+            try:
+                if "path_to_export" in locals():
+                    Log.d(f"Showing export file(s): {path_to_export}")
+                    if os.path.isfile(path_to_export):
+                        subprocess.Popen(
+                            ["explorer.exe", "/select,", os.path.abspath(path_to_export)],
+                            creationflags=subprocess.CREATE_NO_WINDOW,
+                        )
+                    else:
+                        subprocess.Popen(
+                            ["explorer.exe", os.path.abspath(path_to_export)],
+                            creationflags=subprocess.CREATE_NO_WINDOW,
+                        )
                 else:
-                    subprocess.Popen(
-                        ["explorer.exe", os.path.abspath(path_to_export)],
-                        creationflags=subprocess.CREATE_NO_WINDOW,
-                    )
-            else:
-                Log.e("Unable to open export location.")
-            self.freeze_gui.emit(True)
+                    Log.e("Unable to open export location.")
+            except Exception as e:
+                Log.e(TAG1, "Export error: {}".format(str(e)))
+            finally:
+                self.freeze_gui.emit(True)
 
     def appendRunToCsvReport(self, run, cols, d_filter=0):
 
@@ -2134,8 +2142,16 @@ Click "Yes" to accept or "No" to undo your selection.
 
                 if "Temperature" in cols:
                     ### PULL TEMPERATURE FROM FORMULATION INFORMATION ###
-                    # prefer `result_csv` but use `temp` as a fallback
-                    temperature = temp if np.isnan(result_csv[2]) else result_csv[2]
+                    # prefer `result_csv` but use VP `temp` as a fallback
+                    try:
+                        if np.isnan(result_csv[2]):
+                            if np.isnan(temp):
+                                _, temp = parser.get_viscosity_profile()
+                            temperature = temp
+                        else:
+                            temperature = result_csv[2]
+                    except FileNotFoundError:
+                        _success = False
 
                 if "Notes" in cols:
                     ### PULL NOTES FROM RUN INFO XML ###
