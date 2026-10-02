@@ -588,13 +588,15 @@ class ControlsWindow(QtWidgets.QMainWindow):
         else:
             Log.w("Working directory not changed.")
 
-    def user_has_permission(self, action_role: UserRoles = UserRoles.ANY) -> bool:
+    def user_has_permission(self, action_role: UserRoles = UserRoles.ANY, silent_check = False) -> bool:
         action_role_name = "ANY" if action_role.name == "NONE" else action_role.name
         check_result = UserProfiles().check(self.userrole, action_role)
         if check_result is None:  # user check required, but no user signed in
             Log.w(
                 f"Not signed in: User with role {action_role_name} is required to perform this action."
             )
+            if silent_check:
+                return False  # No user, deny action (do not prompt sign-in)
             Log.i("Please sign in to continue.")
             self.set_user_profile()  # prompt for sign-in
             check_result = UserProfiles().check(
@@ -631,7 +633,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                     Log.d(
                         "User sign-in mode is active. Changing mode on sign-in action."
                     )
-                    if self.user_has_permission(UserRoles.CAPTURE):
+                    if UserProfiles().check(self.userrole, UserRoles.CAPTURE):
                         self.parent.MainWin.ui0.setRunMode(self)
                     else:
                         self.parent.MainWin.ui0.setAnalyzeMode(self)
@@ -7373,7 +7375,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if hasattr(self, "ask_for_update"):
             Log.i("Update Status:", labelweb3)
-            if check_result == True:
+            if check_result:
                 if PopUp.question_FW(
                     self,
                     "QATCH Update Available!",

@@ -842,7 +842,9 @@ class Parser:
                 - ViscosityProfile: The parsed viscosity profile containing two lists
                   of shear rates (units in 1/s) and raw viscosity (units in cP).
                   The returned profile is marked as measured data.
-                - float: The average temperature calculated from the CSV data.
+                - float: The final temperature data point from the CSV data.
+                  The final temperature data point is already an average temperature
+                  reading as it is nearly always associated with the high-shear rate.
 
         Raises:
             FileNotFoundError: If the base path is invalid or missing, if no

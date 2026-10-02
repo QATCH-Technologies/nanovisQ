@@ -340,7 +340,7 @@ class PreferencesUI(QWidget):
                 Log.w(
                     "Not implemented: User preferences requires sync write with load folders. Force set!"
                 )
-        is_synced = True if (state == Qt.CheckState.Checked) else False
+        is_synced = state == Qt.CheckState.Checked
         self.write_directory_input.setEnabled(not is_synced)
         self.write_browse_button.setEnabled(not is_synced)
         if is_synced:
@@ -498,6 +498,9 @@ class PreferencesUI(QWidget):
         UserProfiles.user_preferences.set_use_global(use_global=True)
         global_preferences = UserProfiles.user_preferences.load_global_preferences()
         UserProfiles.user_preferences.set_preferences()
+        # Reset the load and write paths based on the dictionary
+        self.load_directory_input.setText(global_preferences["load_data_path"])
+        self.write_directory_input.setText(global_preferences["write_data_path"])
         # Update the folder sync state based on the dictionary
         paths_synced = (
             Qt.CheckState.Checked
@@ -508,9 +511,6 @@ class PreferencesUI(QWidget):
             else Qt.CheckState.Unchecked
         )
         self.toggle_folder_sync(paths_synced)
-        # Reset the load and write paths based on the dictionary
-        self.load_directory_input.setText(global_preferences["load_data_path"])
-        self.write_directory_input.setText(global_preferences["write_data_path"])
         # Reset the date and time format dropdowns based on the dictionary
         self.date_format_combo.setCurrentText(global_preferences["date_format"])
         self.time_format_combo.setCurrentText(global_preferences["time_format"])
@@ -546,6 +546,9 @@ class PreferencesUI(QWidget):
         UserProfiles.user_preferences.set_use_global(use_global=False)
         user_preferences = UserProfiles.user_preferences.load_user_preferences()
         UserProfiles.user_preferences.set_preferences()
+        # Reset the load and write paths based on the dictionary
+        self.load_directory_input.setText(user_preferences["load_data_path"])
+        self.write_directory_input.setText(user_preferences["write_data_path"])
         # Update the folder sync state based on the dictionary
         paths_synced = (
             Qt.CheckState.Checked
@@ -556,9 +559,6 @@ class PreferencesUI(QWidget):
             else Qt.CheckState.Unchecked
         )
         self.toggle_folder_sync(paths_synced)
-        # Reset the load and write paths based on the dictionary
-        self.load_directory_input.setText(user_preferences["load_data_path"])
-        self.write_directory_input.setText(user_preferences["write_data_path"])
         # Reset the date and time format dropdowns based on the dictionary
         self.date_format_combo.setCurrentText(user_preferences["date_format"])
         self.time_format_combo.setCurrentText(user_preferences["time_format"])
@@ -765,6 +765,13 @@ class PreferencesUI(QWidget):
 
     def reset_to_default_preferences(self):
         """Reset preferences to their default values based on a dictionary."""
+        # Reset the load and write paths based on the dictionary
+        self.load_directory_input.setText(
+            Constants.default_preferences["load_data_path"]
+        )
+        self.write_directory_input.setText(
+            Constants.default_preferences["write_data_path"]
+        )
         # Update folder sync state based on the dictionary
         paths_synced = (
             Qt.CheckState.Checked
@@ -775,13 +782,6 @@ class PreferencesUI(QWidget):
             else Qt.CheckState.Unchecked
         )
         self.toggle_folder_sync(paths_synced)
-        # Reset the load and write paths based on the dictionary
-        self.load_directory_input.setText(
-            Constants.default_preferences["load_data_path"]
-        )
-        self.write_directory_input.setText(
-            Constants.default_preferences["write_data_path"]
-        )
         # Reset the date and time format dropdowns based on the dictionary
         self.date_format_combo.setCurrentText(
             Constants.default_preferences["date_format"]

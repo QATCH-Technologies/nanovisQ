@@ -490,13 +490,20 @@ class Ui_Main(object):
         # NOTE: LOCAL TEST CREDENTIALS FOR AUTO-LOGIN
         try:
             cred_file = "credentials.json"
-            if os.path.exists(cred_file):
+            if (
+                self._force_splitter_mode_set
+                and os.path.exists(cred_file)
+                and obj is not None
+            ):
+                # only auto-login if on app launch (obj is not None)
+                # and when the credentials file exists on filesystem
                 import sys
 
                 if getattr(sys, "frozen", False):
                     raise PermissionError(
                         "Auto-login is not allowed in EXE application"
                     )
+                Log.w("Auto-login sending stored user credentials...")
                 import json, pyautogui
 
                 with open(cred_file, "r") as file:
@@ -632,19 +639,8 @@ class Ui_Main(object):
                     self.parent.viewTutorialPage([3, 4])
                 if obj is None:
                     return True
-
-            # NOTE: With the use of `ControlsWin.user_has_permission()` these checks are now redundant
-            # elif check_result is None:
-            #     Log.w(
-            #         f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
-            #     )
-            #     Log.e("Please sign in to access Run mode.")
-            # else:
-            #     Log.w(
-            #         f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
-            #     )
-            #     Log.e("You are not authorized to access Run mode.")
-
+            else:
+                Log.e("You are not authorized to access Run mode.")
         else:
             if self.splitter.widget(0) == self.analyze:
                 Log.e(
@@ -706,11 +702,11 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            self.parent.analyze_data()
             check_result = self.parent.ControlsWin.user_has_permission(
                 UserRoles.ANALYZE
             )
             if check_result:
+                self.parent.analyze_data()  # reset UI to blank (only if authorized)
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
                 self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
@@ -726,8 +722,6 @@ class Ui_Main(object):
                 self.parent.viewTutorialPage([5, 6])  # analyze / prior results
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.e("Please sign in to access Analyze mode.")
             else:
                 Log.e("You are not authorized to access Analyze mode.")
         else:
@@ -824,8 +818,6 @@ class Ui_Main(object):
                 self.parent.viewTutorialPage(8)  # VisQ.AI(tm) coming soon
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.e("Please sign in to access VisQ.AI<sup>TM</sup> mode.")
             else:
                 Log.e("You are not authorized to access VisQ.AI<sup>TM</sup> mode.")
         else:
@@ -890,7 +882,7 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.injection_ui
         ):
             check_result = self.parent.ControlsWin.user_has_permission(
-                UserRoles.OPERATE
+                UserRoles.ANY
             )
             if check_result:
                 self.parent._enable_ui(False)
@@ -905,8 +897,6 @@ class Ui_Main(object):
                 self.splitter.replaceWidget(0, self.donnan_ui)
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.e("Please sign in to access the Donnan-Gibbs Calculator.")
             else:
                 Log.e("You are not authorized to access the Donnan-Gibbs Calculator.")
         else:
@@ -971,7 +961,7 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.injection_ui
         ):
             check_result = self.parent.ControlsWin.user_has_permission(
-                UserRoles.OPERATE
+                UserRoles.ANY
             )
             if check_result:
                 self.parent._enable_ui(False)
@@ -986,8 +976,6 @@ class Ui_Main(object):
                 self.splitter.replaceWidget(0, self.injection_ui)
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.e("Please sign in to access the Injection Force Calculator.")
             else:
                 Log.e(
                     "You are not authorized to access the Injection Force Calculator."

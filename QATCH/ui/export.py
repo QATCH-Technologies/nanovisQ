@@ -1111,10 +1111,14 @@ class Ui_Export(QtWidgets.QWidget):
         if Constants.log_export_path in split_multiple(select_path):
             # Disallow "logged_data" in the export path parts to avoid chaos
             # default to "export" at same tree depth as "logged_data" folder
-            select_path = os.path.join(
-                select_path[: select_path.find(Constants.log_export_path)],
-                "export",
-            )
+            # split at the left most "logged_data" folder in tree structure
+            path_parts = split_multiple(select_path)
+            path_len = 0
+            for part in path_parts:
+                if Constants.log_export_path == part:
+                    break
+                path_len += len(part) + 1  # account for SLASH separator
+            select_path = os.path.join(select_path[:path_len], "export")
             if no_ask or PopUp.question(
                 self,
                 "Export Destination Not Allowed",
@@ -2109,12 +2113,8 @@ Click "Yes" to accept or "No" to undo your selection.
                 ):
                     try:
                         result_csv = parser.get_latest_result()
-
-                        if ELEVATE_LOGGING:
-                            Log.w("RESULT: ", result_csv)
-                    except Exception as e:
-                        if ELEVATE_LOGGING:
-                            Log.e("ERROR:", e)
+                    except FileNotFoundError:
+                        _success = False
 
                 if "Average Viscosity" in cols:
                     ### CALCULATE AVERAGE VISCOSITY FROM MOST RECENT ANALYSIS ###
@@ -2126,12 +2126,16 @@ Click "Yes" to accept or "No" to undo your selection.
 
                 if "Viscosity Profile" in cols:
                     ### CALCULATE VISCOSITY PROFILE FROM MOST RECENT ANALYSIS ###
-                    profile, temp = parser.get_viscosity_profile()
-                    viscosity_profile = [profile.shear_rates, profile.viscosities]
+                    try:
+                        profile, temp = parser.get_viscosity_profile()
+                        viscosity_profile = [profile.shear_rates, profile.viscosities]
+                    except FileNotFoundError:
+                        _success = False
 
                 if "Temperature" in cols:
                     ### PULL TEMPERATURE FROM FORMULATION INFORMATION ###
-                    temperature = result_csv[2] or temp
+                    # prefer `result_csv` but use `temp` as a fallback
+                    temperature = temp if np.isnan(result_csv[2]) else result_csv[2]
 
                 if "Notes" in cols:
                     ### PULL NOTES FROM RUN INFO XML ###
