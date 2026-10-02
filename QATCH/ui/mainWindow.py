@@ -377,7 +377,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.ui1 = Ui_Controls()
         self.ui1.setupUi(self)
-        self.ui_export = Ui_Export()
+        self.ui_export = Ui_Export(self)
         # self.ui_configure_data = UIConfigureData()
         self.ui_preferences = PreferencesUI(self)
         # self.userrole
@@ -393,13 +393,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[0].addAction("&Export Data", self.export_data)
         self.menubar[0].addAction("&Recover Data", self.recover_data)
         # self.menubar[0].addAction('&Configure Data', self.configure_data)
-        self.menubar[0].addAction("&Preferences", self.preferences)
-        self.menubar[0].addAction("&Find Devices", self.scan_subnets)
+        # self.menubar[0].addAction("&Preferences", self.preferences)
+        # self.menubar[0].addAction("&Find Devices", self.scan_subnets)
         self.menubar[0].addAction("E&xit", self.close)
         self.menubar.append(target.menuBar().addMenu("&Users"))
         self.username = self.menubar[1].addAction("User: [NONE]")
         self.username.setEnabled(False)
         self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
+        self.menubar[1].addAction("&Preferences...", self.preferences)
         self.menubar[1].addAction("Select &directory...", self.set_working_directory)
         self.manage = self.menubar[1].addAction(
             "&Manage Users...", self.manage_user_profiles
@@ -548,25 +549,33 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.parent.MainWin.ui0.setAnalyzeMode(self)
 
     def import_data(self):
-        self.ui_export.showNormal(0)
+        if self.user_has_permission(UserRoles.ANY):
+            self.ui_export.showNormal(0)
 
     def export_data(self):
-        self.ui_export.showNormal(1)
+        if self.user_has_permission(UserRoles.ANY):
+            self.ui_export.showNormal(1)
 
     def recover_data(self):
-        self.ui_export.showNormal(2)
+        if self.user_has_permission(UserRoles.ANY):
+            self.ui_export.showNormal(2)
 
     # def configure_data(self):
-    #     self.ui_configure_data.show()
+    #     if self.user_has_permission(UserRoles.ANY):
+    #         self.ui_configure_data.show()
 
     def preferences(self):
-        self.ui_preferences.showNormal(0)
+        if self.user_has_permission(UserRoles.ANY):
+            self.ui_preferences.showNormal(0)
 
     def scan_subnets(self):
         Discovery().scanSubnets()
         self.parent._port_list_refresh()
 
     def set_working_directory(self):
+        if not self.user_has_permission(UserRoles.ANY):
+            return
+
         # loads global/user prefs
         self.ui_preferences.toggle_global_preferences()
         # force sync read/write
@@ -578,6 +587,27 @@ class ControlsWindow(QtWidgets.QMainWindow):
             self.ui_preferences.submit_button.click()
         else:
             Log.w("Working directory not changed.")
+
+    def user_has_permission(self, action_role: UserRoles = UserRoles.ANY, silent_check = False) -> bool:
+        action_role_name = "ANY" if action_role.name == "NONE" else action_role.name
+        check_result = UserProfiles().check(self.userrole, action_role)
+        if check_result is None:  # user check required, but no user signed in
+            Log.w(
+                f"Not signed in: User with role {action_role_name} is required to perform this action."
+            )
+            if silent_check:
+                return False  # No user, deny action (do not prompt sign-in)
+            Log.i("Please sign in to continue.")
+            self.set_user_profile()  # prompt for sign-in
+            check_result = UserProfiles().check(
+                self.userrole, action_role
+            )  # check again
+        if not check_result:  # no user signed in or user not authorized
+            Log.w(
+                f"ACTION DENIED: User with role {self.userrole.name} does not have permission to {action_role_name} action."
+            )
+            return False  # deny action
+        return True  # allowed
 
     def set_user_profile(self):
         action = self.signinout.text().lower().replace("&", "")
@@ -594,6 +624,20 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 self.parent.AnalyzeProc.tool_User.setText(name)
                 if self.userrole != UserRoles.ADMIN:
                     self.manage.setText("&Change Password...")
+
+                # Mode change if on login screen and sign-in success
+                if (
+                    self.parent.MainWin.ui0.splitter.widget(0)
+                    == self.parent.MainWin.ui0.userview
+                ):
+                    Log.d(
+                        "User sign-in mode is active. Changing mode on sign-in action."
+                    )
+                    if UserProfiles().check(self.userrole, UserRoles.CAPTURE):
+                        self.parent.MainWin.ui0.setRunMode(self)
+                    else:
+                        self.parent.MainWin.ui0.setAnalyzeMode(self)
+
         else:
             if self.parent.MainWin.ui0.setNoUserMode(None):
                 UserProfiles().session_end()
@@ -1833,22 +1877,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ReadyToShow = True
 
     def analyze_data(self, data_device=None, data_folder=None, data_file=None):
-        action_role = UserRoles.ANALYZE
-        check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        if check_result is None:  # user check required, but no user signed in
-            Log.w(
-                f"Not signed in: User with role {action_role.name} is required to perform this action."
-            )
-            Log.i("Please sign in to continue.")
-            self.ControlsWin.set_user_profile()  # prompt for sign-in
-            check_result = UserProfiles().check(
-                self.ControlsWin.userrole, action_role
-            )  # check again
-        if not check_result:  # no user signed in or user not authorized
-            Log.w(
-                f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}."
-            )
-            return  # deny action
+        if not self.ControlsWin.user_has_permission(UserRoles.ANALYZE):
+            return
 
         self.data_device = data_device
         self.data_folder = data_folder
@@ -2187,40 +2217,7 @@ class MainWindow(QtWidgets.QMainWindow):
         7. Dimming/masking plots, resetting progress bars, and clearing instructional
            overlays before launching the worker thread.
         """
-        # Validate if a userprofile can perform the capture action.
-        action_role = UserRoles.CAPTURE
-        check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        # if check_result is None:  # user check required, but no user signed in
-        #     Log.w(
-        #         f"Not signed in: User with role {action_role.name} is required to perform this action.")
-        #     Log.i("Please sign in to continue.")
-        #     self.ControlsWin.set_user_profile()  # prompt for sign-in
-        #     check_result = UserProfiles().check(
-        #         self.ControlsWin.userrole, action_role)  # check again
-        # if not check_result:  # no user signed in or user not authorized
-        #     Log.w(
-        #         f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
-        #     return  # deny action
-
-        # User check required, but no user signed in.
-        if check_result is None:
-            Log.w(
-                tag=TAG,
-                msg=f"Not signed in: User with role {action_role.name} is required to perform this action.",
-            )
-            Log.i(tag=TAG, msg="Please sign in to continue.")
-
-            # Prompt user for sign-in.
-            self.ControlsWin.set_user_profile()
-            check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-
-        # No user signed in or user not authorized to perform capture.  Notify user and deny action request returning to
-        # caller.
-        if not check_result:
-            Log.w(
-                tag=TAG,
-                msg=f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.",
-            )
+        if not self.ControlsWin.user_has_permission(UserRoles.CAPTURE):
             return
 
         Log.d(tag=TAG, msg="GUI: Clear console window")
@@ -6942,10 +6939,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         )
 
     def factory_defaults(self):
-
-        action_role = UserRoles.ADMIN
-        check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-
+        check_result = self.ControlsWin.user_has_permission(UserRoles.ADMIN)
         if not check_result:
             PopUp.critical(
                 self,
@@ -7377,12 +7371,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         check_result = True
         if UserConstants.REQ_ADMIN_UPDATES:
-            action_role = UserRoles.ADMIN
-            check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
+            check_result = self.ControlsWin.user_has_permission(UserRoles.ADMIN)
 
         if hasattr(self, "ask_for_update"):
             Log.i("Update Status:", labelweb3)
-            if check_result == True:
+            if check_result:
                 if PopUp.question_FW(
                     self,
                     "QATCH Update Available!",

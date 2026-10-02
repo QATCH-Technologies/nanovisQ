@@ -11,6 +11,7 @@
 /QATCH_Q-1_FW_py_v*
 **/__pycache__
 **/*.log
+credentials.json
 
 # Ignore all files in "assets" folders, EXCEPT QATCH/QModel/assets 
 QATCH/VisQAI/assets/**

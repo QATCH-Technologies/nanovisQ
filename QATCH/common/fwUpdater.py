@@ -131,11 +131,10 @@ class FW_Updater:
 
                         check_result = True
                         if UserConstants.REQ_ADMIN_UPDATES:
-                            action_role = UserRoles.ADMIN
-                            check_result = UserProfiles().check(
-                                parent.ControlsWin.userrole, action_role
+                            check_result = parent.ControlsWin.user_has_permission(
+                                UserRoles.ADMIN, silent_check=True
                             )
-                        if askPermission and check_result == True:
+                        if askPermission and check_result:
                             question = "Device is running "
                             if result == FW_UPDATE.RESULT_REQUIRED:
                                 question += "INCOMPATIBLE"
@@ -170,7 +169,7 @@ class FW_Updater:
                                         + "Updating only takes a few seconds and guarantees operational compatibility.",
                                     )
                                 doUpdate = userResponse  # remember their answer for multiplex devices
-                        elif check_result != True:
+                        elif not check_result:
                             Log.w(
                                 "A firmware update is available! Please ask your administrator to install update."
                             )

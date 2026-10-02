@@ -487,12 +487,39 @@ class Ui_Main(object):
 
     def setNoUserMode(self, obj):
 
-        # DO NOT COMMIT
-        # import pyautogui
-        # pyautogui.typewrite("AKM")
-        # pyautogui.press("enter")
-        # pyautogui.typewrite("12345678")
-        # pyautogui.press("enter")
+        # NOTE: LOCAL TEST CREDENTIALS FOR AUTO-LOGIN
+        try:
+            cred_file = "credentials.json"
+            if (
+                self._force_splitter_mode_set
+                and os.path.exists(cred_file)
+                and obj is not None
+            ):
+                # only auto-login if on app launch (obj is not None)
+                # and when the credentials file exists on filesystem
+                import sys
+
+                if getattr(sys, "frozen", False):
+                    raise PermissionError(
+                        "Auto-login is not allowed in EXE application"
+                    )
+                Log.w("Auto-login sending stored user credentials...")
+                import json, pyautogui
+
+                with open(cred_file, "r") as file:
+                    creds = json.load(file)
+                if list(creds.keys()) == ["username", "password"]:
+                    from time import sleep
+
+                    sleep(1)  # wait for app launch
+                    pyautogui.typewrite(creds["username"])
+                    pyautogui.press("enter")
+                    pyautogui.typewrite(creds["password"])
+                    pyautogui.press("enter")
+        except (ModuleNotFoundError, ImportError) as e:
+            Log.e(f"Auto-login error: {e.msg} (missing dependency)")
+        except Exception as e:
+            Log.e(f"Auto-login error: {str(e)}")
 
         if (
             self.splitter.widget(0) == self.userview
@@ -511,6 +538,7 @@ class Ui_Main(object):
             ):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if not self.parent.AnalyzeProc.hasUnsavedChanges():
+            self.parent.ControlsWin.ui_export.hide()
             self.parent.ControlsWin.ui_preferences.hide()
             self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
             self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
@@ -586,19 +614,9 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            action_role = UserRoles.CAPTURE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.CAPTURE
             )
-            if check_result is None:  # user check required, but no user signed in
-                Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action."
-                )
-                Log.i("Please sign in to continue.")
-                self.parent.ControlsWin.set_user_profile()  # prompt for sign-in
-                check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role
-                )  # check again
             if check_result:
                 self.parent._enable_ui(True)
                 self.parent.VisQAIWin.enable(False)
@@ -621,15 +639,7 @@ class Ui_Main(object):
                     self.parent.viewTutorialPage([3, 4])
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.w(
-                    f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
-                )
-                Log.e("Please sign in to access Run mode.")
             else:
-                Log.w(
-                    f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
-                )
                 Log.e("You are not authorized to access Run mode.")
         else:
             if self.splitter.widget(0) == self.analyze:
@@ -692,12 +702,11 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            self.parent.analyze_data()
-            action_role = UserRoles.ANALYZE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.ANALYZE
             )
             if check_result:
+                self.parent.analyze_data()  # reset UI to blank (only if authorized)
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
                 self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
@@ -713,8 +722,6 @@ class Ui_Main(object):
                 self.parent.viewTutorialPage([5, 6])  # analyze / prior results
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.e("Please sign in to access Analyze mode.")
             else:
                 Log.e("You are not authorized to access Analyze mode.")
         else:
@@ -781,19 +788,9 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.injection_ui
         ):
             self.parent.VisQAIWin.reset()
-            action_role = UserRoles.OPERATE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.OPERATE
             )
-            if check_result is None:  # user check required, but no user signed in
-                Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action."
-                )
-                Log.i("Please sign in to continue.")
-                self.parent.ControlsWin.set_user_profile()  # prompt for sign-in
-                check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role
-                )  # check again
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(True)
@@ -821,8 +818,6 @@ class Ui_Main(object):
                 self.parent.viewTutorialPage(8)  # VisQ.AI(tm) coming soon
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.e("Please sign in to access VisQ.AI<sup>TM</sup> mode.")
             else:
                 Log.e("You are not authorized to access VisQ.AI<sup>TM</sup> mode.")
         else:
@@ -886,19 +881,9 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            action_role = UserRoles.OPERATE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.ANY
             )
-            if check_result is None:
-                Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action."
-                )
-                Log.i("Please sign in to continue.")
-                self.parent.ControlsWin.set_user_profile()
-                check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role
-                )
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
@@ -912,8 +897,6 @@ class Ui_Main(object):
                 self.splitter.replaceWidget(0, self.donnan_ui)
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.e("Please sign in to access the Donnan-Gibbs Calculator.")
             else:
                 Log.e("You are not authorized to access the Donnan-Gibbs Calculator.")
         else:
@@ -977,19 +960,9 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            action_role = UserRoles.OPERATE
-            check_result = UserProfiles().check(
-                self.parent.ControlsWin.userrole, action_role
+            check_result = self.parent.ControlsWin.user_has_permission(
+                UserRoles.ANY
             )
-            if check_result is None:
-                Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action."
-                )
-                Log.i("Please sign in to continue.")
-                self.parent.ControlsWin.set_user_profile()
-                check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role
-                )
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
@@ -1003,8 +976,6 @@ class Ui_Main(object):
                 self.splitter.replaceWidget(0, self.injection_ui)
                 if obj is None:
                     return True
-            elif check_result is None:
-                Log.e("Please sign in to access the Injection Force Calculator.")
             else:
                 Log.e(
                     "You are not authorized to access the Injection Force Calculator."

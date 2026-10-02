@@ -42,8 +42,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.7r9"
-    app_date = "2026-09-09"
+    app_version = "v2.7b10"
+    app_date = "2026-10-02"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -560,10 +560,10 @@ class Constants:
         # is the param defined in Constants.py?
         if hasattr(Constants, param):
             param_in_py_file = True
-        # is the param defined in lookup_BATCH#.csv?
+        # is the param defined in lookup_batch_params.csv?
         if param_upper in params and param != "":
             param_in_csv_file = True
-        # is the batch defined in lookup_BATCH#.csv?
+        # is the batch defined in lookup_batch_params.csv?
         if batch_upper in batches and batch != "":
             batch_in_csv_file = True
         # if only given 'batch', return True/False if it's found in CSV
@@ -603,7 +603,7 @@ class Constants:
         ):
             default_val = getattr(Constants, param)
             Log.w(
-                f"get_batch_param(): PARAM '{param}' is not found for BATCH '{batch}' (using {default_val}). Please add the batch/param to lookup_BATCH#.csv."
+                f"get_batch_param(): PARAM '{param}' is not found for BATCH '{batch}' (using {default_val}). Please add the batch/param to lookup_batch_params.csv."
             )
             return str(default_val)
 
@@ -615,11 +615,11 @@ class Constants:
         # check for dups and report the warning if so
         if len(idx_of_param) != 1:
             Log.w(
-                f"get_batch_param(): More than one PARAM col {param} found in lookup_BATCH#.py! Using first column."
+                f"get_batch_param(): More than one PARAM col {param} found in lookup_batch_params.csv! Using first column."
             )
         if len(idx_of_batch) != 1:
             Log.w(
-                f"get_batch_param(): More than one BATCH col {batch} found in lookup_BATCH#.py! Using first row."
+                f"get_batch_param(): More than one BATCH col {batch} found in lookup_batch_params.csv! Using first row."
             )
         Log.d(
             f"Found param '{found_param}' from ('{batch}', '{param}') pair in lookup table at idx ({idx_of_batch}, {idx_of_param})."
