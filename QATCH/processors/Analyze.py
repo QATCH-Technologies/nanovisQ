@@ -9228,28 +9228,36 @@ class AnalyzerWorker(QtCore.QObject):
 
                 self.update(status_label)
 
-                protein_conc = float(xml_params.get("protein_concentration", 0.0))
-                if FIRST_LOOP and BIOFORMULATION and protein_conc > 75:
+                if FIRST_LOOP and BIOFORMULATION:
+                    C = float(xml_params.get("protein_concentration", 0.0)) 
+                    if C <= 75:
+                        g_C = 0
+                    elif C < 150:
+                        g_C = (C - 75) / 75
+                    else:
+                        g_C = 1
                     if initial_fill_only:
                         A = np.average(fill_visc)
                     else:
                         A = np.average(viscosity)
                     if A <= 5:
-                        CF = 1
-                    elif A < 7.5:
-                        CF = 1 - 0.132 * (A - 5)
+                        f_A = 1
+                    elif A < 20:
+                        f_A = (-0.0111 * A) + 0.8335 + (1.11 / A)
                     else:
-                        CF = 0.67
-                    ST *= CF  # adjust surface tension with correction factor
+                        f_A = 0.667
+                    CF_A_C = 1 - g_C * (1 - f_A)
+                    ST *= CF_A_C  # adjust surface tension with correction factor
 
-                    Log.d(f"Calculated using 'average_viscosity' = {A}")
-                    Log.d(f"Calculated using 'CF({A:2.2f})' = {CF}")
+                    Log.d(f"Calculated 'g({C:2.2f})' = {g_C}")
+                    Log.d(f"Calculated 'f({A:2.2f})' = {f_A}")
+                    Log.d(f"Calculated 'CF({A:2.2f}, {C:2.2f})' = {CF_A_C}")
 
                     continue  # proceed to send loop, recalculate
                 else:
                     break  # skip second loop
 
-            Log.d(f"Calculated using 'surface_tension' = {ST}")
+            Log.d(f"Calculated 'surface_tension' = {ST}")
 
             fig4 = plt.figure(figsize=(12, 6))
             fig4.set_layout_engine(None)  # full control, no auto-layout adjustments

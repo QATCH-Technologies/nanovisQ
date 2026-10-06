@@ -42,8 +42,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.7b10"
-    app_date = "2026-10-02"
+    app_version = "v2.7b11"
+    app_date = "2026-10-06"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -116,8 +116,8 @@ class Constants:
     - Higher: Triggers "dry" earlier, even if the signal is still slightly trending.
     - Lower: Requires a near-perfectly flat line; ensures drying is 100% complete.
     """
-    DRYING_FLAT_SLOPE_EPS_FREQUENCY = 2.9e-2
-    DRYING_FLAT_SLOPE_EPS_DISSIPATION = 6e-10
+    DRYING_FLAT_SLOPE_EPS_FREQUENCY = 2.7e-2
+    DRYING_FLAT_SLOPE_EPS_DISSIPATION = 5e-10
 
     ###########################
     # FW FILTERING parameters #
