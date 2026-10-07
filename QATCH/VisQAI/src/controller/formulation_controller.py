@@ -342,6 +342,7 @@ class FormulationController:
             "MW",
             "PI_mean",
             "PI_range",
+            "Protein_charge",
             "Protein_conc",
             "Protein_class_type",
             "Temperature",
@@ -472,6 +473,11 @@ class FormulationController:
                     protein=protein,
                     concentration=row.Protein_conc,
                     units="mg/mL",
+                    charge=(
+                        float(row.Protein_charge)
+                        if pd.notna(row.Protein_charge)
+                        else None
+                    ),
                 )
                 form.set_stabilizer(
                     stabilizer=stabilizer,
@@ -522,7 +528,7 @@ class FormulationController:
 
         The resulting DataFrame contains one row per formulation, with columns:
             - ID
-            - Protein_type, MW, PI_mean, PI_range, Protein_conc
+            - Protein_type, MW, PI_mean, PI_range, Protein_charge, Protein_conc
             - Temperature
             - Buffer_type, Buffer_pH, Buffer_conc
             - Salt_type, Salt_conc
@@ -544,6 +550,7 @@ class FormulationController:
             "MW",
             "PI_mean",
             "PI_range",
+            "Protein_charge",
             "Protein_conc",
             "Temperature",
             "Buffer_type",

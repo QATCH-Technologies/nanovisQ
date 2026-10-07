@@ -159,6 +159,14 @@ class serial:
         Log.d(f"Enumerated {len(devices)} devices on the system.")
         return devices  # return list of found devices
 
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
     # isOpen()
     # returns True if the port to the Arduino is open.  False otherwise
     def isOpen(self):

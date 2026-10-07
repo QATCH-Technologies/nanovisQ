@@ -163,8 +163,6 @@ class PredictionThread(QtCore.QThread):
                     except Exception as e:
                         Log.e(TAG, f"ICL failed: {e}")
 
-                if not self._is_running:
-                    return
                 # Predict Step
                 means, unc_dict = predictor.predict_with_uncertainty(
                     df_input, n_samples=50, ci_range=ci_range

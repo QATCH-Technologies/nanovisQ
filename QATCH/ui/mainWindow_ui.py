@@ -503,19 +503,30 @@ class Ui_Main(object):
                     raise PermissionError(
                         "Auto-login is not allowed in EXE application"
                     )
-                Log.w("Auto-login sending stored user credentials...")
                 import json, pyautogui
 
                 with open(cred_file, "r") as file:
                     creds = json.load(file)
                 if list(creds.keys()) == ["username", "password"]:
-                    from time import sleep
+                    Log.w("Auto-login queued send of stored user credentials...")
 
-                    sleep(1)  # wait for app launch
-                    pyautogui.typewrite(creds["username"])
-                    pyautogui.press("enter")
-                    pyautogui.typewrite(creds["password"])
-                    pyautogui.press("enter")
+                    def auto_signin_as():
+                        if (
+                            self.parent.LoginWin.ui5.user_initials.hasFocus() and
+                            self.parent.LoginWin.ui5.user_initials.isVisible()
+                        ):    
+                            Log.w("Auto-login sending stored user credentials...")
+                            pyautogui.typewrite(creds["username"])
+                            pyautogui.press("enter")
+                            pyautogui.typewrite(creds["password"])
+                            pyautogui.press("enter")
+                        else:
+                            QtCore.QTimer.singleShot(100, auto_signin_as)        
+
+                    QtCore.QTimer.singleShot(100, auto_signin_as)
+                else:
+                    Log.w("Auto-login stored user credentials are missing...")
+
         except (ModuleNotFoundError, ImportError) as e:
             Log.e(f"Auto-login error: {e.msg} (missing dependency)")
         except Exception as e:
@@ -881,9 +892,7 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            check_result = self.parent.ControlsWin.user_has_permission(
-                UserRoles.ANY
-            )
+            check_result = self.parent.ControlsWin.user_has_permission(UserRoles.ANY)
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
@@ -960,9 +969,7 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            check_result = self.parent.ControlsWin.user_has_permission(
-                UserRoles.ANY
-            )
+            check_result = self.parent.ControlsWin.user_has_permission(UserRoles.ANY)
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)

@@ -462,8 +462,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # QModel Onyx Constants
         self.QModel_v7_modules_loaded = False
         self.QModel_v7_predictor = None
+
+        USE_FULLSCREEN = False  # screen.width() == 2880
+        
         screen = QtWidgets.QDesktopWidget().availableGeometry()
-        USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
         pct_height = 75
         self.resize(
@@ -1983,12 +1985,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.signForm.hide()
                 self.signedInAs.setText(self.username)
                 self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
+
                 screen = QtWidgets.QDesktopWidget().availableGeometry()
                 left = int((screen.width() - self.signForm.sizeHint().width()) / 2) + 50
                 top = (
                     int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
                 )
                 self.signForm.move(left, top)
+
                 self.signForm.setVisible(True)
                 self.sign.setFocus()
                 return

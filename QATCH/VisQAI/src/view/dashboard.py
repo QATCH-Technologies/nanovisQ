@@ -795,6 +795,7 @@ class DashboardUI(QtWidgets.QWidget):
                 "MW (Da)",
                 "pI Mean",
                 "pI Range",
+                "Charge (e)",
                 "Conc (mg/mL)",
                 "Buffer",
                 "pH",
@@ -847,11 +848,14 @@ class DashboardUI(QtWidgets.QWidget):
                             str(getattr(ing, "molecular_weight", "")),
                             str(getattr(ing, "pI_mean", "")),
                             str(getattr(ing, "pI_range", "")),
+                            str(
+                                p.charge if p.charge is not None else "-"
+                            ),  # correct source
                             str(p.concentration),
                         ]
                     )
                 else:
-                    row.extend(["-", "-", "-", "-", "-", "-"])
+                    row.extend(["-", "-", "-", "-", "-", "-", "-"])
 
                 # Buffer
                 if hasattr(f, "buffer") and f.buffer and f.buffer.ingredient:
