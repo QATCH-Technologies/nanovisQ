@@ -7215,6 +7215,12 @@ class AnalyzerWorker(QtCore.QObject):
     finished = QtCore.pyqtSignal()
     progress = QtCore.pyqtSignal(int, str)
 
+    # Keep these up-to-date for progress bar accuracy
+    FIRST_LOOP = True
+    LOOP_BLOCK_COUNT = 2
+    LOOP_BLOCK_START = 9185
+    LOOP_BLOCK_STOP = 10292
+
     def __init__(self, parent, data_path, xml_path, poi_vals, diff_factor):
         super().__init__()
         self.parent = parent
@@ -7450,7 +7456,7 @@ class AnalyzerWorker(QtCore.QObject):
             Log.d(xml_params)
 
             BIOFORMULATION = xml_params.get("bioformulation", "False") == "True"
-            ST = float(xml_params.get("surface_tension", 69.0))
+            ST = float(xml_params.get("surface_tension", 72.0))
             CA = float(xml_params.get("contact_angle", 55.0))
             DENSITY = float(xml_params.get("density", 1.2))
 
@@ -8954,6 +8960,11 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.w(
                     "Skipped initial fill point weighting for initial fill only dataset."
                 )
+                # kludgy code to remove the 20% and 40% fill points from fit
+                best_fit_idx = np.delete(best_fit_idx, -2)
+                best_fit_idx = np.delete(best_fit_idx, -1)
+                best_fit_pts = np.delete(best_fit_pts, -2)
+                best_fit_pts = np.delete(best_fit_pts, -1)
             except Exception as e:
                 Log.e(
                     "An error occurred while finding the initial fill points median value"
@@ -9071,11 +9082,32 @@ class AnalyzerWorker(QtCore.QObject):
                 best_fill_idx, best_fill_pts, "s", color="black"
             )  # initial fill (avg)
             try:
-                if initial_fill_only:
-                    raise StopIteration("Initial fill only in this dataset.")
+                ax6.set_title(
+                    f"Power log coefficient: {data_title}\nn = {n:.2f}"
+                    + r"$ \pm $"
+                    + "0.05"
+                )
                 for i in range(-len(distances), 0):
                     ax6.plot(log_velocity_46[i], log_position_46[i], "d", color="black")
-                # mark the 20% and 40% points as not being included in the fit approximation
+
+                if initial_fill_only:
+                    # mark non-initial-fill points as not being included in the fit approximation
+                    for i in range(-len(distances), 0):
+                        ax6.plot(
+                            log_velocity_46[i],
+                            log_position_46[i],
+                            "x",
+                            color="red",
+                        )
+                    raise StopIteration("Initial fill only in this dataset.")
+    
+                # mark the 20%, 40%, and 80% points as not being included in the fit approximation
+                ax6.plot(
+                    log_velocity_46[end_fill_idx + 1],
+                    log_position_46[end_fill_idx + 1],
+                    "x",
+                    color="red",
+                )
                 ax6.plot(
                     log_velocity_46[end_fill_idx + 2],
                     log_position_46[end_fill_idx + 2],
@@ -9083,15 +9115,10 @@ class AnalyzerWorker(QtCore.QObject):
                     color="red",
                 )
                 ax6.plot(
-                    log_velocity_46[end_fill_idx + 1],
-                    log_position_46[end_fill_idx + 1],
+                    log_velocity_46[end_fill_idx + 4],
+                    log_position_46[end_fill_idx + 4],
                     "x",
                     color="red",
-                )
-                ax6.set_title(
-                    f"Power log coefficient: {data_title}\nn = {n:.2f}"
-                    + r"$ \pm $"
-                    + "0.05"
                 )
             except StopIteration:
                 Log.w(
@@ -9177,11 +9204,13 @@ class AnalyzerWorker(QtCore.QObject):
 
             Log.d(f"Channel thickness = {Constants.channel_thickness}")
 
-            for i in range(2):
-                FIRST_LOOP = i == 0
+            ### LOOP_BLOCK_START ###
+
+            for i in range(self.LOOP_BLOCK_COUNT):
+                self.FIRST_LOOP = i == 0
 
                 # first loop: calculate viscosity using ST = 72
-                if BIOFORMULATION and FIRST_LOOP:
+                if BIOFORMULATION and self.FIRST_LOOP:
                     ST = 72
                 # else: use "surface_tension" from XML -or-
                 # recalculate on 2nd loop with corrected ST
@@ -9228,1058 +9257,1097 @@ class AnalyzerWorker(QtCore.QObject):
 
                 self.update(status_label)
 
-                if FIRST_LOOP and BIOFORMULATION:
-                    C = float(xml_params.get("protein_concentration", 0.0)) 
+                fig4 = plt.figure(figsize=(12, 6))
+                fig4.set_layout_engine(None)  # full control, no auto-layout adjustments
+                fig4.subplots_adjust(
+                    left=0.10, right=0.99, top=0.92, bottom=0.22, wspace=0.0, hspace=0.0
+                )
+                ax7 = fig4.add_subplot(111)
+
+                # Create the annotation object (hidden by default)
+                self.annot = ax7.annotate(
+                    "",
+                    xy=(0, 0),
+                    xytext=(-40, 20),
+                    textcoords="offset points",
+                    bbox=dict(boxstyle="round", fc="w"),
+                    arrowprops=dict(arrowstyle="->"),
+                    picker=True,
+                )
+                self.annot.set_visible(False)
+                self.annot.get_bbox_patch().set_alpha(0.8)
+
+                # Connect the event listeners for click, hover and pick
+                fig4.canvas.mpl_connect("button_press_event", self._click)
+                fig4.canvas.mpl_connect("motion_notify_event", self.hover)
+                fig4.canvas.mpl_connect("pick_event", self.on_annot_click)
+
+                high_shear_5x = 0
+                high_shear_15x = 0
+
+                self.update(status_label)
+
+                if len(all_times) > BLIP1_IDX and not initial_fill_only:
+                    f0 = ys_freq[all_times[FILL_IDX]]
+                    d0 = dissipation[all_times[FILL_IDX]]
+                    f2 = ys_freq[all_times[BLIP1_IDX]]
+                    d2 = dissipation[all_times[BLIP1_IDX]]
+                    Log.i(f"f0 = {f0:2.2f} Hz")
+                    Log.i(f"f2 = {f2:2.2f} Hz")
+                    Log.i(f"f2-f0 = {f2-f0} Hz")
+
+                    # PR #377: Guardrail: Check Frequency/Dissipation Ratio for High Shear-Rate Calculation
+                    frequency_shift = f2 - f0
+                    dissipation_shift = d2 - d0
+                    ratio = frequency_shift / dissipation_shift * 1e-6
+
+                    # Adjust limits for the guardrails as needed
+                    freq_limit = 1000
+                    ratio_limit = 40
+                    if abs(frequency_shift) < freq_limit and abs(ratio) < ratio_limit:
+
+                        # Calculate high shear-rate viscosity
+                        high_shear_15x = 15e6
+
+                        self.update(status_label)
+
+                        if frequency_shift > float(
+                            Constants.get_batch_param(batch, "freq_delta_15MHz")
+                        ):
+                            freq_factor_15MHz = float(
+                                Constants.get_batch_param(batch, "freq_factor_15MHz")
+                            )
+                            high_shear_15y = (
+                                (frequency_shift * freq_factor_15MHz) ** 2
+                            ) / DENSITY
+                            Log.i(
+                                f"15MHz High shear = ((f2-f0) * {freq_factor_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
+                            )
+                        else:
+                            diss_factor1_15MHz = float(
+                                Constants.get_batch_param(batch, "diss_factor1_15MHz")
+                            )
+                            diss_factor2_15MHz = float(
+                                Constants.get_batch_param(batch, "diss_factor2_15MHz")
+                            )
+                            bandaid_compensate_high_shear_viscosity = False
+                            if bandaid_compensate_high_shear_viscosity:
+                                E3 = (
+                                    ys_freq[all_times[FILL_IDX]]
+                                    - ys_freq[all_times[START_IDX]]
+                                )  # from CAL file (Freq_fill)
+                                D = dissipation_shift - (
+                                    (0.023112 * (E3) / DENSITY - 4.6868) * 1e-6
+                                )
+                                high_shear_15y = (
+                                    (D * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
+                                ) / DENSITY
+                            else:
+                                high_shear_15y = (
+                                    (
+                                        dissipation_shift * diss_factor1_15MHz
+                                        - diss_factor2_15MHz
+                                    )
+                                    ** 2
+                                ) / DENSITY
+                            Log.i(f"d0 = {d0:1.4E}")
+                            Log.i(f"d2 = {d2:1.4E}")
+                            Log.i(f"d2-d0 = {dissipation_shift:1.4E}")
+                            if bandaid_compensate_high_shear_viscosity:
+                                Log.i(f"E3 = {E3}")
+                                Log.i(f"D = {D}")
+                                Log.i(
+                                    f"15MHz High shear = ({D} * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
+                                )
+                            else:
+                                Log.i(
+                                    f"15MHz High shear = ((d2-d0) * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
+                                )
+                        high_shear_15x = self.correctHighShear(
+                            high_shear_15x, high_shear_15y
+                        )
+                        ax7.plot(high_shear_15x, high_shear_15y, "bd")
+                        ax7.errorbar(
+                            high_shear_15x,
+                            high_shear_15y,
+                            0.30 * high_shear_15y,
+                            fmt="b.",
+                            ecolor="blue",
+                            capsize=3,
+                        )
+
+                        self.update(status_label)
+
+                        if True:
+                            data_path_fun = data_path.replace("_3rd.csv", "_lower.csv")
+                            fun_file_exists = secure_open.file_exists(
+                                data_path_fun, "capture"
+                            )
+
+                        if (
+                            frequency_shift < 900 and fun_file_exists
+                        ):  # frequency check added 2023-02-01
+                            if True:
+                                with secure_open(data_path_fun, "r", "capture") as f:
+                                    csv_headers_fun = next(f)
+
+                                    if isinstance(csv_headers_fun, bytes):
+                                        csv_headers_fun = csv_headers_fun.decode()
+
+                                    if "Ambient" in csv_headers_fun:
+                                        csv_cols_fun = (2, 4, 6, 7)
+                                    else:
+                                        csv_cols_fun = (2, 3, 5, 6)
+
+                                    data_fun = loadtxt(
+                                        f.readlines(),
+                                        delimiter=",",
+                                        skiprows=0,
+                                        usecols=csv_cols_fun,
+                                    )
+
+                            self.update(status_label)
+
+                            relative_time_fun = data_fun[:, 0]
+                            temperature_fun = data_fun[:, 1]
+                            resonance_frequency_fun = data_fun[:, 2]
+                            dissipation_fun = data_fun[:, 3]
+
+                            self.update(status_label)
+
+                            Log.i("Analyzing fundamental frequency dataset...")
+                            times_fun = []
+                            for i in range(len(all_times)):
+                                t_fun = 0
+                                try:
+                                    t_fun = (
+                                        next(
+                                            x
+                                            for x, t in enumerate(relative_time_fun)
+                                            if t >= xs[all_times[i]] - xs[0]
+                                        )
+                                        - 1
+                                    )
+                                except StopIteration:
+                                    Log.e(
+                                        f"Failed to locate POI_{i} @ timestamp {xs[all_times[i]] - xs[0]} from fundamental dataset. Attempting to proceed with index 0..."
+                                    )
+                                Log.d(
+                                    f"time[{i}] must be >= {xs[all_times[i]] - xs[0]}"
+                                )
+                                Log.d(
+                                    f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}"
+                                )
+                                times_fun.append(t_fun)
+                            ys_freq_fun = (
+                                np.average(
+                                    resonance_frequency_fun[0 : times_fun[FILL_IDX]]
+                                )
+                                - resonance_frequency_fun
+                            )
+                            high_shear_5x = 5e6
+                            xp = relative_time_fun
+                            fp = ys_freq_fun
+                            # absolute time of 15MHz start idx
+                            t0 = xs[all_times[FILL_IDX]] - xs[0]
+                            # absolute time of 15MHz blip1 idx
+                            t2 = xs[all_times[BLIP1_IDX]] - xs[0]
+                            f0 = np.interp(t0, xp, fp)
+                            d0 = dissipation_fun[10]
+                            f2 = np.interp(t2, xp, fp)
+                            d2 = dissipation_fun[times_fun[BLIP1_IDX]]
+                            Log.d(f"fun values to interpolate: [{t0}, {t2}]")
+                            Log.d(f"{0}: ({xp[0]}, {fp[0]})")
+                            Log.d("...")
+                            for i in range(len(xp)):
+                                if xp[i - 1] <= t0 and xp[i] >= t0:
+                                    Log.d(f"{i-1}: ({xp[i-1]}, {fp[i-1]})")
+                                    Log.d(f"## INTERP t0 HERE: ({t0}, {f0})")
+                                    Log.d(f"{i+1}: ({xp[i+1]}, {fp[i+1]})")
+                                    Log.d("...")
+                                if xp[i - 1] <= t2 and xp[i] >= t2:
+                                    Log.d(f"{i-1}: ({xp[i-1]}, {fp[i-1]})")
+                                    Log.d(f"## INTERP t2 HERE: ({t2}, {f2})")
+                                    Log.d(f"{i+1}: ({xp[i+1]}, {fp[i+1]})")
+                                    Log.d("...")
+                                # Log.d(f"{i}: ({xp[i]}, {fp[i]})")
+                            # ending 'i' from last 'for' loop
+                            Log.d(f"{i}: ({xp[i]}, {fp[i]})")
+                            Log.i(f"f0 = {f0:2.2f} Hz")
+                            Log.i(f"f2 = {f2:2.2f} Hz")
+                            Log.i(f"f2-f0 = {f2-f0} Hz")
+                            if f2 - f0 > float(
+                                Constants.get_batch_param(batch, "freq_delta_5MHz")
+                            ):
+                                freq_factor_5MHz = float(
+                                    Constants.get_batch_param(batch, "freq_factor_5MHz")
+                                )
+                                high_shear_5y = (
+                                    ((f2 - f0) * freq_factor_5MHz) ** 2
+                                ) / DENSITY
+                                Log.i(
+                                    f"5MHz High shear = ((f2-f0) * {freq_factor_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
+                                )
+                            else:
+                                diss_factor1_5MHz = float(
+                                    Constants.get_batch_param(
+                                        batch, "diss_factor1_5MHz"
+                                    )
+                                )
+                                diss_factor2_5MHz = float(
+                                    Constants.get_batch_param(
+                                        batch, "diss_factor2_5MHz"
+                                    )
+                                )
+                                high_shear_5y = (
+                                    ((d2 - d0) * diss_factor1_5MHz - diss_factor2_5MHz)
+                                    ** 2
+                                ) / DENSITY
+                                Log.i(f"d0 = {d0:1.4E}")
+                                Log.i(f"d2 = {d2:1.4E}")
+                                Log.i(f"d2-d0 = {d2-d0:1.4E}")
+                                Log.i(
+                                    f"5MHz High shear = ((d2-d0) * {diss_factor1_5MHz}-{diss_factor2_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
+                                )
+                            high_shear_5x = self.correctHighShear(
+                                high_shear_5x, high_shear_5y
+                            )
+                            ax7.plot(high_shear_5x, high_shear_5y, "bd")
+                            ax7.errorbar(
+                                high_shear_5x,
+                                high_shear_5y,
+                                0.30 * high_shear_5y,
+                                fmt="b.",
+                                ecolor="blue",
+                                capsize=3,
+                            )
+                        else:
+                            Log.w(
+                                "5 MHz high-shear calculation not available from dataset."
+                            )
+                            if not fun_file_exists:
+                                Log.w(
+                                    "The 5 MHz mode does not exist in the dataset for this captured run."
+                                )
+                            else:
+                                Log.w(
+                                    "The frequency shift of the initial fill region is too small (<900 Hz) for high-shear calculation accuracy."
+                                )
+                    else:
+                        Log.w(
+                            "5 MHz high-shear calculation not available from dataset."
+                        )
+                        Log.w(
+                            "15 MHz high-shear calculation not available from dataset."
+                        )
+
+                        if not frequency_shift < freq_limit:
+                            Log.w("Reason: Frequency shift limit exceeded.")
+                            Log.d(
+                                f"Detail: Must be less than {freq_limit}. Actual: {frequency_shift:2.2f}."
+                            )
+
+                        if not ratio < ratio_limit:
+                            Log.w("Reason: Ratio threshold limit exceeded.")
+                            Log.d(
+                                f"Detail: Must be less than {ratio_limit}. Actual: {ratio:2.2f}."
+                            )
+                else:
+                    Log.w("5 MHz high-shear calculation not available from dataset.")
+                    Log.w("15 MHz high-shear calculation not available from dataset.")
+
+                    Log.w(
+                        "Too few valid time points are available in Figure 2 for any high-shear calculation accuracy."
+                    )
+                    Log.w(
+                        "See Figure 2 to check if any of these points is being dropped due to time delta not being 2x last."
+                    )
+                    Log.w(
+                        "If so, please adjust the Precise Fill Points for this run accordingly and try this analysis again."
+                    )
+
+                self.update(status_label)
+
+                # viscosity = ST*np.cos(np.radians(CA))*all_time*Constants.channel_thickness/6/(all_pos**2)*1e3*(3*(n+1)/(2*n+1))
+                # viscosity = viscosity * 1000
+
+                # viscosity_2 = ST*np.cos(np.radians(CA))*line1_x*Constants.channel_thickness/6/(line1_curve**2)*1e3*(3*(n+1)/(2*n+1))
+                # viscosity_2 = viscosity_2 * 1000
+
+                # keep_ids = reject_outliers(viscosity, 11.)
+                # out_shear_rate = shear_rate[~keep_ids]
+                # out_viscosity = viscosity[~keep_ids]
+                in_shear_rate = shear_rate  # [keep_ids]
+                in_viscosity = viscosity  # [keep_ids]
+                in_temp = all_temp
+                # outliers = np.where(keep_ids == False)
+                # Log.d(f"in_visc = {viscosity}")
+                # Log.d(f"outliers = {outliers}")
+
+                self.update(status_label)
+
+                if len(in_shear_rate) == 0 or len(in_viscosity) == 0:
+                    in_shear_rate = shear_rate
+                    in_viscosity = viscosity
+                    in_temp = all_temp
+                    Log.w(
+                        "WARN: Initial fill region contains nothing but outlier. Attempting to continue with outliers."
+                    )
+                    Log.w("Please check the first 2 POIs for accuracy.")
+
+                # remove NANs from datasets
+                to_remove = np.isnan(in_shear_rate)
+                to_remove |= np.isnan(in_viscosity)
+                to_remove |= np.isinf(in_shear_rate)
+                to_remove |= np.isinf(in_viscosity)
+                in_shear_rate = in_shear_rate[~to_remove]
+                in_viscosity = in_viscosity[~to_remove]
+                in_temp = in_temp[~to_remove]
+
+                self.update(status_label)
+
+                if len(in_shear_rate) == 0 or len(in_viscosity) == 0:
+                    in_shear_rate = shear_rate
+                    in_viscosity = viscosity
+                    in_temp = all_temp
+                    Log.w(
+                        "WARN: Initial fill region contains nothing but inf/nan. Attempting to continue with outliers."
+                    )
+                    Log.w("Please check the first 2 POIs for accuracy.")
+
+                viscosity_at_1p15 = viscosity[-len(distances)]
+
+                # Only do this check on the final time through the loop
+                # Either: second loop -or- there won't be a second loop
+                if self.FIRST_LOOP == False or BIOFORMULATION == False:
+                    # PURPOSE: Hide 60% and/or 80% points when trending outside +/- 5% of POI2 and POI4
+                    # NOTE: Historically, this used to be +/- 10%, but was changed with issue #314.
+                    try:
+                        if initial_fill_only:
+                            raise StopIteration("Initial fill only in this dataset.")
+                        normal_idxs = []
+                        percent_pts = {}
+                        for i in idx_of_normal_pts_to_retain:
+                            if i in times:
+                                normal_idxs.append(-len(distances) + times.index(i))
+                            else:
+                                Log.w(
+                                    f"Index for {i} in `times` cannot be found in list. Skipping point"
+                                )
+                        if len(normal_idxs) == 0:
+                            raise Exception("Empty list cannot be reduced further.")
+                        idx0 = np.min(normal_idxs) - 1  # POI2
+                        idx1 = np.max(normal_idxs) + 1  # POI4
+                        # avg_viscosity = np.average(
+                        #     [in_viscosity[idx0], in_viscosity[idx3]])
+                        # std_viscosity = np.std(
+                        #     np.delete(in_viscosity, [idx1, idx2])
+                        # )  # all of in_viscosity, just not 2 points
+                        min_visc = 0.95 * min(viscosity[idx0], viscosity[idx1])
+                        max_visc = 1.05 * max(viscosity[idx0], viscosity[idx1])
+                        Log.i(
+                            f"Expected normal viscosity range = (min = {min_visc}, max = {max_visc})"
+                        )
+                        # Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
+                        for x, i in enumerate(normal_idxs):
+                            pt = "60%" if x == 0 else "80%"
+                            percent_pts[pt] = (in_shear_rate[i], in_viscosity[i])
+                            if min_visc <= viscosity[i] <= max_visc:
+                                continue
+                            Log.w(
+                                f"Removed {pt} point '{viscosity[i]}' for being outside the standard deviation of expected viscosity."
+                            )
+                            flag_warn = False
+                            arrays_to_check = [
+                                in_shear_rate,
+                                in_viscosity,
+                                in_temp,
+                                viscosity,
+                                shear_rate,
+                                fill_visc,
+                                fill_shear,
+                                distances,
+                            ]
+                            if any(len(arr) < abs(i) for arr in arrays_to_check):
+                                Log.w(
+                                    "Unable to remove outlier consistently; leaving dataset unchanged."
+                                )
+                                continue
+                            if len(in_shear_rate) >= abs(i):
+                                in_shear_rate = np.delete(in_shear_rate, i)
+                            else:
+                                flag_warn = True
+                            if len(in_viscosity) >= abs(i):
+                                in_viscosity = np.delete(in_viscosity, i)
+                            else:
+                                flag_warn = True
+                            if len(in_temp) >= abs(i):
+                                in_temp = np.delete(in_temp, i)
+                            else:
+                                flag_warn = True
+                            if len(viscosity) >= abs(i):
+                                viscosity = np.delete(viscosity, i)
+                            else:
+                                flag_warn = True
+                            if len(shear_rate) >= abs(i):
+                                shear_rate = np.delete(shear_rate, i)
+                            else:
+                                flag_warn = True
+                            if len(fill_visc) >= abs(i):
+                                fill_visc = np.delete(fill_visc, i)
+                            else:
+                                flag_warn = True
+                            if len(fill_shear) >= abs(i):
+                                fill_shear = np.delete(fill_shear, i)
+                            else:
+                                flag_warn = True
+                            if len(distances) >= abs(i):
+                                distances = np.delete(distances, i)
+                            else:
+                                flag_warn = True
+                            if flag_warn:
+                                Log.w(
+                                    "WARNING: Unable to remove all outliers from the dataset."
+                                )
+                    except StopIteration:
+                        Log.w(
+                            "Skipped initial fill trendline comparison for initial fill only dataset."
+                        )
+                    except Exception as e:
+                        Log.e("ERROR:", e)
+                        Log.e(
+                            "Unable to remove outliers from the dataset prior to plotting."
+                        )
+
+                else:
+                    Log.d(
+                        "Skipping hide checks for 60% and/or 80% points on first pass."
+                    )
+
+                self.update(status_label)
+
+                # np.linspace(lin_shear_rate[0], lin_shear_rate[-1]) # default: 50 points
+                fit_shear = fill_shear
+                fit_visc = (
+                    # cube_fit(fit_shear) # plot this one, evenly spaced points
+                    fill_visc
+                )
+                lin_viscosity = fill_visc
+
+                debug = False
+                if debug:
+                    raw_shear = in_shear_rate[0 : -len(distances)]
+                    raw_visc = in_viscosity[0 : -len(distances)]
+                    import matplotlib.pyplot as plt
+
+                    fig_dbg = plt.figure(figsize=(12, 9))
+                    ax_dbg = fig_dbg.add_subplot(111)
+                    # ax_dbg.scatter(raw_shear_out, raw_visc_out, color="red", marker="x")
+                    ax_dbg.scatter(raw_shear, raw_visc, color="blue", marker=".")
+                    ax_dbg.plot(fit_shear, fit_visc, color="black", marker=",")
+                    fig_dbg.show()
+
+                self.update(status_label)
+
+                # ax7.annotate("START", (shear_rate[0],viscosity[0]),
+                #    textcoords="offset points", xytext=(0,-15), ha='center')
+                # ax7.plot(out_shear_rate, out_viscosity, 'rx')
+                # ax7.plot(shear_rate, viscosity, 'r:')
+
+                ### BANDAID #3 ###
+                # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
+                enable_bandaid_3 = True
+                # NOTE: This was only enabled for production builds, not dev/nightly builds
+                #       As of issue #314 (2026-03-19): Band-Aid is enabled in all contexts.
+                # if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
+                #    enable_bandaid_3 = False
+                hide_initial_fill = False  # if disabled, never force hide initial fill
+                remove_initial_fill = False
+
+                # New trendline variable for smoothing the initial fill small blue diamond points
+                try:
+                    sm_x = in_viscosity[: -len(distances)]
+                    sm_wl = len(in_viscosity) - len(distances)
+                    if len(sm_x) == 0:
+                        raise ValueError("No initial fill points present in dataset.")
+                    if sm_wl <= 1:
+                        raise ValueError(
+                            "Too few points for smoothing: `wl` must be greater than `polyorder`."
+                        )
+                    sm_trendline = savgol_filter(sm_x, sm_wl, 1)
+                except (ValueError, IndexError) as e:
+                    Log.e(
+                        "Failed to generate initial fill region trendline. Skipping initial fill region analysis."
+                    )
+                    Log.d(f"Error Details: {e}")
+                    hide_initial_fill = True
+
+                point_factor_limit = 0.25
+                if point_factor_limit < 0 or point_factor_limit > 1:
+                    Log.e(
+                        f"Invalid 'point_factor_limit' set: {point_factor_limit:2.2f} (Must be between zero and one)"
+                    )
+                    Log.e(
+                        "Disabling initial fill limit check due to invalid parameter specified: 'point_factor_limit'"
+                    )
+                    enable_bandaid_3 = False
+
+                # Checking for bandaid #3 moved ~100 lines lower to accommodate USE_NEW_FILL_METHOD
+                ##################
+
+                ### BANDAID #4 ###
+                # PURPOSE: Hide 60% and/or 80% points when trending in the wrong direction surrounding POI2 and POI4
+                # enable_bandaid_4 = True
+                # if enable_bandaid_4:
+                #     for i in idx_of_normal_pts_to_retain:
+                #         try:
+                #             idx = times.index(i)
+                #             Log.d(
+                #                 f"Removing index {idx} from distances with value {distances[idx]}."
+                #             )
+                #             distances = np.delete(distances, idx)
+                #             Log.d(f"Removing index {idx} from times with value {i}.")
+                #             times.remove(i)
+                #         except Exception as e:
+                #             Log.e("Error removing midpoint from dataset:", str(e))
+                ##################
+
+                if initial_fill[-1] >= 90 and not hide_initial_fill:
+                    # Truncate the initial fill region to just a few evenly spaced points
+                    # mlen = int(np.floor((len(in_shear_rate) - len(distances)) / 5))
+                    # See issue #256 for details on why use dynamic number of fill points
+                    min_fill_pts = 3
+                    max_fill_pts = 8
+                    target_num_pts = 10
+                    num_fill_pts = max(
+                        min_fill_pts, min(max_fill_pts, target_num_pts - len(distances))
+                    )
+                    shear_at_fill_start = in_shear_rate[0]
+                    shear_at_fill_end = in_shear_rate[-len(distances) - 1]
+                    shear_points = np.geomspace(  # like `linspace` but for log10
+                        shear_at_fill_end, shear_at_fill_start, num_fill_pts
+                    )
+                    local_shear = []
+                    local_visc = []
+                    local_linv = []
+                    local_temp = []
+                    last_idx = -1
+                    # skip first point, reverse order
+                    for pt in shear_points[1:][::-1]:
+                        try:
+                            idx = next(
+                                x for x, y in enumerate(in_shear_rate) if y <= pt
+                            )
+                        except StopIteration:
+                            Log.e(
+                                f"Failed to find index for shear point {pt:2.2f}. Cannot plot this index."
+                            )
+                            continue
+
+                        if USE_NEW_FILL_METHOD:
+                            # NEW METHOD:
+                            if last_idx == -1:
+                                mv = fill_pos[idx] / fill_time[idx]
+                                mp = fill_pos[idx] / 2
+                            else:
+                                mv = (fill_pos[idx] - fill_pos[last_idx]) / (
+                                    fill_time[idx] - fill_time[last_idx]
+                                )
+                                mp = (fill_pos[idx] + fill_pos[last_idx]) / 2
+
+                            mid_visc = (
+                                ST
+                                * np.cos(np.radians(CA))
+                                * Constants.channel_thickness
+                                * 1e6
+                                / ((mp * mv * 6) * (2 / 3 + 1 / 3 / n))
+                            )
+                            mid_shear = (
+                                6
+                                * mv
+                                / Constants.channel_thickness
+                                * (2 / 3 + 1 / 3 / n)
+                                * 1e-3
+                            )
+
+                            # Use to show the old positions:
+                            # ax7.scatter(
+                            #     in_shear_rate[idx],
+                            #     sm_trendline[idx],
+                            #     marker="d",
+                            #     s=15,
+                            #     c="red",
+                            # )
+
+                            # See issue #436: Allowing this to proceed uninterrupted would add a NAN value to output data
+                            if last_idx == idx:
+                                Log.e(
+                                    f"Failed to plot index {idx} for shear point {pt:2.2f}. Already plotted {in_shear_rate[idx]:2.2f}."
+                                )
+                                continue
+
+                            # See issue #436: Add extra safety guards to protect against adding NAN values in arrays
+                            if not np.isfinite(mid_visc):
+                                Log.e(
+                                    f"Failed to plot index {idx} for shear point {pt:2.2f}. Calculated viscosity is not finite."
+                                )
+                                continue
+                            if not np.isfinite(mid_shear):
+                                Log.e(
+                                    f"Failed to plot index {idx} for shear point {pt:2.2f}. Calculated mid_shear is not finite."
+                                )
+                                continue
+
+                            sm_trendline[idx] = mid_visc
+                            in_shear_rate[idx] = mid_shear
+                            last_idx = idx
+
+                        local_shear.append(in_shear_rate[idx])
+                        local_visc.append(sm_trendline[idx])
+                        local_linv.append(lin_viscosity[idx])
+                        local_temp.append(in_temp[idx])
+
+                    if enable_bandaid_3 and high_shear_15x:
+                        P1_value = in_viscosity[
+                            -len(distances)
+                        ]  # end of fill point (1st big diamond left of small diamonds)
+                        P2_value = (
+                            high_shear_15y  # exists only if high_Shear_15x is not zero
+                        )
+                        lower_factor = 1 - point_factor_limit
+                        upper_factor = 1 + point_factor_limit
+                        min_fit_end = min(P1_value, P2_value) * lower_factor
+                        max_fit_end = max(P1_value, P2_value) * upper_factor
+                        local_visc_array = np.array(local_visc)
+                        Log.d(f"P1 value (End of Initial Fill) is: {P1_value:2.2f}")
+                        Log.d(f"P2 value (High-Shear) is: {P2_value:2.2f}")
+                        Log.d(
+                            f"Point Factor Limit for Initial Fill is: {point_factor_limit:2.2f}x"
+                        )
+                        Log.d(
+                            f"Trendline must be within range from {min_fit_end:2.2f} to {max_fit_end:2.2f}"
+                        )
+                        Log.d(
+                            f"Initial Fill Trendline ranges from {local_visc_array.min():2.2f} to {local_visc_array.max():2.2f}"
+                        )
+                        if (
+                            min_fit_end > local_visc_array.min()
+                            or max_fit_end < local_visc_array.max()
+                        ):  # Trendline is outside the allowable range
+                            Log.w(
+                                f"Dropping initial fill region due to being outside of the accepted limits (see Debug for more info)"
+                            )
+                            remove_initial_fill = True
+                    if not remove_initial_fill:
+                        ax7.scatter(
+                            local_shear,
+                            local_visc,
+                            marker="d",
+                            s=15,
+                            c="blue",
+                        )
+                    for idx in range(len(distances)):
+                        local_shear.append(in_shear_rate[-len(distances) + idx])
+                        local_visc.append(in_viscosity[-len(distances) + idx])
+                        # local_linv.append(lin_viscosity[-len(distances)+idx])
+                        local_temp.append(in_temp[-len(distances) + idx])
+                    in_shear_rate = local_shear
+                    in_viscosity = local_visc
+                    lin_viscosity = local_linv
+                    in_temp = local_temp
+                    # These plots are useful for debugging, but are not usually shown:
+                    # ax7.scatter(
+                    #     in_shear_rate, in_viscosity, marker="d", s=1, c="blue"
+                    # )
+                    # ax7.plot(in_shear_rate[:-len(distances)], sm_trendline,
+                    #          color="black", marker=",")
+                    # ax7.plot(fit_shear, fit_visc, color="black", marker=",")
+                    # for hh in range(1, 5):
+                    #     xp = np.average(
+                    #         in_shear_rate[hh * mlen: (hh + 1) * mlen - 1])
+                    #     yp = np.average(
+                    #         in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
+                    #     stdev = np.std(
+                    #         in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
+                    #     # ax7.plot(xp, yp, 'b.')
+                    #     ax7.errorbar(xp, yp, stdev, fmt="b.",
+                    #                  ecolor="blue", capsize=3)
+                elif not initial_fill_only:
+                    # Remove initial fill points from output table later
+                    remove_initial_fill = True
+
+                self.update(status_label)
+
+                avg_viscosity = np.average(in_viscosity)
+                std_viscosity = np.std(in_viscosity)
+                # lin_viscosity = np.flip(lin_viscosity)
+                for i in range(-len(distances), 0):
+                    if initial_fill_only:
+                        break  # skip
+                    percent_error = (
+                        abs(
+                            (viscosity[i] - viscosity[-len(distances)])
+                            / viscosity[-len(distances)]
+                        )
+                        * 100
+                    )
+                    Log.d(f"Percent error for calculated viscosity is: {percent_error}")
+                    if percent_error < 20.0:
+                        # show bigly if it's not an outlier
+                        ax7.plot(shear_rate[i], viscosity[i], "bd")
+                    else:
+                        ax7.plot(
+                            shear_rate[i], viscosity[i], "bd"
+                        )  # show bigly even if it is (for now)
+
+                    if lin_viscosity[-1] == viscosity[i] and i == -len(distances):
+                        continue  # skip adding the first viscosity point if it is a duplicate
+                    lin_viscosity = np.append(lin_viscosity, viscosity[i])
+                if len(lin_viscosity) == len(in_shear_rate) - 1:
+                    # re-add the skipped viscosity point if the lengths do not match
+                    lin_viscosity = np.insert(
+                        lin_viscosity, -len(distances), viscosity[-len(distances)]
+                    )
+
+                if remove_initial_fill:
+                    # Remove initial fill points from output table
+                    in_shear_rate = in_shear_rate[-len(distances) :]
+                    in_viscosity = in_viscosity[-len(distances) :]
+                    lin_viscosity = lin_viscosity[-len(distances) :]
+                    in_temp = in_temp[-len(distances) :]
+
+                if initial_fill_only:
+                    # Only show initial fill points in output table
+                    in_shear_rate = in_shear_rate[: -len(distances)]
+                    in_viscosity = in_viscosity[: -len(distances)]
+                    lin_viscosity = lin_viscosity[: -len(distances)]
+                    in_temp = in_temp[: -len(distances)]
+
+                in_shear_rate = np.flip(in_shear_rate)
+                in_viscosity = np.flip(in_viscosity)
+                lin_viscosity = np.flip(lin_viscosity)
+                in_temp = np.flip(in_temp)
+                if high_shear_5x != 0:
+                    in_shear_rate = np.append(in_shear_rate, high_shear_5x)
+                    in_viscosity = np.append(in_viscosity, high_shear_5y)
+                    lin_viscosity = np.append(lin_viscosity, high_shear_5y)
+                    in_temp = np.append(in_temp, avg_temp)
+                if high_shear_15x != 0:
+                    in_shear_rate = np.append(in_shear_rate, high_shear_15x)
+                    in_viscosity = np.append(in_viscosity, high_shear_15y)
+                    lin_viscosity = np.append(lin_viscosity, high_shear_15y)
+                    in_temp = np.append(in_temp, avg_temp)
+
+                self.update(status_label)
+
+                ax7.set_title(f"Shear-rate vs. Viscosity: {data_title}")
+                ax7.set_xlabel("Shear-rate (s⁻¹)")
+                ax7.set_ylabel("Viscosity (cP)")
+                lower_limit = np.amin(in_viscosity) / 1.5
+                power = 1
+                while power > -5:
+                    if lower_limit > 10**power:
+                        lower_limit = 10**power
+                        break
+                    power -= 1
+                upper_limit = np.amax(in_viscosity) * 1.5
+                power = 0
+                while power < 5:
+                    if upper_limit < 10**power:
+                        upper_limit = 10**power
+                        break
+                    power += 1
+                if lower_limit >= upper_limit:
+                    Log.w(
+                        "Limits were auto-calculated but are in an invalid range! Using ylim [0, 1000]."
+                    )
+                    ax7.set_ylim([0, 1000])
+                elif np.isfinite(lower_limit) and np.isfinite(upper_limit):
+                    Log.d(
+                        f"Auto-calculated y-range limits for Figure 4 are: [{lower_limit}, {upper_limit}]"
+                    )
+                    ax7.set_ylim([lower_limit, upper_limit])
+                else:
+                    Log.w(
+                        "Limits were auto-calculated but were not finite values! Using ylim [0, 1000]."
+                    )
+                    ax7.set_ylim([0, 1000])
+
+                ax7.set_xscale("log")
+                ax7.set_yscale("log")
+
+                # redraw canvas on figure set (non-interactive mode)
+                ax7.figure.canvas.draw()
+
+                self.update(status_label)
+
+                err_viscosity = []
+                str_viscosity = []
+                for i in range(len(in_shear_rate)):
+                    err_viscosity.append(in_viscosity[i] * 0.10)
+                    str_viscosity.append(
+                        f"{in_viscosity[i]:2.2f} \u00b1 {err_viscosity[i]:2.2f}"
+                    )  # plus-or-minus = \u00b1
+
+                # On multiplex systems, all `in_temp` will be NaN
+                # NOTE: Move this check to before marking "*...*" error cells
+                real_temps = [x for x in in_temp if ~np.isnan(x)]
+
+                # Annotate average viscosity and standard deviation on plot and in output CSV
+                if len(log_velocity_46) == len(distances):  # not checked
+                    Log.w(
+                        "WARNING: Initial fill values are not considered to be reliably accurate for this run."
+                    )
+                    Log.w(
+                        "Initial fill values are marked as 'light red' in the tabular data for reference only."
+                    )
+
+                    in_shear_rate = np.array(in_shear_rate, dtype=str)
+                    in_viscosity = np.array(in_viscosity, dtype=str)
+                    # str_viscosity = np.array(str_viscosity, dtype=str) # NOTE: Numpy doesn't handle unicode chars in array strings
+                    in_temp = np.array(in_temp, dtype=str)
+
+                    pts_to_modify = range(len(distances), len(in_shear_rate))
+                    for i in range(len(in_shear_rate)):
+                        is_error_cell = i in pts_to_modify
+                        if in_shear_rate[i] in [str(5e6), str(15e6)]:
+                            is_error_cell = False
+
+                        if is_error_cell:
+                            # Log.i(f"Converting {in_shear_rate[i]}")
+                            # Log.i(f"into *{in_shear_rate[i]:2.2f}*")
+                            in_shear_rate[i] = f"*{float(in_shear_rate[i]):2.2f}*"
+                            in_viscosity[i] = f"*{float(in_viscosity[i]):2.2f}*"
+                            str_viscosity[i] = f"*{str_viscosity[i]}*"
+                            in_temp[i] = f"*{float(in_temp[i]):2.2f}*"
+                        else:
+                            in_shear_rate[i] = f"{float(in_shear_rate[i]):2.2f}"
+                            in_viscosity[i] = f"{float(in_viscosity[i]):2.2f}"
+                            # str_viscosity[i] = f"{str_viscosity[i]}"
+                            in_temp[i] = f"{float(in_temp[i]):2.2f}"
+
+                    # BUG: The data type started as np.ndarray before this block
+                    #      so leave it as a numpy array type object for now...
+                    #      it will be appropriately cast to a `list` later on.
+                    # in_shear_rate = in_shear_rate.tolist()
+                    # in_viscosity = in_viscosity.tolist()
+                    # # str_viscosity = str_viscosity.tolist()
+                    # in_temp = in_temp.tolist()
+
+                # add data to table view of results
+                data = {
+                    "Shear Rate (s⁻¹)": in_shear_rate,
+                    "Raw Viscosity (cP)": in_viscosity,
+                    "Avg Viscosity (cP)": str_viscosity,
+                    "Temperature (C)": in_temp,
+                }
+                rows = len(in_shear_rate)
+                cols = len(data)
+
+                # Store to global for hover/pick actions
+                self.last_shear_rates = in_shear_rate
+                self.last_distances = distances
+
+                # On multiplex systems, all `in_temp` will be NaN
+                if len(real_temps) == 0:
+                    Log.w(
+                        "Hiding \"Temperature (C)\" column, as all temperature values are 'nan'."
+                    )
+                    data.pop("Temperature (C)")
+                    cols -= 1
+                # data, rows, cols = [{"col1": ["Hello", "This"], "col2": ["World", "Is"], "col3": ["Foo", "A"], "col4": ["Bar", "Test"]}, 2, 4]
+
+                self.update(status_label)
+
+                # Create all result objects
+                summary_text = "Summary text not set."
+                plot_text = "Plot text not set."
+                res_shear_rate = []
+                res_viscosity = []
+                res_percent_err = []
+                res_temp = []
+                res_n_coeff = []
+
+                try:
+
+                    if True:
+                        # Highly non-Newtonian or Newtonian: use interpolated value at 1000 s⁻¹
+                        # Interpolate across the entire dataset from POI1 (start-of-fill) to POI6 (ch3)
+                        # excluding the 60% and 80% points from the initial fill region (if present)
+                        shear_interp = 1000
+                        in_shear_san_60_80: list = (
+                            in_shear_rate
+                            if type(in_shear_rate) is list
+                            else in_shear_rate.tolist()
+                        )
+                        in_visco_san_60_80: list = (
+                            in_viscosity
+                            if type(in_viscosity) is list
+                            else in_viscosity.tolist()
+                        )
+                        # Special case: remove asterisk ("*[xx.xx]*") data before casting to float
+                        in_shear_san_60_80 = [
+                            float(str(val))
+                            for val in in_shear_san_60_80
+                            if "*" not in str(val)
+                        ]
+                        in_visco_san_60_80 = [
+                            float(str(val))
+                            for val in in_visco_san_60_80
+                            if "*" not in str(val)
+                        ]
+                        # Remove 60% and 80% points from data for interpolation
+                        if "percent_pts" in locals():
+                            for shear, visco in percent_pts.values():
+                                if shear in in_shear_san_60_80:
+                                    in_shear_san_60_80.remove(shear)
+                                if visco in in_visco_san_60_80:
+                                    in_visco_san_60_80.remove(visco)
+                        interp_func = interp1d(
+                            in_shear_san_60_80,
+                            in_visco_san_60_80,
+                            fill_value="extrapolate",
+                        )
+                        visc_interp = abs(float(interp_func(shear_interp)))
+                        i_l, i_r = next(
+                            (
+                                (i - 1, i)
+                                for i, s in enumerate(in_shear_san_60_80)
+                                if s > shear_interp
+                            ),
+                            (-1, len(in_shear_san_60_80)),
+                        )
+                        if i_l == -1 or i_r == len(in_shear_san_60_80):
+                            # indicate 10% error when extrapolating beyond left or right of the shear array
+                            visc_error = visc_interp / 10
+                        else:
+                            # indicate half of absolute difference for left/right points when interpolating
+                            visc_error = (
+                                np.abs(
+                                    in_visco_san_60_80[i_l] - in_visco_san_60_80[i_r]
+                                )
+                                / 2
+                            )
+
+                        summary_text = "Interpolated viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rate {:2.0f} s⁻¹.".format(
+                            visc_interp, visc_error, shear_interp
+                        )
+                        plot_text = "{:2.2f} \u00b1 {:2.2f} cP @ {:2.0f} s⁻¹".format(
+                            visc_interp, visc_error, shear_interp
+                        )
+
+                        res_shear_rate.append(f"{shear_interp:2.2f}")
+                        res_viscosity.append(visc_interp)
+                        res_percent_err.append(visc_error)
+                        res_temp.append(avg_temp)
+                        res_n_coeff.append(n)
+
+                    if abs(n - 1.0) <= Constants.shear_interp_threshold:
+                        # Nearly Newtonian: use current average method
+                        # Calculate the average viscosity and standard deviation from POI2 (end-of-fill) to POI6 (ch3)
+                        # Special case: remove asterisk ("*[xx.xx]*") data before casting to float
+                        in_shear_local = [
+                            float(str(val))
+                            for val in in_shear_rate
+                            if "*" not in str(val)
+                        ]
+                        in_visco_local = [
+                            float(str(val))
+                            for val in in_viscosity
+                            if "*" not in str(val)
+                        ]
+                        values_to_average = len(distances)
+                        # high_shear_counts = np.count_nonzero(
+                        #     [high_shear_5x, high_shear_15x])
+                        idx_start = 0
+                        # keep within current arrays (handles extra high-shear rows appended at end)
+                        idx_end = min(
+                            len(in_shear_local) - 1,
+                            len(in_visco_local) - 1,
+                            max(2, values_to_average - 1),
+                        )
+                        # Make sure NOT to include high-shear(s) in average viscosity calculation
+                        visc_subset = in_visco_local[idx_start : idx_end + 1]
+                        if high_shear_15x != 0:
+                            if high_shear_15y in visc_subset:
+                                # assumes 15MHz is last in list
+                                visc_subset = visc_subset[:-1]
+                                idx_end -= 1
+                        if high_shear_5x != 0:
+                            if high_shear_5y in visc_subset:
+                                # assumes 5MHz is last in list
+                                visc_subset = visc_subset[:-1]
+                                idx_end -= 1
+                        # Calculate average +/- deviation from viscosity subset
+                        visc_avg = np.average(visc_subset)
+                        visc_std = np.std(visc_subset)
+                        shear_min = in_shear_local[idx_start]
+                        shear_max = in_shear_local[idx_end]
+
+                        summary_text += "\nAverage viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rates {:2.0f} - {:2.0f} s⁻¹.".format(
+                            visc_avg, visc_std, shear_min, shear_max
+                        )
+                        plot_text += "\n\n{:2.2f} \u00b1 {:2.2f} cP\n({:2.0f} - {:2.0f}) s⁻¹".format(
+                            visc_avg, visc_std, shear_min, shear_max
+                        )
+
+                        res_shear_rate.append(f"{shear_min:2.2f}-{shear_max:2.2f}")
+                        res_viscosity.append(visc_avg)
+                        res_percent_err.append(visc_std)
+                        res_temp.append(avg_temp)
+                        res_n_coeff.append(n)
+
+                    # Add optimally positioned label to plot data
+                    self.plot_ax = ax7
+                    self.plot_text = plot_text
+                    self.place_text_avoiding_data()
+
+                    # # Convert `in_shear_rate` to formatted strings
+                    # for i in range(len(in_shear_rate)):
+                    #     if type(in_shear_rate[i]) is not str:
+                    #         in_shear_rate[i] = f"{in_shear_rate[i]:2.2f}"
+
+                except Exception as e:
+                    Log.e("Failed to calculate average viscosity summary.", str(e))
+
+                if BIOFORMULATION and self.FIRST_LOOP:
+
+                    C = float(xml_params.get("protein_concentration", 0.0))
                     if C <= 75:
                         g_C = 0
                     elif C < 150:
                         g_C = (C - 75) / 75
                     else:
                         g_C = 1
+
                     if initial_fill_only:
-                        A = np.average(fill_visc)
+                        A = in_viscosity[0]
+                    elif len(res_viscosity) < 2:
+                        A = in_viscosity[len(distances) - 1]
                     else:
-                        A = np.average(viscosity)
+                        A = res_viscosity[-1]
                     if A <= 5:
                         f_A = 1
                     elif A < 20:
                         f_A = (-0.0111 * A) + 0.8335 + (1.11 / A)
                     else:
                         f_A = 0.667
+
                     CF_A_C = 1 - g_C * (1 - f_A)
                     ST *= CF_A_C  # adjust surface tension with correction factor
 
-                    Log.d(f"Calculated 'g({C:2.2f})' = {g_C}")
+                    Log.d(f"Calculated 'A' = {A}")
+                    Log.d(f"Calculated 'C' = {C}")
                     Log.d(f"Calculated 'f({A:2.2f})' = {f_A}")
+                    Log.d(f"Calculated 'g({C:2.2f})' = {g_C}")
                     Log.d(f"Calculated 'CF({A:2.2f}, {C:2.2f})' = {CF_A_C}")
+                    Log.d(f"Calculated 'ST' = {ST}")
 
                     continue  # proceed to send loop, recalculate
                 else:
                     break  # skip second loop
 
-            Log.d(f"Calculated 'surface_tension' = {ST}")
-
-            fig4 = plt.figure(figsize=(12, 6))
-            fig4.set_layout_engine(None)  # full control, no auto-layout adjustments
-            fig4.subplots_adjust(
-                left=0.10, right=0.99, top=0.92, bottom=0.22, wspace=0.0, hspace=0.0
-            )
-            ax7 = fig4.add_subplot(111)
-
-            # Create the annotation object (hidden by default)
-            self.annot = ax7.annotate(
-                "",
-                xy=(0, 0),
-                xytext=(-40, 20),
-                textcoords="offset points",
-                bbox=dict(boxstyle="round", fc="w"),
-                arrowprops=dict(arrowstyle="->"),
-                picker=True,
-            )
-            self.annot.set_visible(False)
-            self.annot.get_bbox_patch().set_alpha(0.8)
-
-            # Connect the event listeners for click, hover and pick
-            fig4.canvas.mpl_connect("button_press_event", self._click)
-            fig4.canvas.mpl_connect("motion_notify_event", self.hover)
-            fig4.canvas.mpl_connect("pick_event", self.on_annot_click)
-
-            high_shear_5x = 0
-            high_shear_15x = 0
-
-            self.update(status_label)
-
-            if len(all_times) > BLIP1_IDX and not initial_fill_only:
-                f0 = ys_freq[all_times[FILL_IDX]]
-                d0 = dissipation[all_times[FILL_IDX]]
-                f2 = ys_freq[all_times[BLIP1_IDX]]
-                d2 = dissipation[all_times[BLIP1_IDX]]
-                Log.i(f"f0 = {f0:2.2f} Hz")
-                Log.i(f"f2 = {f2:2.2f} Hz")
-                Log.i(f"f2-f0 = {f2-f0} Hz")
-
-                # PR #377: Guardrail: Check Frequency/Dissipation Ratio for High Shear-Rate Calculation
-                frequency_shift = f2 - f0
-                dissipation_shift = d2 - d0
-                ratio = frequency_shift / dissipation_shift * 1e-6
-
-                # Adjust limits for the guardrails as needed
-                freq_limit = 1000
-                ratio_limit = 40
-                if abs(frequency_shift) < freq_limit and abs(ratio) < ratio_limit:
-
-                    # Calculate high shear-rate viscosity
-                    high_shear_15x = 15e6
-
-                    self.update(status_label)
-
-                    if frequency_shift > float(
-                        Constants.get_batch_param(batch, "freq_delta_15MHz")
-                    ):
-                        freq_factor_15MHz = float(
-                            Constants.get_batch_param(batch, "freq_factor_15MHz")
-                        )
-                        high_shear_15y = (
-                            (frequency_shift * freq_factor_15MHz) ** 2
-                        ) / DENSITY
-                        Log.i(
-                            f"15MHz High shear = ((f2-f0) * {freq_factor_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
-                        )
-                    else:
-                        diss_factor1_15MHz = float(
-                            Constants.get_batch_param(batch, "diss_factor1_15MHz")
-                        )
-                        diss_factor2_15MHz = float(
-                            Constants.get_batch_param(batch, "diss_factor2_15MHz")
-                        )
-                        bandaid_compensate_high_shear_viscosity = False
-                        if bandaid_compensate_high_shear_viscosity:
-                            E3 = (
-                                ys_freq[all_times[FILL_IDX]]
-                                - ys_freq[all_times[START_IDX]]
-                            )  # from CAL file (Freq_fill)
-                            D = dissipation_shift - (
-                                (0.023112 * (E3) / DENSITY - 4.6868) * 1e-6
-                            )
-                            high_shear_15y = (
-                                (D * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
-                            ) / DENSITY
-                        else:
-                            high_shear_15y = (
-                                (
-                                    dissipation_shift * diss_factor1_15MHz
-                                    - diss_factor2_15MHz
-                                )
-                                ** 2
-                            ) / DENSITY
-                        Log.i(f"d0 = {d0:1.4E}")
-                        Log.i(f"d2 = {d2:1.4E}")
-                        Log.i(f"d2-d0 = {dissipation_shift:1.4E}")
-                        if bandaid_compensate_high_shear_viscosity:
-                            Log.i(f"E3 = {E3}")
-                            Log.i(f"D = {D}")
-                            Log.i(
-                                f"15MHz High shear = ({D} * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
-                            )
-                        else:
-                            Log.i(
-                                f"15MHz High shear = ((d2-d0) * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
-                            )
-                    high_shear_15x = self.correctHighShear(
-                        high_shear_15x, high_shear_15y
-                    )
-                    ax7.plot(high_shear_15x, high_shear_15y, "bd")
-                    ax7.errorbar(
-                        high_shear_15x,
-                        high_shear_15y,
-                        0.30 * high_shear_15y,
-                        fmt="b.",
-                        ecolor="blue",
-                        capsize=3,
-                    )
-
-                    self.update(status_label)
-
-                    if True:
-                        data_path_fun = data_path.replace("_3rd.csv", "_lower.csv")
-                        fun_file_exists = secure_open.file_exists(
-                            data_path_fun, "capture"
-                        )
-
-                    if (
-                        frequency_shift < 900 and fun_file_exists
-                    ):  # frequency check added 2023-02-01
-                        if True:
-                            with secure_open(data_path_fun, "r", "capture") as f:
-                                csv_headers_fun = next(f)
-
-                                if isinstance(csv_headers_fun, bytes):
-                                    csv_headers_fun = csv_headers_fun.decode()
-
-                                if "Ambient" in csv_headers_fun:
-                                    csv_cols_fun = (2, 4, 6, 7)
-                                else:
-                                    csv_cols_fun = (2, 3, 5, 6)
-
-                                data_fun = loadtxt(
-                                    f.readlines(),
-                                    delimiter=",",
-                                    skiprows=0,
-                                    usecols=csv_cols_fun,
-                                )
-
-                        self.update(status_label)
-
-                        relative_time_fun = data_fun[:, 0]
-                        temperature_fun = data_fun[:, 1]
-                        resonance_frequency_fun = data_fun[:, 2]
-                        dissipation_fun = data_fun[:, 3]
-
-                        self.update(status_label)
-
-                        Log.i("Analyzing fundamental frequency dataset...")
-                        times_fun = []
-                        for i in range(len(all_times)):
-                            t_fun = 0
-                            try:
-                                t_fun = (
-                                    next(
-                                        x
-                                        for x, t in enumerate(relative_time_fun)
-                                        if t >= xs[all_times[i]] - xs[0]
-                                    )
-                                    - 1
-                                )
-                            except StopIteration:
-                                Log.e(
-                                    f"Failed to locate POI_{i} @ timestamp {xs[all_times[i]] - xs[0]} from fundamental dataset. Attempting to proceed with index 0..."
-                                )
-                            Log.d(f"time[{i}] must be >= {xs[all_times[i]] - xs[0]}")
-                            Log.d(
-                                f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}"
-                            )
-                            times_fun.append(t_fun)
-                        ys_freq_fun = (
-                            np.average(resonance_frequency_fun[0 : times_fun[FILL_IDX]])
-                            - resonance_frequency_fun
-                        )
-                        high_shear_5x = 5e6
-                        xp = relative_time_fun
-                        fp = ys_freq_fun
-                        # absolute time of 15MHz start idx
-                        t0 = xs[all_times[FILL_IDX]] - xs[0]
-                        # absolute time of 15MHz blip1 idx
-                        t2 = xs[all_times[BLIP1_IDX]] - xs[0]
-                        f0 = np.interp(t0, xp, fp)
-                        d0 = dissipation_fun[10]
-                        f2 = np.interp(t2, xp, fp)
-                        d2 = dissipation_fun[times_fun[BLIP1_IDX]]
-                        Log.d(f"fun values to interpolate: [{t0}, {t2}]")
-                        Log.d(f"{0}: ({xp[0]}, {fp[0]})")
-                        Log.d("...")
-                        for i in range(len(xp)):
-                            if xp[i - 1] <= t0 and xp[i] >= t0:
-                                Log.d(f"{i-1}: ({xp[i-1]}, {fp[i-1]})")
-                                Log.d(f"## INTERP t0 HERE: ({t0}, {f0})")
-                                Log.d(f"{i+1}: ({xp[i+1]}, {fp[i+1]})")
-                                Log.d("...")
-                            if xp[i - 1] <= t2 and xp[i] >= t2:
-                                Log.d(f"{i-1}: ({xp[i-1]}, {fp[i-1]})")
-                                Log.d(f"## INTERP t2 HERE: ({t2}, {f2})")
-                                Log.d(f"{i+1}: ({xp[i+1]}, {fp[i+1]})")
-                                Log.d("...")
-                            # Log.d(f"{i}: ({xp[i]}, {fp[i]})")
-                        # ending 'i' from last 'for' loop
-                        Log.d(f"{i}: ({xp[i]}, {fp[i]})")
-                        Log.i(f"f0 = {f0:2.2f} Hz")
-                        Log.i(f"f2 = {f2:2.2f} Hz")
-                        Log.i(f"f2-f0 = {f2-f0} Hz")
-                        if f2 - f0 > float(
-                            Constants.get_batch_param(batch, "freq_delta_5MHz")
-                        ):
-                            freq_factor_5MHz = float(
-                                Constants.get_batch_param(batch, "freq_factor_5MHz")
-                            )
-                            high_shear_5y = (
-                                ((f2 - f0) * freq_factor_5MHz) ** 2
-                            ) / DENSITY
-                            Log.i(
-                                f"5MHz High shear = ((f2-f0) * {freq_factor_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
-                            )
-                        else:
-                            diss_factor1_5MHz = float(
-                                Constants.get_batch_param(batch, "diss_factor1_5MHz")
-                            )
-                            diss_factor2_5MHz = float(
-                                Constants.get_batch_param(batch, "diss_factor2_5MHz")
-                            )
-                            high_shear_5y = (
-                                ((d2 - d0) * diss_factor1_5MHz - diss_factor2_5MHz) ** 2
-                            ) / DENSITY
-                            Log.i(f"d0 = {d0:1.4E}")
-                            Log.i(f"d2 = {d2:1.4E}")
-                            Log.i(f"d2-d0 = {d2-d0:1.4E}")
-                            Log.i(
-                                f"5MHz High shear = ((d2-d0) * {diss_factor1_5MHz}-{diss_factor2_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
-                            )
-                        high_shear_5x = self.correctHighShear(
-                            high_shear_5x, high_shear_5y
-                        )
-                        ax7.plot(high_shear_5x, high_shear_5y, "bd")
-                        ax7.errorbar(
-                            high_shear_5x,
-                            high_shear_5y,
-                            0.30 * high_shear_5y,
-                            fmt="b.",
-                            ecolor="blue",
-                            capsize=3,
-                        )
-                    else:
-                        Log.w(
-                            "5 MHz high-shear calculation not available from dataset."
-                        )
-                        if not fun_file_exists:
-                            Log.w(
-                                "The 5 MHz mode does not exist in the dataset for this captured run."
-                            )
-                        else:
-                            Log.w(
-                                "The frequency shift of the initial fill region is too small (<900 Hz) for high-shear calculation accuracy."
-                            )
-                else:
-                    Log.w("5 MHz high-shear calculation not available from dataset.")
-                    Log.w("15 MHz high-shear calculation not available from dataset.")
-
-                    if not frequency_shift < freq_limit:
-                        Log.w("Reason: Frequency shift limit exceeded.")
-                        Log.d(
-                            f"Detail: Must be less than {freq_limit}. Actual: {frequency_shift:2.2f}."
-                        )
-
-                    if not ratio < ratio_limit:
-                        Log.w("Reason: Ratio threshold limit exceeded.")
-                        Log.d(
-                            f"Detail: Must be less than {ratio_limit}. Actual: {ratio:2.2f}."
-                        )
-            else:
-                Log.w("5 MHz high-shear calculation not available from dataset.")
-                Log.w("15 MHz high-shear calculation not available from dataset.")
-
-                Log.w(
-                    "Too few valid time points are available in Figure 2 for any high-shear calculation accuracy."
-                )
-                Log.w(
-                    "See Figure 2 to check if any of these points is being dropped due to time delta not being 2x last."
-                )
-                Log.w(
-                    "If so, please adjust the Precise Fill Points for this run accordingly and try this analysis again."
-                )
-
-            self.update(status_label)
-
-            # viscosity = ST*np.cos(np.radians(CA))*all_time*Constants.channel_thickness/6/(all_pos**2)*1e3*(3*(n+1)/(2*n+1))
-            # viscosity = viscosity * 1000
-
-            # viscosity_2 = ST*np.cos(np.radians(CA))*line1_x*Constants.channel_thickness/6/(line1_curve**2)*1e3*(3*(n+1)/(2*n+1))
-            # viscosity_2 = viscosity_2 * 1000
-
-            # keep_ids = reject_outliers(viscosity, 11.)
-            # out_shear_rate = shear_rate[~keep_ids]
-            # out_viscosity = viscosity[~keep_ids]
-            in_shear_rate = shear_rate  # [keep_ids]
-            in_viscosity = viscosity  # [keep_ids]
-            in_temp = all_temp
-            # outliers = np.where(keep_ids == False)
-            # Log.d(f"in_visc = {viscosity}")
-            # Log.d(f"outliers = {outliers}")
-
-            self.update(status_label)
-
-            if len(in_shear_rate) == 0 or len(in_viscosity) == 0:
-                in_shear_rate = shear_rate
-                in_viscosity = viscosity
-                in_temp = all_temp
-                Log.w(
-                    "WARN: Initial fill region contains nothing but outlier. Attempting to continue with outliers."
-                )
-                Log.w("Please check the first 2 POIs for accuracy.")
-
-            # remove NANs from datasets
-            to_remove = np.isnan(in_shear_rate)
-            to_remove |= np.isnan(in_viscosity)
-            to_remove |= np.isinf(in_shear_rate)
-            to_remove |= np.isinf(in_viscosity)
-            in_shear_rate = in_shear_rate[~to_remove]
-            in_viscosity = in_viscosity[~to_remove]
-            in_temp = in_temp[~to_remove]
-
-            self.update(status_label)
-
-            if len(in_shear_rate) == 0 or len(in_viscosity) == 0:
-                in_shear_rate = shear_rate
-                in_viscosity = viscosity
-                in_temp = all_temp
-                Log.w(
-                    "WARN: Initial fill region contains nothing but inf/nan. Attempting to continue with outliers."
-                )
-                Log.w("Please check the first 2 POIs for accuracy.")
-
-            viscosity_at_1p15 = viscosity[-len(distances)]
-
-            # PURPOSE: Hide 60% and/or 80% points when trending outside +/- 5% of POI2 and POI4
-            # NOTE: Historically, this used to be +/- 10%, but was changed with issue #314.
-            try:
-                if initial_fill_only:
-                    raise StopIteration("Initial fill only in this dataset.")
-                normal_idxs = []
-                percent_pts = {}
-                for i in idx_of_normal_pts_to_retain:
-                    if i in times:
-                        normal_idxs.append(-len(distances) + times.index(i))
-                    else:
-                        Log.w(
-                            f"Index for {i} in `times` cannot be found in list. Skipping point"
-                        )
-                if len(normal_idxs) == 0:
-                    raise Exception("Empty list cannot be reduced further.")
-                idx0 = np.min(normal_idxs) - 1  # POI2
-                idx1 = np.max(normal_idxs) + 1  # POI4
-                # avg_viscosity = np.average(
-                #     [in_viscosity[idx0], in_viscosity[idx3]])
-                # std_viscosity = np.std(
-                #     np.delete(in_viscosity, [idx1, idx2])
-                # )  # all of in_viscosity, just not 2 points
-                min_visc = 0.95 * min(viscosity[idx0], viscosity[idx1])
-                max_visc = 1.05 * max(viscosity[idx0], viscosity[idx1])
-                Log.i(
-                    f"Expected normal viscosity range = (min = {min_visc}, max = {max_visc})"
-                )
-                # Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
-                for x, i in enumerate(normal_idxs):
-                    pt = "60%" if x == 0 else "80%"
-                    percent_pts[pt] = (in_shear_rate[i], in_viscosity[i])
-                    if min_visc <= viscosity[i] <= max_visc:
-                        continue
-                    Log.w(
-                        f"Removed {pt} point '{viscosity[i]}' for being outside the standard deviation of expected viscosity."
-                    )
-                    flag_warn = False
-                    arrays_to_check = [
-                        in_shear_rate,
-                        in_viscosity,
-                        in_temp,
-                        viscosity,
-                        shear_rate,
-                        fill_visc,
-                        fill_shear,
-                        distances,
-                    ]
-                    if any(len(arr) < abs(i) for arr in arrays_to_check):
-                        Log.w(
-                            "Unable to remove outlier consistently; leaving dataset unchanged."
-                        )
-                        continue
-                    if len(in_shear_rate) >= abs(i):
-                        in_shear_rate = np.delete(in_shear_rate, i)
-                    else:
-                        flag_warn = True
-                    if len(in_viscosity) >= abs(i):
-                        in_viscosity = np.delete(in_viscosity, i)
-                    else:
-                        flag_warn = True
-                    if len(in_temp) >= abs(i):
-                        in_temp = np.delete(in_temp, i)
-                    else:
-                        flag_warn = True
-                    if len(viscosity) >= abs(i):
-                        viscosity = np.delete(viscosity, i)
-                    else:
-                        flag_warn = True
-                    if len(shear_rate) >= abs(i):
-                        shear_rate = np.delete(shear_rate, i)
-                    else:
-                        flag_warn = True
-                    if len(fill_visc) >= abs(i):
-                        fill_visc = np.delete(fill_visc, i)
-                    else:
-                        flag_warn = True
-                    if len(fill_shear) >= abs(i):
-                        fill_shear = np.delete(fill_shear, i)
-                    else:
-                        flag_warn = True
-                    if len(distances) >= abs(i):
-                        distances = np.delete(distances, i)
-                    else:
-                        flag_warn = True
-                    if flag_warn:
-                        Log.w(
-                            "WARNING: Unable to remove all outliers from the dataset."
-                        )
-            except StopIteration:
-                Log.w(
-                    "Skipped initial fill trendline comparison for initial fill only dataset."
-                )
-            except Exception as e:
-                Log.e("ERROR:", e)
-                Log.e("Unable to remove outliers from the dataset prior to plotting.")
-
-            self.update(status_label)
-
-            # np.linspace(lin_shear_rate[0], lin_shear_rate[-1]) # default: 50 points
-            fit_shear = fill_shear
-            fit_visc = (
-                # cube_fit(fit_shear) # plot this one, evenly spaced points
-                fill_visc
-            )
-            lin_viscosity = fill_visc
-
-            debug = False
-            if debug:
-                raw_shear = in_shear_rate[0 : -len(distances)]
-                raw_visc = in_viscosity[0 : -len(distances)]
-                import matplotlib.pyplot as plt
-
-                fig_dbg = plt.figure(figsize=(12, 9))
-                ax_dbg = fig_dbg.add_subplot(111)
-                # ax_dbg.scatter(raw_shear_out, raw_visc_out, color="red", marker="x")
-                ax_dbg.scatter(raw_shear, raw_visc, color="blue", marker=".")
-                ax_dbg.plot(fit_shear, fit_visc, color="black", marker=",")
-                fig_dbg.show()
-
-            self.update(status_label)
-
-            # ax7.annotate("START", (shear_rate[0],viscosity[0]),
-            #    textcoords="offset points", xytext=(0,-15), ha='center')
-            # ax7.plot(out_shear_rate, out_viscosity, 'rx')
-            # ax7.plot(shear_rate, viscosity, 'r:')
-
-            ### BANDAID #3 ###
-            # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
-            enable_bandaid_3 = True
-            # NOTE: This was only enabled for production builds, not dev/nightly builds
-            #       As of issue #314 (2026-03-19): Band-Aid is enabled in all contexts.
-            # if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
-            #    enable_bandaid_3 = False
-            hide_initial_fill = False  # if disabled, never force hide initial fill
-            remove_initial_fill = False
-
-            # New trendline variable for smoothing the initial fill small blue diamond points
-            try:
-                sm_x = in_viscosity[: -len(distances)]
-                sm_wl = len(in_viscosity) - len(distances)
-                if len(sm_x) == 0:
-                    raise ValueError("No initial fill points present in dataset.")
-                if sm_wl <= 1:
-                    raise ValueError(
-                        "Too few points for smoothing: `wl` must be greater than `polyorder`."
-                    )
-                sm_trendline = savgol_filter(sm_x, sm_wl, 1)
-            except (ValueError, IndexError) as e:
-                Log.e(
-                    "Failed to generate initial fill region trendline. Skipping initial fill region analysis."
-                )
-                Log.d(f"Error Details: {e}")
-                hide_initial_fill = True
-
-            point_factor_limit = 0.25
-            if point_factor_limit < 0 or point_factor_limit > 1:
-                Log.e(
-                    f"Invalid 'point_factor_limit' set: {point_factor_limit:2.2f} (Must be between zero and one)"
-                )
-                Log.e(
-                    "Disabling initial fill limit check due to invalid parameter specified: 'point_factor_limit'"
-                )
-                enable_bandaid_3 = False
-
-            # Checking for bandaid #3 moved ~100 lines lower to accommodate USE_NEW_FILL_METHOD
-            ##################
-
-            ### BANDAID #4 ###
-            # PURPOSE: Hide 60% and/or 80% points when trending in the wrong direction surrounding POI2 and POI4
-            # enable_bandaid_4 = True
-            # if enable_bandaid_4:
-            #     for i in idx_of_normal_pts_to_retain:
-            #         try:
-            #             idx = times.index(i)
-            #             Log.d(
-            #                 f"Removing index {idx} from distances with value {distances[idx]}."
-            #             )
-            #             distances = np.delete(distances, idx)
-            #             Log.d(f"Removing index {idx} from times with value {i}.")
-            #             times.remove(i)
-            #         except Exception as e:
-            #             Log.e("Error removing midpoint from dataset:", str(e))
-            ##################
-
-            if initial_fill[-1] >= 90 and not hide_initial_fill:
-                # Truncate the initial fill region to just a few evenly spaced points
-                # mlen = int(np.floor((len(in_shear_rate) - len(distances)) / 5))
-                # See issue #256 for details on why use dynamic number of fill points
-                min_fill_pts = 3
-                max_fill_pts = 8
-                target_num_pts = 10
-                num_fill_pts = max(
-                    min_fill_pts, min(max_fill_pts, target_num_pts - len(distances))
-                )
-                shear_at_fill_start = in_shear_rate[0]
-                shear_at_fill_end = in_shear_rate[-len(distances) - 1]
-                shear_points = np.geomspace(  # like `linspace` but for log10
-                    shear_at_fill_end, shear_at_fill_start, num_fill_pts
-                )
-                local_shear = []
-                local_visc = []
-                local_linv = []
-                local_temp = []
-                last_idx = -1
-                # skip first point, reverse order
-                for pt in shear_points[1:][::-1]:
-                    try:
-                        idx = next(x for x, y in enumerate(in_shear_rate) if y <= pt)
-                    except StopIteration:
-                        Log.e(
-                            f"Failed to find index for shear point {pt:2.2f}. Cannot plot this index."
-                        )
-                        continue
-
-                    if USE_NEW_FILL_METHOD:
-                        # NEW METHOD:
-                        if last_idx == -1:
-                            mv = fill_pos[idx] / fill_time[idx]
-                            mp = fill_pos[idx] / 2
-                        else:
-                            mv = (fill_pos[idx] - fill_pos[last_idx]) / (
-                                fill_time[idx] - fill_time[last_idx]
-                            )
-                            mp = (fill_pos[idx] + fill_pos[last_idx]) / 2
-
-                        mid_visc = (
-                            ST
-                            * np.cos(np.radians(CA))
-                            * Constants.channel_thickness
-                            * 1e6
-                            / ((mp * mv * 6) * (2 / 3 + 1 / 3 / n))
-                        )
-                        mid_shear = (
-                            6
-                            * mv
-                            / Constants.channel_thickness
-                            * (2 / 3 + 1 / 3 / n)
-                            * 1e-3
-                        )
-
-                        # Use to show the old positions:
-                        # ax7.scatter(
-                        #     in_shear_rate[idx],
-                        #     sm_trendline[idx],
-                        #     marker="d",
-                        #     s=15,
-                        #     c="red",
-                        # )
-
-                        # See issue #436: Allowing this to proceed uninterrupted would add a NAN value to output data
-                        if last_idx == idx:
-                            Log.e(
-                                f"Failed to plot index {idx} for shear point {pt:2.2f}. Already plotted {in_shear_rate[idx]:2.2f}."
-                            )
-                            continue
-
-                        # See issue #436: Add extra safety guards to protect against adding NAN values in arrays
-                        if not np.isfinite(mid_visc):
-                            Log.e(
-                                f"Failed to plot index {idx} for shear point {pt:2.2f}. Calculated viscosity is not finite."
-                            )
-                            continue
-                        if not np.isfinite(mid_shear):
-                            Log.e(
-                                f"Failed to plot index {idx} for shear point {pt:2.2f}. Calculated mid_shear is not finite."
-                            )
-                            continue
-
-                        sm_trendline[idx] = mid_visc
-                        in_shear_rate[idx] = mid_shear
-                        last_idx = idx
-
-                    local_shear.append(in_shear_rate[idx])
-                    local_visc.append(sm_trendline[idx])
-                    local_linv.append(lin_viscosity[idx])
-                    local_temp.append(in_temp[idx])
-
-                if enable_bandaid_3 and high_shear_15x:
-                    P1_value = (
-                        in_viscosity[-len(distances)]  # end of fill point (1st big diamond left of small diamonds)
-                    )
-                    P2_value = (
-                        high_shear_15y  # exists only if high_Shear_15x is not zero
-                    )
-                    lower_factor = 1 - point_factor_limit
-                    upper_factor = 1 + point_factor_limit
-                    min_fit_end = min(P1_value, P2_value) * lower_factor
-                    max_fit_end = max(P1_value, P2_value) * upper_factor
-                    local_visc_array = np.array(local_visc)
-                    Log.d(f"P1 value (End of Initial Fill) is: {P1_value:2.2f}")
-                    Log.d(f"P2 value (High-Shear) is: {P2_value:2.2f}")
-                    Log.d(
-                        f"Point Factor Limit for Initial Fill is: {point_factor_limit:2.2f}x"
-                    )
-                    Log.d(
-                        f"Trendline must be within range from {min_fit_end:2.2f} to {max_fit_end:2.2f}"
-                    )
-                    Log.d(
-                        f"Initial Fill Trendline ranges from {local_visc_array.min():2.2f} to {local_visc_array.max():2.2f}"
-                    )
-                    if (
-                        min_fit_end > local_visc_array.min()
-                        or max_fit_end < local_visc_array.max()
-                    ):  # Trendline is outside the allowable range
-                        Log.w(
-                            f"Dropping initial fill region due to being outside of the accepted limits (see Debug for more info)"
-                        )
-                        remove_initial_fill = True
-                if not remove_initial_fill:
-                    ax7.scatter(
-                        local_shear,
-                        local_visc,
-                        marker="d",
-                        s=15,
-                        c="blue",
-                    )
-                for idx in range(len(distances)):
-                    local_shear.append(in_shear_rate[-len(distances) + idx])
-                    local_visc.append(in_viscosity[-len(distances) + idx])
-                    # local_linv.append(lin_viscosity[-len(distances)+idx])
-                    local_temp.append(in_temp[-len(distances) + idx])
-                in_shear_rate = local_shear
-                in_viscosity = local_visc
-                lin_viscosity = local_linv
-                in_temp = local_temp
-                # These plots are useful for debugging, but are not usually shown:
-                # ax7.scatter(
-                #     in_shear_rate, in_viscosity, marker="d", s=1, c="blue"
-                # )
-                # ax7.plot(in_shear_rate[:-len(distances)], sm_trendline,
-                #          color="black", marker=",")
-                # ax7.plot(fit_shear, fit_visc, color="black", marker=",")
-                # for hh in range(1, 5):
-                #     xp = np.average(
-                #         in_shear_rate[hh * mlen: (hh + 1) * mlen - 1])
-                #     yp = np.average(
-                #         in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
-                #     stdev = np.std(
-                #         in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
-                #     # ax7.plot(xp, yp, 'b.')
-                #     ax7.errorbar(xp, yp, stdev, fmt="b.",
-                #                  ecolor="blue", capsize=3)
-            elif not initial_fill_only:
-                # Remove initial fill points from output table later
-                remove_initial_fill = True
-
-            self.update(status_label)
-
-            avg_viscosity = np.average(in_viscosity)
-            std_viscosity = np.std(in_viscosity)
-            # lin_viscosity = np.flip(lin_viscosity)
-            for i in range(-len(distances), 0):
-                if initial_fill_only:
-                    break  # skip
-                percent_error = (
-                    abs(
-                        (viscosity[i] - viscosity[-len(distances)])
-                        / viscosity[-len(distances)]
-                    )
-                    * 100
-                )
-                Log.d(f"Percent error for calculated viscosity is: {percent_error}")
-                if percent_error < 20.0:
-                    # show bigly if it's not an outlier
-                    ax7.plot(shear_rate[i], viscosity[i], "bd")
-                else:
-                    ax7.plot(
-                        shear_rate[i], viscosity[i], "bd"
-                    )  # show bigly even if it is (for now)
-
-                if lin_viscosity[-1] == viscosity[i] and i == -len(distances):
-                    continue  # skip adding the first viscosity point if it is a duplicate
-                lin_viscosity = np.append(lin_viscosity, viscosity[i])
-            if len(lin_viscosity) == len(in_shear_rate) - 1:
-                # re-add the skipped viscosity point if the lengths do not match
-                lin_viscosity = np.insert(
-                    lin_viscosity, -len(distances), viscosity[-len(distances)]
-                )
-
-            if remove_initial_fill:
-                # Remove initial fill points from output table
-                in_shear_rate = in_shear_rate[-len(distances) :]
-                in_viscosity = in_viscosity[-len(distances) :]
-                lin_viscosity = lin_viscosity[-len(distances) :]
-                in_temp = in_temp[-len(distances) :]
-
-            if initial_fill_only:
-                # Only show initial fill points in output table
-                in_shear_rate = in_shear_rate[: -len(distances)]
-                in_viscosity = in_viscosity[: -len(distances)]
-                lin_viscosity = lin_viscosity[: -len(distances)]
-                in_temp = in_temp[: -len(distances)]
-
-            in_shear_rate = np.flip(in_shear_rate)
-            in_viscosity = np.flip(in_viscosity)
-            lin_viscosity = np.flip(lin_viscosity)
-            in_temp = np.flip(in_temp)
-            if high_shear_5x != 0:
-                in_shear_rate = np.append(in_shear_rate, high_shear_5x)
-                in_viscosity = np.append(in_viscosity, high_shear_5y)
-                lin_viscosity = np.append(lin_viscosity, high_shear_5y)
-                in_temp = np.append(in_temp, avg_temp)
-            if high_shear_15x != 0:
-                in_shear_rate = np.append(in_shear_rate, high_shear_15x)
-                in_viscosity = np.append(in_viscosity, high_shear_15y)
-                lin_viscosity = np.append(lin_viscosity, high_shear_15y)
-                in_temp = np.append(in_temp, avg_temp)
-
-            self.update(status_label)
-
-            ax7.set_title(f"Shear-rate vs. Viscosity: {data_title}")
-            ax7.set_xlabel("Shear-rate (s⁻¹)")
-            ax7.set_ylabel("Viscosity (cP)")
-            lower_limit = np.amin(in_viscosity) / 1.5
-            power = 1
-            while power > -5:
-                if lower_limit > 10**power:
-                    lower_limit = 10**power
-                    break
-                power -= 1
-            upper_limit = np.amax(in_viscosity) * 1.5
-            power = 0
-            while power < 5:
-                if upper_limit < 10**power:
-                    upper_limit = 10**power
-                    break
-                power += 1
-            if lower_limit >= upper_limit:
-                Log.w(
-                    "Limits were auto-calculated but are in an invalid range! Using ylim [0, 1000]."
-                )
-                ax7.set_ylim([0, 1000])
-            elif np.isfinite(lower_limit) and np.isfinite(upper_limit):
-                Log.d(
-                    f"Auto-calculated y-range limits for Figure 4 are: [{lower_limit}, {upper_limit}]"
-                )
-                ax7.set_ylim([lower_limit, upper_limit])
-            else:
-                Log.w(
-                    "Limits were auto-calculated but were not finite values! Using ylim [0, 1000]."
-                )
-                ax7.set_ylim([0, 1000])
-
-            ax7.set_xscale("log")
-            ax7.set_yscale("log")
-
-            # redraw canvas on figure set (non-interactive mode)
-            ax7.figure.canvas.draw()
-
-            self.update(status_label)
-
-            err_viscosity = []
-            str_viscosity = []
-            for i in range(len(in_shear_rate)):
-                err_viscosity.append(in_viscosity[i] * 0.10)
-                str_viscosity.append(
-                    f"{in_viscosity[i]:2.2f} \u00b1 {err_viscosity[i]:2.2f}"
-                )  # plus-or-minus = \u00b1
-
-            # On multiplex systems, all `in_temp` will be NaN
-            # NOTE: Move this check to before marking "*...*" error cells
-            real_temps = [x for x in in_temp if ~np.isnan(x)]
-
-            # Annotate average viscosity and standard deviation on plot and in output CSV
-            if len(log_velocity_46) == len(distances):  # not checked
-                Log.w(
-                    "WARNING: Initial fill values are not considered to be reliably accurate for this run."
-                )
-                Log.w(
-                    "Initial fill values are marked as 'light red' in the tabular data for reference only."
-                )
-
-                in_shear_rate = np.array(in_shear_rate, dtype=str)
-                in_viscosity = np.array(in_viscosity, dtype=str)
-                # str_viscosity = np.array(str_viscosity, dtype=str) # NOTE: Numpy doesn't handle unicode chars in array strings
-                in_temp = np.array(in_temp, dtype=str)
-
-                pts_to_modify = range(len(distances), len(in_shear_rate))
-                for i in range(len(in_shear_rate)):
-                    is_error_cell = i in pts_to_modify
-                    if in_shear_rate[i] in [str(5e6), str(15e6)]:
-                        is_error_cell = False
-
-                    if is_error_cell:
-                        # Log.i(f"Converting {in_shear_rate[i]}")
-                        # Log.i(f"into *{in_shear_rate[i]:2.2f}*")
-                        in_shear_rate[i] = f"*{float(in_shear_rate[i]):2.2f}*"
-                        in_viscosity[i] = f"*{float(in_viscosity[i]):2.2f}*"
-                        str_viscosity[i] = f"*{str_viscosity[i]}*"
-                        in_temp[i] = f"*{float(in_temp[i]):2.2f}*"
-                    else:
-                        in_shear_rate[i] = f"{float(in_shear_rate[i]):2.2f}"
-                        in_viscosity[i] = f"{float(in_viscosity[i]):2.2f}"
-                        # str_viscosity[i] = f"{str_viscosity[i]}"
-                        in_temp[i] = f"{float(in_temp[i]):2.2f}"
-
-                # BUG: The data type started as np.ndarray before this block
-                #      so leave it as a numpy array type object for now...
-                #      it will be appropriately cast to a `list` later on.
-                # in_shear_rate = in_shear_rate.tolist()
-                # in_viscosity = in_viscosity.tolist()
-                # # str_viscosity = str_viscosity.tolist()
-                # in_temp = in_temp.tolist()
-
-            # add data to table view of results
-            data = {
-                "Shear Rate (s⁻¹)": in_shear_rate,
-                "Raw Viscosity (cP)": in_viscosity,
-                "Avg Viscosity (cP)": str_viscosity,
-                "Temperature (C)": in_temp,
-            }
-            rows = len(in_shear_rate)
-            cols = len(data)
-
-            # Store to global for hover/pick actions
-            self.last_shear_rates = in_shear_rate
-            self.last_distances = distances
-
-            # On multiplex systems, all `in_temp` will be NaN
-            if len(real_temps) == 0:
-                Log.w(
-                    "Hiding \"Temperature (C)\" column, as all temperature values are 'nan'."
-                )
-                data.pop("Temperature (C)")
-                cols -= 1
-            # data, rows, cols = [{"col1": ["Hello", "This"], "col2": ["World", "Is"], "col3": ["Foo", "A"], "col4": ["Bar", "Test"]}, 2, 4]
-
-            self.update(status_label)
-
-            # Create all result objects
-            summary_text = "Summary text not set."
-            plot_text = "Plot text not set."
-            res_shear_rate = []
-            res_viscosity = []
-            res_percent_err = []
-            res_temp = []
-            res_n_coeff = []
-
-            try:
-
-                if True:
-                    # Highly non-Newtonian or Newtonian: use interpolated value at 1000 s⁻¹
-                    # Interpolate across the entire dataset from POI1 (start-of-fill) to POI6 (ch3)
-                    # excluding the 60% and 80% points from the initial fill region (if present)
-                    shear_interp = 1000
-                    in_shear_san_60_80: list = (
-                        in_shear_rate
-                        if type(in_shear_rate) is list
-                        else in_shear_rate.tolist()
-                    )
-                    in_visco_san_60_80: list = (
-                        in_viscosity
-                        if type(in_viscosity) is list
-                        else in_viscosity.tolist()
-                    )
-                    # Special case: remove asterisk ("*[xx.xx]*") data before casting to float
-                    in_shear_san_60_80 = [
-                        float(str(val))
-                        for val in in_shear_san_60_80
-                        if "*" not in str(val)
-                    ]
-                    in_visco_san_60_80 = [
-                        float(str(val))
-                        for val in in_visco_san_60_80
-                        if "*" not in str(val)
-                    ]
-                    # Remove 60% and 80% points from data for interpolation
-                    if "percent_pts" in locals():
-                        for shear, visco in percent_pts.values():
-                            if shear in in_shear_san_60_80:
-                                in_shear_san_60_80.remove(shear)
-                            if visco in in_visco_san_60_80:
-                                in_visco_san_60_80.remove(visco)
-                    interp_func = interp1d(
-                        in_shear_san_60_80, in_visco_san_60_80, fill_value="extrapolate"
-                    )
-                    visc_interp = abs(float(interp_func(shear_interp)))
-                    i_l, i_r = next(
-                        (
-                            (i - 1, i)
-                            for i, s in enumerate(in_shear_san_60_80)
-                            if s > shear_interp
-                        ),
-                        (-1, len(in_shear_san_60_80)),
-                    )
-                    if i_l == -1 or i_r == len(in_shear_san_60_80):
-                        # indicate 10% error when extrapolating beyond left or right of the shear array
-                        visc_error = visc_interp / 10
-                    else:
-                        # indicate half of absolute difference for left/right points when interpolating
-                        visc_error = (
-                            np.abs(in_visco_san_60_80[i_l] - in_visco_san_60_80[i_r])
-                            / 2
-                        )
-
-                    summary_text = "Interpolated viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rate {:2.0f} s⁻¹.".format(
-                        visc_interp, visc_error, shear_interp
-                    )
-                    plot_text = "{:2.2f} \u00b1 {:2.2f} cP @ {:2.0f} s⁻¹".format(
-                        visc_interp, visc_error, shear_interp
-                    )
-
-                    res_shear_rate.append(f"{shear_interp:2.2f}")
-                    res_viscosity.append(visc_interp)
-                    res_percent_err.append(visc_error)
-                    res_temp.append(avg_temp)
-                    res_n_coeff.append(n)
-
-                if abs(n - 1.0) <= Constants.shear_interp_threshold:
-                    # Nearly Newtonian: use current average method
-                    # Calculate the average viscosity and standard deviation from POI2 (end-of-fill) to POI6 (ch3)
-                    # Special case: remove asterisk ("*[xx.xx]*") data before casting to float
-                    in_shear_local = [
-                        float(str(val)) for val in in_shear_rate if "*" not in str(val)
-                    ]
-                    in_visco_local = [
-                        float(str(val)) for val in in_viscosity if "*" not in str(val)
-                    ]
-                    values_to_average = len(distances)
-                    # high_shear_counts = np.count_nonzero(
-                    #     [high_shear_5x, high_shear_15x])
-                    idx_start = 0
-                    # keep within current arrays (handles extra high-shear rows appended at end)
-                    idx_end = min(
-                        len(in_shear_local) - 1,
-                        len(in_visco_local) - 1,
-                        max(2, values_to_average - 1),
-                    )
-                    # Make sure NOT to include high-shear(s) in average viscosity calculation
-                    visc_subset = in_visco_local[idx_start : idx_end + 1]
-                    if high_shear_15x != 0:
-                        if high_shear_15y in visc_subset:
-                            # assumes 15MHz is last in list
-                            visc_subset = visc_subset[:-1]
-                            idx_end -= 1
-                    if high_shear_5x != 0:
-                        if high_shear_5y in visc_subset:
-                            # assumes 5MHz is last in list
-                            visc_subset = visc_subset[:-1]
-                            idx_end -= 1
-                    # Calculate average +/- deviation from viscosity subset
-                    visc_avg = np.average(visc_subset)
-                    visc_std = np.std(visc_subset)
-                    shear_min = in_shear_local[idx_start]
-                    shear_max = in_shear_local[idx_end]
-
-                    summary_text += "\nAverage viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rates {:2.0f} - {:2.0f} s⁻¹.".format(
-                        visc_avg, visc_std, shear_min, shear_max
-                    )
-                    plot_text += (
-                        "\n\n{:2.2f} \u00b1 {:2.2f} cP\n({:2.0f} - {:2.0f}) s⁻¹".format(
-                            visc_avg, visc_std, shear_min, shear_max
-                        )
-                    )
-
-                    res_shear_rate.append(f"{shear_min:2.2f}-{shear_max:2.2f}")
-                    res_viscosity.append(visc_avg)
-                    res_percent_err.append(visc_std)
-                    res_temp.append(avg_temp)
-                    res_n_coeff.append(n)
-
-                # Add optimally positioned label to plot data
-                self.plot_ax = ax7
-                self.plot_text = plot_text
-                self.place_text_avoiding_data()
-
-                # # Convert `in_shear_rate` to formatted strings
-                # for i in range(len(in_shear_rate)):
-                #     if type(in_shear_rate[i]) is not str:
-                #         in_shear_rate[i] = f"{in_shear_rate[i]:2.2f}"
-
-            except Exception as e:
-                Log.e("Failed to calculate average viscosity summary.", str(e))
+            ### LOOP_BLOCK_STOP ###
 
             status_label = "Saving Results..."
             self.update(status_label)
@@ -10814,6 +10882,11 @@ class AnalyzerWorker(QtCore.QObject):
         finally:
             self.finished.emit()  # queue callback
 
+    # Must come after `AnalyzeWorker.run()` for progress bar tracking
+    def end(self):
+        """Dummy method"""
+        pass
+
     def place_text_avoiding_data(
         self,
         ax=None,
@@ -11022,7 +11095,7 @@ class AnalyzerWorker(QtCore.QObject):
                 if shear_index < len(distance_idxs):
                     return distance_idxs[shear_index]
                 if shear_index < len(self.last_shear_rates) - 2:
-                    # all points between End of Initial Fill and High-Shear 
+                    # all points between End of Initial Fill and High-Shear
                     # should be marked as Initial Fill on the plot label
                     return -1
                 # check 2nd to last point for being the 5 MHz High-Shear point
@@ -11080,11 +11153,11 @@ class AnalyzerWorker(QtCore.QObject):
         idx = max(-2, min(self.get_point_index_from_shear_rate(pos[0]), 7))
         self.annot.xy = pos
         self.annot.set_text(
-            f"POI: {label_idx_to_poi[idx]:.0f}\n" +
-            f"{point_labels[idx]}\n" +
-            f"{pos[0]:.2f} S⁻¹\n" +
-            f"{pos[1]:.2f} cP\n" +
-            "(Click to Modify)"
+            f"POI: {label_idx_to_poi[idx]:.0f}\n"
+            + f"{point_labels[idx]}\n"
+            + f"{pos[0]:.2f} S⁻¹\n"
+            + f"{pos[1]:.2f} cP\n"
+            + "(Click to Modify)"
         )
         self.annot.get_bbox_patch().set_facecolor("lightblue")
 
@@ -11150,9 +11223,16 @@ class AnalyzerWorker(QtCore.QObject):
             frameinfo = getframeinfo(currentframe().f_back)
             # print(frameinfo.filename, frameinfo.lineno)
             start = self.run.__code__.co_firstlineno
-            stop = self.update.__code__.co_firstlineno
-            pct = 100 * (frameinfo.lineno - start) / (stop - start)
-            # Log.i(f"line #: {start}, {frameinfo.lineno}, {stop}, {pct}%")
+            stop = self.end.__code__.co_firstlineno
+            # extend line numbers for loop block running multiple times
+            cnt = max(1, (self.LOOP_BLOCK_COUNT - 1))
+            block_delta = abs(self.LOOP_BLOCK_STOP - self.LOOP_BLOCK_START) * cnt
+            stop += block_delta
+            lineno = frameinfo.lineno
+            if lineno > self.LOOP_BLOCK_STOP or not self.FIRST_LOOP:
+                lineno += block_delta
+            pct = max(0, min(100 * (lineno - start) / (stop - start), 100))
+            # Log.i(f"line #: {start}, {lineno}, {stop}, {pct}%")
             self.progress.emit(int(pct), status)
 
         except:

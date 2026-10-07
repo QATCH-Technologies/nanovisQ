@@ -5297,9 +5297,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._fill_display_msg = "Data Ready, Stop"
 
                 if hasattr(self.ControlsWin.ui1, "run_controls"):
-                    self.ControlsWin.ui1.run_controls.update_progress(
-                        ui_step, 5, status_msg
-                    )
+                    if self.ControlsWin.ui1.run_controls.btn.is_running:
+                        self.ControlsWin.ui1.run_controls.update_progress(
+                            ui_step, 5, status_msg
+                        )
+                    # else: skip updating, the button is already complete
+                    # NOTE: This can happen on long runs that STOP EARLY.
+
             # Pre-drop: the mirror above already handled the status update
             # for this tick: the queued prediction isn't meaningful yet.
 
