@@ -503,12 +503,15 @@ class Ui_Main(object):
                     raise PermissionError(
                         "Auto-login is not allowed in EXE application"
                     )
-                Log.w("Auto-login sending stored user credentials...")
                 import json, pyautogui
 
                 with open(cred_file, "r") as file:
                     creds = json.load(file)
-                if list(creds.keys()) == ["username", "password"]:
+                if (
+                    list(creds.keys()) == ["username", "password", "ignore"]
+                    and not creds["ignore"]
+                ):
+                    Log.w("Auto-login sending stored user credentials...")
                     from time import sleep
 
                     sleep(1)  # wait for app launch

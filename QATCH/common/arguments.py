@@ -4,7 +4,6 @@ from QATCH.common.logger import Logger as Log
 from QATCH.common.logger import LoggerLevel
 from QATCH.core.constants import Constants
 
-
 TAG = ""  # "Arguments"
 
 
@@ -64,7 +63,12 @@ class Arguments:
                             default=Constants.argument_default_samples,
                             help="Specify number of sample to show on plot"
                             )
-        self._parser = parser.parse_args()
+
+        try:
+            parser.exit_on_error = False
+            self._parser = parser.parse_args()
+        except:
+            Log.e("Failed to parse arguments!")
 
     ###########################################################################
     # Sets the user specified log level
@@ -89,7 +93,11 @@ class Arguments:
         Returns:
             int: Number of samples to show on plot.
         """
-        return int(self._parser.user_samples)
+        return (
+            int(self._parser.user_samples)
+            if self._parser is not None
+            else Constants.argument_default_samples
+        )
 
     ###########################################################################
     # Gets the user specified log to console flag
@@ -100,7 +108,11 @@ class Arguments:
         Returns:
             bool: True if log to console is enabled.
         """
-        return self._parser.log_to_console
+        return (
+            self._parser.log_to_console
+            if self._parser is not None
+            else Constants.log_default_console_log
+        )
 
     ###########################################################################
     # Sets the log level depending on user specification:
@@ -112,8 +124,9 @@ class Arguments:
         """
         log_to_console = self.get_user_console_log()
         level = LoggerLevel.INFO
-        if self._parser.log_level_info:
-            level = LoggerLevel.INFO
-        elif self._parser.log_level_debug:
-            level = LoggerLevel.DEBUG
+        if self._parser is not None:
+            if self._parser.log_level_info:
+                level = LoggerLevel.INFO
+            elif self._parser.log_level_debug:
+                level = LoggerLevel.DEBUG
         Log.create()

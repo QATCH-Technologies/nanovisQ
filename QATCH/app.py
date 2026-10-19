@@ -74,7 +74,11 @@ class QATCH:
         )  # Needed to load web modules
         QtCore.QCoreApplication.setOrganizationName("QATCH")
         QtCore.QCoreApplication.setApplicationName("nanovisQ")
-        self._app = QApplication(argv)
+        app = QApplication.instance()
+        if app is None:
+            self._app = QApplication(argv)
+        else:
+            self._app = app
         if not USE_PYI_SPLASH:
             self.flashSplashShow()
 
@@ -133,7 +137,7 @@ class QATCH:
     ###########################################################################
     # Runs the application
     ###########################################################################
-    def run(self):
+    def run(self, interactive: bool = False):
         # lazy load imports
         from QATCH.ui import mainWindow
 
@@ -144,11 +148,15 @@ class QATCH:
             # win.move(500, 20) #GUI position (x,y) on the screen
             # win.show()
             self.flashSplashHide()
-            # self.gui_ready = True
-            self._app.exec()
-            Log.i(TAG, "Finishing Application...")
-            Log.i(TAG, "Application closed")
-            self.win.close()
+            if interactive:
+                Log.d("Interactive control ready!")
+                return
+            else:
+                # self.gui_ready = True
+                self._app.exec()
+                Log.i(TAG, "Finishing Application...")
+                Log.i(TAG, "Application closed")
+                self.win.close()
         else:
             self._fail()
             time.sleep(5)
