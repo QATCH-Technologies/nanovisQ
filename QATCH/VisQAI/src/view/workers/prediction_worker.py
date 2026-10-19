@@ -113,7 +113,8 @@ class PredictionThread(QtCore.QThread):
         try:
             model_filename = self.config.get("model")
             assets_path = os.path.join(
-                Architecture.get_path(), "QATCH", "VisQAI", "assets")
+                Architecture.get_path(), "QATCH", "VisQAI", "assets"
+            )
             model_path = os.path.join(assets_path, model_filename)
 
             if not os.path.exists(model_path):
@@ -121,8 +122,7 @@ class PredictionThread(QtCore.QThread):
                 return
             formulation = self.config.get("formulation_object")
             if not formulation:
-                raise ValueError(
-                    "Formulation object missing from configuration.")
+                raise ValueError("Formulation object missing from configuration.")
             df_input = formulation.to_dataframe(encoded=False, training=False)
 
             # Determine Confidence Interval Parameters
@@ -139,7 +139,8 @@ class PredictionThread(QtCore.QThread):
                     db_conn = Database(parse_file_key=True)
                     form_ctrl = FormulationController(db_conn)
                     learn_df = self._fetch_icl_context(
-                        form_ctrl, formulation, icl_filter)
+                        form_ctrl, formulation, icl_filter
+                    )
                 except Exception as e:
                     Log.e(TAG, f"ICL Data Fetch Error: {e}")
                     learn_df = None
@@ -154,8 +155,7 @@ class PredictionThread(QtCore.QThread):
 
                 # ICL Step
                 if learn_df is not None and not learn_df.empty:
-                    Log.i(
-                        TAG, f"Learning from {len(learn_df)} context samples...")
+                    Log.i(TAG, f"Learning from {len(learn_df)} context samples...")
                     steps = self.config.get("steps", 50)
                     lr = self.config.get("lr", 0.01)
                     try:
@@ -165,12 +165,14 @@ class PredictionThread(QtCore.QThread):
 
                 if not self._is_running:
                     return
+
                 # Predict Step
                 means, unc_dict = predictor.predict_with_uncertainty(
                     df_input, n_samples=50, ci_range=ci_range
                 )
                 std_shear_rates = np.array(
-                    [100, 1000, 10000, 100000, 15000000], dtype=float)
+                    [100, 1000, 10000, 100000, 15000000], dtype=float
+                )
                 y_pred_full = np.asanyarray(means).flatten()
                 if y_pred_full.size >= 5:
                     y_pred = y_pred_full[:5]
@@ -213,10 +215,8 @@ class PredictionThread(QtCore.QThread):
                     upper_float = np.array(upper, dtype=float)
 
                     final_y = np.interp(final_x, std_shear_float, y_pred_float)
-                    final_lower = np.interp(
-                        final_x, std_shear_float, lower_float)
-                    final_upper = np.interp(
-                        final_x, std_shear_float, upper_float)
+                    final_lower = np.interp(final_x, std_shear_float, lower_float)
+                    final_upper = np.interp(final_x, std_shear_float, upper_float)
                 else:
                     final_x = np.array(std_shear_rates, dtype=float)
                     final_y = np.array(y_pred, dtype=float)
@@ -273,7 +273,8 @@ class PredictionThread(QtCore.QThread):
         if not all_forms:
             return None
         df_curr_readable = current_formulation.to_dataframe(
-            encoded=False, training=False)
+            encoded=False, training=False
+        )
 
         matching_forms = []
         ref_values = {}

@@ -676,7 +676,7 @@ QPushButton#fabAdd:disabled {
     color: #9ca3af;
 }
 
-/* Optimization Widget — suppress card hover colour change */
+/* Optimization Widget - suppress card hover colour change */
 OptimizeWidget[class="card"]:hover {
     border: 1px solid #d1d5db;
     background-color: #ffffff;
@@ -1009,7 +1009,7 @@ QWidget#modelDetailsWin QPushButton[class="primary"]:pressed {
     background-color: #13B5F0;
     border-color: #13B5F0;
 }
-/* Unified GroupBox — GenerateSampleWidget, OptimizeWidget, PredictionFilterWidget */
+/* Unified GroupBox - GenerateSampleWidget, OptimizeWidget, PredictionFilterWidget */
 GenerateSampleWidget QGroupBox,
 OptimizeWidget QGroupBox,
 PredictionFilterWidget QGroupBox {

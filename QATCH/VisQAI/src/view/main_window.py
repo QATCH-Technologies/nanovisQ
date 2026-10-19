@@ -76,14 +76,14 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         # Create simple UI for base class when not subscribed.
         self._expired_widget = QtWidgets.QDialog()
         self.expired_layout = QtWidgets.QVBoxLayout(self._expired_widget)
-        self.expired_layout.setAlignment(QtCore.Qt.AlignCenter)
+        self.expired_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         # self.setCentralWidget(self._expired_widget)
 
         self.expired_label = QtWidgets.QLabel(
             "<b>Your VisQ.AI preview period has ended.</b><br/><br/>"
             + "Please subscribe to regain access on this system.<br/><br/>"
         )
-        self.expired_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.expired_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.expired_label.setStyleSheet("font-size: 24px;")
 
         self.expired_subscribe = QtWidgets.QPushButton("Subscribe")
@@ -104,11 +104,11 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         # Create simple UI for base class when not subscribed.
         self._trial_widget = QtWidgets.QDialog()
         self.trial_layout = QtWidgets.QVBoxLayout(self._trial_widget)
-        self.trial_layout.setAlignment(QtCore.Qt.AlignCenter)
+        self.trial_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         # self.setCentralWidget(self._trial_widget)
 
         self.trial_label = QtWidgets.QLabel(TRIAL_LABEL_TEXT.format(-1))
-        self.trial_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.trial_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.trial_label.setStyleSheet("font-size: 24px;")
 
         self.trial_subscribe = QtWidgets.QPushButton("Subscribe")

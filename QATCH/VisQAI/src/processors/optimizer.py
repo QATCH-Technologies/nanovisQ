@@ -64,8 +64,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.utils.constraints import Constraints
 
 
-_PRED_SHEAR_RATES: List[float] = [
-    100.0, 1_000.0, 10_000.0, 100_000.0, 15_000_000.0]
+_PRED_SHEAR_RATES: List[float] = [100.0, 1_000.0, 10_000.0, 100_000.0, 15_000_000.0]
 _LOG_PRED_SHEAR = np.log10(_PRED_SHEAR_RATES)
 
 _EPS = 1e-9
@@ -116,8 +115,7 @@ class OptimizationStatus:
         self.best_value = best_value
         self.population_size = population_size
         self.convergence = convergence
-        self.progress_percent = iteration / num_iterations * \
-            100 if num_iterations > 0 else 0.0
+        self.progress_percent = iteration / num_iterations * 100 if num_iterations > 0 else 0.0
 
     def __repr__(self) -> str:
         """Returns a string representation of the optimization status."""
@@ -182,8 +180,7 @@ class OptimizationProgressTracker:
         if self.best_value is None or status.best_value < self.best_value:
             self.best_value = status.best_value
 
-        improvement = (self.start_value -
-                       status.best_value) if self.start_value else 0.0
+        improvement = (self.start_value - status.best_value) if self.start_value else 0.0
         Log.d(
             TAG,
             f"[{status.iteration:3d}/{status.num_iterations}] "
@@ -289,14 +286,14 @@ class Optimizer:
     seed : int, optional
         Random seed for reproducibility.
     target_weights : sequence of float, optional
-        Per-point loss weights, aligned with ``target.shear_rates``.
+        Per-point loss weights, aligned with `target.shear_rates`.
         Defaults to uniform.  Weights are normalised internally.
     lambda_unc : float
         Uncertainty-penalty coefficient λ ≥ 0.
     history_df : pd.DataFrame, optional
         Historical formulation data in encoded=False format used to
         warm-start the CNP context.  Obtained from
-        ``FormulationController.get_all_as_dataframe(encoded=False)``.
+        `FormulationController.get_all_as_dataframe(encoded=False)`.
     polish_continuous : bool
         Run a L-BFGS-B pass on the continuous variables after DE finishes,
         with all categorical indices held fixed.  Default True.
@@ -379,8 +376,7 @@ class Optimizer:
             if not pool:
                 cls = self.constraints._FEATURE_CLASS[feat]
                 pool = [ing for ing in all_ings if isinstance(ing, cls)]
-            name_to_ing: Dict[str, Ingredient] = {
-                ing.name.lower(): ing for ing in pool}
+            name_to_ing: Dict[str, Ingredient] = {ing.name.lower(): ing for ing in pool}
             aligned: List[Ingredient] = []
             for name in enc["choices"]:
                 ing = name_to_ing.get(name.lower())
@@ -388,8 +384,7 @@ class Optimizer:
                     aligned.append(ing)
 
             if not aligned:
-                raise ValueError(
-                    "Could not align any ingredients for categorical feature.")
+                raise ValueError("Could not align any ingredients for categorical feature.")
 
             self.cat_choices[feat] = aligned
         self._fixed_cats: Dict[str, Any] = {}
@@ -435,16 +430,12 @@ class Optimizer:
                         self.bounds[j] = (min_c, max(hi, min_c))
                     break
 
-        self._cat_idx = [i for i, e in enumerate(
-            self.encoding) if e["type"] == "cat"]
-        self._num_idx = [i for i, e in enumerate(
-            self.encoding) if e["type"] == "num"]
+        self._cat_idx = [i for i, e in enumerate(self.encoding) if e["type"] == "cat"]
+        self._num_idx = [i for i, e in enumerate(self.encoding) if e["type"] == "num"]
 
         # Pre-compute log-space targets
-        self._target_log_shear = np.log10(
-            np.array(target.shear_rates, dtype=float) + _EPS)
-        self._target_log_visc = np.log10(
-            np.array(target.viscosities, dtype=float) + _EPS)
+        self._target_log_shear = np.log10(np.array(target.shear_rates, dtype=float) + _EPS)
+        self._target_log_visc = np.log10(np.array(target.viscosities, dtype=float) + _EPS)
 
         if target_weights is not None:
             w = np.asarray(target_weights, dtype=float)
@@ -580,8 +571,7 @@ class Optimizer:
                 continue
 
             if setter == "set_buffer":
-                getattr(form, setter)(ing, conc, units,
-                                      pH=feat_dict.get("Buffer_pH"))
+                getattr(form, setter)(ing, conc, units, pH=feat_dict.get("Buffer_pH"))
             else:
                 getattr(form, setter)(ing, conc, units)
 
@@ -643,8 +633,8 @@ class Optimizer:
         (x-axis) and viscosity (y-axis), the optimizer treats a 10% error at
         1 cP with the same mathematical weight as a 10% error at 100 cP.
 
-        The method interpolates the predicted values—which are generated at
-        fixed shear rates—onto the specific log-shear rates of the target
+        The method interpolates the predicted values-which are generated at
+        fixed shear rates-onto the specific log-shear rates of the target
         profile before calculating the squared error and applying importance
         weights.
 
@@ -660,10 +650,8 @@ class Optimizer:
             prior to log transformation to avoid mathematical errors with
             zero or negative values.
         """
-        log_pred = np.log10(
-            np.clip(pred_viscosities.astype(float), _EPS, None))
-        log_interp = np.interp(self._target_log_shear,
-                               _LOG_PRED_SHEAR, log_pred)
+        log_pred = np.log10(np.clip(pred_viscosities.astype(float), _EPS, None))
+        log_interp = np.interp(self._target_log_shear, _LOG_PRED_SHEAR, log_pred)
         sq_err = (log_interp - self._target_log_visc) ** 2
         return float(np.dot(sq_err, self._target_weights))
 
@@ -741,8 +729,7 @@ class Optimizer:
         if self._num_idx:
             n_cont = len(self._num_idx)
             strata = (
-                np.arange(popsize_total)[:, None] +
-                rng.random((popsize_total, n_cont))
+                np.arange(popsize_total)[:, None] + rng.random((popsize_total, n_cont))
             ) / popsize_total
             for j in range(n_cont):
                 rng.shuffle(strata[:, j])
@@ -754,8 +741,7 @@ class Optimizer:
         for i in self._cat_idx:
             lo, hi = self.bounds[i]
             n_choices = int(round(hi)) + 1
-            pop[:, i] = rng.integers(
-                0, n_choices, size=popsize_total, dtype=int).astype(float)
+            pop[:, i] = rng.integers(0, n_choices, size=popsize_total, dtype=int).astype(float)
 
         return pop
 
@@ -791,8 +777,7 @@ class Optimizer:
         """
         if not self._num_idx:
             return x_best.copy(), self._objective(x_best)
-        frozen: Dict[int, float] = {
-            i: float(round(x_best[i])) for i in self._cat_idx}
+        frozen: Dict[int, float] = {i: float(round(x_best[i])) for i in self._cat_idx}
         x0_cont = x_best[self._num_idx]
         bounds_cont = [self.bounds[i] for i in self._num_idx]
 
@@ -828,8 +813,7 @@ class Optimizer:
         recombination: float = 0.7,
         atol: float = 0.0,
         workers: int = 1,
-        progress_callback: Optional[Callable[[
-            OptimizationStatus], None]] = None,
+        progress_callback: Optional[Callable[[OptimizationStatus], None]] = None,
         early_stopping_rounds: Optional[int] = None,
         improvement_tol: Optional[float] = None,
     ) -> Formulation:

@@ -160,8 +160,7 @@ class RangeSlider(QtWidgets.QWidget):
             painter.setPen(QtGui.QPen(QtGui.QColor("#9ca3af"), 2))
             for step in self._step_values:
                 tx = self._val_to_x(step, available_w)
-                painter.drawLine(QtCore.QPointF(tx, cy - 6),
-                                 QtCore.QPointF(tx, cy + 6))
+                painter.drawLine(QtCore.QPointF(tx, cy - 6), QtCore.QPointF(tx, cy + 6))
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
         painter.setBrush(QtGui.QColor("#0078D4"))
         rect_range = QtCore.QRectF(
@@ -176,8 +175,7 @@ class RangeSlider(QtWidgets.QWidget):
             QtCore.QPointF(x_low, cy), self._handle_radius, self._handle_radius
         )
         painter.drawEllipse(
-            QtCore.QPointF(
-                x_high, cy), self._handle_radius, self._handle_radius
+            QtCore.QPointF(x_high, cy), self._handle_radius, self._handle_radius
         )
 
     def mousePressEvent(self, event):
@@ -212,8 +210,7 @@ class RangeSlider(QtWidgets.QWidget):
         w = self.width()
         available_w = w - 2 * self._handle_radius
 
-        pos_x = max(self._handle_radius, min(
-            event.pos().x(), w - self._handle_radius))
+        pos_x = max(self._handle_radius, min(event.pos().x(), w - self._handle_radius))
         ratio = (pos_x - self._handle_radius) / available_w
 
         if self._step_values:
