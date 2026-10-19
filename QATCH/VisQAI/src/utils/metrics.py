@@ -526,8 +526,7 @@ class Metrics:
                     continue
 
                 try:
-                    shear_metrics[metric_name] = self.metrics[metric_name](
-                        shear_df)
+                    shear_metrics[metric_name] = self.metrics[metric_name](shear_df)
                 except Exception as e:
                     Log.w(
                         TAG,

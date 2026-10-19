@@ -25,6 +25,7 @@ import json
 import os
 import random
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
@@ -81,10 +82,27 @@ except (ModuleNotFoundError, ImportError):
         Surfactant,
     )
 
-DB_PATH = Path(
-    os.path.join(os.path.expandvars(r"%LOCALAPPDATA%"),
-                 "QATCH", "nanovisQ", "database", "app.db")
-)
+def _local_app_data_dir() -> str:
+    """Cross-platform per-user application-data root, mirroring Windows'
+    %LOCALAPPDATA% on every platform instead of leaving that env var
+    unexpanded (and thus a bogus literal path) on non-Windows:
+        Windows -> %LOCALAPPDATA%
+        macOS   -> ~/Library/Application Support
+        Linux   -> $XDG_DATA_HOME, or ~/.local/share if unset
+
+    Uses only `sys.platform`/`os` (no QATCH imports) so this module stays
+    importable standalone, matching the HEADLESS fallback above.
+    """
+    if sys.platform == "win32":
+        return os.path.expandvars(r"%LOCALAPPDATA%")
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    return os.environ.get("XDG_DATA_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "share"
+    )
+
+
+DB_PATH = Path(os.path.join(_local_app_data_dir(), "QATCH", "nanovisQ", "database", "app.db"))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 allowed_vals = ",".join(f"'{v}'" for v in ProteinClass.all_strings())
@@ -118,7 +136,8 @@ class Database:
 
         Args:
             path (Union[str, Path]): Filesystem path to the SQLite database file.
-                Defaults to a standard `app.db` location under %LOCALAPPDATA%.
+                Defaults to a standard `app.db` location under the platform's
+                per-user app-data directory (see `_local_app_data_dir`).
             encryption_key (Union[str, None], optional): If provided, uses
                 in-memory Caesar+XOR encryption/decryption. If None, plain SQLite
                 is used. Defaults to None.
@@ -168,8 +187,7 @@ class Database:
         """
         c = self.conn.cursor()
         # Ingredient core table
-        c.execute(
-            rf"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS ingredient (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 enc_id INTEGER NOT NULL,
@@ -177,64 +195,50 @@ class Database:
                 type TEXT NOT NULL,
                 is_user INTEGER NOT NULL DEFAULT 0
             )
-        """
-        )
+        """)
         # Subclass tables
-        c.execute(
-            rf"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS protein (
-                ingredient_id    INTEGER PRIMARY KEY,
-                class_type       TEXT NOT NULL DEFAULT 'None'
+                ingredient_id       INTEGER PRIMARY KEY,
+                class_type          TEXT NOT NULL DEFAULT 'None'
                                 CHECK (class_type IN ({allowed_vals})),
-                molecular_weight REAL,
-                pI_mean          REAL,
-                pI_range         REAL,
+                molecular_weight    REAL,
+                pI_mean             REAL,
+                pI_range            REAL,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS buffer (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS stabilizer (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS surfactant (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS salt (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS excipient (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS formulation (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
@@ -243,12 +247,9 @@ class Database:
                 icl INTEGER DEFAULT 1,
                 last_model TEXT
             )
-        """
-        )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)")
-        c.execute(
-            rf"""
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)")
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS formulation_component (
                 formulation_id INTEGER NOT NULL,
                 component_type TEXT NOT NULL,
@@ -256,14 +257,13 @@ class Database:
                 concentration REAL NOT NULL,
                 units TEXT NOT NULL,
                 pH REAL,
+                charge REAL,
                 PRIMARY KEY (formulation_id, component_type),
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            rf"""
+        """)
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS viscosity_profile (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 formulation_id INTEGER NOT NULL UNIQUE,
@@ -273,12 +273,9 @@ class Database:
                 is_measured INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE
             )
-        """
-        )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)")
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)")
         self._commit()
 
     def add_ingredient(self, ing: Ingredient) -> int:
@@ -328,7 +325,13 @@ class Database:
                     (ingredient_id, class_type, molecular_weight, pI_mean, pI_range)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (db_id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
+                (
+                    db_id,
+                    class_val,
+                    ing.molecular_weight,
+                    ing.pI_mean,
+                    ing.pI_range,
+                ),
             )
         elif isinstance(ing, Buffer):
             c.execute("INSERT INTO buffer (ingredient_id) VALUES (?)", (db_id,))
@@ -358,8 +361,7 @@ class Database:
                 with all properties populated, or `None` if no ingredient exists with this ID.
         """
         c = self.conn.cursor()
-        c.execute(
-            "SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?", (id,))
+        c.execute("SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?", (id,))
         row = c.fetchone()
         if not row:
             return None
@@ -386,8 +388,7 @@ class Database:
                 molecular_weight=mw,
                 pI_mean=mean,
                 pI_range=rng,
-                class_type=(ProteinClass.from_value(class_str)
-                            if class_str is not None else None),
+                class_type=(ProteinClass.from_value(class_str) if class_str is not None else None),
                 id=id,
             )
         elif typ == "Buffer":
@@ -427,8 +428,8 @@ class Database:
         """Retrieve all ingredients of a specific subclass type.
 
         Args:
-            ing_type (str): The ingredient type name to filter by (e.g. ``"Protein"``,
-                ``"Buffer"``, ``"Salt"``).
+            ing_type (str): The ingredient type name to filter by (e.g. `"Protein"`,
+                `"Buffer"`, `"Salt"`).
 
         Returns:
             List[Ingredient]: A list of `Ingredient` subclass instances matching
@@ -439,15 +440,15 @@ class Database:
         return [self.get_ingredient(r[0]) for r in c.fetchall()]
 
     def get_max_enc_id(self, ing_type: str, min_enc_id: int, max_enc_id: int) -> Optional[int]:
-        """Return the highest ``enc_id`` for a given ingredient type within a range.
+        """Return the highest `enc_id` for a given ingredient type within a range.
 
         Args:
-            ing_type (str): The ingredient type name to query (e.g. ``"Protein"``).
-            min_enc_id (int): Lower bound of the ``enc_id`` range (inclusive).
-            max_enc_id (int): Upper bound of the ``enc_id`` range (inclusive).
+            ing_type (str): The ingredient type name to query (e.g. `"Protein"`).
+            min_enc_id (int): Lower bound of the `enc_id` range (inclusive).
+            max_enc_id (int): Upper bound of the `enc_id` range (inclusive).
 
         Returns:
-            Optional[int]: The maximum ``enc_id`` found within the range, or ``None``
+            Optional[int]: The maximum `enc_id` found within the range, or `None`
                 if no matching rows exist.
         """
         c = self.conn.cursor()
@@ -467,11 +468,11 @@ class Database:
 
         Args:
             name (str): The exact name of the ingredient to look up.
-            ing_type (str): The ingredient type name to match (e.g. ``"Protein"``).
+            ing_type (str): The ingredient type name to match (e.g. `"Protein"`).
 
         Returns:
             Optional[Ingredient]: The matching `Ingredient` subclass instance, or
-                ``None`` if no ingredient with the given name and type exists.
+                `None` if no ingredient with the given name and type exists.
         """
         c = self.conn.cursor()
         c.execute(
@@ -529,7 +530,13 @@ class Database:
                     (ingredient_id, class_type, molecular_weight, pI_mean, pI_range)
                 VALUES (?, ?, ?, ?, ?)
             """,
-                (id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
+                (
+                    id,
+                    class_val,
+                    ing.molecular_weight,
+                    ing.pI_mean,
+                    ing.pI_range,
+                ),
             )
         elif isinstance(ing, Buffer):
             c.execute("INSERT INTO buffer (ingredient_id) VALUES (?)", (id,))
@@ -577,19 +584,25 @@ class Database:
                 "INSERT INTO formulation (name, signature, temperature, icl, last_model) VALUES (?, ?, ?, ?, ?)",
                 (f.name, f.signature, f.temperature, int(f.icl), f.last_model),
             )
-            # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
-            f.id = c.lastrowid
+            f.id = c.lastrowid  # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
         comp_rows = [
-            (f.id, comp_type, comp.ingredient.id,
-             comp.concentration, comp.units, comp.pH)
+            (
+                f.id,
+                comp_type,
+                comp.ingredient.id,
+                comp.concentration,
+                comp.units,
+                comp.pH,
+                comp.charge,
+            )
             for f in forms
             for comp_type, comp in f._components.items()
             if comp is not None
         ]
         c.executemany(
             "INSERT INTO formulation_component "
-            "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(formulation_id, component_type, ingredient_id, concentration, units, pH, charge) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             comp_rows,
         )
         vp_rows = [
@@ -650,9 +663,9 @@ class Database:
             )
             c.execute(
                 "INSERT INTO formulation_component "
-                "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (fid, comp_type, iid, comp.concentration, comp.units, comp.pH),
+                "(formulation_id, component_type, ingredient_id, concentration, units, pH, charge) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (fid, comp_type, iid, comp.concentration, comp.units, comp.pH, comp.charge),
             )
 
         # Insert viscosity profile if present
@@ -715,17 +728,18 @@ class Database:
         form.last_model = last_model
 
         c.execute(
-            "SELECT component_type, ingredient_id, concentration, units, pH "
+            "SELECT component_type, ingredient_id, concentration, units, pH, charge "
             "FROM formulation_component WHERE formulation_id = ?",
             (id,),
         )
         rows = c.fetchall()
         for r in rows:
-            comp_type, iid, conc, units, ph = r
+            comp_type, iid, conc, units, ph, charge = r
             ingredient = self.get_ingredient(iid)
             if ingredient and comp_type in form._components:
                 form._components[comp_type] = Component(
-                    ingredient, conc, units, pH=ph)
+                    ingredient, conc, units, pH=ph, charge=charge
+                )
 
         c.execute(
             "SELECT shear_rates, viscosities, units, is_measured "
@@ -858,8 +872,7 @@ class Database:
             bool: True if the update was successful, False if the signature was not found.
         """
         c = self.conn.cursor()
-        c.execute("UPDATE formulation SET name = ? WHERE signature = ?",
-                  (new_name, signature))
+        c.execute("UPDATE formulation SET name = ? WHERE signature = ?", (new_name, signature))
 
         if c.rowcount > 0:
             self._commit()
@@ -934,8 +947,7 @@ class Database:
             with open(self.db_path, "rb") as f:
                 magic_header = f.read(16)
                 if magic_header == b"SQLite format 3\x00":
-                    Log.i(
-                        TAG, "Standard SQLite binary format detected. Bypassing encryption.")
+                    Log.i(TAG, "Standard SQLite binary format detected. Bypassing encryption.")
                     self.use_encryption = False
                     return
 
@@ -973,8 +985,7 @@ class Database:
                 self._has_metadata = True
 
         except Exception as e:
-            Log.e(
-                TAG, f"No readable metadata found in database file. Error: {e}")
+            Log.e(TAG, f"No readable metadata found in database file. Error: {e}")
             self._has_metadata = False
             self._enc_metadata = b"\x45{}\n"  # Restore default so we don't write garbage later
 
@@ -1003,7 +1014,7 @@ class Database:
         This method performs a standard SQL commit on the active connection. If
         encryption is enabled, it goes a step further by performing an immediate
         persistence operation to the filesystem. To maintain data integrity during
-        the encrypted write, it safely rotates the file handle—closing the current
+        the encrypted write, it safely rotates the file handle-closing the current
         read handle, executing the save, and re-establishing the read handle.
 
         Side Effects:
@@ -1024,7 +1035,7 @@ class Database:
             self.init_changes = self.conn.total_changes
 
     def flush(self) -> None:
-        """Force a commit and optional backup — call at end of bulk operations."""
+        """Force a commit and optional backup - call at end of bulk operations."""
         self.conn.commit()
         if self.use_encryption:
             if self.file_handle is not None:
@@ -1058,20 +1069,16 @@ class Database:
                 result.append(chr((ord(char) - base + shift) % 26 + base))
             elif ord(char) in range(32, 48):
                 base = 32
-                result.append(chr((ord(char) - base + shift) %
-                              len(range(32, 48)) + base))
+                result.append(chr((ord(char) - base + shift) % len(range(32, 48)) + base))
             elif ord(char) in range(58, 65):
                 base = 58
-                result.append(chr((ord(char) - base + shift) %
-                              len(range(58, 65)) + base))
+                result.append(chr((ord(char) - base + shift) % len(range(58, 65)) + base))
             elif ord(char) in range(91, 97):
                 base = 91
-                result.append(chr((ord(char) - base + shift) %
-                              len(range(91, 97)) + base))
+                result.append(chr((ord(char) - base + shift) % len(range(91, 97)) + base))
             elif ord(char) in range(123, 127):
                 base = 123
-                result.append(chr((ord(char) - base + shift) %
-                              len(range(123, 127)) + base))
+                result.append(chr((ord(char) - base + shift) % len(range(123, 127)) + base))
         return "".join(result)
 
     def _xor_cipher(self, data: bytes, key: str) -> bytes:
@@ -1088,8 +1095,7 @@ class Database:
         data_arr = np.frombuffer(data, dtype=np.uint8)
         # Tile key to match data length, then XOR in one vectorized op
         repeats = len(data) // len(key_bytes) + 1
-        key_arr = np.frombuffer(key_bytes * repeats,
-                                dtype=np.uint8)[: len(data)]
+        key_arr = np.frombuffer(key_bytes * repeats, dtype=np.uint8)[: len(data)]
         return (data_arr ^ key_arr).tobytes()
 
     def _open_cdb(self, filepath: str, password: str) -> sqlite3.Connection:
@@ -1119,12 +1125,10 @@ class Database:
             secure_bytes = self.file_handle.read()
             if password:
                 # Decrypt the file content
-                decrypted_text = self._xor_cipher(
-                    secure_bytes, self._caesar_cipher(password))
+                decrypted_text = self._xor_cipher(secure_bytes, self._caesar_cipher(password))
             else:
                 decrypted_text = secure_bytes
-            decrypted_text = decrypted_text.decode(
-                self.metadata.get("app_encoding", "utf-8"))
+            decrypted_text = decrypted_text.decode(self.metadata.get("app_encoding", "utf-8"))
             con.executescript(decrypted_text)
             con.commit()
         return con
@@ -1140,11 +1144,9 @@ class Database:
             password (str): Encryption key used to encrypt.
         """
         encoding = self.metadata.get("app_encoding", "utf-8")
-        dump_bytes = b"".join((line + "\n").encode(encoding)
-                              for line in self.conn.iterdump())
+        dump_bytes = b"".join((line + "\n").encode(encoding) for line in self.conn.iterdump())
         if password:
-            encrypted = self._xor_cipher(
-                dump_bytes, self._caesar_cipher(password))
+            encrypted = self._xor_cipher(dump_bytes, self._caesar_cipher(password))
         else:
             encrypted = dump_bytes
         with open(filepath, "wb") as f:
@@ -1190,8 +1192,7 @@ class Database:
             - The file descriptor is closed immediately after creation.
         """
         try:
-            temp_fd, temp_path = tempfile.mkstemp(
-                suffix=".db", prefix="app_temp_")
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".db", prefix="app_temp_")
             temp_path = Path(temp_path)
             os.close(temp_fd)
             try:
@@ -1233,8 +1234,7 @@ class Database:
         random.shuffle(indices)
         shuffled = "".join(ciphered[i] for i in indices)
         enc_encoding = self.metadata.get("app_encoding", "utf-8")
-        self._enc_metadata = (
-            chr(seed) + shuffled).encode(enc_encoding) + b"\n"
+        self._enc_metadata = (chr(seed) + shuffled).encode(enc_encoding) + b"\n"
 
     def cleanup_temp_decrypt(self, temp_path: Optional[Path] = None) -> bool:
         """Remove one or all temporary decrypted database files.
@@ -1345,7 +1345,7 @@ class Database:
 
         This method only resets the connection PRAGMAs; it does **not** commit
         the current transaction.  The caller is responsible for committing (via
-        ``_commit()``) or rolling back after calling this method.
+        `_commit()`) or rolling back after calling this method.
         """
         self.conn.execute("PRAGMA journal_mode = DELETE")
         self.conn.execute("PRAGMA synchronous = FULL")

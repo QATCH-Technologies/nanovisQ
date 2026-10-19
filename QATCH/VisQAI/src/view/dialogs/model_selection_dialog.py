@@ -1,7 +1,7 @@
 """
 model_selection_dialog.py
 
-Model selection dialog for browsing and managing VisQ-AI ``.visq`` model files.
+Model selection dialog for browsing and managing VisQ-AI `.visq` model files.
 
 This module provides :class:`ModelSelectionDialog`, a :class:`QDialog` subclass
 that emulates the :class:`QFileDialog` interface while offering VisQ-AI-specific
@@ -108,14 +108,12 @@ class ModelSelectionDialog(QDialog):
         """Initialize the dialog and populate model lists.
 
         Args:
-            models_directory (str): Path to the directory containing ``.visq``
+            models_directory (str): Path to the directory containing `.visq`
                 model files. Defaults to the current working directory.
             parent (QWidget, optional): Parent widget. Defaults to None.
         """
         super().__init__(parent)
-        self.models_directory = (
-            models_directory if models_directory is not None else os.getcwd()
-        )
+        self.models_directory = models_directory if models_directory is not None else os.getcwd()
         self.pinned_models = []
         self.pinned_names = {}
         self.selected_model = None
@@ -140,9 +138,7 @@ class ModelSelectionDialog(QDialog):
         _pinned_label_layout.setContentsMargins(0, 0, 0, 0)
         _pin_icon = QLabel()
         _pin_icon.setPixmap(
-            QIcon(os.path.join(_icons_dir, "pin-circle-svgrepo-com.svg")).pixmap(
-                QSize(16, 16)
-            )
+            QIcon(os.path.join(_icons_dir, "pin-circle-svgrepo-com.svg")).pixmap(QSize(16, 16))
         )
         _pinned_label_layout.addWidget(_pin_icon)
         _pinned_section_label = QLabel("PINNED MODELS")
@@ -158,9 +154,9 @@ class ModelSelectionDialog(QDialog):
         _recent_label_layout.setContentsMargins(0, 0, 0, 0)
         _folder_icon = QLabel()
         _folder_icon.setPixmap(
-            QIcon(
-                os.path.join(_icons_dir, "folder-path-connect-svgrepo-com.svg")
-            ).pixmap(QSize(16, 16))
+            QIcon(os.path.join(_icons_dir, "folder-path-connect-svgrepo-com.svg")).pixmap(
+                QSize(16, 16)
+            )
         )
         _recent_label_layout.addWidget(_folder_icon)
         _recent_section_label = QLabel("RECENT MODELS")
@@ -180,7 +176,7 @@ class ModelSelectionDialog(QDialog):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setWidget(self.detail_panel)
 
-        # Buttons — secondary actions (left cluster)
+        # Buttons - secondary actions (left cluster)
         self.view_details_btn = QPushButton("View Details")
         self.view_details_btn.setCursor(Qt.PointingHandCursor)
         self.rename_btn = QPushButton("Rename")
@@ -211,7 +207,7 @@ class ModelSelectionDialog(QDialog):
         layout.addWidget(self.recent_list)
         layout.addWidget(self.scroll_area)
 
-        # Single footer row: [secondary...] ——stretch—— [Delete] [Cancel] [Select]
+        # Single footer row: [secondary...] --stretch-- [Delete] [Cancel] [Select]
         footer = QHBoxLayout()
         footer.setSpacing(6)
         footer.addWidget(self.view_details_btn)
@@ -248,11 +244,8 @@ class ModelSelectionDialog(QDialog):
         self.all_models.sort(key=lambda x: x["created"], reverse=True)
 
         # Separate pinned and unpinned
-        pinned = [m for m in self.all_models if m["filename"]
-                  in self.pinned_models]
-        unpinned = [
-            m for m in self.all_models if m["filename"] not in self.pinned_models
-        ]
+        pinned = [m for m in self.all_models if m["filename"] in self.pinned_models]
+        unpinned = [m for m in self.all_models if m["filename"] not in self.pinned_models]
 
         # Populate lists
         self.pinned_list.clear()
@@ -279,8 +272,7 @@ class ModelSelectionDialog(QDialog):
             str: Formatted two-line display string for the list item.
         """
 
-        age_days = (datetime.now() -
-                    datetime.fromtimestamp(model["created"])).days
+        age_days = (datetime.now() - datetime.fromtimestamp(model["created"])).days
         if age_days <= 7:
             # if this week, show relative time (e.g., "3 days ago")
             if age_days == 0:
@@ -291,9 +283,7 @@ class ModelSelectionDialog(QDialog):
                 created_time = f"{age_days} days ago"
         else:
             # show absolute creation time
-            created_time = datetime.fromtimestamp(model["created"]).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            created_time = datetime.fromtimestamp(model["created"]).strftime("%Y-%m-%d %H:%M:%S")
 
         parent_model = model["metadata"].get("parent_model", "N/A")
         if parent_model == "N/A":
@@ -321,8 +311,7 @@ class ModelSelectionDialog(QDialog):
             size_value /= 1024
             size_units = "GB"
 
-        model_text: str = self.pinned_names.get(
-            model["filename"], model["filename"])
+        model_text: str = self.pinned_names.get(model["filename"], model["filename"])
         created_text: str = f"Created: {created_time}"
         parent_text: str = f"Parent Model: {parent_model}"
         runs_text: str = f"Runs: {num_runs}"
@@ -334,16 +323,16 @@ class ModelSelectionDialog(QDialog):
                 """.strip()
 
     def scan_model_directory(self):
-        """Scan the models directory for ``.visq`` model files.
+        """Scan the models directory for `.visq` model files.
 
-        Reads ``index.json`` (if present) for metadata, then iterates over all
-        ``.visq`` files and builds a list of model info dictionaries. Deleted
+        Reads `index.json` (if present) for metadata, then iterates over all
+        `.visq` files and builds a list of model info dictionaries. Deleted
         models are skipped. The base model is automatically pinned and protected.
 
         Returns:
-            list[dict]: Each dict has the keys ``filename``, ``filepath``,
-                ``pinned_name``, ``created``, ``size``, ``metadata``, and
-                ``sha``.
+            list[dict]: Each dict has the keys `filename`, `filepath`,
+                `pinned_name`, `created`, `size`, `metadata`, and
+                `sha`.
         """
         models = []
         index_data = {}
@@ -405,18 +394,18 @@ class ModelSelectionDialog(QDialog):
         """Look up metadata for a model file in the index.
 
         Matches the model filename against SHA-prefixed entries in
-        ``index_data``. As a side effect, updates :attr:`pinned_names` and
+        `index_data`. As a side effect, updates :attr:`pinned_names` and
         :attr:`pinned_models` based on the stored metadata flags.
 
         Args:
-            index_data (dict): Parsed contents of ``index.json``, keyed by
+            index_data (dict): Parsed contents of `index.json`, keyed by
                 full SHA hash strings.
-            model_path (str): Absolute path to the ``.visq`` model file.
+            model_path (str): Absolute path to the `.visq` model file.
 
         Returns:
-            tuple[dict, str | None]: A ``(metadata, sha)`` pair. ``metadata``
+            tuple[dict, str | None]: A `(metadata, sha)` pair. `metadata`
                 is the metadata dict from the index (empty dict if not found).
-                ``sha`` is the full SHA key string, or ``None`` if not found.
+                `sha` is the full SHA key string, or `None` if not found.
         """
         # Search for metadata in index_data where filename contains the start of the sha hash
         base_name = os.path.basename(model_path)
@@ -441,16 +430,16 @@ class ModelSelectionDialog(QDialog):
     def on_model_selected(self, item=None, previous=_NOT_PROVIDED):
         """Update the detail panel and selected_model for the given item.
 
-        Connected to both ``itemClicked`` and ``currentItemChanged`` on the
+        Connected to both `itemClicked` and `currentItemChanged` on the
         pinned and recent lists. Clears the opposing list's selection so that
         only one item is active at a time.
 
         Args:
             item (QListWidgetItem, optional): The newly selected item, or
-                ``None`` to clear the selection. Defaults to ``None``.
-            previous: Unused; present to match the ``currentItemChanged``
-                signature. Defaults to ``NameError`` as a sentinel that
-                distinguishes an explicit ``None`` from a missing argument.
+                `None` to clear the selection. Defaults to `None`.
+            previous: Unused; present to match the `currentItemChanged`
+                signature. Defaults to `NameError` as a sentinel that
+                distinguishes an explicit `None` from a missing argument.
         """
         if not item:
             # Update detail panel to reflect no selection
@@ -471,12 +460,11 @@ class ModelSelectionDialog(QDialog):
 
         # Find model info
         for model in self.all_models:
-            if (
-                self.pinned_names.get(model["filename"], model["filename"])
-                == model_name
-            ):
+            if self.pinned_names.get(model["filename"], model["filename"]) == model_name:
                 self.selected_model = model["filepath"]
-                detail_text = f"Model: {self.pinned_names.get(model['filename'], model['filename'])}\n"
+                detail_text = (
+                    f"Model: {self.pinned_names.get(model['filename'], model['filename'])}\n"
+                )
                 detail_text += json.dumps(model["metadata"], indent=4)
                 self.detail_panel.setText(detail_text)
                 break
@@ -484,7 +472,7 @@ class ModelSelectionDialog(QDialog):
     def select_model_by_name(self, model_name):
         """Programmatically select a model by its display name and accept the dialog.
 
-        If ``model_name`` is ``None`` or ``"Base Model"``, the base model is
+        If `model_name` is `None` or `"Base Model"`, the base model is
         selected. Emits :attr:`fileSelected` and calls :meth:`accept`.
 
         Args:
@@ -496,10 +484,7 @@ class ModelSelectionDialog(QDialog):
         else:
             model_names = [model_name]
         for model in self.all_models:
-            if (
-                self.pinned_names.get(model["filename"], model["filename"])
-                in model_names
-            ):
+            if self.pinned_names.get(model["filename"], model["filename"]) in model_names:
                 self.selected_model = model["filepath"]
                 self.fileSelected.emit(self.selected_model)
                 self.accept()
@@ -508,7 +493,7 @@ class ModelSelectionDialog(QDialog):
     def toggle_pin(self):
         """Toggle the pin status of the currently selected model.
 
-        Persists the change via :class:`VersionManager` (``index.json``),
+        Persists the change via :class:`VersionManager` (`index.json`),
         then refreshes the lists and restores the selection. Shows a warning
         if no model is selected or if the model is protected.
         """
@@ -521,12 +506,9 @@ class ModelSelectionDialog(QDialog):
 
         # Get the sha of the selected model
         model_name = os.path.basename(self.selected_model)
-        model_info = next(
-            (m for m in self.all_models if m["filename"] == model_name), None
-        )
+        model_info = next((m for m in self.all_models if m["filename"] == model_name), None)
         if not model_info:
-            Log.e(
-                TAG, f'Selected model "{model_name}" not found in model list')
+            Log.e(TAG, f'Selected model "{model_name}" not found in model list')
             return
         sha = model_info["sha"]
 
@@ -562,9 +544,7 @@ class ModelSelectionDialog(QDialog):
 
         # Find index of the selected model in the new list
         select_index = 0
-        current_name = self.pinned_names.get(
-            model_info["filename"], model_info["filename"]
-        )
+        current_name = self.pinned_names.get(model_info["filename"], model_info["filename"])
         for i in range(search_list.count()):
             item = search_list.item(i)
             if item.text().splitlines()[0].split("\t")[0].strip() == current_name:
@@ -592,12 +572,9 @@ class ModelSelectionDialog(QDialog):
 
         # Get the sha of the selected model
         model_name = os.path.basename(self.selected_model)
-        model_info = next(
-            (m for m in self.all_models if m["filename"] == model_name), None
-        )
+        model_info = next((m for m in self.all_models if m["filename"] == model_name), None)
         if not model_info:
-            Log.e(
-                TAG, f'Selected model "{model_name}" not found in model list')
+            Log.e(TAG, f'Selected model "{model_name}" not found in model list')
             return
         sha = model_info["sha"]
 
@@ -609,9 +586,7 @@ class ModelSelectionDialog(QDialog):
             )
             return
 
-        current_name = self.pinned_names.get(
-            model_info["filename"], model_info["filename"]
-        )
+        current_name = self.pinned_names.get(model_info["filename"], model_info["filename"])
         new_name, ok = QInputDialog.getText(
             self, "Rename Model", "Enter new name:", text=current_name
         )
@@ -637,16 +612,12 @@ class ModelSelectionDialog(QDialog):
             else:
                 return
         else:
-            if new_name.casefold() in [
-                v.casefold() for v in self.pinned_names.values()
-            ]:
+            if new_name.casefold() in [v.casefold() for v in self.pinned_names.values()]:
                 QMessageBox.warning(
                     self, "Duplicate Name", "A model with this name already exists."
                 )
                 return
-            if new_name.casefold() in [
-                m["filename"].casefold() for m in self.all_models
-            ]:
+            if new_name.casefold() in [m["filename"].casefold() for m in self.all_models]:
                 QMessageBox.warning(
                     self, "Duplicate Name", "A model with this filename already exists."
                 )
@@ -687,12 +658,9 @@ class ModelSelectionDialog(QDialog):
 
         # Get the sha of the selected model
         model_name = os.path.basename(self.selected_model)
-        model_info = next(
-            (m for m in self.all_models if m["filename"] == model_name), None
-        )
+        model_info = next((m for m in self.all_models if m["filename"] == model_name), None)
         if not model_info:
-            Log.e(
-                TAG, f'Selected model "{model_name}" not found in model list')
+            Log.e(TAG, f'Selected model "{model_name}" not found in model list')
             return
         sha = model_info["sha"]
 
@@ -721,7 +689,7 @@ class ModelSelectionDialog(QDialog):
         """Open a separate window showing the training tree for the selected model.
 
         Traverses parent/child relationships stored in model metadata to build
-        a ``QTreeWidget`` rooted at the earliest known ancestor. The selected
+        a `QTreeWidget` rooted at the earliest known ancestor. The selected
         model is highlighted with an arrow marker. A "Switch to Selected"
         button accepts the dialog with that model; "Close" dismisses the window.
         """
@@ -749,20 +717,14 @@ class ModelSelectionDialog(QDialog):
         while True:
             model_found = False
             for model in self.all_models:
-                if (
-                    self.pinned_names.get(model["filename"], model["filename"])
-                    == model_name
-                ):
+                if self.pinned_names.get(model["filename"], model["filename"]) == model_name:
                     metadata = model["metadata"]
                     parent = metadata.get("parent", None)
                     children = metadata.get("children", [])
                     if not key_index in training_tree:
                         training_tree[key_index] = []
                     for child in children:
-                        child_model = next(
-                            (m for m in self.all_models if m["sha"]
-                             == child), None
-                        )
+                        child_model = next((m for m in self.all_models if m["sha"] == child), None)
                         if not child_model:
                             Log.w(
                                 TAG,
@@ -772,8 +734,7 @@ class ModelSelectionDialog(QDialog):
                         child_name = self.pinned_names.get(
                             child_model["filename"], child_model["filename"]
                         )
-                        training_tree[key_index].append(
-                            (model_name, child_name))
+                        training_tree[key_index].append((model_name, child_name))
                     if parent:
                         key_index -= 1
                         if not key_index in training_tree:
@@ -782,16 +743,14 @@ class ModelSelectionDialog(QDialog):
                             parent_name = "Base Model"
                         else:
                             parent_model = next(
-                                (m for m in self.all_models if m["sha"]
-                                 == parent), None
+                                (m for m in self.all_models if m["sha"] == parent), None
                             )
                             if not parent_model:
                                 Log.w(
                                     TAG,
                                     f'Parent model sha "{parent}" not found in model list',
                                 )
-                                # Fallback to truncated SHA
-                                parent_name = f"Unknown ({parent[:7]})"
+                                parent_name = f"Unknown ({parent[:7]})"  # Fallback to truncated SHA
                             else:
                                 parent_name = self.pinned_names.get(
                                     parent_model["filename"], parent_model["filename"]
@@ -829,13 +788,9 @@ class ModelSelectionDialog(QDialog):
                 self.tree.addTopLevelItem(base_tree)
             for parent, child in pair:
                 # detail_text += "    " * (i - first_i) + f"{child}\n"
-                items = self.tree.findItems(
-                    parent, Qt.MatchRecursive | Qt.MatchExactly, 0
-                )
+                items = self.tree.findItems(parent, Qt.MatchRecursive | Qt.MatchExactly, 0)
                 if items:
-                    if self.tree.findItems(
-                        child, Qt.MatchRecursive | Qt.MatchExactly, 0
-                    ):
+                    if self.tree.findItems(child, Qt.MatchRecursive | Qt.MatchExactly, 0):
                         continue  # already added
                     parent_item = items[0]
                     child_item = QTreeWidgetItem([child])
@@ -843,9 +798,7 @@ class ModelSelectionDialog(QDialog):
                 else:
                     Log.w(TAG, f'Parent item "{parent}" not found in tree')
         if selected_model_name:
-            items = self.tree.findItems(
-                selected_model_name, Qt.MatchRecursive | Qt.MatchExactly, 0
-            )
+            items = self.tree.findItems(selected_model_name, Qt.MatchRecursive | Qt.MatchExactly, 0)
             if items:
                 items[0].setText(0, f"{selected_model_name}\t⬅️")
                 self.tree.setCurrentItem(items[0])
@@ -868,9 +821,7 @@ class ModelSelectionDialog(QDialog):
         close_btn = QPushButton("Close")
 
         switch_btn.clicked.connect(
-            lambda: self.select_model_by_name(
-                self.tree.currentItem().text(0).split("\t")[0]
-            )
+            lambda: self.select_model_by_name(self.tree.currentItem().text(0).split("\t")[0])
         )
         switch_btn.clicked.connect(self.details_win.close)
         close_btn.clicked.connect(self.details_win.close)

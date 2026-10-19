@@ -76,8 +76,7 @@ class FormulationController:
                 and their related ingredients.
         """
         self.db: Database = db
-        self.ingredient_controller: IngredientController = IngredientController(
-            self.db)
+        self.ingredient_controller: IngredientController = IngredientController(self.db)
 
     def get_all_formulations(self) -> List[Formulation]:
         """Retrieve all stored formulations.
@@ -151,8 +150,7 @@ class FormulationController:
         for f in formulations:
             if f == formulation:
                 return f.id
-        raise ValueError(
-            f"Formulation with params\n\t'{formulation.to_dict()}'\nnot found.")
+        raise ValueError(f"Formulation with params\n\t'{formulation.to_dict()}'\nnot found.")
 
     @staticmethod
     def _normalize_label(value) -> str:
@@ -206,20 +204,16 @@ class FormulationController:
                 return existing
 
         # Ensure each ingredient is persisted and update the formulation's component references
-        formulation.buffer.ingredient = self._ensure_ingredient(
-            formulation.buffer.ingredient)
-        formulation.protein.ingredient = self._ensure_ingredient(
-            formulation.protein.ingredient)
-        formulation.salt.ingredient = self._ensure_ingredient(
-            formulation.salt.ingredient)
+        formulation.buffer.ingredient = self._ensure_ingredient(formulation.buffer.ingredient)
+        formulation.protein.ingredient = self._ensure_ingredient(formulation.protein.ingredient)
+        formulation.salt.ingredient = self._ensure_ingredient(formulation.salt.ingredient)
         formulation.surfactant.ingredient = self._ensure_ingredient(
             formulation.surfactant.ingredient
         )
         formulation.stabilizer.ingredient = self._ensure_ingredient(
             formulation.stabilizer.ingredient
         )
-        formulation.excipient.ingredient = self._ensure_ingredient(
-            formulation.excipient.ingredient)
+        formulation.excipient.ingredient = self._ensure_ingredient(formulation.excipient.ingredient)
 
         # Otherwise, add a new formulation record
         self.db.add_formulation(formulation)
@@ -269,17 +263,12 @@ class FormulationController:
             return f_new
 
         # Ensure each ingredient is persisted before saving the updated formulation
-        f_new.buffer.ingredient = self._ensure_ingredient(
-            f_new.buffer.ingredient)
-        f_new.protein.ingredient = self._ensure_ingredient(
-            f_new.protein.ingredient)
+        f_new.buffer.ingredient = self._ensure_ingredient(f_new.buffer.ingredient)
+        f_new.protein.ingredient = self._ensure_ingredient(f_new.protein.ingredient)
         f_new.salt.ingredient = self._ensure_ingredient(f_new.salt.ingredient)
-        f_new.surfactant.ingredient = self._ensure_ingredient(
-            f_new.surfactant.ingredient)
-        f_new.stabilizer.ingredient = self._ensure_ingredient(
-            f_new.stabilizer.ingredient)
-        f_new.excipient.ingredient = self._ensure_ingredient(
-            f_new.excipient.ingredient)
+        f_new.surfactant.ingredient = self._ensure_ingredient(f_new.surfactant.ingredient)
+        f_new.stabilizer.ingredient = self._ensure_ingredient(f_new.stabilizer.ingredient)
+        f_new.excipient.ingredient = self._ensure_ingredient(f_new.excipient.ingredient)
 
         # Delete the old formulation and re-add the new data
         self.db.delete_formulation(id)
@@ -291,18 +280,18 @@ class FormulationController:
     ) -> bool:
         """Update lightweight metadata fields for a formulation without touching its components.
 
-        Delegates to `Database.update_formulation_metadata`. Only non-``None`` arguments
+        Delegates to `Database.update_formulation_metadata`. Only non-`None` arguments
         will trigger a database write, so callers may pass a single field to update.
 
         Args:
             id (int): The primary key of the formulation to update.
             icl (bool, optional): New value for the In-Concentration Loading flag.
-                If ``None``, the field is left unchanged.
+                If `None`, the field is left unchanged.
             last_model (str, optional): Identifier of the last predictive model run
-                against this formulation. If ``None``, the field is left unchanged.
+                against this formulation. If `None`, the field is left unchanged.
 
         Returns:
-            bool: ``True`` if at least one field was updated successfully, ``False``
+            bool: `True` if at least one field was updated successfully, `False`
                 if the formulation was not found or an error occurred.
         """
         return self.db.update_formulation_metadata(id, icl, last_model)
@@ -342,6 +331,7 @@ class FormulationController:
             "MW",
             "PI_mean",
             "PI_range",
+            "Protein_charge",
             "Protein_conc",
             "Protein_class_type",
             "Temperature",
@@ -428,24 +418,20 @@ class FormulationController:
                     Buffer(enc_id=0, name=self._normalize_label(row.Buffer_type))
                 )
                 stabilizer = self.ingredient_controller.add_stabilizer(
-                    Stabilizer(enc_id=0, name=self._normalize_label(
-                        row.Stabilizer_type))
+                    Stabilizer(enc_id=0, name=self._normalize_label(row.Stabilizer_type))
                 )
                 surfactant = self.ingredient_controller.add_surfactant(
-                    Surfactant(enc_id=0, name=self._normalize_label(
-                        row.Surfactant_type))
+                    Surfactant(enc_id=0, name=self._normalize_label(row.Surfactant_type))
                 )
                 salt = self.ingredient_controller.add_salt(
                     Salt(enc_id=0, name=self._normalize_label(row.Salt_type))
                 )
                 excipient = self.ingredient_controller.add_excipient(
-                    Excipient(enc_id=0, name=self._normalize_label(
-                        row.Excipient_type))
+                    Excipient(enc_id=0, name=self._normalize_label(row.Excipient_type))
                 )
 
                 # BUILD VISCOSITY PROFILE
-                vis_values = [
-                    getattr(row, f"Viscosity_{r}") for r in shear_rates]
+                vis_values = [getattr(row, f"Viscosity_{r}") for r in shear_rates]
                 if any(pd.notna(v) for v in vis_values):
                     vp = ViscosityProfile(
                         shear_rates=shear_rates, viscosities=vis_values, units="cP"
@@ -472,6 +458,11 @@ class FormulationController:
                     protein=protein,
                     concentration=row.Protein_conc,
                     units="mg/mL",
+                    charge=(
+                        float(row.Protein_charge)
+                        if pd.notna(row.Protein_charge)
+                        else None
+                    ),
                 )
                 form.set_stabilizer(
                     stabilizer=stabilizer,
@@ -522,7 +513,7 @@ class FormulationController:
 
         The resulting DataFrame contains one row per formulation, with columns:
             - ID
-            - Protein_type, MW, PI_mean, PI_range, Protein_conc
+            - Protein_type, MW, PI_mean, PI_range, Protein_charge, Protein_conc
             - Temperature
             - Buffer_type, Buffer_pH, Buffer_conc
             - Salt_type, Salt_conc
@@ -544,6 +535,7 @@ class FormulationController:
             "MW",
             "PI_mean",
             "PI_range",
+            "Protein_charge",
             "Protein_conc",
             "Temperature",
             "Buffer_type",

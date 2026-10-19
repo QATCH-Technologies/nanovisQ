@@ -155,15 +155,14 @@ class EvaluationWidget(QtWidgets.QFrame):
         config_layout = QtWidgets.QFormLayout(grp_config)
         config_layout.setSpacing(12)
 
-        # Metric Dropdown
+        ## Metric Dropdown
         self.combo_metric = QtWidgets.QComboBox()
         self.combo_metric.setFixedHeight(28)
         self.combo_metric.setStyleSheet("background-color: #ffffff;")
         dynamic_metrics = [
             k for k in self.metric_mapping.keys() if k != "True vs. Predicted Plot"
         ]
-        sorted_display_names = [
-            "True vs. Predicted Plot"] + sorted(dynamic_metrics)
+        sorted_display_names = ["True vs. Predicted Plot"] + sorted(dynamic_metrics)
         self.combo_metric.addItems(sorted_display_names)
         self.combo_metric.setCurrentIndex(0)
         config_layout.addRow("Evaluation Metric:", self.combo_metric)
@@ -203,8 +202,7 @@ class EvaluationWidget(QtWidgets.QFrame):
         self.spin_shear_min.setValue(100)
         self.spin_shear_min.setFixedWidth(100)
         self.spin_shear_min.setDecimals(0)
-        self.spin_shear_min.setButtonSymbols(
-            QtWidgets.QAbstractSpinBox.NoButtons)
+        self.spin_shear_min.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
         self.spin_shear_min.setStyleSheet(spin_style)
 
         # Instantiate with the actual values and pass the snap points
@@ -218,8 +216,7 @@ class EvaluationWidget(QtWidgets.QFrame):
         self.spin_shear_max.setValue(15000000)
         self.spin_shear_max.setFixedWidth(100)
         self.spin_shear_max.setDecimals(0)
-        self.spin_shear_max.setButtonSymbols(
-            QtWidgets.QAbstractSpinBox.NoButtons)
+        self.spin_shear_max.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
         self.spin_shear_max.setStyleSheet(spin_style)
 
         # Connect Sliders <-> Spins

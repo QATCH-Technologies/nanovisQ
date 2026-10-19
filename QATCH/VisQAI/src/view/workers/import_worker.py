@@ -185,8 +185,7 @@ class ImportWorker(QThread):
                                         formulation.missing_fields
                                     )
                             else:
-                                success = controller.add_formulation(
-                                    formulation)
+                                success = controller.add_formulation(formulation)
                                 if success:
                                     final_formulation = formulation
                         else:
