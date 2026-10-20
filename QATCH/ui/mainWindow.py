@@ -1246,17 +1246,20 @@ class Rename_Output_Files(QtCore.QObject):
                 )
 
                 try:
-                    # Attempt to rename temporary files to the new run path.
-                    os.rename(old_path, new_run_path)
+                    # Attempt to rename temporary files to the new run path,
+                    # but copy first so captures can be saved across volumes
+                    copied_path = shutil.copy(old_path, new_run_path)
+                    if not os.path.isfile(copied_path):
+                        raise OSError(f"Copied file was not found: {copied_path}")
+                    copy_file = copied_path
+                    os.remove(old_path)  # delete only on copy success
                     Log.i(
                         ' Renamed "{}" ->\n         "{}"'.format(old_path, new_run_path)
                     )
-                    copy_file = new_run_path
-                except Exception:
-                    # Log and raise any errors terminating early if rename fails.
+                except OSError as e:
                     Log.e(
-                        ' ERROR: Failed to rename "{}" to "{}"!!!'.format(
-                            old_path, new_run_path
+                        ' ERROR: Failed to copy "{}" to "{}": {}'.format(
+                            old_path, new_run_path, e
                         )
                     )
                     self.finished.connect(self.indicate_error)
@@ -1329,7 +1332,8 @@ class Rename_Output_Files(QtCore.QObject):
                                 crc_file, str(hex(zf.getinfo(archive_file).CRC))
                             )
 
-                    os.remove(copy_file)
+                    if copy_file != old_path:
+                        os.remove(copy_file)
 
                 if ask_for_info:
                     ask_for_info = False
