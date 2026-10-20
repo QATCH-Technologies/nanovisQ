@@ -7,7 +7,7 @@ SHA256 hashing to ensure that manifest files and binary assets have
 not been tampered with. It supports dynamic importing of Python
 inference logic while allowing configurable security enforcement levels.
 
-Supports multi-module packages: the manifest's ``modules`` section
+Supports multi-module packages: the manifest's `modules` section
 declares a load order and entry point so each .visq package is
 self-describing.
 
@@ -120,8 +120,7 @@ class SecureModuleLoader:
         if not manifest_path.exists():
             raise SecurityError(f"Manifest not found: {manifest_path}")
         if not signature_path.exists():
-            raise SecurityError(
-                f"Manifest signature not found: {signature_path}")
+            raise SecurityError(f"Manifest signature not found: {signature_path}")
 
         try:
             public_key = serialization.load_pem_public_key(
@@ -209,8 +208,7 @@ class SecureModuleLoader:
             sys.modules[module_name] = module
             spec.loader.exec_module(module)
             return module
-        raise ImportError(
-            f"Could not load module {module_name} from {file_path}")
+        raise ImportError(f"Could not load module {module_name} from {file_path}")
 
 
 class SecurePackageLoader:
@@ -222,11 +220,11 @@ class SecurePackageLoader:
 
     Supports two manifest formats:
 
-    **Legacy (v1):** A flat ``files`` dict where exactly one entry has
-    ``"type": "inference_code"``.  Loaded via :meth:`load_inference_module`.
+    **Legacy (v1):** A flat `files` dict where exactly one entry has
+    `"type": "inference_code"`.  Loaded via :meth:`load_inference_module`.
 
-    **Multi-module (v2):** An additional ``modules`` section with
-    ``load_order`` (list of filenames) and ``entry_point`` (module + class).
+    **Multi-module (v2):** An additional `modules` section with
+    `load_order` (list of filenames) and `entry_point` (module + class).
     Loaded via :meth:`load_modules`.
 
     Note:
@@ -305,8 +303,7 @@ class SecurePackageLoader:
                 file_path = self.root / filename
                 if "sha256" in meta:
                     try:
-                        self.loader.verify_file_integrity(
-                            file_path, meta["sha256"])
+                        self.loader.verify_file_integrity(file_path, meta["sha256"])
                     except (SecurityError, Exception) as e:
                         Log.w(TAG, f"Integrity Check Failed (Ignored): {e}")
 
@@ -314,14 +311,14 @@ class SecurePackageLoader:
 
     @property
     def has_module_manifest(self) -> bool:
-        """True if the manifest contains an explicit ``modules`` section."""
+        """True if the manifest contains an explicit `modules` section."""
         return "modules" in self.manifest_data
 
     def get_module_load_order(self) -> List[str]:
         """Returns the declared module filenames in the order they should load.
 
-        Falls back to scanning ``files`` for any entry whose ``type``
-        contains ``"inference"`` (legacy behaviour).
+        Falls back to scanning `files` for any entry whose `type`
+        contains `"inference"` (legacy behaviour).
 
         Returns:
             List of filenames relative to the package root.
@@ -335,10 +332,10 @@ class SecurePackageLoader:
         return [fname for fname, meta in files_map.items() if "inference" in meta.get("type", "")]
 
     def get_entry_point(self) -> Tuple[Optional[str], Optional[str]]:
-        """Returns ``(module_filename, class_name)`` from the manifest.
+        """Returns `(module_filename, class_name)` from the manifest.
 
         If no explicit entry point is declared the first inference module
-        is returned with *class_name* as ``None`` (caller must auto-detect).
+        is returned with *class_name* as `None` (caller must auto-detect).
 
         Returns:
             Tuple of (module_filename, class_name | None).
@@ -362,7 +359,7 @@ class SecurePackageLoader:
         """Loads all declared code modules in dependency order.
 
         Iterates over :meth:`get_module_load_order`, adds the package root
-        to ``sys.path`` so that inter-module imports resolve, and dynamically
+        to `sys.path` so that inter-module imports resolve, and dynamically
         imports each file.
 
         Returns:
@@ -377,7 +374,7 @@ class SecurePackageLoader:
             return {}
 
         # Ensure the package root is on sys.path so modules can import
-        # each other using plain ``import <name>`` statements.
+        # each other using plain `import <name>` statements.
         root_str = str(self.root)
         if root_str not in sys.path:
             sys.path.insert(0, root_str)
@@ -389,17 +386,16 @@ class SecurePackageLoader:
                 module_path.relative_to(self.root.resolve())
             except ValueError:
                 raise SecurityError(
-                    f"Module path '{filename}' escapes the package root — load rejected."
+                    f"Module path '{filename}' escapes the package root - load rejected."
                 )
             if not module_path.exists():
-                raise FileNotFoundError(
-                    f"Declared module '{filename}' not found in package.")
+                raise FileNotFoundError(f"Declared module '{filename}' not found in package.")
 
             # Derive a clean module name (e.g. "inference")
             module_name = f"visq_pkg.{module_path.stem}"
             Log.i(TAG, f"Loading module: {filename} as {module_name}")
             mod = self.loader.load_module_from_path(module_name, module_path)
-            # Inject a plain-stem alias so ``import <stem>`` resolves to the
+            # Inject a plain-stem alias so `import <stem>` resolves to the
             # same object.  Save whatever was there before (or _MISSING if the
             # key was absent) so unload/reset can restore the prior state.
             stem = module_path.stem
@@ -495,8 +491,7 @@ class SecurePackageLoader:
 
         module_path = self.root / module_filename
         if not module_path.exists():
-            raise FileNotFoundError(
-                f"Inference module {module_filename} not found.")
+            raise FileNotFoundError(f"Inference module {module_filename} not found.")
 
         Log.i(TAG, f"Loading inference logic from: {module_filename}")
         return self.loader.load_module_from_path("visq_inference", module_path)

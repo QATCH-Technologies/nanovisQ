@@ -3,7 +3,7 @@ db_synchronizer.py
 
 Database synchronization utilities for NanovisQ.
 
-This module provides the ``DatabaseSynchronizer`` class, which compares a
+This module provides the `DatabaseSynchronizer` class, which compares a
 bundled (reference) SQLite database against a local user database and
 forward-migrates the local copy to match the bundled schema and seed data.
 
@@ -20,7 +20,6 @@ Version:
 
 import sqlite3
 from pathlib import Path
-
 
 try:
     TAG = "[DBSync (HEADLESS)]"
@@ -90,20 +89,20 @@ class DatabaseSynchronizer:
     ) -> bool:
         """Synchronize the local database with the bundled reference database.
 
-        Compares ``db_version`` metadata between the two databases.  When the
+        Compares `db_version` metadata between the two databases.  When the
         bundled version is newer the local schema is migrated (new tables /
         columns / indexes added) and seed data is upserted via
-        ``INSERT OR IGNORE``.
+        `INSERT OR IGNORE`.
 
         Args:
-            local_db: The open local ``Database`` instance to be updated.
+            local_db: The open local `Database` instance to be updated.
             bundled_db_path: Filesystem path to the bundled (reference)
                 database file.
-            dry_run: When ``True``, schema and seed changes are previewed in
+            dry_run: When `True`, schema and seed changes are previewed in
                 the log but the transaction is rolled back without committing.
 
         Returns:
-            ``True`` if a synchronization was committed, ``False`` if the
+            `True` if a synchronization was committed, `False` if the
             database was already up to date, a dry run was performed, or an
             error occurred.
         """
@@ -125,12 +124,10 @@ class DatabaseSynchronizer:
             bundled_version = bundled_db.metadata.get("db_version", 0)
 
             if bundled_version <= local_version:
-                Log.i(
-                    TAG, f"Database is up to date (Version {local_version}).")
+                Log.i(TAG, f"Database is up to date (Version {local_version}).")
                 return False
 
-            Log.i(
-                TAG, f"Updating database from version {local_version} to {bundled_version}...")
+            Log.i(TAG, f"Updating database from version {local_version} to {bundled_version}...")
             DatabaseSynchronizer._sync_schema(c)
 
             local_db.begin_bulk()
@@ -139,8 +136,7 @@ class DatabaseSynchronizer:
 
             local_db.update_metadata_version(bundled_version)
             if dry_run:
-                Log.i(
-                    TAG, "DRY RUN Schema and seed changes previewed - no commit performed.")
+                Log.i(TAG, "DRY RUN Schema and seed changes previewed - no commit performed.")
                 local_db.conn.rollback()
                 return False
 
@@ -173,20 +169,20 @@ class DatabaseSynchronizer:
 
         Iterates over every non-system table in the bundled database and:
 
-        * Creates the table in ``main`` if it does not exist.
-        * Adds any columns that are present in ``bundled`` but missing from
-          ``main`` via ``ALTER TABLE … ADD COLUMN``.
-        * Creates any non-system indexes that exist in ``bundled`` but are
-          absent from ``main``.
+        * Creates the table in `main` if it does not exist.
+        * Adds any columns that are present in `bundled` but missing from
+          `main` via `ALTER TABLE … ADD COLUMN`.
+        * Creates any non-system indexes that exist in `bundled` but are
+          absent from `main`.
 
-        All ``CREATE TABLE`` and ``ALTER TABLE`` statements are collected first
+        All `CREATE TABLE` and `ALTER TABLE` statements are collected first
         and executed in a second pass so that the cursor is not advanced while
         iterating over the result set.  Index synchronization runs after all
         table and column migrations have been applied.
 
         Args:
-            c: An active SQLite cursor connected to ``main`` with the bundled
-                database attached as ``bundled``.
+            c: An active SQLite cursor connected to `main` with the bundled
+                database attached as `bundled`.
         """
         c.execute(
             "SELECT name, sql FROM bundled.sqlite_master "
@@ -221,7 +217,7 @@ class DatabaseSynchronizer:
                     Log.w(
                         TAG,
                         f"Column '{col_name}' in '{table_name}' is a PRIMARY KEY; "
-                        "SQLite cannot add PRIMARY KEY via ALTER TABLE — skipping PK constraint.",
+                        "SQLite cannot add PRIMARY KEY via ALTER TABLE - skipping PK constraint.",
                     )
 
                 col_def = f"{col_name} {col_type}"
@@ -248,7 +244,7 @@ class DatabaseSynchronizer:
                     Log.w(
                         TAG,
                         f"Column '{col_name}' in '{table_name}' is NOT NULL but has no "
-                        "DEFAULT; SQLite disallows adding NOT NULL columns without a DEFAULT — "
+                        "DEFAULT; SQLite disallows adding NOT NULL columns without a DEFAULT - "
                         "omitting NOT NULL constraint.",
                     )
 
@@ -284,19 +280,19 @@ class DatabaseSynchronizer:
     def _sync_seed_data(c: sqlite3.Cursor):
         """Upsert bundled seed data into the local database.
 
-        Uses ``INSERT OR IGNORE`` so that existing local rows are preserved.
+        Uses `INSERT OR IGNORE` so that existing local rows are preserved.
         The sync order is:
 
-        1. ``ingredient`` rows with ``enc_id < 8000`` (core / system
+        1. `ingredient` rows with `enc_id < 8000` (core / system
            ingredients only; user-created ingredients are skipped).
         2. All other non-system, non-formulation tables that exist in the
            bundled database (derived dynamically).
-        3. ``formulation``, ``formulation_component``, and
-           ``viscosity_profile`` tables, in that order.
+        3. `formulation`, `formulation_component`, and
+           `viscosity_profile` tables, in that order.
 
         Args:
-            c: An active SQLite cursor connected to ``main`` with the bundled
-                database attached as ``bundled``.
+            c: An active SQLite cursor connected to `main` with the bundled
+                database attached as `bundled`.
         """
         # Sync core ingredients
         c.execute(
@@ -304,7 +300,7 @@ class DatabaseSynchronizer:
             "SELECT * FROM bundled.ingredient WHERE enc_id < 8000;"
         )
 
-        # Derive subclass tables dynamically — any table with an ingredient_id FK
+        # Derive subclass tables dynamically - any table with an ingredient_id FK
         c.execute(
             "SELECT name FROM bundled.sqlite_master WHERE type='table' "
             "AND name NOT LIKE 'sqlite_%' AND name != 'ingredient' "
@@ -312,10 +308,8 @@ class DatabaseSynchronizer:
         )
         subclass_tables = [row[0] for row in c.fetchall()]
         for table in subclass_tables:
-            c.execute(
-                f"INSERT OR IGNORE INTO main.{table} SELECT * FROM bundled.{table};")
+            c.execute(f"INSERT OR IGNORE INTO main.{table} SELECT * FROM bundled.{table};")
 
         # Sync formulation data
         for table in ("formulation", "formulation_component", "viscosity_profile"):
-            c.execute(
-                f"INSERT OR IGNORE INTO main.{table} SELECT * FROM bundled.{table};")
+            c.execute(f"INSERT OR IGNORE INTO main.{table} SELECT * FROM bundled.{table};")

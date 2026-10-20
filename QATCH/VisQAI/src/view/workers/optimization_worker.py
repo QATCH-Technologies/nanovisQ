@@ -170,8 +170,7 @@ class OptimizationWorker(QtCore.QThread):
                                 getattr(
                                     p.class_type,
                                     "value",
-                                    getattr(p.class_type, "name",
-                                            str(p.class_type)),
+                                    getattr(p.class_type, "name", str(p.class_type)),
                                 )
                             )
                             if c_val in values:
@@ -206,8 +205,7 @@ class OptimizationWorker(QtCore.QThread):
                         f"Constraint applied: {feature_key} "
                         f"{'is NOT' if negate else 'is'} {[c.name for c in choices]}",
                     )
-                    constraints.add_choices(
-                        feature=feature_key, choices=choices)
+                    constraints.add_choices(feature=feature_key, choices=choices)
 
                 elif feature_key in Constraints._NUMERIC:
                     v = float(values)
@@ -220,17 +218,14 @@ class OptimizationWorker(QtCore.QThread):
                     elif cond == "<=":
                         constraints.add_range(feature_key, 0.0, v)
                     elif cond == "<":
-                        constraints.add_range(
-                            feature_key, 0.0, max(0.0, v - 0.001))
+                        constraints.add_range(feature_key, 0.0, max(0.0, v - 0.001))
                     elif cond == "!=":
                         low_r = (0.0, max(0.0, v - 0.001))
                         high_r = (v + 0.001, 10_000.0)
                         if (high_r[1] - high_r[0]) >= (low_r[1] - low_r[0]):
-                            constraints.add_range(
-                                feature_key, high_r[0], high_r[1])
+                            constraints.add_range(feature_key, high_r[0], high_r[1])
                         else:
-                            constraints.add_range(
-                                feature_key, low_r[0], low_r[1])
+                            constraints.add_range(feature_key, low_r[0], low_r[1])
 
             # Load model
             self.progress_update.emit(15, "Loading prediction model...")
@@ -245,8 +240,7 @@ class OptimizationWorker(QtCore.QThread):
             predictor = Predictor(zip_path=asset_zip)
 
             # Build target ViscosityProfile object
-            self.progress_update.emit(
-                20, "Building target viscosity profile...")
+            self.progress_update.emit(20, "Building target viscosity profile...")
             shear_rates = [t["shear_rate"] for t in self.targets]
             target_viscs = [t["viscosity"] for t in self.targets]
             target_profile = ViscosityProfile(
@@ -276,8 +270,7 @@ class OptimizationWorker(QtCore.QThread):
                 popsize=15,
                 seed=42,
             )
-            best_formulation = optimizer.optimize(
-                progress_callback=_progress_cb)
+            best_formulation = optimizer.optimize(progress_callback=_progress_cb)
             for _attr in (
                 "protein",
                 "buffer",
@@ -297,10 +290,8 @@ class OptimizationWorker(QtCore.QThread):
                 return
 
             # Predict estimated profile for the result
-            self.progress_update.emit(
-                94, "Computing estimated viscosity profile...")
-            pred_df = best_formulation.to_dataframe(
-                encoded=False, training=False)
+            self.progress_update.emit(94, "Computing estimated viscosity profile...")
+            pred_df = best_formulation.to_dataframe(encoded=False, training=False)
             pred_raw = predictor.predict(pred_df)
             estimated_shear = [100, 1_000, 10_000, 100_000, 15_000_000]
             _visc_cols = [
@@ -311,8 +302,7 @@ class OptimizationWorker(QtCore.QThread):
                 "Viscosity_15000000",
             ]
             if isinstance(pred_raw, pd.DataFrame):
-                row = pred_raw.iloc[0] if len(
-                    pred_raw) > 0 else pd.Series(dtype=float)
+                row = pred_raw.iloc[0] if len(pred_raw) > 0 else pd.Series(dtype=float)
                 estimated_visc = []
                 for col in _visc_cols:
                     v = row.get(col, row.get(f"Pred_{col}", float("nan")))

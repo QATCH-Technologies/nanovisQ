@@ -104,7 +104,11 @@ class QATCH:
         self._args = self._init_logger()
         QtCore.QCoreApplication.setOrganizationName("QATCH")
         QtCore.QCoreApplication.setApplicationName("nanovisQ")
-        self._app = QApplication(argv)
+        app = QApplication.instance()
+        if app is None:
+            self._app = QApplication(argv)
+        else:
+            self._app = app
 
     def flashSplashShow(self) -> None:
         """Displays the application splash screen.
@@ -169,7 +173,10 @@ class QATCH:
         if self.win is not None and getattr(self.win, "ask_for_update", False):
             self.win.start_download()
 
-    def run(self):
+    ###########################################################################
+    # Runs the application
+    ###########################################################################
+    def run(self, interactive: bool = False):
         # lazy load imports
         from QATCH.ui import mainWindow as main_window
 
@@ -178,11 +185,12 @@ class QATCH:
             samples = self._args.get_user_samples() if self._args is not None else 51
             self.win = main_window.MainWindow(samples=samples)
             self.flashSplashHide()
+            if interactive:
+                Log.d("Interactive control ready!")
+                return
             self._app.exec()
-
             Log.i(TAG, "Finishing Application...")
             Log.i(TAG, "Application closed")
-
             if self.win is not None:
                 self.win.close()
         else:

@@ -75,11 +75,9 @@ class ViscosityProfile:
         self, shear_rates: List[float], viscosities: List[float], units: str = "cP"
     ) -> None:
         if not isinstance(shear_rates, list) or not isinstance(viscosities, list):
-            raise TypeError(
-                "shear_rates and viscosities must be lists of numeric values")
+            raise TypeError("shear_rates and viscosities must be lists of numeric values")
         if len(shear_rates) != len(viscosities):
-            raise ValueError(
-                "shear_rates and viscosities must have the same length")
+            raise ValueError("shear_rates and viscosities must have the same length")
         if any(not isinstance(sr, (int, float)) for sr in shear_rates):
             raise TypeError("all shear_rates must be numeric")
         if any(not isinstance(v, (int, float)) for v in viscosities):
@@ -220,8 +218,7 @@ class Component:
             ValueError: If `pH` is outside the range 0–14.
         """
         if not isinstance(ingredient, Ingredient):
-            raise TypeError(
-                f"ingredient must be an Ingredient object found {ingredient}")
+            raise TypeError(f"ingredient must be an Ingredient object found {ingredient}")
         if not isinstance(concentration, (int, float)):
             raise TypeError("concentration must be numeric")
         if concentration < 0:
@@ -434,8 +431,7 @@ class Formulation:
             pH (Optional[float]): The pH of the buffer in this formulation.
                 Must be between 0 and 14, or None.
         """
-        self._components["buffer"] = Component(
-            buffer, concentration, units, pH=pH)
+        self._components["buffer"] = Component(buffer, concentration, units, pH=pH)
 
     def set_stabilizer(self, stabilizer: Stabilizer, concentration: float, units: str) -> None:
         """Assign a stabilizer component to the formulation.
@@ -449,8 +445,7 @@ class Formulation:
             TypeError: If `stabilizer` is not a `Stabilizer`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
-        self._components["stabilizer"] = Component(
-            stabilizer, concentration, units)
+        self._components["stabilizer"] = Component(stabilizer, concentration, units)
 
     def set_surfactant(self, surfactant: Surfactant, concentration: float, units: str) -> None:
         """Assign a surfactant component to the formulation.
@@ -464,8 +459,7 @@ class Formulation:
             TypeError: If `surfactant` is not a `Surfactant`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
-        self._components["surfactant"] = Component(
-            surfactant, concentration, units)
+        self._components["surfactant"] = Component(surfactant, concentration, units)
 
     def set_salt(self, salt: Salt, concentration: float, units: str) -> None:
         """Assign a salt component to the formulation.
@@ -496,8 +490,7 @@ class Formulation:
             TypeError: If `excipient` is not an `Excipient`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
-        self._components["excipient"] = Component(
-            excipient, concentration, units)
+        self._components["excipient"] = Component(excipient, concentration, units)
 
     @property
     def protein(self) -> Optional[Component]:
@@ -705,8 +698,7 @@ class Formulation:
         row = {
             "ID": self.id,
             "Temperature": (
-                getattr(self, "temperature",
-                        25.0) if self.temperature is not None else 25.0
+                getattr(self, "temperature", 25.0) if self.temperature is not None else 25.0
             ),
             # Protein Defaults
             "Protein_class_type": safe_get(prot, "class_type.value", 0),

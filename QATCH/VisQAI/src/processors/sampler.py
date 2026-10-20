@@ -152,14 +152,12 @@ class Sampler:
 
         # Load model asset
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(
-            os.path.join(base_dir, os.pardir, os.pardir))
+        project_root = os.path.abspath(os.path.join(base_dir, os.pardir, os.pardir))
         assets_dir = os.path.join(project_root, "assets")
         self.version_ctrl = VersionManager(repo_dir=assets_dir)
         target_filename = f"{asset_name}.visq"
         match = next(
-            (m for m in self.version_ctrl.list()
-             if m["filename"] == target_filename),
+            (m for m in self.version_ctrl.list() if m["filename"] == target_filename),
             None,
         )
         Log.d(TAG, f"self.version_ctrl.list() = {self.version_ctrl.list()}")
@@ -266,7 +264,7 @@ class Sampler:
         This method identifies the next formulation to evaluate by searching the design
         space through a two-pronged approachof global exploration and local exploitation.
 
-        The selection is guided by an acquisition function—either Upper Confidence
+        The selection is guided by an acquisition function-either Upper Confidence
         Bound (UCB), which balances predicted viscosity against uncertainty, or
         pure uncertainty maximization.
 
@@ -301,8 +299,7 @@ class Sampler:
                 form.to_dataframe(encoded=False, training=False)
             )
             unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
-            score = self._acquisition_ucb(
-                vis, unc, kappa) if use_ucb else np.nanmean(unc)
+            score = self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
             candidates.append((form, score))
 
         if self._last_formulation is not None:
@@ -310,10 +307,8 @@ class Sampler:
                 vis, unc_dict = self.predictor.predict_uncertainty(
                     form.to_dataframe(encoded=False, training=False)
                 )
-                unc = unc_dict["std"] if isinstance(
-                    unc_dict, dict) else unc_dict
-                score = self._acquisition_ucb(
-                    vis, unc, kappa) if use_ucb else np.nanmean(unc)
+                unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
+                score = self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
                 candidates.append((form, score))
 
         candidates.sort(key=lambda x: -x[1])
@@ -417,8 +412,7 @@ class Sampler:
                         suggestions[feat] = np.random.choice(choices)
                 else:
                     raw = float(np.random.uniform(low, high))
-                    suggestions[feat] = self._round_suggestion(
-                        feat, raw, low, high)
+                    suggestions[feat] = self._round_suggestion(feat, raw, low, high)
             self._enforce_none_concentrations(suggestions)
             samples.append(self._build_formulation(suggestions))
         return samples
@@ -489,8 +483,8 @@ class Sampler:
         """Constructs a ViscosityProfile object from a set of predicted values.
 
         This helper method acts as the final step in the prediction pipeline.
-        It maps a raw numerical array of viscosities—typically extracted from
-        the predictor—back to a structured `ViscosityProfile`.
+        It maps a raw numerical array of viscosities-typically extracted from
+        the predictor-back to a structured `ViscosityProfile`.
 
         The shear rates are fixed to a standard five-point log-scale profile
         ranging from low shear (100 s 1/s) to ultra-high shear (1.5e7 1/s).
@@ -593,8 +587,7 @@ class Sampler:
             suggestions.get("Protein_type"), self.ing_ctrl.get_protein_by_name
         )
         if prot:
-            form.set_protein(prot, float(
-                suggestions.get("Protein_conc", 0.0)), "mg/mL")
+            form.set_protein(prot, float(suggestions.get("Protein_conc", 0.0)), "mg/mL")
 
         buff = self._resolve_ingredient(
             suggestions.get("Buffer_type"), self.ing_ctrl.get_buffer_by_name
@@ -613,28 +606,22 @@ class Sampler:
             form.set_salt(salt, float(suggestions.get("Salt_conc", 0.0)), "mM")
 
         stab = self._resolve_ingredient(
-            suggestions.get(
-                "Stabilizer_type"), self.ing_ctrl.get_stabilizer_by_name
+            suggestions.get("Stabilizer_type"), self.ing_ctrl.get_stabilizer_by_name
         )
         if stab:
-            form.set_stabilizer(stab, float(
-                suggestions.get("Stabilizer_conc", 0.0)), "M")
+            form.set_stabilizer(stab, float(suggestions.get("Stabilizer_conc", 0.0)), "M")
 
         surf = self._resolve_ingredient(
-            suggestions.get(
-                "Surfactant_type"), self.ing_ctrl.get_surfactant_by_name
+            suggestions.get("Surfactant_type"), self.ing_ctrl.get_surfactant_by_name
         )
         if surf:
-            form.set_surfactant(surf, float(
-                suggestions.get("Surfactant_conc", 0.0)), "%w")
+            form.set_surfactant(surf, float(suggestions.get("Surfactant_conc", 0.0)), "%w")
 
         excip = self._resolve_ingredient(
-            suggestions.get(
-                "Excipient_type"), self.ing_ctrl.get_excipient_by_name
+            suggestions.get("Excipient_type"), self.ing_ctrl.get_excipient_by_name
         )
         if excip:
-            form.set_excipient(excip, float(
-                suggestions.get("Excipient_conc", 0.0)), "mM")
+            form.set_excipient(excip, float(suggestions.get("Excipient_conc", 0.0)), "mM")
 
         form.set_temperature(float(suggestions.get("Temperature", 25.0)))
         return form

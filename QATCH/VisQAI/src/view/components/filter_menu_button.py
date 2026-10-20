@@ -113,8 +113,7 @@ class FilterMenuButton(QtWidgets.QPushButton):
         Sets the border to red if no items are selected to indicate an invalid
         filter state.
         """
-        selected = [name for name, act in self.items_map.items()
-                    if act.isChecked()]
+        selected = [name for name, act in self.items_map.items() if act.isChecked()]
         total = len(self.items_map)
 
         if len(selected) == 0:

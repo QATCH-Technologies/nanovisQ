@@ -126,12 +126,12 @@ class FormulationConfigCard(QtWidgets.QFrame):
         Args:
             default_name (str): The initial display name shown in the card header.
             ingredients_data (dict): Mapping of ingredient type strings (e.g.
-                ``"Protein"``) to lists of ingredient objects available for
+                `"Protein"`) to lists of ingredient objects available for
                 selection.
             ingredient_types (list[str]): Ordered list of ingredient type names
-                that the card supports (e.g. ``["Protein", "Buffer", ...]``).
+                that the card supports (e.g. `["Protein", "Buffer", ...]`).
             ingredient_units (dict): Mapping of ingredient type strings to their
-                concentration unit labels (e.g. ``{"Protein": "mg/mL"}``).
+                concentration unit labels (e.g. `{"Protein": "mg/mL"}`).
             parent (QtWidgets.QWidget, optional): Parent widget. Defaults to None.
         """
         super().__init__(parent)
@@ -193,8 +193,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         """Walk up the widget hierarchy to find the ingredient controller.
 
         Returns:
-            The first ancestor widget that exposes an ``ing_ctrl`` attribute,
-            or ``None`` if no such ancestor exists.
+            The first ancestor widget that exposes an `ing_ctrl` attribute,
+            or `None` if no such ancestor exists.
         """
         widget = self.parent()
         while widget is not None:
@@ -208,8 +208,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         """Walk up the widget hierarchy to find the formulation controller.
 
         Returns:
-            The first ancestor widget that exposes a ``form_ctrl`` attribute,
-            or ``None`` if no such ancestor exists.
+            The first ancestor widget that exposes a `form_ctrl` attribute,
+            or `None` if no such ancestor exists.
         """
         widget = self.parent()
         while widget is not None:
@@ -984,7 +984,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         combo.currentTextChanged.connect(self.trigger_update)
         spin.valueChanged.connect(self.trigger_update)
 
-        # pH spinbox — Buffer rows only, replaces the delete button slot
+        # pH spinbox - Buffer rows only, replaces the delete button slot
         if ing_type == "Buffer":
             spin_ph = QtWidgets.QDoubleSpinBox()
             spin_ph.setProperty("class", "sleek")
@@ -1112,7 +1112,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                 "}"
             )
             btn_configure.setToolTip(
-                f"\u26a0 {combo.currentText()} has required fields that are not set — click to complete"
+                f"\u26a0 {combo.currentText()} has required fields that are not set - click to complete"
             )
             # Add matching error style to the combo box
             combo.setStyleSheet(
@@ -1236,13 +1236,13 @@ class FormulationConfigCard(QtWidgets.QFrame):
             self.debounce_timer.start()
 
     def broadcast_ingredient_update(self):
-        """Notify all sibling ``FormulationConfigCard`` widgets to refresh their UI.
+        """Notify all sibling `FormulationConfigCard` widgets to refresh their UI.
 
         Walks up to the immediate parent widget and calls
-        ``refresh_ingredient_ui`` on every ``FormulationConfigCard`` child
-        found via ``findChildren``.  Used after a new ingredient is created
+        `refresh_ingredient_ui` on every `FormulationConfigCard` child
+        found via `findChildren`.  Used after a new ingredient is created
         or edited through a config dialog so that all cards sharing
-        ``ingredients_master`` reflect the change without a full rebuild.
+        `ingredients_master` reflect the change without a full rebuild.
         """
         parent = self.parentWidget()
         if parent:
@@ -1253,9 +1253,9 @@ class FormulationConfigCard(QtWidgets.QFrame):
     def refresh_ingredient_ui(self):
         """Recheck all configure-button states and trigger a formulation update.
 
-        Calls ``_refresh_configure_button`` for every entry in
-        ``active_ingredients``, then calls ``trigger_update`` to ensure
-        ``lbl_warning`` and the debounce timer are refreshed after an
+        Calls `_refresh_configure_button` for every entry in
+        `active_ingredients`, then calls `trigger_update` to ensure
+        `lbl_warning` and the debounce timer are refreshed after an
         ingredient edit that originated from a sibling card.
         """
         for ing_type, (
@@ -1703,9 +1703,9 @@ class FormulationConfigCard(QtWidgets.QFrame):
     def export_formulation(self):
         """Prompt the user for a file path and save the current results to CSV.
 
-        Shows a warning dialog when ``last_results`` is ``None``.  Otherwise
-        opens a ``QFileDialog.getSaveFileName`` dialog defaulting to
-        ``"<card_name>.csv"``, then delegates to ``save_to_csv``.  Shows an
+        Shows a warning dialog when `last_results` is `None`.  Otherwise
+        opens a `QFileDialog.getSaveFileName` dialog defaulting to
+        `"<card_name>.csv"`, then delegates to `save_to_csv`.  Shows an
         informational confirmation or a critical error dialog depending on the
         outcome.
         """
@@ -1739,13 +1739,13 @@ class FormulationConfigCard(QtWidgets.QFrame):
     def save_to_csv(self, filepath):
         """Write the current viscosity profile and confidence interval to a CSV file.
 
-        Writes a ``"--- Viscosity Profile ---"`` header row, then a
+        Writes a `"--- Viscosity Profile ---"` header row, then a
         column-header row and one data row per shear-rate point.
 
         * **Measured cards** - columns: Shear Rate (1/s), Measured Viscosity
-          (cP), Lower CI (cP), Upper CI (cP).  Missing ``measured_y``,
-          ``lower``, or ``upper`` arrays are replaced with zero-filled lists
-          of the same length as ``x``.
+          (cP), Lower CI (cP), Upper CI (cP).  Missing `measured_y`,
+          `lower`, or `upper` arrays are replaced with zero-filled lists
+          of the same length as `x`.
         * **Predicted cards** - columns: Shear Rate (1/s), Predicted Viscosity
           (cP), Lower CI (cP), Upper CI (cP).  Same zero-fill fallback for
           missing arrays.

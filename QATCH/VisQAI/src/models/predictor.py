@@ -74,14 +74,14 @@ except ImportError:
 class Predictor:
     """High-level interface for loading and running VisQ packaged viscosity models.
 
-    Handles extraction of ``.visq`` zip packages, secure manifest loading,
+    Handles extraction of `.visq` zip packages, secure manifest loading,
     engine instantiation, inference, context-based adaptation, and persistence.
 
     Attributes:
-        zip_path (Path): Path to the ``.visq`` package file.
+        zip_path (Path): Path to the `.visq` package file.
         extracted_path (Path): Temporary directory where the package is extracted.
-        manifest (dict): Parsed package manifest loaded from the ``.visq`` file.
-        model_type (str): Architecture identifier (e.g. ``"CNP"``, ``"unknown"``).
+        manifest (dict): Parsed package manifest loaded from the `.visq` file.
+        model_type (str): Architecture identifier (e.g. `"CNP"`, `"unknown"`).
         engine: The instantiated inference engine object.
     """
 
@@ -89,12 +89,12 @@ class Predictor:
         """Initialize the Predictor by extracting and loading the model package.
 
         Args:
-            zip_path (str): Path to the ``.visq`` model package to load.
+            zip_path (str): Path to the `.visq` model package to load.
             temp_dir (str, optional): Directory in which to create the temporary
                 extraction folder. Defaults to the system temp directory.
 
         Raises:
-            FileNotFoundError: If ``zip_path`` does not exist on disk.
+            FileNotFoundError: If `zip_path` does not exist on disk.
             NotImplementedError: If the package architecture is unsupported.
             Exception: Propagated from the secure loader on signature or manifest errors.
         """
@@ -113,21 +113,21 @@ class Predictor:
 
         Two load paths are supported (checked in order):
 
-        1. **Manifest-driven (v2):** When ``loader.has_module_manifest`` is
-           ``True``, all modules declared in the manifest ``modules`` section
+        1. **Manifest-driven (v2):** When `loader.has_module_manifest` is
+           `True`, all modules declared in the manifest `modules` section
            are loaded via :meth:`_load_from_module_manifest` and the
            entry-point class is resolved from the manifest.
-        2. **CrossSampleCNP legacy (v1):** When the manifest ``architecture``
-           field equals ``"CrossSampleCNP"``, a single inference module is
+        2. **CrossSampleCNP legacy (v1):** When the manifest `architecture`
+           field equals `"CrossSampleCNP"`, a single inference module is
            loaded via :meth:`_load_single_inference_module`.
 
         Any package that does not match either path raises
         :exc:`NotImplementedError`.
 
         Raises:
-            FileNotFoundError: If ``self.zip_path`` does not exist.
+            FileNotFoundError: If `self.zip_path` does not exist.
             NotImplementedError: If the package is neither manifest-driven nor
-                a ``CrossSampleCNP`` v1 package.
+                a `CrossSampleCNP` v1 package.
         """
         if not self.zip_path.exists():
             raise FileNotFoundError(f"Package not found: {self.zip_path}")
@@ -146,8 +146,7 @@ class Predictor:
                     pass
 
                 sklearn.compose._column_transformer._RemainderColsList = _RemainderColsList
-                Log.w(
-                    TAG, "Applied sklearn._RemainderColsList for legacy model support.")
+                Log.w(TAG, "Applied sklearn._RemainderColsList for legacy model support.")
         except ImportError:
             pass
         except Exception as e:
@@ -155,8 +154,7 @@ class Predictor:
 
         if not SECURITY_AVAILABLE:
             Log.e(TAG, "SecurePackageLoader unavailable - cannot load package.")
-            raise RuntimeError(
-                "SecurePackageLoader unavailable - cannot load package.")
+            raise RuntimeError("SecurePackageLoader unavailable - cannot load package.")
         try:
             loader = create_secure_loader_for_extracted_package(
                 self.extracted_path, enforce_signatures=True
@@ -181,8 +179,8 @@ class Predictor:
     def _load_from_module_manifest(self, loader: "SecurePackageLoader"):
         """Load all modules declared in the manifest and instantiate the entry-point engine.
 
-        The manifest's ``modules.entry_point`` may contain an ``init_kwargs`` dict.
-        The special token ``"$PACKAGE_DIR"`` is substituted with the actual extracted
+        The manifest's `modules.entry_point` may contain an `init_kwargs` dict.
+        The special token `"$PACKAGE_DIR"` is substituted with the actual extracted
         path at runtime before the engine class is constructed.
 
         Args:
@@ -195,8 +193,7 @@ class Predictor:
 
         # Resolve init kwargs from manifest (supports $PACKAGE_DIR token)
         modules_section = self.manifest.get("modules", {})
-        raw_kwargs = modules_section.get(
-            "entry_point", {}).get("init_kwargs", {})
+        raw_kwargs = modules_section.get("entry_point", {}).get("init_kwargs", {})
         init_kwargs = {
             k: (str(self.extracted_path) if v == "$PACKAGE_DIR" else v)
             for k, v in raw_kwargs.items()
@@ -216,7 +213,7 @@ class Predictor:
     def _load_single_inference_module(self, loader: "SecurePackageLoader"):
         """Load a single inference module using the legacy v1 path.
 
-        Looks for ``ViscosityPredictorCNP`` by convention inside the loaded module
+        Looks for `ViscosityPredictorCNP` by convention inside the loaded module
         and initializes it with the extracted package directory.
 
         Args:
@@ -224,8 +221,7 @@ class Predictor:
         """
         mod = loader.load_inference_module()
         self.model_type = "CNP"
-        self.engine = mod.ViscosityPredictorCNP(
-            model_dir=str(self.extracted_path))
+        self.engine = mod.ViscosityPredictorCNP(model_dir=str(self.extracted_path))
         Log.i(TAG, "Engine initialized successfully (legacy single-module path).")
 
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -233,7 +229,7 @@ class Predictor:
 
         Args:
             df (pd.DataFrame): Input features. Must not contain target viscosity
-                columns — strip them with ``prepare_prediction_input`` first.
+                columns - strip them with `prepare_prediction_input` first.
 
         Returns:
             pd.DataFrame: Predicted viscosity values with one column per shear rate.
@@ -254,19 +250,19 @@ class Predictor:
     ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
         """Run inference with Monte-Carlo uncertainty estimation.
 
-        Performs ``n_samples`` stochastic forward passes and aggregates statistics
+        Performs `n_samples` stochastic forward passes and aggregates statistics
         over the draws. Results are returned in both log10 (model-native) and linear
         cP spaces.
 
         The stats dict exposes two spellings of each key for backward compatibility:
-        ``lower_ci`` / ``lower``, ``upper_ci`` / ``upper``, ``std_log10`` / ``std``.
+        `lower_ci` / `lower`, `upper_ci` / `upper`, `std_log10` / `std`.
 
         Args:
             df (pd.DataFrame): Input features (target columns must be removed).
             n_samples (int): Number of Monte-Carlo draws. Defaults to 50.
             ci_range (Tuple[float, float]): Lower and upper percentile bounds for
-                the confidence interval (e.g. ``(2.5, 97.5)`` for 95 % CI).
-                Defaults to ``(2.5, 97.5)``.
+                the confidence interval (e.g. `(2.5, 97.5)` for 95 % CI).
+                Defaults to `(2.5, 97.5)`.
             k (int): Context subset size per draw; should match the few-shot elbow
                 found during evaluation. Defaults to 8.
 
@@ -274,10 +270,10 @@ class Predictor:
             Tuple[np.ndarray, Dict[str, np.ndarray]]: A 2-tuple of:
                 - **mean_pred** – mean predictions in linear cP.
                 - **stats** – dict containing:
-                    - ``mean_log10``: mean prediction in log10 units.
-                    - ``std_log10`` / ``std``: std in log10 units (0.1 ≈ ±26 % error).
-                    - ``lower_ci`` / ``lower``: lower CI bound in linear cP.
-                    - ``upper_ci`` / ``upper``: upper CI bound in linear cP.
+                    - `mean_log10`: mean prediction in log10 units.
+                    - `std_log10` / `std`: std in log10 units (0.1 ≈ ±26 % error).
+                    - `lower_ci` / `lower`: lower CI bound in linear cP.
+                    - `upper_ci` / `upper`: upper CI bound in linear cP.
 
         Raises:
             RuntimeError: If the engine has not been initialized.
@@ -289,7 +285,7 @@ class Predictor:
         )
 
         # Normalise stats keys so callers that used the old 'lower'/'upper'
-        # names still work — expose both spellings.
+        # names still work - expose both spellings.
         stats.setdefault("lower", stats.get("lower_ci"))
         stats.setdefault("upper", stats.get("upper_ci"))
         stats.setdefault("std", stats.get("std_log10"))
@@ -321,29 +317,29 @@ class Predictor:
     ) -> pd.DataFrame:
         """Evaluate the model and return per-sample, per-shear-rate metrics.
 
-        Supports optional per-protein-type fine-tuning using ``history_df``.
-        When ``fine_tune`` is ``True`` and conditions are met, the engine is
-        adapted for each unique ``Protein_type`` in turn, then reset to its
+        Supports optional per-protein-type fine-tuning using `history_df`.
+        When `fine_tune` is `True` and conditions are met, the engine is
+        adapted for each unique `Protein_type` in turn, then reset to its
         base state before proceeding to the next type.
 
         Args:
             eval_data (pd.DataFrame): DataFrame containing input features and
                 ground-truth target viscosity values.
             targets (list[str]): List of target column names (e.g.
-                ``['Viscosity_100', 'Viscosity_1000']``).  When empty or not
+                `['Viscosity_100', 'Viscosity_1000']`).  When empty or not
                 provided, defaults to the full five-shear-rate set.
             n_samples (int | None): Accepted for UI signature compatibility;
                 not used internally.
-            fine_tune (bool): If ``True``, adapt the engine per ``Protein_type``
-                before predicting that subset. Defaults to ``False``.
+            fine_tune (bool): If `True`, adapt the engine per `Protein_type`
+                before predicting that subset. Defaults to `False`.
             history_df (pd.DataFrame | None): Historical labelled data used as
-                adaptation context when ``fine_tune`` is ``True``. Must contain
-                a ``Protein_type`` column. Defaults to ``None``.
+                adaptation context when `fine_tune` is `True`. Must contain
+                a `Protein_type` column. Defaults to `None`.
 
         Returns:
-            pd.DataFrame: Long-format results with columns ``sample_idx``,
-                ``shear_rate``, ``actual``, ``predicted``, ``pct_error``,
-                ``abs_error``, ``lower_ci``, ``upper_ci``.  Returns an empty
+            pd.DataFrame: Long-format results with columns `sample_idx`,
+                `shear_rate`, `actual`, `predicted`, `pct_error`,
+                `abs_error`, `lower_ci`, `upper_ci`.  Returns an empty
                 DataFrame with those columns if no predictions were produced.
         """
         if not targets:
@@ -362,14 +358,14 @@ class Predictor:
                 actuals_df (pd.DataFrame): Ground-truth values; must contain the
                     target columns defined in the enclosing scope.
                 pred_df (pd.DataFrame): Predicted values with matching columns and
-                    row alignment to ``actuals_df``.
+                    row alignment to `actuals_df`.
                 unc_dict (dict): Uncertainty statistics from
                     :meth:`predict_with_uncertainty`.  May be empty.
 
             Returns:
-                pd.DataFrame: Long-format DataFrame with columns ``sample_idx``,
-                    ``shear_rate``, ``actual``, ``predicted``, ``pct_error``,
-                    ``abs_error``, ``lower_ci``, ``upper_ci``.
+                pd.DataFrame: Long-format DataFrame with columns `sample_idx`,
+                    `shear_rate`, `actual`, `predicted`, `pct_error`,
+                    `abs_error`, `lower_ci`, `upper_ci`.
             """
             _canonical_targets = [
                 "Viscosity_100",
@@ -392,35 +388,29 @@ class Predictor:
                     shear_rate = None
                 # Position within the canonical target list used to index
                 # per-target CI arrays returned by predict_with_uncertainty.
-                ci_idx = _canonical_targets.index(
-                    target) if target in _canonical_targets else None
+                ci_idx = _canonical_targets.index(target) if target in _canonical_targets else None
                 for row_idx in range(len(actuals_df)):
                     actual = actuals_df.iloc[row_idx][target]
                     predicted = pred_df.iloc[row_idx][target]
                     abs_err = abs(predicted - actual)
-                    pct_err = abs_err / abs(actual) * \
-                        100 if abs(actual) > 1e-9 else 0.0
+                    pct_err = abs_err / abs(actual) * 100 if abs(actual) > 1e-9 else 0.0
                     lower = (
-                        unc_dict.get(
-                            "lower_ci", [None] * len(actuals_df))[row_idx]
+                        unc_dict.get("lower_ci", [None] * len(actuals_df))[row_idx]
                         if "lower_ci" in unc_dict
                         else None
                     )
                     upper = (
-                        unc_dict.get(
-                            "upper_ci", [None] * len(actuals_df))[row_idx]
+                        unc_dict.get("upper_ci", [None] * len(actuals_df))[row_idx]
                         if "upper_ci" in unc_dict
                         else None
                     )
                     if isinstance(lower, np.ndarray):
                         lower = (
-                            lower[ci_idx] if ci_idx is not None and ci_idx < len(
-                                lower) else None
+                            lower[ci_idx] if ci_idx is not None and ci_idx < len(lower) else None
                         )
                     if isinstance(upper, np.ndarray):
                         upper = (
-                            upper[ci_idx] if ci_idx is not None and ci_idx < len(
-                                upper) else None
+                            upper[ci_idx] if ci_idx is not None and ci_idx < len(upper) else None
                         )
 
                     results.append(
@@ -446,7 +436,7 @@ class Predictor:
                     names for safety.
 
             Returns:
-                pd.DataFrame: Copy of ``df`` with all viscosity target columns removed.
+                pd.DataFrame: Copy of `df` with all viscosity target columns removed.
             """
             df_out = df.copy()
             df_out.drop(
@@ -482,13 +472,11 @@ class Predictor:
             processed_indices = set()
             unique_types = eval_data["Protein_type"].unique()
             eval_types = (
-                eval_data["Protein_type"].unique(
-                ) if "Protein_type" in eval_data.columns else []
+                eval_data["Protein_type"].unique() if "Protein_type" in eval_data.columns else []
             )
             all_types = set(unique_types).union(eval_types)
 
-            Log.i(
-                TAG, f"Starting evaluation with fine-tuning on {len(all_types)} types.")
+            Log.i(TAG, f"Starting evaluation with fine-tuning on {len(all_types)} types.")
 
             for p_type in all_types:
                 hist_subset = history_df[history_df["Protein_type"] == p_type]
@@ -502,8 +490,7 @@ class Predictor:
                     f"Calibrating for protein type: {p_type} (History: {len(hist_subset)}, Eval: {len(eval_subset)})",
                 )
 
-                context_for_learn = pd.concat(
-                    [hist_subset, eval_subset], ignore_index=True)
+                context_for_learn = pd.concat([hist_subset, eval_subset], ignore_index=True)
 
                 if (
                     self.model_type == "CNP"
@@ -537,19 +524,16 @@ class Predictor:
 
                 self.reset()
 
-            remaining_eval = eval_data.drop(
-                index=list(processed_indices), errors="ignore")
+            remaining_eval = eval_data.drop(index=list(processed_indices), errors="ignore")
             if not remaining_eval.empty:
-                Log.i(
-                    TAG, f"Predicting remaining {len(remaining_eval)} samples with base model.")
+                Log.i(TAG, f"Predicting remaining {len(remaining_eval)} samples with base model.")
                 pred_input = prepare_prediction_input(remaining_eval, targets)
                 preds = self.predict(pred_input)
                 try:
                     _, unc_dict = self.predict_with_uncertainty(pred_input)
                 except Exception:
                     unc_dict = {}
-                results_list.append(calc_metrics(
-                    remaining_eval, preds, unc_dict))
+                results_list.append(calc_metrics(remaining_eval, preds, unc_dict))
 
         else:
             # Standard evaluation (no fine-tuning)
@@ -588,10 +572,10 @@ class Predictor:
     ):
         """Adapt the model to a new protein group by encoding its context.
 
-        For CNP engines, delegates to the engine's encode-only ``learn()`` — no
-        gradient updates are performed on the model weights.  ``steps`` and ``lr``
+        For CNP engines, delegates to the engine's encode-only `learn()` - no
+        gradient updates are performed on the model weights.  `steps` and `lr`
         are accepted for backward compatibility but are ignored by CNP engines.
-        Multi-draw averaging is controlled by ``n_draws`` and ``k``.
+        Multi-draw averaging is controlled by `n_draws` and `k`.
 
         For non-CNP engines this is a no-op; legacy models do not support
         in-session adaptation.
@@ -629,8 +613,7 @@ class Predictor:
             import copy
 
             Log.i(TAG, "Resetting engine state (fast in-place restore)...")
-            self.engine.model.load_state_dict(
-                copy.deepcopy(self.engine._original_state))
+            self.engine.model.load_state_dict(copy.deepcopy(self.engine._original_state))
             self.engine.memory_vector = None
             self.engine.context_t = None
             Log.i(TAG, "Engine reset complete.")
@@ -651,17 +634,17 @@ class Predictor:
     def save(self, output_path: str):
         """Persist the current model state (including any learned adaptations) to disk.
 
-        Calls the engine's own ``save()`` to flush updated weights into the
-        extracted directory, then re-zips the directory as a ``.visq`` file at
-        ``output_path``.
+        Calls the engine's own `save()` to flush updated weights into the
+        extracted directory, then re-zips the directory as a `.visq` file at
+        `output_path`.
 
         Args:
             output_path (str): Destination path for the saved package. The
-                ``.visq`` extension is applied automatically regardless of the
+                `.visq` extension is applied automatically regardless of the
                 suffix provided.
 
         Raises:
-            NotImplementedError: If ``self.model_type`` is not ``"CNP"``.
+            NotImplementedError: If `self.model_type` is not `"CNP"`.
         """
         if self.model_type != "CNP":
             raise NotImplementedError(
@@ -707,12 +690,12 @@ class Predictor:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Clean up resources on context-manager exit.
 
-        Delegates to :meth:`cleanup`. Exceptions from the body of the ``with``
+        Delegates to :meth:`cleanup`. Exceptions from the body of the `with`
         block are not suppressed.
 
         Args:
-            exc_type (type | None): Exception type, or ``None`` if no exception.
-            exc_val (BaseException | None): Exception instance, or ``None``.
-            exc_tb (traceback | None): Traceback object, or ``None``.
+            exc_type (type | None): Exception type, or `None` if no exception.
+            exc_val (BaseException | None): Exception instance, or `None`.
+            exc_tb (traceback | None): Traceback object, or `None`.
         """
         self.cleanup()

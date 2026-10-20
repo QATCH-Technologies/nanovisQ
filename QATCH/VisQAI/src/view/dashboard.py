@@ -1,6 +1,6 @@
 """Dashboard UI module for the VisQAI viscosity prediction application.
 
-Provides the main ``DashboardUI`` widget that manages formulation configuration
+Provides the main `DashboardUI` widget that manages formulation configuration
 cards, viscosity predictions, evaluation, sample generation, optimization, and
 data import/export.
 
@@ -189,17 +189,14 @@ class DashboardUI(QtWidgets.QWidget):
         self._pending_eval_config = None
 
     def _load_database_data(self):
-        """Populate ``ingredients_by_type`` by fetching each ingredient category from the database via the ingredient controller."""
+        """Populate `ingredients_by_type` by fetching each ingredient category from the database via the ingredient controller."""
         # Fetch lists for each ingredient type
         self.ingredients_by_type["Protein"] = self.ing_ctrl.get_all_proteins()
         self.ingredients_by_type["Buffer"] = self.ing_ctrl.get_all_buffers()
         self.ingredients_by_type["Salt"] = self.ing_ctrl.get_all_salts()
-        self.ingredients_by_type["Surfactant"] = self.ing_ctrl.get_all_surfactants(
-        )
-        self.ingredients_by_type["Stabilizer"] = self.ing_ctrl.get_all_stabilizers(
-        )
-        self.ingredients_by_type["Excipient"] = self.ing_ctrl.get_all_excipients(
-        )
+        self.ingredients_by_type["Surfactant"] = self.ing_ctrl.get_all_surfactants()
+        self.ingredients_by_type["Stabilizer"] = self.ing_ctrl.get_all_stabilizers()
+        self.ingredients_by_type["Excipient"] = self.ing_ctrl.get_all_excipients()
 
     def init_ui(self):
         """Build the full dashboard layout.
@@ -220,8 +217,7 @@ class DashboardUI(QtWidgets.QWidget):
         splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(1)
         splitter.setChildrenCollapsible(False)
-        splitter.setStyleSheet(
-            "QSplitter::handle { background-color: #d1d5db; }")
+        splitter.setStyleSheet("QSplitter::handle { background-color: #d1d5db; }")
 
         # Left Panel
         self.left_widget = QtWidgets.QWidget()
@@ -245,19 +241,16 @@ class DashboardUI(QtWidgets.QWidget):
 
         # Generate Widget
         self.generate_widget = GenerateSampleWidget(
-            self.ingredients_by_type, parent=self)
-        self.generate_widget.generate_requested.connect(
-            self.run_sample_generation)
-        self.generate_widget.closed.connect(
-            lambda: self.btn_generate.setChecked(False))
+            self.ingredients_by_type, parent=self
+        )
+        self.generate_widget.generate_requested.connect(self.run_sample_generation)
+        self.generate_widget.closed.connect(lambda: self.btn_generate.setChecked(False))
         self.generate_widget.resized.connect(self._update_overlay_geometry)
         self.generate_widget.hide()
         # Optimize Widget
-        self.optimize_widget = OptimizeWidget(
-            self.ingredients_by_type, parent=self)
+        self.optimize_widget = OptimizeWidget(self.ingredients_by_type, parent=self)
         self.optimize_widget.optimize_requested.connect(self.run_optimization)
-        self.optimize_widget.closed.connect(
-            lambda: self.btn_optimize.setChecked(False))
+        self.optimize_widget.closed.connect(lambda: self.btn_optimize.setChecked(False))
         self.optimize_widget.resized.connect(self._update_overlay_geometry)
         self.optimize_widget.hide()
 
@@ -316,8 +309,7 @@ class DashboardUI(QtWidgets.QWidget):
         container = QtWidgets.QWidget()
         container.setObjectName("topBar")
         container.setFixedHeight(50)
-        container.setAttribute(
-            QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
 
         shadow = QtWidgets.QGraphicsDropShadowEffect(container)
         shadow.setBlurRadius(10)
@@ -603,7 +595,8 @@ class DashboardUI(QtWidgets.QWidget):
         # Options
         self.btn_right_options.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         self.btn_right_options.setStyleSheet(
-            "QToolButton::menu-indicator { image: none; }")
+            "QToolButton::menu-indicator { image: none; }"
+        )
 
         self.top_options_menu = QtWidgets.QMenu(self.btn_right_options)
         act_view_ing = self.top_options_menu.addAction("View Ingredients")
@@ -657,8 +650,7 @@ class DashboardUI(QtWidgets.QWidget):
                 # Check for nested class_type object (common in Proteins)
                 if hasattr(ing, "class_type") and ing.class_type:
                     ct = ing.class_type
-                    c_type_val = str(
-                        getattr(ct, "value", getattr(ct, "name", str(ct))))
+                    c_type_val = str(getattr(ct, "value", getattr(ct, "name", str(ct))))
                     c_class = str(getattr(ct, "c_class", "-"))
                     kp_val = str(getattr(ct, "kP", "-"))
                     hci_val = str(getattr(ct, "hci", "-"))
@@ -696,7 +688,8 @@ class DashboardUI(QtWidgets.QWidget):
 
             def delete_handler(f_id):
                 target_f = next(
-                    (f for f in formulations if str(f.id) == str(f_id)), None)
+                    (f for f in formulations if str(f.id) == str(f_id)), None
+                )
                 if not target_f:
                     return False
 
@@ -728,12 +721,14 @@ class DashboardUI(QtWidgets.QWidget):
                 try:
                     # Update DB safely
                     success = self.form_ctrl.update_formulation_metadata(
-                        int(f_id), icl=state)
+                        int(f_id), icl=state
+                    )
 
                     if success:
                         # Update local list object
                         local_f = next(
-                            (f for f in formulations if str(f.id) == str(f_id)), None)
+                            (f for f in formulations if str(f.id) == str(f_id)), None
+                        )
                         if local_f:
                             local_f.icl = state
 
@@ -742,8 +737,7 @@ class DashboardUI(QtWidgets.QWidget):
                             item = self.cards_layout.itemAt(i)
                             widget = item.widget()
                             if isinstance(widget, FormulationConfigCard):
-                                card_id = getattr(
-                                    widget.formulation, "id", None)
+                                card_id = getattr(widget.formulation, "id", None)
                                 if card_id is not None and str(card_id) == str(f_id):
                                     widget.set_icl_usage(state, save_db=False)
                                     break
@@ -823,8 +817,7 @@ class DashboardUI(QtWidgets.QWidget):
                 # Basic Info
                 row.append(str(getattr(f, "id", "") or ""))
                 row.append(str(f.name or "Unnamed"))
-                row.append(
-                    str(f.temperature if f.temperature is not None else "25.0"))
+                row.append(str(f.temperature if f.temperature is not None else "25.0"))
                 row.append(str(getattr(f, "icl", True)))
                 row.append(str(getattr(f, "last_model", "-") or "-"))
 
@@ -863,8 +856,7 @@ class DashboardUI(QtWidgets.QWidget):
                     row.extend(
                         [
                             str(b.ingredient.name or "-"),
-                            # correct source
-                            str(b.pH if b.pH is not None else "-"),
+                            str(b.pH if b.pH is not None else "-"),  # correct source
                             str(b.concentration),
                         ]
                     )
@@ -877,7 +869,8 @@ class DashboardUI(QtWidgets.QWidget):
                         c = getattr(f, comp_attr)
                         if c and c.ingredient:
                             row.extend(
-                                [str(c.ingredient.name or "-"), str(c.concentration)])
+                                [str(c.ingredient.name or "-"), str(c.concentration)]
+                            )
                             return
                     row.extend(["-", "-"])
 
@@ -918,7 +911,8 @@ class DashboardUI(QtWidgets.QWidget):
 
             traceback.print_exc()
             QtWidgets.QMessageBox.critical(
-                self, "Error", f"Failed to load formulations:\n{e}")
+                self, "Error", f"Failed to load formulations:\n{e}"
+            )
 
     def _on_card_selection_changed(self):
         """Deactivate selection mode when the last selected card is deselected."""
@@ -977,7 +971,8 @@ class DashboardUI(QtWidgets.QWidget):
                         widget.hide()
 
             self.viz_panel.set_plot_title(
-                f"Evaluation Mode: {visible_count} Datasets Ready")
+                f"Evaluation Mode: {visible_count} Datasets Ready"
+            )
 
             # Show the eval menu
             self.eval_widget.show()
@@ -1031,8 +1026,7 @@ class DashboardUI(QtWidgets.QWidget):
         shadow.setColor(QtGui.QColor(0, 0, 0, 80))
         self.btn_add_fab.setGraphicsEffect(shadow)
         self.btn_add_fab.setObjectName("fabAdd")
-        self.btn_add_fab.clicked.connect(
-            lambda: self.add_prediction_card(None))
+        self.btn_add_fab.clicked.connect(lambda: self.add_prediction_card(None))
         self.btn_add_fab.show()
 
     def eventFilter(self, source, event):
@@ -1043,7 +1037,7 @@ class DashboardUI(QtWidgets.QWidget):
             event (QtCore.QEvent): The event to filter.
 
         Returns:
-            bool: Result of the parent ``eventFilter`` call.
+            bool: Result of the parent `eventFilter` call.
         """
         if source == self.left_widget and event.type() == QtCore.QEvent.Type.Resize:
             self._update_filter_geometry()
@@ -1167,8 +1161,8 @@ class DashboardUI(QtWidgets.QWidget):
         """Reveal and scroll to the card associated with a clicked point in the parity/eval plot.
 
         Args:
-            point_data (dict): Dictionary containing at least a ``card`` key
-                mapping to the ``FormulationConfigCard`` that was clicked.
+            point_data (dict): Dictionary containing at least a `card` key
+                mapping to the `FormulationConfigCard` that was clicked.
         """
         card = point_data.get("card")
         if not card:
@@ -1184,7 +1178,7 @@ class DashboardUI(QtWidgets.QWidget):
         """Collect all visible measured cards and trigger their predictions.
 
         Triggers prediction requests via the batch mechanism, then calls
-        ``_compute_evaluation`` once all predictions are ready.
+        `_compute_evaluation` once all predictions are ready.
 
         Args:
             config (dict): Evaluation configuration including metric key,
@@ -1229,8 +1223,8 @@ class DashboardUI(QtWidgets.QWidget):
     def _compute_evaluation(self, config):
         """Compute and display evaluation results.
 
-        For the ``true_vs_pred`` metric, builds parity data and calls
-        ``viz_panel.set_parity_data``. For other metrics, uses the ``Metrics``
+        For the `true_vs_pred` metric, builds parity data and calls
+        `viz_panel.set_parity_data`. For other metrics, uses the `Metrics`
         engine to score each card and annotates plot titles with average scores.
 
         Args:
@@ -1252,7 +1246,11 @@ class DashboardUI(QtWidgets.QWidget):
                 if not hasattr(card, "last_results") or not card.last_results:
                     continue
                 data = card.last_results
-                if "measured_y" not in data or "y" not in data or data["measured_y"] is None:
+                if (
+                    "measured_y" not in data
+                    or "y" not in data
+                    or data["measured_y"] is None
+                ):
                     continue
 
                 shear = np.array(data["x"])
@@ -1287,8 +1285,7 @@ class DashboardUI(QtWidgets.QWidget):
                 return
 
             self.viz_panel.set_parity_data(parity_data, log_visc)
-            self.viz_panel.set_plot_title(
-                "Evaluation: True vs. Predicted Viscosity")
+            self.viz_panel.set_plot_title("Evaluation: True vs. Predicted Viscosity")
 
         else:
 
@@ -1303,7 +1300,11 @@ class DashboardUI(QtWidgets.QWidget):
                 if not hasattr(card, "last_results") or not card.last_results:
                     continue
                 data = card.last_results
-                if "measured_y" not in data or "y" not in data or data["measured_y"] is None:
+                if (
+                    "measured_y" not in data
+                    or "y" not in data
+                    or data["measured_y"] is None
+                ):
                     continue
 
                 shear = np.array(data["x"])
@@ -1320,7 +1321,9 @@ class DashboardUI(QtWidgets.QWidget):
                         "predicted": y_pred[mask],
                         "residual": y_true[mask] - y_pred[mask],
                         "abs_error": np.abs(y_true[mask] - y_pred[mask]),
-                        "percentage_error": np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])
+                        "percentage_error": np.abs(
+                            (y_true[mask] - y_pred[mask]) / y_true[mask]
+                        )
                         * 100,
                     }
                 )
@@ -1349,13 +1352,13 @@ class DashboardUI(QtWidgets.QWidget):
             if scores:
                 avg = sum(scores) / len(scores)
                 self.viz_panel.set_plot_title(
-                    f"Evaluation Results: Avg {metric_name} = {avg:.4f}")
+                    f"Evaluation Results: Avg {metric_name} = {avg:.4f}"
+                )
             else:
-                self.viz_panel.set_plot_title(
-                    f"Evaluation Results: {metric_name}")
+                self.viz_panel.set_plot_title(f"Evaluation Results: {metric_name}")
 
     def run_sample_generation(self, num_samples, model_file, constraints_data):
-        """Launch a ``SampleGenerationWorker`` with the given constraints and display a cancellable progress dialog.
+        """Launch a `SampleGenerationWorker` with the given constraints and display a cancellable progress dialog.
 
         Args:
             num_samples (int): Number of samples to generate.
@@ -1369,8 +1372,7 @@ class DashboardUI(QtWidgets.QWidget):
             "Starting generation...", "Cancel", 0, 100, self
         )
         self.progress_dialog.setWindowTitle("Generating Samples")
-        self.progress_dialog.setWindowModality(
-            QtCore.Qt.WindowModality.WindowModal)
+        self.progress_dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
         self.progress_dialog.setAutoClose(True)
         self.progress_dialog.setAutoReset(True)
         self.progress_dialog.setMinimumDuration(0)
@@ -1395,7 +1397,7 @@ class DashboardUI(QtWidgets.QWidget):
         worker.start()
 
     def run_optimization(self, model_file, targets, constraints_data):
-        """Launch an ``OptimizationWorker`` with the given model, targets, and constraints.
+        """Launch an `OptimizationWorker` with the given model, targets, and constraints.
 
         Shows a loading overlay with cancel support and stores pre-optimization
         plot state for rollback on cancel.
@@ -1410,8 +1412,7 @@ class DashboardUI(QtWidgets.QWidget):
         self._opt_cancelled = False
 
         maxiter = self.optimize_widget.spin_maxiter.value()
-        self._pre_opt_data_series = list(
-            getattr(self.viz_panel, "data_series", []))
+        self._pre_opt_data_series = list(getattr(self.viz_panel, "data_series", []))
         self._pre_opt_plot_title = getattr(self, "_last_plot_title", "")
 
         self.viz_panel.set_plot_title("Optimizing formulation…")
@@ -1428,7 +1429,8 @@ class DashboardUI(QtWidgets.QWidget):
         self._active_workers.append(worker)
         self._current_opt_worker = worker
         self.viz_panel.show_loading(
-            cancel_callback=lambda: self._cancel_optimization(worker))
+            cancel_callback=lambda: self._cancel_optimization(worker)
+        )
 
         worker.progress_update.connect(self._on_optimization_progress)
         worker.optimization_complete.connect(self._on_optimization_complete)
@@ -1444,7 +1446,10 @@ class DashboardUI(QtWidgets.QWidget):
             value (int): Progress percentage (0–100).
             text (str): Status message to display in the overlay label.
         """
-        if hasattr(self.viz_panel, "anim_timer") and self.viz_panel.anim_timer.isActive():
+        if (
+            hasattr(self.viz_panel, "anim_timer")
+            and self.viz_panel.anim_timer.isActive()
+        ):
             self.viz_panel.anim_timer.stop()
         if hasattr(self.viz_panel, "progress_bar"):
             self.viz_panel.progress_bar.setValue(value)
@@ -1457,7 +1462,7 @@ class DashboardUI(QtWidgets.QWidget):
 
         Args:
             card_data (dict): Data dict for the optimized formulation card,
-                including an optional ``estimated_profile`` key.
+                including an optional `estimated_profile` key.
         """
         if getattr(self, "_opt_cancelled", False):
             return
@@ -1606,7 +1611,7 @@ class DashboardUI(QtWidgets.QWidget):
 
         Args:
             filter_data (dict): Filter configuration emitted by
-                ``PredictionFilterWidget``.
+                `PredictionFilterWidget`.
         """
         search_text = self.search_bar.text().lower()
 
@@ -1682,7 +1687,8 @@ class DashboardUI(QtWidgets.QWidget):
             self._process_next_in_batch()
         else:
             QtWidgets.QMessageBox.warning(
-                self, "Error", "Failed to collect configuration data.")
+                self, "Error", "Failed to collect configuration data."
+            )
 
     def _process_next_in_batch(self):
         """Pop the next (card, config) pair from the batch queue and start its prediction.
@@ -1700,8 +1706,7 @@ class DashboardUI(QtWidgets.QWidget):
                 self._compute_evaluation(config)
             else:
                 count = len(self._batch_results)
-                self.viz_panel.set_plot_title(
-                    f"Analysis Results ({count} Profiles)")
+                self.viz_panel.set_plot_title(f"Analysis Results ({count} Profiles)")
                 self.viz_panel.set_data(self._batch_results)
             return
 
@@ -1737,7 +1742,8 @@ class DashboardUI(QtWidgets.QWidget):
             self,
             "Confirm Delete",
             msg,
-            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No,
         )
 
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
@@ -1855,9 +1861,9 @@ class DashboardUI(QtWidgets.QWidget):
         self.update_placeholder_visibility()
 
     def add_prediction_card(self, data=None):
-        """Create and insert a new ``FormulationConfigCard`` at the end of the card list.
+        """Create and insert a new `FormulationConfigCard` at the end of the card list.
 
-        If ``data`` is provided, loads its contents and triggers a prediction
+        If `data` is provided, loads its contents and triggers a prediction
         for non-measured cards.
 
         Args:
@@ -1872,7 +1878,9 @@ class DashboardUI(QtWidgets.QWidget):
         else:
             count = 0
             for i in range(self.cards_layout.count()):
-                if isinstance(self.cards_layout.itemAt(i).widget(), FormulationConfigCard):
+                if isinstance(
+                    self.cards_layout.itemAt(i).widget(), FormulationConfigCard
+                ):
                     count += 1
             name = f"Prediction {count + 1}"
 
@@ -1924,12 +1932,12 @@ class DashboardUI(QtWidgets.QWidget):
         """Update the plot series colour when a card's colour picker changes.
 
         Finds the data-series entry in the visualization panel whose
-        ``"config_name"`` matches the emitting card's name, updates its
-        ``"color"`` key, and triggers a full plot redraw.
+        `"config_name"` matches the emitting card's name, updates its
+        `"color"` key, and triggers a full plot redraw.
 
         Args:
             new_color (str): Hex colour string selected by the user (e.g.
-                ``"#2596be"``).
+                `"#2596be"`).
         """
         card = self.sender()
         if not isinstance(card, FormulationConfigCard):
@@ -1999,8 +2007,7 @@ class DashboardUI(QtWidgets.QWidget):
             self.viz_panel.set_data(new_series)
 
         card_widget.setDisabled(True)
-        anim = QtCore.QPropertyAnimation(
-            card_widget, b"maximumHeight", card_widget)
+        anim = QtCore.QPropertyAnimation(card_widget, b"maximumHeight", card_widget)
         anim.setDuration(200)
         anim.setStartValue(card_widget.height())
         anim.setEndValue(0)
@@ -2016,7 +2023,7 @@ class DashboardUI(QtWidgets.QWidget):
         anim.start()
 
     def import_run(self):
-        """Open a directory picker, launch an ``ImportWorker`` for the selected path(s), and display a cancellable progress dialog."""
+        """Open a directory picker, launch an `ImportWorker` for the selected path(s), and display a cancellable progress dialog."""
         # Retrieve Load Path from Preferences
         try:
             if (
@@ -2024,10 +2031,15 @@ class DashboardUI(QtWidgets.QWidget):
                 or UserProfiles.user_preferences is None
             ):
                 UserProfiles.user_preferences = UserPreferences(
-                    UserProfiles.get_session_file())
+                    UserProfiles.get_session_file()
+                )
             prefs = UserProfiles.user_preferences.get_preferences()
             path_from_prefs = prefs.get("load_data_path")
-            if path_from_prefs and isinstance(path_from_prefs, str) and path_from_prefs.strip():
+            if (
+                path_from_prefs
+                and isinstance(path_from_prefs, str)
+                and path_from_prefs.strip()
+            ):
                 self.load_data_path = path_from_prefs
             else:
                 self.load_data_path = Constants.working_logged_data_path
@@ -2036,7 +2048,8 @@ class DashboardUI(QtWidgets.QWidget):
             self.load_data_path = Constants.working_logged_data_path
 
         dialog = QtWidgets.QFileDialog(
-            self, "Select Run Directory(s)", self.load_data_path)
+            self, "Select Run Directory(s)", self.load_data_path
+        )
         dialog.setFileMode(QtWidgets.QFileDialog.Directory)
         dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, True)
 
@@ -2076,7 +2089,7 @@ class DashboardUI(QtWidgets.QWidget):
         """Buffer the raw import results emitted by the worker.
 
         Args:
-            results (list): List of ``Formulation`` objects returned by the
+            results (list): List of `Formulation` objects returned by the
                 import worker.
         """
         self._pending_results = results
@@ -2099,13 +2112,13 @@ class DashboardUI(QtWidgets.QWidget):
             self._pending_results = []  # Clear buffer
 
     def _process_imported_results(self, results):
-        """Convert imported ``Formulation`` objects into card data dicts and create cards for each.
+        """Convert imported `Formulation` objects into card data dicts and create cards for each.
 
         Sets their measured viscosity data and notifies the user of the total
         imported count.
 
         Args:
-            results (list): List of ``Formulation`` objects to process.
+            results (list): List of `Formulation` objects to process.
         """
         if not results:
             return
@@ -2130,7 +2143,11 @@ class DashboardUI(QtWidgets.QWidget):
                 for attr_name, type_name in attr_map.items():
                     if hasattr(formulation, attr_name):
                         component = getattr(formulation, attr_name)
-                        if component and hasattr(component, "ingredient") and component.ingredient:
+                        if (
+                            component
+                            and hasattr(component, "ingredient")
+                            and component.ingredient
+                        ):
                             ing_obj = component.ingredient
                             name = getattr(ing_obj, "name", "None")
                             conc = getattr(component, "concentration", 0.0)
@@ -2148,7 +2165,10 @@ class DashboardUI(QtWidgets.QWidget):
                 viscosities = []
                 temp = 25.0
 
-                if hasattr(formulation, "viscosity_profile") and formulation.viscosity_profile:
+                if (
+                    hasattr(formulation, "viscosity_profile")
+                    and formulation.viscosity_profile
+                ):
                     if hasattr(formulation.viscosity_profile, "shear_rates"):
                         shear_rates = formulation.viscosity_profile.shear_rates
                     if hasattr(formulation.viscosity_profile, "viscosities"):
@@ -2193,8 +2213,7 @@ class DashboardUI(QtWidgets.QWidget):
                     }
 
                     card.set_results(data_package)
-                    self.viz_panel.set_plot_title(
-                        f"Imported: {card_data['name']}")
+                    self.viz_panel.set_plot_title(f"Imported: {card_data['name']}")
                     self.viz_panel.set_data(data_package)
                     count += 1
 
@@ -2274,7 +2293,8 @@ class DashboardUI(QtWidgets.QWidget):
             target_cards[0].export_formulation()
         else:
             folder = QtWidgets.QFileDialog.getExistingDirectory(
-                self, "Select Export Directory")
+                self, "Select Export Directory"
+            )
             if folder:
                 success = 0
                 for card in target_cards:
@@ -2294,7 +2314,7 @@ class DashboardUI(QtWidgets.QWidget):
                 )
 
     def run_prediction(self, config=None):
-        """Start a ``PredictionThread`` for the given config.
+        """Start a `PredictionThread` for the given config.
 
         If batch-collecting, queues the request instead. Stops any currently
         running task (adds it to zombie list) before launching the new one.
@@ -2327,16 +2347,11 @@ class DashboardUI(QtWidgets.QWidget):
             self._pending_color = config["color"]
         elif self.running_card:
             self._pending_color = self.running_card.plot_color
-        if self.current_task is not None:
-            try:
-                if self.current_task.isRunning():
-                    self.current_task.stop()
-                    self._zombie_tasks.append(self.current_task)
-            except RuntimeError:
-                self.current_task = None
+        if self.current_task is not None and self.current_task.isRunning():
+            self.current_task.stop()
+            self._zombie_tasks.append(self.current_task)
 
-        name = config.get(
-            "name", "Unknown Sample") if config else "Unknown Sample"
+        name = config.get("name", "Unknown Sample") if config else "Unknown Sample"
         if not self._is_batch_running:
             self.viz_panel.set_plot_title(f"Calculating: {name}...")
             self.viz_panel.show_loading()
@@ -2351,9 +2366,9 @@ class DashboardUI(QtWidgets.QWidget):
     def _drain_all_prediction_tasks(self, timeout_ms=3000):
         """Stop the current prediction and all zombies, blocking briefly until each exits.
 
-        Each thread is accessed defensively: a thread whose ``finished`` signal has
-        already triggered ``deleteLater`` may have its underlying C++ object reaped
-        while this method spins the event loop in ``wait()``. Such threads are
+        Each thread is accessed defensively: a thread whose `finished` signal has
+        already triggered `deleteLater` may have its underlying C++ object reaped
+        while this method spins the event loop in ``ait()`. Such threads are
         skipped rather than treated as an error.
         """
         try:
@@ -2402,8 +2417,8 @@ class DashboardUI(QtWidgets.QWidget):
         running.
 
         Args:
-            data_package (dict): Prediction results containing at minimum ``x``
-                (shear rates) and ``y`` (viscosities) arrays.
+            data_package (dict): Prediction results containing at minimum `x`
+                (shear rates) and `y` (viscosities) arrays.
         """
         if self._pending_color and "color" not in data_package:
             data_package["color"] = self._pending_color
@@ -2416,8 +2431,7 @@ class DashboardUI(QtWidgets.QWidget):
                     new_x = data_package.get("x")
                     if new_x is not None and len(old_measured) == len(new_x):
                         data_package["measured_y"] = old_measured
-                        # Enable VizPanel toggle
-                        data_package["measured"] = True
+                        data_package["measured"] = True  # Enable VizPanel toggle
 
         # Update the specific card that requested this
         if hasattr(self, "running_card") and self.running_card:
@@ -2440,7 +2454,7 @@ class DashboardUI(QtWidgets.QWidget):
         Logs the error, restores the visualization panel from its loading state,
         and advances the batch queue if a batch is running so one bad sample does
         not stall the whole run. Thread cleanup is handled separately by the
-        ``finished`` -> ``deleteLater`` / ``_on_task_complete`` connections.
+        `finished` -> `deleteLater` / `_on_task_complete` connections.
 
         Args:
             error_msg (str): Error message emitted by the PredictionThread.
@@ -2467,7 +2481,7 @@ class DashboardUI(QtWidgets.QWidget):
             )
 
     def _on_task_complete(self):
-        """Clean up a finished task from the zombie list and clear current_task."""
+        """Clean up a finished task from the zombie list."""
         sender = self.sender()
         if sender in self._zombie_tasks:
             self._zombie_tasks.remove(sender)
@@ -2489,9 +2503,9 @@ class DashboardUI(QtWidgets.QWidget):
                 if hasattr(worker, "stop"):
                     worker.stop()
                 if not worker.wait(2000):
-                    Log.w(
-                        TAG, f"Worker {worker} did not finish in time on close.")
+                    Log.w(TAG, f"Worker {worker} did not finish in time on close.")
             self._active_workers.clear()
+
         self.db.close()
         super().closeEvent(event)
 
@@ -2507,7 +2521,8 @@ class DashboardUI(QtWidgets.QWidget):
         if hasattr(self, "eval_widget") and self.eval_widget.isVisible():
             btn_geo = self.btn_evaluate.geometry()
             global_pos = self.btn_evaluate.mapToGlobal(
-                QtCore.QPoint(0, btn_geo.height()))
+                QtCore.QPoint(0, btn_geo.height())
+            )
             local_pos = self.mapFromGlobal(global_pos)
             menu_width = 300
             x = local_pos.x()
@@ -2523,7 +2538,8 @@ class DashboardUI(QtWidgets.QWidget):
         if hasattr(self, "generate_widget") and self.generate_widget.isVisible():
             btn_geo = self.btn_generate.geometry()
             global_pos = self.btn_generate.mapToGlobal(
-                QtCore.QPoint(0, btn_geo.height()))
+                QtCore.QPoint(0, btn_geo.height())
+            )
             local_pos = self.mapFromGlobal(global_pos)
 
             menu_width = 550
@@ -2540,7 +2556,8 @@ class DashboardUI(QtWidgets.QWidget):
         if hasattr(self, "optimize_widget") and self.optimize_widget.isVisible():
             btn_geo = self.btn_optimize.geometry()
             global_pos = self.btn_optimize.mapToGlobal(
-                QtCore.QPoint(0, btn_geo.height()))
+                QtCore.QPoint(0, btn_geo.height())
+            )
             local_pos = self.mapFromGlobal(global_pos)
 
             menu_width = 600
