@@ -432,6 +432,12 @@ class Constants:
         2: (4, "Almost full"),
         3: (5, "Complete, stop"),
     }
+    # Fill-status display messages that mean "the user should stop now",
+    # either because the run can be stopped early or because the fill is
+    # complete. Watched by MainWindow's Auto-stop feature.
+    _AUTO_STOP_MESSAGES: frozenset[str] = frozenset(
+        {"Data Ready, You Can Stop", "Data Ready, Stop"}
+    )
 
     ######################
     # ANALYZE parameters #
@@ -476,8 +482,8 @@ class Constants:
     ######################
     # NIGHTLY adjustment #
     ######################
-    if os.path.exists("QATCH/nightly/latest_build.json"):
-        with open("QATCH/nightly/latest_build.json", "r") as f:
+    if os.path.exists(os.path.join("QATCH", "nightly", "latest_build.json")):
+        with open(os.path.join("QATCH", "nightly", "latest_build.json"), "r") as f:
             import json
 
             data = json.load(f)
@@ -495,13 +501,20 @@ class Constants:
     @staticmethod
     def windll_is_caps_lock_on() -> bool:
         """
-        WINDOWS ONLY: Checks the state of the Caps Lock key and returns True
-        if Caps Lock is on or False if Caps Lock is off.
+        Checks the state of the Caps Lock key and returns True if Caps Lock
+        is on or False if Caps Lock is off.
+
+        Windows only: queries `user32.GetKeyState` directly, since Qt has no
+        cross-platform API for lock-key state. Always returns False on other
+        platforms (the caps-lock hint just never lights up there, rather than
+        crashing - `ctypes.windll` doesn't exist outside Windows).
 
         Returns:
             bool: The state of the Caps Lock; True if Caps Lock is on, False
-                if Caps Lock is off.
+                if Caps Lock is off (or if not running on Windows).
         """
+        if Architecture.get_os() is not OSType.windows:
+            return False
         VK_CAPITAL = 0x14
         # GetKeyState returns a short, where the low-order bit is 1 if the key is toggled.
         return bool(ctypes.windll.user32.GetKeyState(VK_CAPITAL) & 0x0001)

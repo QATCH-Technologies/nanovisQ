@@ -90,6 +90,14 @@ class UserProfilesManager(QtWidgets.QWidget):
         # self.admin = admin_name
         self.admin_file = UserProfiles.find(admin_name, None)[1]  # filename
 
+        # TODO: Standardize positions of these modal windows to center over the parent window:
+        """
+        screen_area = QtWidgets.QApplication.screenAt(
+            QtWidgets.QApplication.activeWindow().frameGeometry().center()
+        ).geometry()
+        left = int(screen_area.center().x() - (width / 2))
+        top = int(screen_area.center().y() - (height / 2))
+        """
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         pct_width = 50
         pct_height = 50
@@ -847,7 +855,7 @@ class UserProfiles:
 
     @staticmethod
     def get_user_info(filename):
-        if filename == None:
+        if filename is None:
             filename = ""
         file = os.path.join(UserProfiles.PATH, filename)
         if os.path.isfile(file):
@@ -902,6 +910,12 @@ class UserProfiles:
         Log.w(f"Prompting to create new {role.name.lower()} user...")
         title = f"Create {role.name.title()} User"
 
+        existing_initials = []
+        _files, user_info_list = UserProfiles.get_all_user_info()
+        for info in user_info_list:
+            if info and len(info) > 1 and info[1] not in (None, "[Missing]"):
+                existing_initials.append(info[1])
+
         ok = False
         name = QtCore.QDir().home().dirName()
         while not ok:
@@ -926,6 +940,10 @@ class UserProfiles:
             initials = initials.upper()
             if initials.find(" ") >= 0 or len(initials) < 2 or len(initials) > 4:
                 Log.w("Please enter your initials.")
+                ok = False
+            if initials in existing_initials:
+                Log.w(f"User with initials '{initials}' already exists.")
+                Log.w(f"This user must have unique initials (i.e. '{initials}2').")
                 ok = False
 
         match = False
