@@ -38,7 +38,8 @@ from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,
     DropEffectCorrection,
 )
-from QATCH.QModel.models.qmodel_v7.v7_yolo import QModelV7
+# from QATCH.QModel.models.qmodel_v7.v7_yolo import QModelV7
+from QATCH.QModel.models.qmodel_onyx.onyx import QModelOnyx
 from QATCH.QModel.models.static_v4_fusion.v4_fusion import QModelV4Fusion
 from QATCH.QModel.models.v6_yolo.v6_yolo import QModelV6YOLO
 from QATCH.ui.popUp import PopUp
@@ -3376,7 +3377,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         return QModelV6YOLO(model_assets=model_assets)
 
     @staticmethod
-    def _load_qmodel_v7() -> "QModelV7":
+    def _load_qmodel_v7() -> "QModelOnyx":
         """
         Instantiates and loads the QModel Onyx (v7) prediction model into memory.
 
@@ -3386,19 +3387,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
         refinement assets. It is designed to be executed off the main UI thread.
 
         Returns:
-            QModelV7: A fully initialized v7 prediction model ready for inference.
+            QModelOnyx: A fully initialized Onyx prediction model ready for inference.
         """
         base_path = os.path.join(
             Architecture.get_path(),
             "QATCH",
             "QModel",
             "assets",
-            "qmodel_v7",
+            "qmodel_onyx",
         )
 
         # Map out the required weights files for the YOLO26+ model suite. The
-        # zoom-refiner detectors are optional (see QModelV7.ZOOM_REFINE_MAP in
-        # v7_yolo.py); absent files simply keep refine_pois a no-op.
+        # zoom-refiner detectors are optional (see QModelOnyx.ZOOM_REFINE_MAP in
+        # qmodel_onyx/onyx.py); absent files simply keep refine_pois a no-op.
         model_assets = {
             "spacing_prior": os.path.join(base_path, "spacing_prior.json"),
             "fill_classifier": os.path.join(
@@ -3423,7 +3424,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             },
         }
 
-        return QModelV7(model_assets=model_assets)
+        return QModelOnyx(model_assets=model_assets)
 
     def _await_qmodels(self, timeout: float = 120.0) -> None:
         """

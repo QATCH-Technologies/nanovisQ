@@ -20,3 +20,4 @@ QATCH/VisQAI/test/test_models/assets/**
 !QATCH/VisQAI/assets/VisQAI-base.visq
 !QATCH/VisQAI/assets/app.db
 !QATCH/VisQAI/test/assets/app.db
+weights/yolo26n.pt
