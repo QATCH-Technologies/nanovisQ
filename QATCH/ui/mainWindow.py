@@ -588,7 +588,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
         else:
             Log.w("Working directory not changed.")
 
-    def user_has_permission(self, action_role: UserRoles = UserRoles.ANY, silent_check = False) -> bool:
+    def user_has_permission(
+        self, action_role: UserRoles = UserRoles.ANY, silent_check=False
+    ) -> bool:
         action_role_name = "ANY" if action_role.name == "NONE" else action_role.name
         check_result = UserProfiles().check(self.userrole, action_role)
         if check_result is None:  # user check required, but no user signed in
@@ -7834,6 +7836,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     Log.d(
                         "Looking for updated bundled resources to unpack in local working directory..."
                     )
+                    # This check will block files where `working_dir == bundled_dir`
+                    # and these checks that files will only update ONCE per bundle,
+                    # as both files will exist and the `st_size`s will be the same.
                     if (
                         os.path.exists(working_file_compare) == False
                         or os.stat(working_file_compare).st_size
@@ -7861,7 +7866,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                     Log.d(
                                         f"Extracting {file}... to {working_resource_path}"
                                     )
-                                    os.rename(
+                                    # Copy file, leaving original untouched for protected bundled directories (All users)
+                                    # Use `copy2` to update filesystem metadata (Modified time) for update checks to work
+                                    # as intended; otherwise, it will get stuck in a circular loop of continuous updates.
+                                    shutil.copy2(
                                         bundled_resource_path_file,
                                         working_resource_path_file,
                                     )
