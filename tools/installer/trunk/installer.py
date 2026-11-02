@@ -36,17 +36,50 @@ else:
     # we are running in a normal Python environment
     bundle_dir = os.path.dirname(os.path.abspath(__file__))
 
-tempicon = os.path.join(bundle_dir, "favicon.ico")
+bundle_icon = os.path.join(bundle_dir, "favicon.ico")
 
-datapath = os.path.expandvars("%LOCALAPPDATA%")
-datapath = os.path.join(datapath, "QATCH")
-iconpath = os.path.join(datapath, "nanovisQ")
-iconfile = os.path.join(iconpath, "favicon.ico")
-iconresc = iconfile.replace('\\', '/')
+# Current user installation paths
+cu_install_root = os.path.expandvars("%USERPROFILE%")
+cu_install_root = os.path.join(cu_install_root, "QATCH nanovisQ")
+cu_ini_file = os.path.join(cu_install_root, "desktop.ini")
 
-userpath = os.path.expandvars("%USERPROFILE%")
-nanopath = os.path.join(userpath, "QATCH nanovisQ")
-dinifile = os.path.join(nanopath, "desktop.ini")
+# All users installation paths
+au_install_root = os.path.expandvars("%PROGRAMFILES%")
+au_install_root = os.path.join(au_install_root, "QATCH nanovisQ")
+au_ini_file = os.path.join(au_install_root, "desktop.ini")
+
+install_roots = [cu_install_root, au_install_root]
+
+# Source of global install preferences file (Current User preferred, if exists)
+global_install_prefs = os.path.join(cu_install_root, "install-preferences.json")
+if not os.path.exists(global_install_prefs):
+    # Fallback to All Users install preferences file (if exists)
+    global_install_prefs = os.path.join(au_install_root, "install-preferences.json")
+# else, no "install-preferences.json" files exist. Use default `app_data_path`.
+
+app_data_path = os.path.expandvars("%LOCALAPPDATA%")
+app_data_path = os.path.join(app_data_path, "QATCH")
+app_data_path = os.path.join(app_data_path, "nanovisQ")
+
+logged_data_path = os.path.join(
+    os.path.expanduser("~"), "Documents", "QATCH nanovisQ", "logged_data"
+)
+
+# Pull temp_data/app_data_path from global install preferences (if exists)
+try:
+    if "_prefs" in locals() and _prefs.get("temp_data", None):
+        pass  # already loaded
+    elif os.path.exists(global_install_prefs):
+        with open(global_install_prefs) as f:
+            _prefs = json.load(f)
+    app_data_path = os.path.expandvars(_prefs["temp_data"])
+    logged_data_path = os.path.expandvars(_prefs["logged_data"])
+except:
+    # On error: silently use the default path already defined
+    pass
+
+app_data_icon = os.path.join(app_data_path, "favicon.ico")
+iconresc = app_data_icon.replace('\\', '/')
 
 log_stream = StringIO()
 Log = logging.getLogger(__name__)
@@ -146,11 +179,22 @@ class QatchInstaller(QtWidgets.QMessageBox):
             self.exception = None
 
             try:
+                if self.get_installed_versions():
+                    action = self.choose_installation_action()
+                    if action is None:
+                        break
+                    if action == "Modify":
+                        self.show_installation_settings()
+                        continue
+                    if action == "Remove":
+                        self.uninstall()
+                        continue
+
                 # self.app = QApplication(sys.argv)
                 # box = QtWidgets.QMessageBox(None)
-                self.setWindowIcon(QtGui.QIcon(tempicon))
-                self.setIconPixmap(QtGui.QPixmap(tempicon))
-                self.setWindowTitle("QATCH nanovisQ | Install/Uninstall")
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
+                self.setIconPixmap(QtGui.QPixmap(bundle_icon))
+                self.setWindowTitle("QATCH nanovisQ Installation Wizard")
                 # self.setGeometry(left, top, width, height)
                 self.setText("<b>Thank you for using QATCH nanovisQ software!</b><br/><br/>" +
                             "How would you like to modify QATCH nanovisQ?<br/><br/>" +
@@ -234,7 +278,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
                 # box = QtWidgets.QMessageBox(None)
                 self.setIcon(QtWidgets.QMessageBox.Critical)
-                self.setWindowIcon(QtGui.QIcon(tempicon))
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
                 self.setWindowTitle("QATCH nanovisQ | Unhandled Exception")
                 self.setText("An unhandled exception has occurred during execution.\nSee details for more information.")
                 self.setDetailedText(log_stream.getvalue())
@@ -245,6 +289,111 @@ class QatchInstaller(QtWidgets.QMessageBox):
             if log_stream.getvalue() != "":
                 log_stream.truncate(0)
                 log_stream.seek(0)
+
+
+    def get_installed_versions(self):
+        entries = []
+
+        if os.path.isdir(cu_install_root):
+            entries.extend([
+                entry for entry in os.listdir(cu_install_root)
+                if os.path.isdir(os.path.join(cu_install_root, entry))
+            ])
+
+        if os.path.isdir(au_install_root):
+            entries.extend([
+                entry for entry in os.listdir(au_install_root)
+                if os.path.isdir(os.path.join(au_install_root, entry))
+            ])
+
+        return entries
+    
+
+    def choose_installation_action(self):
+        dialog = QtWidgets.QMessageBox(self)
+        dialog.setWindowIcon(QtGui.QIcon(bundle_icon))
+        dialog.setWindowTitle("QATCH nanovisQ Installation Wizard")
+        dialog.setIcon(QtWidgets.QMessageBox.Question)
+        dialog.setText("<b>What would you like to do?</b>")
+        dialog.setInformativeText("Choose how you would like to proceed.")
+        install = dialog.addButton("Install", QtWidgets.QMessageBox.AcceptRole)
+        modify = dialog.addButton("Modify", QtWidgets.QMessageBox.ActionRole)
+        remove = dialog.addButton("Remove", QtWidgets.QMessageBox.DestructiveRole)
+        dialog.addButton(QtWidgets.QMessageBox.Cancel)
+        dialog.setDefaultButton(install)
+        dialog.exec_()
+
+        clicked = dialog.clickedButton()
+        if clicked == install:
+            return "Install"
+        if clicked == modify:
+            return "Modify"
+        if clicked == remove:
+            return "Remove"
+        return None
+
+
+    def show_installation_settings(self):
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowIcon(QtGui.QIcon(bundle_icon))
+        dialog.setWindowTitle("QATCH nanovisQ | Installation Settings")
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+        form = QtWidgets.QFormLayout()
+        layout.addLayout(form)
+
+        install_for = QtWidgets.QComboBox(dialog)
+        install_for.addItems(["Current user", "All users"])
+        install_for.currentIndexChanged.connect(
+            lambda: self.change_install_type(install_for, form))
+        form.addRow("Install for:", install_for)
+
+        # TODO: Detect and set value based on global prefs file used
+
+        def add_directory_setting(label, initial_path):
+            row = QtWidgets.QWidget(dialog)
+            row_layout = QtWidgets.QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            path = QtWidgets.QLineEdit(initial_path, row)
+            browse = QtWidgets.QPushButton("Browse...", row)
+            browse.clicked.connect(
+                lambda: self.browse_for_directory(dialog, path, label)
+            )
+            row_layout.addWidget(path)
+            row_layout.addWidget(browse)
+            form.addRow(label + ":", row)
+
+        # TODO: Set install dir (as read only, for now) by prefs file used
+        add_directory_setting("Installation directory", cu_install_root)
+        add_directory_setting("User data directory", logged_data_path)
+        add_directory_setting("Temporary data directory", app_data_path)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
+            parent=dialog,
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec_()
+
+
+    def change_install_type(self, 
+                            install_widget: QtWidgets.QComboBox, 
+                            form_widget: QtWidgets.QFormLayout):
+        
+        # 0 = Current User, 1 = All Users
+        install_type = install_widget.currentIndex()
+
+        # TODO: Finish this
+
+
+    def browse_for_directory(self, parent, path_input, label):
+        selected_path = QtWidgets.QFileDialog.getExistingDirectory(
+            parent, f"Select {label}", path_input.text()
+        )
+        if selected_path:
+            path_input.setText(selected_path)
 
 
     def on_request_response(self, response):
@@ -271,7 +420,36 @@ class QatchInstaller(QtWidgets.QMessageBox):
             Log.error("Process either failed to launch, or returned an invalid process handle.")
             self.show_exception("Failed to launch application.")
 
+    def create_current_user_environment(self):
+
+        ### create application data directory
+        os.makedirs(app_data_path, exist_ok=True)
+
+        ### move favicon.ico to data path
+        shutil.copy(bundle_icon, app_data_icon)
+
+        ### create software directory in user's home path
+        os.makedirs(cu_install_root, exist_ok=True)
+
+        try:
+            # specify software path as normal to write desktop.ini file (if exists)
+            win32api.SetFileAttributes(cu_install_root, win32con.FILE_ATTRIBUTE_NORMAL)
+
+            ### create desktop.ini for custom icon
+            with open(cu_ini_file, "w") as dini:
+                dini.write("[.ShellClassInfo]\n")
+                dini.write(f"IconResource={iconresc},0")
+
+            ### specify path as read-only to tell windows to read desktop.ini file
+            win32api.SetFileAttributes(cu_install_root, win32con.FILE_ATTRIBUTE_READONLY)
+
+        except Exception as e:
+            Log.error("ERROR: Unable to create desktop.ini file and set a custom folder icon.")
+            Log.error("Error Reason: {e}")
+            
     def install_online(self):
+
+        self.create_current_user_environment()
 
         # Flag to skip offline install step if online step fails or is canceled.
         run_offline_installer = True
@@ -282,7 +460,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
             # Create progress dialog for version query progress
             self.progressBar = QtWidgets.QProgressDialog(f"QATCH nanovisQ", "Cancel", 0, 100, self)
-            self.progressBar.setWindowIcon(QtGui.QIcon(tempicon))
+            self.progressBar.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.progressBar.setWindowTitle(f"Download QATCH nanovisQ software")
             self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
             self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
@@ -380,7 +558,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     k += 1
                 releases[k] += latest_label
 
-                self.setWindowIcon(QtGui.QIcon(tempicon))
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
                 self.setWindowTitle("QATCH nanovisQ | Install Version")
                 self.setText("Select a software version to install:")
                 self.setIcon(QtWidgets.QMessageBox.Question)
@@ -412,7 +590,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
                     # box = QtWidgets.QMessageBox(None)
                     self.setIcon(QtWidgets.QMessageBox.Critical)
-                    self.setWindowIcon(QtGui.QIcon(tempicon))
+                    self.setWindowIcon(QtGui.QIcon(bundle_icon))
                     self.setWindowTitle("QATCH nanovisQ | Abort")
                     self.setText("User canceled install. Install aborted.")
                     self.setDetailedText(log_stream.getvalue())
@@ -472,7 +650,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
                             # box = QtWidgets.QMessageBox(None)
                             self.setIcon(QtWidgets.QMessageBox.Critical)
-                            self.setWindowIcon(QtGui.QIcon(tempicon))
+                            self.setWindowIcon(QtGui.QIcon(bundle_icon))
                             self.setWindowTitle("QATCH nanovisQ | Abort")
                             self.setText("User canceled download. Install aborted.")
                             self.setDetailedText(log_stream.getvalue())
@@ -499,7 +677,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
                     # box = QtWidgets.QMessageBox(None)
                     self.setIcon(QtWidgets.QMessageBox.Critical)
-                    self.setWindowIcon(QtGui.QIcon(tempicon))
+                    self.setWindowIcon(QtGui.QIcon(bundle_icon))
                     self.setWindowTitle("QATCH nanovisQ | Abort")
                     self.setText("User canceled download. Install aborted.")
                     self.setDetailedText(log_stream.getvalue())
@@ -528,33 +706,10 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
     def install_offline(self, search_for_bundles: bool = False):
 
-        ### create application data directory
-        os.makedirs(iconpath, exist_ok=True)
-
-        ### move favicon.ico to data path
-        shutil.copy(tempicon, iconfile)
-
-        ### create software directory in user's home path
-        os.makedirs(nanopath, exist_ok=True)
-
-        try:
-            # specify software path as normal to write desktop.ini file (if exists)
-            win32api.SetFileAttributes(nanopath, win32con.FILE_ATTRIBUTE_NORMAL)
-
-            ### create desktop.ini for custom icon
-            with open(dinifile, "w") as dini:
-                dini.write("[.ShellClassInfo]\n")
-                dini.write(f"IconResource={iconresc},0")
-
-            ### specify path as read-only to tell windows to read desktop.ini file
-            win32api.SetFileAttributes(nanopath, win32con.FILE_ATTRIBUTE_READONLY)
-
-        except Exception as e:
-            Log.error("ERROR: Unable to create desktop.ini file and set a custom folder icon.")
-            Log.error("Error Reason: {e}")
+        self.create_current_user_environment()
 
         copy_src = os.getcwd()
-        copy_dst = nanopath
+        copy_dst = cu_install_root
         found = False
 
         if search_for_bundles:
@@ -565,7 +720,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     if modified_at > most_recent:
                         most_recent = modified_at
                         copy_src = os.path.join(os.getcwd(), file)
-                        copy_dst = os.path.join(nanopath, file[0:-4]) # drop '.zip'
+                        copy_dst = os.path.join(cu_install_root, file[0:-4]) # drop '.zip'
                         found = True
 
         if not found:
@@ -577,7 +732,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             file = os.path.basename(fullfile) # just the filename, no path
             if os.path.isfile(fullfile) and file.find("nanovisQ") >= 0 and file.endswith("_exe.zip"):
                 copy_src = fullfile # already conformed to abspath() format
-                copy_dst = os.path.join(nanopath, file[0:-4]) # drop '.zip'
+                copy_dst = os.path.join(cu_install_root, file[0:-4]) # drop '.zip'
                 found = True
 
         proceed = False
@@ -603,7 +758,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
                 # box = QtWidgets.QMessageBox(None)
                 self.setIcon(QtWidgets.QMessageBox.Critical)
-                self.setWindowIcon(QtGui.QIcon(tempicon))
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
                 self.setWindowTitle("QATCH nanovisQ | Abort")
                 self.setText("User declined install. Install aborted.")
                 self.setDetailedText(log_stream.getvalue())
@@ -615,7 +770,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
                 # box = QtWidgets.QMessageBox(None)
                 self.setIcon(QtWidgets.QMessageBox.Critical)
-                self.setWindowIcon(QtGui.QIcon(tempicon))
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
                 self.setWindowTitle("QATCH nanovisQ | Abort")
                 self.setText("User aborted install. Install aborted.")
                 self.setDetailedText(log_stream.getvalue())
@@ -628,7 +783,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
             # box = QtWidgets.QMessageBox(None)
             self.setIcon(QtWidgets.QMessageBox.Critical)
-            self.setWindowIcon(QtGui.QIcon(tempicon))
+            self.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.setWindowTitle("QATCH nanovisQ | No Build Found")
             self.setText("No software bundle found. Cannot install.")
             self.setDetailedText("Could not find a valid ZIP file containing \"nanovisQ\" in the filename. Please try again.")
@@ -640,7 +795,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         ## START OF WORKER TASK ###
 
         self.progressBar = QtWidgets.QProgressDialog(f"QATCH nanovisQ", "Cancel", 0, 100, self)
-        self.progressBar.setWindowIcon(QtGui.QIcon(tempicon))
+        self.progressBar.setWindowIcon(QtGui.QIcon(bundle_icon))
         self.progressBar.setWindowTitle(f"Installing {version}")
         self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
         self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
@@ -671,7 +826,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         # self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
         if self.worker._cancel:
             self.setIcon(QtWidgets.QMessageBox.Information)
-            self.setWindowIcon(QtGui.QIcon(tempicon))
+            self.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.setWindowTitle("QATCH nanovisQ | Canceled")
             self.setText("Installation canceled.")
             self.setDetailedText("")
@@ -698,7 +853,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
         box = QtWidgets.QMessageBox(None)
         box.setIcon(QtWidgets.QMessageBox.Critical)
-        box.setWindowIcon(QtGui.QIcon(tempicon))
+        box.setWindowIcon(QtGui.QIcon(bundle_icon))
         box.setWindowTitle("QATCH nanovisQ | Unhandled Exception")
         box.setText("<b>An unhandled exception has occurred during execution:</b><br/>" +
                     f"{except_str}<br/><br/>" +
@@ -741,14 +896,14 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 Log.info("Launching application...")
                 os.startfile(launcher, cwd=copy_dst,)
             else:
-                _nanopath = os.path.join(copy_dst, "QATCH nanovisQ.exe")
+                _cu_install_root = os.path.join(copy_dst, "QATCH nanovisQ.exe")
                 linkpath = os.path.join(desktop, "QATCH nanovisQ.lnk")
                 shell = win32com.client.Dispatch("WScript.Shell")
                 shortcut = shell.CreateShortCut(linkpath)
-                shortcut.TargetPath = _nanopath
+                shortcut.TargetPath = _cu_install_root
                 shortcut.Arguments = "" # explicity remove '-m QATCH' if upgrading PY install to EXE
                 shortcut.Description = version #"(C) QATCH Technologies LLC"
-                shortcut.IconLocation = f"{_nanopath},0"
+                shortcut.IconLocation = f"{_cu_install_root},0"
                 shortcut.WorkingDirectory = os.path.join(os.path.dirname(desktop), "Documents", "QATCH nanovisQ")
                 shortcut.save() # create shortcut link
                 shutil.copy(linkpath, copy_dst) # copy to local build directory too
@@ -764,7 +919,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                                                     defaultButton=QtWidgets.QMessageBox.Yes) == QtWidgets.QMessageBox.Yes:
                     Log.info("Launching application...")
                     pb = QtWidgets.QProgressDialog(os.path.basename(copy_dst), None, 0, 100, self)
-                    pb.setWindowIcon(QtGui.QIcon(tempicon))
+                    pb.setWindowIcon(QtGui.QIcon(bundle_icon))
                     pb.setWindowTitle(f"Launching {os.path.basename(copy_dst).replace('QATCH', '')}...               ")
                     pb.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
                     pb.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
@@ -774,8 +929,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     pb.setFixedSize(int(pb.width()*1.5), int(pb.height()*1.1)) # QApplication.style().pixelMetric(QtWidgets.QStyle.PM_TitleBarHeight))
                     pb.show()
                     pb.setRange(0, 0)
-                    # os.startfile(_nanopath, cwd=shortcut.WorkingDirectory,)
-                    self.launcher = LaunchWorker(filepath=_nanopath, cwd=shortcut.WorkingDirectory,)
+                    # os.startfile(_cu_install_root, cwd=shortcut.WorkingDirectory,)
+                    self.launcher = LaunchWorker(filepath=_cu_install_root, cwd=shortcut.WorkingDirectory,)
                     self.launcher.finished.connect(self.on_launcher_finish)
                     self.launcher.finished.connect(self.launcher.deleteLater)
                     self.launcher.exception.connect(self.show_exception)
@@ -790,16 +945,16 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     while not self.worker_finished:
                         # wait here until thread finished
                         QApplication.processEvents()
-                    # os.startfile(_nanopath, cwd=shortcut.WorkingDirectory,)
+                    # os.startfile(_cu_install_root, cwd=shortcut.WorkingDirectory,)
                     # # CREATE_NEW_PROCESS_GROUP prevents it from being killed with parent
                     # DETACHED_PROCESS = 0x00000008
                     # CREATE_NEW_PROCESS_GROUP = 0x00000200
                     # # CREATE_NO_WINDOW = 0x08000000
                     # import subprocess
                     # subprocess.Popen(
-                    #     f'START "" /D "{shortcut.WorkingDirectory}" "{_nanopath}"', shell=True,
+                    #     f'START "" /D "{shortcut.WorkingDirectory}" "{_cu_install_root}"', shell=True,
                     #     creationflags=CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | subprocess.CREATE_BREAKAWAY_FROM_JOB | subprocess.CREATE_NEW_CONSOLE)
-                    # QtCore.QProcess.startDetached(os.path.normpath(_nanopath), [], os.path.normpath(shortcut.WorkingDirectory))
+                    # QtCore.QProcess.startDetached(os.path.normpath(_cu_install_root), [], os.path.normpath(shortcut.WorkingDirectory))
                     # def launch_detached(filepath, working_dir=None):
                     #     import ctypes
                     #     if working_dir is None:
@@ -827,7 +982,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     #     Log.info(f"PID: {pid}")
                     #     self.app_pid = pid
                     #     return success and pid > 0
-                    # launch_detached(_nanopath, shortcut.WorkingDirectory)
+                    # launch_detached(_cu_install_root, shortcut.WorkingDirectory)
                     # self.elapsed_timer.restart()
                     # while self.elapsed_timer.elapsed() < 3000:
                     #     # wait at least 3 seconds to avoid quick window flashes
@@ -964,14 +1119,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
     def uninstall(self):
 
-        number_of_builds_installed = 0
-        installed_versions = []  
-        if os.path.isdir(nanopath):    
-            for file in os.listdir(nanopath):
-                fullfile = os.path.join(nanopath, file)
-                if os.path.isdir(fullfile):
-                    number_of_builds_installed += 1
-                    installed_versions.append(file)
+        installed_versions = self.get_installed_versions()
+        number_of_builds_installed = len(installed_versions)
         Log.info(f"Number of builds found: {number_of_builds_installed}")
 
         ask_for_specific_version = False
@@ -993,7 +1142,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
                 # box = QtWidgets.QMessageBox(None)
                 self.setIcon(QtWidgets.QMessageBox.Critical)
-                self.setWindowIcon(QtGui.QIcon(tempicon))
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
                 self.setWindowTitle("QATCH nanovisQ | Abort")
                 self.setText("User canceled uninstall. Uninstall aborted.")
                 self.setDetailedText(log_stream.getvalue())
@@ -1004,7 +1153,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             
         if ask_for_specific_version:
             # box = QtWidgets.QMessageBox(None)
-            self.setWindowIcon(QtGui.QIcon(tempicon))
+            self.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.setWindowTitle("QATCH nanovisQ | Uninstall Version")
             self.setText("Select a software version to uninstall:")
             self.setIcon(QtWidgets.QMessageBox.Question)
@@ -1032,7 +1181,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
                 # box = QtWidgets.QMessageBox(None)
                 self.setIcon(QtWidgets.QMessageBox.Critical)
-                self.setWindowIcon(QtGui.QIcon(tempicon))
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
                 self.setWindowTitle("QATCH nanovisQ | Abort")
                 self.setText("User canceled uninstall. Uninstall aborted.")
                 self.setDetailedText(log_stream.getvalue())
@@ -1042,11 +1191,11 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 return
             else:
                 Log.info(f"Selected version to uninstall: {selected_version}")
-                _nanopath = os.path.join(nanopath, selected_version)
+                _cu_install_root = os.path.join(cu_install_root, selected_version)
 
             ans = QtWidgets.QMessageBox.No # do not uninstall data if only uninstalling single version
         else:
-            _nanopath = nanopath
+            _cu_install_root = cu_install_root
 
             ans = QtWidgets.QMessageBox.question(None, 
                                                  "QATCH nanovisQ | Uninstall", 
@@ -1066,7 +1215,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
             # box = QtWidgets.QMessageBox(None)
             self.setIcon(QtWidgets.QMessageBox.Critical)
-            self.setWindowIcon(QtGui.QIcon(tempicon))
+            self.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.setWindowTitle("QATCH nanovisQ | Abort")
             self.setText("User canceled uninstall. Uninstall aborted.")
             self.setDetailedText(log_stream.getvalue())
@@ -1074,7 +1223,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             self.exec_()
             return
 
-        self.setWindowIcon(QtGui.QIcon(tempicon))
+        self.setWindowIcon(QtGui.QIcon(bundle_icon))
         self.setWindowTitle("QATCH nanovisQ | Confirm Uninstall")
         if ask_for_specific_version:
             self.setText(f"Are you sure you want to uninstall version:\n{selected_version}?")
@@ -1094,7 +1243,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
             # box = QtWidgets.QMessageBox(None)
             self.setIcon(QtWidgets.QMessageBox.Critical)
-            self.setWindowIcon(QtGui.QIcon(tempicon))
+            self.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.setWindowTitle("QATCH nanovisQ | Abort")
             self.setText("User canceled uninstall. Uninstall aborted.")
             self.setDetailedText(log_stream.getvalue())
@@ -1104,9 +1253,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
             return
 
         # Uninstall application data (if exists, and requested)
-        if os.path.exists(iconpath):
+        if os.path.exists(app_data_path):
             if uninstall_data:
-                QatchInstaller.recursive_remove(iconpath)
+                QatchInstaller.recursive_remove(app_data_path)
                 Log.info("Uninstalled application data.")
             else:
                 Log.info("Retaining application data, per user request.")
@@ -1114,11 +1263,11 @@ class QatchInstaller(QtWidgets.QMessageBox):
             Log.warning("No application data found. Nothing to uninstall here.")
 
         # Uninstall software files (if exists)
-        if os.path.exists(_nanopath):
+        if os.path.exists(_cu_install_root):
             # TODO: If more than 1 version being uninstalled, show progress window
             # specify software path as normal to write desktop.ini file (if exists)
-            win32api.SetFileAttributes(_nanopath, win32con.FILE_ATTRIBUTE_NORMAL)
-            QatchInstaller.recursive_remove(_nanopath)
+            win32api.SetFileAttributes(_cu_install_root, win32con.FILE_ATTRIBUTE_NORMAL)
+            QatchInstaller.recursive_remove(_cu_install_root)
             Log.info("Uninstalled software files.")
         else:
             Log.warning("No software files found. Nothing to uninstall here.")
@@ -1149,7 +1298,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             shortcut = shell.CreateShortCut(linkpath)
             targetpath = shortcut.TargetPath
             target = os.path.dirname(targetpath)
-            if os.path.abspath(target) == os.path.abspath(_nanopath):
+            if os.path.abspath(target) == os.path.abspath(_cu_install_root):
                 # we just uninstalled the active version, remove desktop link
                 Log.info("Removing desktop shortcut for uninstalled version.")
                 os.remove(linkpath)
@@ -1171,7 +1320,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             Log.debug("Re-installation is required to restore a working desktop shortcut.")
 
             # box = QtWidgets.QMessageBox(None)
-            self.setWindowIcon(QtGui.QIcon(tempicon))
+            self.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.setWindowTitle("QATCH nanovisQ | Restore Shortcut")
             self.setText("Which version should the desktop shortcut launch?")
             self.setIcon(QtWidgets.QMessageBox.Question)
@@ -1198,11 +1347,11 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 Log.debug("User skipped or did not make a selection.")
             else:
                 Log.info(f"Selected version for shortcut launch: {selected_version}")
-                _nanopath = os.path.join(nanopath, selected_version, "QATCH nanovisQ.exe")
-                shortcut.TargetPath = _nanopath
+                _cu_install_root = os.path.join(cu_install_root, selected_version, "QATCH nanovisQ.exe")
+                shortcut.TargetPath = _cu_install_root
                 shortcut.Arguments = "" # explicity remove '-m QATCH' if upgrading PY install to EXE
                 shortcut.Description = selected_version #f"(C) {date.today().year} QATCH Technologies LLC"
-                shortcut.IconLocation = f"{_nanopath},0"
+                shortcut.IconLocation = f"{_cu_install_root},0"
                 shortcut.WorkingDirectory = os.path.join(os.path.dirname(desktop), "Documents", "QATCH nanovisQ")
                 shortcut.save()
                 Log.info(f"Created desktop link for {selected_version}!")
@@ -1210,7 +1359,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         if log_stream.getvalue() != "": # success, no warnings or errors
             # box = QtWidgets.QMessageBox(None)
             self.setIcon(QtWidgets.QMessageBox.Information)
-            self.setWindowIcon(QtGui.QIcon(tempicon))
+            self.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.setWindowTitle("QATCH nanovisQ | Uninstall Error")
             self.setText("Uninstaller was successful.")
             self.setStandardButtons(QtWidgets.QMessageBox.Ok)
@@ -1218,7 +1367,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         else:
             # box = QtWidgets.QMessageBox(None)
             self.setIcon(QtWidgets.QMessageBox.Critical)
-            self.setWindowIcon(QtGui.QIcon(tempicon))
+            self.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.setWindowTitle("QATCH nanovisQ | Uninstall Error")
             self.setText("Uninstaller was not successful.\nSee details for more information.")
             self.setDetailedText(log_stream.getvalue())
