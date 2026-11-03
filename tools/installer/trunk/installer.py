@@ -50,11 +50,13 @@ au_ini_file = os.path.join(au_install_root, "desktop.ini")
 
 install_roots = [cu_install_root, au_install_root]
 
-# Source of global install preferences file (Current User preferred, if exists)
-global_install_prefs = os.path.join(cu_install_root, "install-preferences.json")
+# Source of global install preferences file (All Users preferred, if exists)
+global_install_prefs = os.path.join(au_install_root, "install-preferences.json")
+install_type = 1
 if not os.path.exists(global_install_prefs):
-    # Fallback to All Users install preferences file (if exists)
-    global_install_prefs = os.path.join(au_install_root, "install-preferences.json")
+    # Fallback to Current User install preferences file (if exists)
+    global_install_prefs = os.path.join(cu_install_root, "install-preferences.json")
+    install_type = 0
 # else, no "install-preferences.json" files exist. Use default `app_data_path`.
 
 app_data_path = os.path.expandvars("%LOCALAPPDATA%")
@@ -344,27 +346,30 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
         install_for = QtWidgets.QComboBox(dialog)
         install_for.addItems(["Current user", "All users"])
+        install_for.setCurrentIndex(install_type)
         install_for.currentIndexChanged.connect(
             lambda: self.change_install_type(install_for, form))
         form.addRow("Install for:", install_for)
 
-        # TODO: Detect and set value based on global prefs file used
+        folder_paths = []
 
-        def add_directory_setting(label, initial_path):
+        def add_directory_setting(label, initial_path, read_only=False):
             row = QtWidgets.QWidget(dialog)
             row_layout = QtWidgets.QHBoxLayout(row)
             row_layout.setContentsMargins(0, 0, 0, 0)
             path = QtWidgets.QLineEdit(initial_path, row)
+            path.setReadOnly(read_only)
             browse = QtWidgets.QPushButton("Browse...", row)
             browse.clicked.connect(
                 lambda: self.browse_for_directory(dialog, path, label)
             )
+            browse.setDisabled(read_only)
             row_layout.addWidget(path)
             row_layout.addWidget(browse)
             form.addRow(label + ":", row)
+            folder_paths.append(path)
 
-        # TODO: Set install dir (as read only, for now) by prefs file used
-        add_directory_setting("Installation directory", cu_install_root)
+        add_directory_setting("Installation directory", cu_install_root, read_only=True)
         add_directory_setting("User data directory", logged_data_path)
         add_directory_setting("Temporary data directory", app_data_path)
 
@@ -377,6 +382,15 @@ class QatchInstaller(QtWidgets.QMessageBox):
         layout.addWidget(buttons)
         dialog.exec_()
 
+        install_type_changed = install_for.currentIndex() != install_type
+        install_type = install_for.currentIndex()
+        logged_data_path = folder_paths[1].text()
+        app_data_path = folder_paths[2].text()
+
+        # TODO: write to "install-preferences.json" at desired location.
+        # if install type has changed, run installer extraction again 
+        # (leave existing installs as-is unless explicitly uninstalled)
+
 
     def change_install_type(self, 
                             install_widget: QtWidgets.QComboBox, 
@@ -384,8 +398,43 @@ class QatchInstaller(QtWidgets.QMessageBox):
         
         # 0 = Current User, 1 = All Users
         install_type = install_widget.currentIndex()
+        install_at_widget = form_widget.itemAt(3).widget().children()[1]
+        logged_data_widget = form_widget.itemAt(5).widget().children()[1]
+        app_data_widget = form_widget.itemAt(7).widget().children()[1]
 
-        # TODO: Finish this
+        if install_type == 0:
+            # Current User set
+            install_at_widget.setText(
+                os.path.join(
+                    os.path.expandvars("%USERPROFILE%"),
+                    "QATCH nanovisQ"
+                )
+            )
+            if os.path.expandvars("%APPDATA%") in app_data_widget.text():
+                app_data_widget.setText(
+                    os.path.join(
+                        os.path.expandvars("%LOCALAPPDATA%"),
+                        "QATCH",
+                        "nanovisQ"
+                    )
+                )
+
+        if install_type == 1:
+            # All Users set
+            install_at_widget.setText(
+                os.path.join(
+                    os.path.expandvars("%PROGRAMFILES%"),
+                    "QATCH nanovisQ"
+                )
+            )
+            if os.path.expandvars("%LOCALAPPDATA%") in app_data_widget.text():
+                app_data_widget.setText(
+                    os.path.join(
+                        os.path.expandvars("%APPDATA%"),
+                        "QATCH",
+                        "nanovisQ"
+                    )
+                )
 
 
     def browse_for_directory(self, parent, path_input, label):
