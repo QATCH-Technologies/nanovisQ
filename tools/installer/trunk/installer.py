@@ -6,6 +6,9 @@ import os
 import shutil
 import sys
 import requests
+import json
+import ctypes
+import subprocess
 
 # from datetime import date
 from io import StringIO, open
@@ -16,6 +19,15 @@ import win32api
 import win32con
 import win32com.client
 import win32process
+
+ELEVATED_INSTALL_FLAG = "--qatch-elevated-install"
+elevated_install_settings = None
+if ELEVATED_INSTALL_FLAG in sys.argv:
+    elevated_arg_index = sys.argv.index(ELEVATED_INSTALL_FLAG)
+    if elevated_arg_index + 1 >= len(sys.argv):
+        raise ValueError(f"{ELEVATED_INSTALL_FLAG} requires a JSON payload.")
+    elevated_install_settings = json.loads(sys.argv[elevated_arg_index + 1])
+    del sys.argv[elevated_arg_index:elevated_arg_index + 2]
 
 # NOTE: When changing version, also modify `version.rc` file
 INSTALLER_VERSION = "v1.0.2.3"
@@ -38,56 +50,52 @@ else:
 
 bundle_icon = os.path.join(bundle_dir, "favicon.ico")
 
-# Current user installation paths
-cu_install_root = os.path.expandvars("%USERPROFILE%")
-cu_install_root = os.path.join(cu_install_root, "QATCH nanovisQ")
-cu_ini_file = os.path.join(cu_install_root, "desktop.ini")
-
-# All users installation paths
-au_install_root = os.path.expandvars("%PROGRAMFILES%")
-au_install_root = os.path.join(au_install_root, "QATCH nanovisQ")
-au_ini_file = os.path.join(au_install_root, "desktop.ini")
-
-install_roots = [cu_install_root, au_install_root]
-
-# Source of global install preferences file (All Users preferred, if exists)
-global_install_prefs = os.path.join(au_install_root, "install-preferences.json")
-install_type = 1
-if not os.path.exists(global_install_prefs):
-    # Fallback to Current User install preferences file (if exists)
-    global_install_prefs = os.path.join(cu_install_root, "install-preferences.json")
-    install_type = 0
-# else, no "install-preferences.json" files exist. Use default `app_data_path`.
-
-app_data_path = os.path.expandvars("%LOCALAPPDATA%")
-app_data_path = os.path.join(app_data_path, "QATCH")
-app_data_path = os.path.join(app_data_path, "nanovisQ")
-
-logged_data_path = os.path.join(
-    os.path.expanduser("~"), "Documents", "QATCH nanovisQ", "logged_data"
-)
-
-# Pull temp_data/app_data_path from global install preferences (if exists)
-try:
-    if "_prefs" in locals() and _prefs.get("temp_data", None):
-        pass  # already loaded
-    elif os.path.exists(global_install_prefs):
-        with open(global_install_prefs) as f:
-            _prefs = json.load(f)
-    app_data_path = os.path.expandvars(_prefs["temp_data"])
-    logged_data_path = os.path.expandvars(_prefs["logged_data"])
-except:
-    # On error: silently use the default path already defined
-    pass
-
-app_data_icon = os.path.join(app_data_path, "favicon.ico")
-iconresc = app_data_icon.replace('\\', '/')
-
 log_stream = StringIO()
 Log = logging.getLogger(__name__)
 
 
 class QatchInstaller(QtWidgets.QMessageBox):
+
+    # Current user installation paths
+    cu_install_root = os.path.expandvars("%USERPROFILE%")
+    cu_install_root = os.path.join(cu_install_root, "QATCH nanovisQ")
+    cu_ini_file = os.path.join(cu_install_root, "desktop.ini")
+
+    # All users installation paths
+    au_install_root = os.path.expandvars("%PROGRAMFILES%")
+    au_install_root = os.path.join(au_install_root, "QATCH nanovisQ")
+    au_ini_file = os.path.join(au_install_root, "desktop.ini")
+
+    # Source of global install preferences file (All Users preferred, if exists)
+    global_install_prefs = os.path.join(au_install_root, "install-preferences.json")
+    install_type = 1
+    if not os.path.exists(global_install_prefs):
+        # Fallback to Current User install preferences file (if exists)
+        global_install_prefs = os.path.join(cu_install_root, "install-preferences.json")
+        install_type = 0
+    # else, no "install-preferences.json" files exist. Use default `app_data_path`.
+
+    app_data_path = os.path.expandvars("%LOCALAPPDATA%")
+    app_data_path = os.path.join(app_data_path, "QATCH")
+    app_data_path = os.path.join(app_data_path, "nanovisQ")
+
+    logged_data_path = os.path.join(
+        os.path.expanduser("~"), "Documents", "QATCH nanovisQ", "logged_data"
+    )
+
+    # Pull temp_data/app_data_path from global install preferences (if exists)
+    try:
+        if os.path.exists(global_install_prefs):
+            with open(global_install_prefs) as f:
+                _prefs = json.load(f)
+        app_data_path = os.path.expandvars(_prefs["temp_data"])
+        logged_data_path = os.path.expandvars(_prefs["logged_data"])
+    except:
+        # On error: silently use the default path already defined
+        pass
+
+    app_data_icon = os.path.join(app_data_path, "favicon.ico")
+    iconresc = app_data_icon.replace('\\', '/')
 
     def __init__(self):
 
@@ -117,6 +125,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
         Log.debug( f'os.getcwd is {os.getcwd()}' )
 
         self.is_finished = False
+        self.relaunch_started = False
+        self.ok_button = None
 
 
     def setup_logging(self):
@@ -157,6 +167,20 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
 
     def run(self):
+        if elevated_install_settings is not None:
+            try:
+                self.install_type = elevated_install_settings["install_type"]
+                self.logged_data_path = elevated_install_settings["logged_data"]
+                self.app_data_path = elevated_install_settings["temp_data"]
+                self.save_install_preferences(elevated_install_settings["preferences"])
+                if elevated_install_settings["install"]:
+                    self.install_offline(search_for_bundles=True, skip_settings=True)
+                Log.info("Elevated install process finished.")
+            except Exception as e:
+                Log.error("[ADMIN] ERROR:", e)
+            finally:
+                return
+
         while True:
 
             if self.is_finished:
@@ -186,7 +210,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     if action is None:
                         break
                     if action == "Modify":
-                        self.show_installation_settings()
+                        if not self.show_installation_settings(on_modify=True):
+                            break
                         continue
                     if action == "Remove":
                         self.uninstall()
@@ -199,7 +224,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 self.setWindowTitle("QATCH nanovisQ Installation Wizard")
                 # self.setGeometry(left, top, width, height)
                 self.setText("<b>Thank you for using QATCH nanovisQ software!</b><br/><br/>" +
-                            "How would you like to modify QATCH nanovisQ?<br/><br/>" +
+                            # "How would you like to modify QATCH nanovisQ?<br/><br/>" +
                             "Please select an option to proceed.<br/><br/>")
                 
                 self.setDetailedText("")
@@ -229,12 +254,15 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 self.layout().addWidget(self.button_label, row_count - 1, 0, QtCore.Qt.AlignLeft)
 
                 install = self.button(QtWidgets.QMessageBox.Yes)
-                install.setText('Install')
+                install.setText('Next')
                 uninstall = self.button(QtWidgets.QMessageBox.No)
                 uninstall.setText('Uninstall')
+                uninstall.setVisible(False)
                 cancel = self.button(QtWidgets.QMessageBox.Cancel)
                 self.exec_()
                 # QtWidgets.QMessageBox.question(self, "QATCH Installer", "Would you like to install or uninstall the QATCH nanovisQ software from this computer?", )
+
+                self.install_options.setVisible(False)
 
                 if self.clickedButton() == install:
                     if self.online.isChecked():
@@ -246,6 +274,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     self.uninstall()
 
                 if self.clickedButton() == cancel:
+                    break
+                if self.relaunch_started:
                     break
 
                 # Garbage collect combobox
@@ -296,16 +326,16 @@ class QatchInstaller(QtWidgets.QMessageBox):
     def get_installed_versions(self):
         entries = []
 
-        if os.path.isdir(cu_install_root):
+        if os.path.isdir(self.cu_install_root):
             entries.extend([
-                entry for entry in os.listdir(cu_install_root)
-                if os.path.isdir(os.path.join(cu_install_root, entry))
+                entry for entry in os.listdir(self.cu_install_root)
+                if os.path.isdir(os.path.join(self.cu_install_root, entry))
             ])
 
-        if os.path.isdir(au_install_root):
+        if os.path.isdir(self.au_install_root):
             entries.extend([
-                entry for entry in os.listdir(au_install_root)
-                if os.path.isdir(os.path.join(au_install_root, entry))
+                entry for entry in os.listdir(self.au_install_root)
+                if os.path.isdir(os.path.join(self.au_install_root, entry))
             ])
 
         return entries
@@ -320,7 +350,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         dialog.setInformativeText("Choose how you would like to proceed.")
         install = dialog.addButton("Install", QtWidgets.QMessageBox.AcceptRole)
         modify = dialog.addButton("Modify", QtWidgets.QMessageBox.ActionRole)
-        remove = dialog.addButton("Remove", QtWidgets.QMessageBox.DestructiveRole)
+        remove = dialog.addButton("Remove", QtWidgets.QMessageBox.RejectRole)
         dialog.addButton(QtWidgets.QMessageBox.Cancel)
         dialog.setDefaultButton(install)
         dialog.exec_()
@@ -335,7 +365,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         return None
 
 
-    def show_installation_settings(self):
+    def show_installation_settings(self, on_modify: bool = False):
         dialog = QtWidgets.QDialog(self)
         dialog.setWindowIcon(QtGui.QIcon(bundle_icon))
         dialog.setWindowTitle("QATCH nanovisQ | Installation Settings")
@@ -346,7 +376,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
         install_for = QtWidgets.QComboBox(dialog)
         install_for.addItems(["Current user", "All users"])
-        install_for.setCurrentIndex(install_type)
+        install_for.setCurrentIndex(self.install_type)
         install_for.currentIndexChanged.connect(
             lambda: self.change_install_type(install_for, form))
         form.addRow("Install for:", install_for)
@@ -369,28 +399,144 @@ class QatchInstaller(QtWidgets.QMessageBox):
             form.addRow(label + ":", row)
             folder_paths.append(path)
 
-        add_directory_setting("Installation directory", cu_install_root, read_only=True)
-        add_directory_setting("User data directory", logged_data_path)
-        add_directory_setting("Temporary data directory", app_data_path)
+        add_directory_setting("Installation directory", self.cu_install_root, read_only=True)
+        add_directory_setting("User data directory", self.logged_data_path)
+        add_directory_setting("Temporary data directory", self.app_data_path)
 
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
             parent=dialog,
         )
+        self.ok_button = buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
+        self.ok_button.setText("Install")
+        if install_for.currentIndex():
+            shield_icon = QApplication.style().standardIcon(
+                QtWidgets.QStyle.StandardPixmap.SP_VistaShield
+            )
+            self.ok_button.setIcon(shield_icon)
+
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         dialog.exec_()
 
-        install_type_changed = install_for.currentIndex() != install_type
-        install_type = install_for.currentIndex()
-        logged_data_path = folder_paths[1].text()
-        app_data_path = folder_paths[2].text()
+        if dialog.result() == QtWidgets.QDialog.Accepted:
 
-        # TODO: write to "install-preferences.json" at desired location.
-        # if install type has changed, run installer extraction again 
-        # (leave existing installs as-is unless explicitly uninstalled)
+            install_type_changed = install_for.currentIndex() != self.install_type
+            self.install_type = install_for.currentIndex()
+            self.logged_data_path = folder_paths[1].text()
+            self.app_data_path = folder_paths[2].text()
+            needs_elevation = self.install_type == 1 and not self.is_running_as_admin()
+            if needs_elevation:
+                self.launch_elevated_install(
+                    install=not on_modify or install_type_changed
+                )
+                return False
 
+            self.save_install_preferences()
+            if on_modify and install_type_changed:
+                self.install_offline(search_for_bundles=True, skip_settings=True)
+
+            return True
+        return False
+
+
+    @staticmethod
+    def is_running_as_admin():
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+
+
+    @staticmethod
+    def portable_preference_path(path):
+        expanded_path = os.path.abspath(os.path.expandvars(path))
+        normalized_path = os.path.normcase(expanded_path)
+
+        for variable in ("LOCALAPPDATA", "APPDATA", "USERPROFILE"):
+            variable_path = os.environ.get(variable)
+            if not variable_path:
+                continue
+            absolute_variable_path = os.path.abspath(variable_path)
+            normalized_variable_path = os.path.normcase(absolute_variable_path)
+            if normalized_path == normalized_variable_path:
+                suffix = ""
+            elif normalized_path.startswith(
+                normalized_variable_path + os.path.sep
+            ):
+                suffix = expanded_path[len(absolute_variable_path):]
+            else:
+                continue
+            return f"%{variable}%{suffix}"
+
+        return expanded_path
+
+
+    def save_install_preferences(self, preferences=None):
+        install_root = self.au_install_root if self.install_type else self.cu_install_root
+        preferences_path = os.path.join(install_root, "install-preferences.json")
+        if preferences is None:
+            preferences = {
+                "temp_data": self.portable_preference_path(self.app_data_path),
+                "logged_data": self.portable_preference_path(self.logged_data_path),
+            }
+        os.makedirs(install_root, exist_ok=True)
+        with open(preferences_path, "w") as preferences_file:
+            json.dump(preferences, preferences_file, indent=4)
+            preferences_file.write("\n")
+        Log.info(f"Saved installation preferences to {preferences_path}")
+
+
+    def launch_elevated_install(self, install):
+        settings = {
+            "install_type": self.install_type,
+            "logged_data": self.logged_data_path,
+            "temp_data": self.app_data_path,
+            "preferences": {
+                "temp_data": self.portable_preference_path(self.app_data_path),
+                "logged_data": self.portable_preference_path(self.logged_data_path),
+            },
+            "install": install,
+        }
+        arguments = []
+        if not getattr(sys, "frozen", False):
+            arguments.append(os.path.abspath(sys.argv[0]))
+        arguments.extend((ELEVATED_INSTALL_FLAG, json.dumps(settings)))
+
+        shell_execute = ctypes.windll.shell32.ShellExecuteW
+        shell_execute.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_int,
+        ]
+        shell_execute.restype = ctypes.c_void_p
+        result = shell_execute(
+            None,
+            "runas",
+            sys.executable,
+            subprocess.list2cmdline(arguments),
+            os.getcwd(),
+            1,
+        )
+        if result is None or result <= 32:
+            error_code = result or 0
+            Log.error(
+                f"Could not restart installer with administrator privileges "
+                f"(ShellExecuteW returned {error_code})."
+            )
+            QtWidgets.QMessageBox.warning(
+                self,
+                "QATCH nanovisQ | Administrator privileges required",
+                "Administrator privileges were not granted. No installation "
+                "settings were applied.",
+            )
+            return False
+
+        Log.info("Restarted installer with administrator privileges.")
+        self.relaunch_started = True
+        return True
+    
 
     def change_install_type(self, 
                             install_widget: QtWidgets.QComboBox, 
@@ -436,6 +582,15 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     )
                 )
 
+        if self.ok_button:
+            if install_type:  # all users
+                shield_icon = QApplication.style().standardIcon(
+                    QtWidgets.QStyle.StandardPixmap.SP_VistaShield
+                )
+                self.ok_button.setIcon(shield_icon)
+            else:
+                self.ok_button.setIcon(QtGui.QIcon())
+
 
     def browse_for_directory(self, parent, path_input, label):
         selected_path = QtWidgets.QFileDialog.getExistingDirectory(
@@ -472,33 +627,67 @@ class QatchInstaller(QtWidgets.QMessageBox):
     def create_current_user_environment(self):
 
         ### create application data directory
-        os.makedirs(app_data_path, exist_ok=True)
+        os.makedirs(self.app_data_path, exist_ok=True)
 
         ### move favicon.ico to data path
-        shutil.copy(bundle_icon, app_data_icon)
+        shutil.copy(bundle_icon, self.app_data_icon)
 
         ### create software directory in user's home path
-        os.makedirs(cu_install_root, exist_ok=True)
+        os.makedirs(self.cu_install_root, exist_ok=True)
 
         try:
             # specify software path as normal to write desktop.ini file (if exists)
-            win32api.SetFileAttributes(cu_install_root, win32con.FILE_ATTRIBUTE_NORMAL)
+            win32api.SetFileAttributes(self.cu_install_root, win32con.FILE_ATTRIBUTE_NORMAL)
 
             ### create desktop.ini for custom icon
-            with open(cu_ini_file, "w") as dini:
+            with open(self.cu_ini_file, "w") as dini:
                 dini.write("[.ShellClassInfo]\n")
-                dini.write(f"IconResource={iconresc},0")
+                dini.write(f"IconResource={self.iconresc},0")
 
             ### specify path as read-only to tell windows to read desktop.ini file
-            win32api.SetFileAttributes(cu_install_root, win32con.FILE_ATTRIBUTE_READONLY)
+            win32api.SetFileAttributes(self.cu_install_root, win32con.FILE_ATTRIBUTE_READONLY)
 
         except Exception as e:
             Log.error("ERROR: Unable to create desktop.ini file and set a custom folder icon.")
             Log.error("Error Reason: {e}")
-            
-    def install_online(self):
 
-        self.create_current_user_environment()
+    def create_all_users_environment(self):
+    
+            ### create application data directory
+            os.makedirs(self.app_data_path, exist_ok=True)
+    
+            ### move favicon.ico to data path
+            shutil.copy(bundle_icon, self.app_data_icon)
+    
+            ### create software directory in user's home path
+            os.makedirs(self.au_install_root, exist_ok=True)
+    
+            try:
+                # specify software path as normal to write desktop.ini file (if exists)
+                win32api.SetFileAttributes(self.au_install_root, win32con.FILE_ATTRIBUTE_NORMAL)
+    
+                ### create desktop.ini for custom icon
+                with open(self.au_ini_file, "w") as dini:
+                    dini.write("[.ShellClassInfo]\n")
+                    dini.write(f"IconResource={self.iconresc},0")
+    
+                ### specify path as read-only to tell windows to read desktop.ini file
+                win32api.SetFileAttributes(self.au_install_root, win32con.FILE_ATTRIBUTE_READONLY)
+    
+            except Exception as e:
+                Log.error("ERROR: Unable to create desktop.ini file and set a custom folder icon.")
+                Log.error("Error Reason: {e}")
+            
+    def install_online(self, skip_settings: bool = False):
+
+        # if not skip_settings:
+        #     if not self.show_installation_settings():
+        #         return  # user cancel
+            
+        # if self.install_type:
+        #     self.create_all_users_environment()
+        # else:
+        #     self.create_current_user_environment()
 
         # Flag to skip offline install step if online step fails or is canceled.
         run_offline_installer = True
@@ -751,14 +940,22 @@ class QatchInstaller(QtWidgets.QMessageBox):
         
         # Call offline installer to install downloaded bundle
         if run_offline_installer:
-            self.install_offline(search_for_bundles=True)
+            self.install_offline(search_for_bundles=True, skip_settings=False)
 
-    def install_offline(self, search_for_bundles: bool = False):
+    def install_offline(self, search_for_bundles: bool = False, skip_settings: bool = False):
 
-        self.create_current_user_environment()
+        # if not skip_settings:
+        #     if not self.show_installation_settings():
+        #         return  # user cancel
+        
+        # if self.install_type:
+        #     self.create_all_users_environment()
+        # else:
+        #     self.create_current_user_environment()
 
+        copy_root = self.au_install_root if self.install_type else self.cu_install_root
         copy_src = os.getcwd()
-        copy_dst = cu_install_root
+        copy_dst = copy_root
         found = False
 
         if search_for_bundles:
@@ -769,7 +966,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     if modified_at > most_recent:
                         most_recent = modified_at
                         copy_src = os.path.join(os.getcwd(), file)
-                        copy_dst = os.path.join(cu_install_root, file[0:-4]) # drop '.zip'
+                        copy_dst = os.path.join(copy_root, file[0:-4]) # drop '.zip'
                         found = True
 
         if not found:
@@ -781,7 +978,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             file = os.path.basename(fullfile) # just the filename, no path
             if os.path.isfile(fullfile) and file.find("nanovisQ") >= 0 and file.endswith("_exe.zip"):
                 copy_src = fullfile # already conformed to abspath() format
-                copy_dst = os.path.join(cu_install_root, file[0:-4]) # drop '.zip'
+                copy_dst = os.path.join(copy_root, file[0:-4]) # drop '.zip'
                 found = True
 
         proceed = False
@@ -840,6 +1037,15 @@ class QatchInstaller(QtWidgets.QMessageBox):
             self.exec_()
         
             return
+
+        if not skip_settings:
+            if not self.show_installation_settings():
+                return  # user cancel
+        
+        if self.install_type:
+            self.create_all_users_environment()
+        else:
+            self.create_current_user_environment()
 
         ## START OF WORKER TASK ###
 
@@ -1240,11 +1446,11 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 return
             else:
                 Log.info(f"Selected version to uninstall: {selected_version}")
-                _cu_install_root = os.path.join(cu_install_root, selected_version)
+                _cu_install_root = os.path.join(self.cu_install_root, selected_version)
 
             ans = QtWidgets.QMessageBox.No # do not uninstall data if only uninstalling single version
         else:
-            _cu_install_root = cu_install_root
+            _cu_install_root = self.cu_install_root
 
             ans = QtWidgets.QMessageBox.question(None, 
                                                  "QATCH nanovisQ | Uninstall", 
@@ -1302,9 +1508,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
             return
 
         # Uninstall application data (if exists, and requested)
-        if os.path.exists(app_data_path):
+        if os.path.exists(self.app_data_path):
             if uninstall_data:
-                QatchInstaller.recursive_remove(app_data_path)
+                QatchInstaller.recursive_remove(self.app_data_path)
                 Log.info("Uninstalled application data.")
             else:
                 Log.info("Retaining application data, per user request.")
@@ -1313,9 +1519,12 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
         # Uninstall software files (if exists)
         if os.path.exists(_cu_install_root):
-            # TODO: If more than 1 version being uninstalled, show progress window
             # specify software path as normal to write desktop.ini file (if exists)
             win32api.SetFileAttributes(_cu_install_root, win32con.FILE_ATTRIBUTE_NORMAL)
+            if not ask_for_specific_version and number_of_builds_installed > 1:
+                self.uninstall_versions_with_progress(
+                    _cu_install_root, installed_versions
+                )
             QatchInstaller.recursive_remove(_cu_install_root)
             Log.info("Uninstalled software files.")
         else:
@@ -1396,7 +1605,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 Log.debug("User skipped or did not make a selection.")
             else:
                 Log.info(f"Selected version for shortcut launch: {selected_version}")
-                _cu_install_root = os.path.join(cu_install_root, selected_version, "QATCH nanovisQ.exe")
+                _cu_install_root = os.path.join(self.cu_install_root, selected_version, "QATCH nanovisQ.exe")
                 shortcut.TargetPath = _cu_install_root
                 shortcut.Arguments = "" # explicity remove '-m QATCH' if upgrading PY install to EXE
                 shortcut.Description = selected_version #f"(C) {date.today().year} QATCH Technologies LLC"
@@ -1428,6 +1637,32 @@ class QatchInstaller(QtWidgets.QMessageBox):
         #                                   buttons=QtWidgets.QMessageBox.Ok)
         
         Log.info("Uninstall finished.")
+
+
+    def uninstall_versions_with_progress(self, install_root, versions):
+        progress = QtWidgets.QProgressDialog(
+            "Removing installed versions...", None, 0, len(versions), self
+        )
+        progress.setWindowIcon(QtGui.QIcon(bundle_icon))
+        progress.setWindowTitle("QATCH nanovisQ | Uninstalling")
+        progress.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+
+        worker = UninstallWorker(install_root, versions)
+
+        def update_progress(version, completed):
+            progress.setLabelText(f"Removing {version}...")
+            progress.setValue(completed)
+
+        worker.progress.connect(update_progress)
+        worker.finished.connect(progress.reset)
+        worker.start()
+        progress.exec_()
+        worker.wait()
+
+        for failed_path in worker.failed_paths:
+            Log.error(f"Could not completely remove installed version: {failed_path}")
 
 
 class RequestWorker(QtCore.QThread):
@@ -1651,6 +1886,25 @@ class InstallWorker(QtCore.QThread):
             self.exception.emit(f"{t.__name__}: {str(v)}")
         
         self.finished.emit()
+
+
+class UninstallWorker(QtCore.QThread):
+    progress = QtCore.pyqtSignal(str, int)
+
+    def __init__(self, install_root, versions):
+        super().__init__()
+        self.install_root = install_root
+        self.versions = versions
+        self.failed_paths = []
+
+    def run(self):
+        for completed, version in enumerate(self.versions, start=1):
+            version_path = os.path.join(self.install_root, version)
+            self.progress.emit(version, completed - 1)
+            QatchInstaller.recursive_remove(version_path)
+            if os.path.exists(version_path):
+                self.failed_paths.append(version_path)
+            self.progress.emit(version, completed)
 
 
 class LaunchWorker(QtCore.QThread):
