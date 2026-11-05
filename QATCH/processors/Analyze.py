@@ -10313,35 +10313,39 @@ class AnalyzerWorker(QtCore.QObject):
 
                 if BIOFORMULATION and self.FIRST_LOOP:
 
-                    C = float(xml_params.get("protein_concentration", 0.0))
-                    if C <= 75:
-                        g_C = 0
-                    elif C < 150:
-                        g_C = (C - 75) / 75
-                    else:
-                        g_C = 1
-
                     if initial_fill_only:
                         A = in_viscosity[0]
                     elif len(res_viscosity) < 2:
                         A = in_viscosity[len(distances) - 1]
                     else:
                         A = res_viscosity[-1]
-                    if A <= 5:
-                        f_A = 1
-                    elif A < 20:
-                        f_A = (-0.0111 * A) + 0.8335 + (1.11 / A)
-                    else:
-                        f_A = 0.667
-
-                    CF_A_C = 1 - g_C * (1 - f_A)
-                    ST *= CF_A_C  # adjust surface tension with correction factor
-
                     Log.d(f"Calculated 'A' = {A}")
+
+                    C = float(xml_params.get("protein_concentration", 0.0))
                     Log.d(f"Calculated 'C' = {C}")
-                    Log.d(f"Calculated 'f({A:2.2f})' = {f_A}")
-                    Log.d(f"Calculated 'g({C:2.2f})' = {g_C}")
+
+                    # Deprecated method (too complex):
+                    # if A <= 5:
+                    #     f_A = 1
+                    # elif A < 20:
+                    #     f_A = (-0.0111 * A) + 0.8335 + (1.11 / A)
+                    # else:
+                    #     f_A = 0.667
+                    # Log.d(f"Calculated 'f({A:2.2f})' = {f_A}")
+                    # if C <= 75:
+                    #     g_C = 0
+                    # elif C < 150:
+                    #     g_C = (C - 75) / 75
+                    # else:
+                    #     g_C = 1
+                    # Log.d(f"Calculated 'g({C:2.2f})' = {g_C}")
+                    # CF_A_C = 1 - g_C * (1 - f_A)
+
+                    # New simpler method (2026-11-05):
+                    CF_A_C = (1 - (0.333 * min(C / 190, 1) *  min(A / 18, 1)))
                     Log.d(f"Calculated 'CF({A:2.2f}, {C:2.2f})' = {CF_A_C}")
+
+                    ST *= CF_A_C  # adjust surface tension with correction factor
                     Log.d(f"Calculated 'ST' = {ST}")
 
                     continue  # proceed to send loop, recalculate
