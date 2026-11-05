@@ -1,5 +1,7 @@
 import ctypes
 import os
+import json
+
 from enum import Enum
 from time import localtime, strftime
 
@@ -270,9 +272,27 @@ class Constants:
     csv_calibration_filename = "Calibration_5MHz"
     csv_calibration_filename10 = "Calibration_10MHz"
 
+    # Source of global install preferences file
+    global_install_prefs = os.path.join(
+        os.path.dirname(Architecture.install_path()), "install-preferences.json"
+    )
+
     local_app_data_path = os.path.expandvars(
         r"%LOCALAPPDATA%{0}{1}{0}{2}".format(slash, app_publisher, app_name)
     )
+
+    # Pull local app data path from global install preferences (if exists)
+    try:
+        if "_prefs" in locals() and _prefs.get("temp_data", None):
+            pass  # already loaded
+        elif os.path.exists(global_install_prefs):
+            with open(global_install_prefs) as f:
+                _prefs = json.load(f)
+        local_app_data_path = os.path.expandvars(_prefs["temp_data"])
+    except:
+        # On error: silently use the default path already defined
+        pass
+
     csv_calibration_export_path = os.path.join(local_app_data_path, "config")
     user_profiles_path = os.path.join(local_app_data_path, "profiles", "users")
     run_profiles_path = os.path.join(
@@ -306,7 +326,21 @@ class Constants:
         "HH:mm": "%H:%M",
         "hh:mm A": "%I:%M %p",
     }
+
     working_logged_data_path = os.path.join(os.getcwd(), log_export_path)
+
+    # Pull logged data path from global install preferences (if exists)
+    try:
+        if "_prefs" in locals() and _prefs.get("temp_data", None):
+            pass  # already loaded
+        elif os.path.exists(global_install_prefs):
+            with open(global_install_prefs) as f:
+                _prefs = json.load(f)
+        working_logged_data_path = os.path.expandvars(_prefs["logged_data"])
+    except:
+        # On error: silently use the default path already defined
+        pass
+
     default_preferences = {
         "load_data_path": working_logged_data_path,
         "write_data_path": working_logged_data_path,
@@ -317,6 +351,7 @@ class Constants:
         "date_format": date_formats[0],
         "time_format": time_formats[0],
     }
+
     ##################
     # Calibration: baseline correction (READ for @5MHz and @10MHz QCS) path: 'common\'
     csv_calibration_path = "{}{}{}{}{}.{}".format(
@@ -432,6 +467,12 @@ class Constants:
         2: (4, "Almost full"),
         3: (5, "Complete, stop"),
     }
+    # Fill-status display messages that mean "the user should stop now",
+    # either because the run can be stopped early or because the fill is
+    # complete. Watched by MainWindow's Auto-stop feature.
+    _AUTO_STOP_MESSAGES: frozenset[str] = frozenset(
+        {"Data Ready, You Can Stop", "Data Ready, Stop"}
+    )
 
     ######################
     # ANALYZE parameters #
@@ -476,8 +517,8 @@ class Constants:
     ######################
     # NIGHTLY adjustment #
     ######################
-    if os.path.exists("QATCH/nightly/latest_build.json"):
-        with open("QATCH/nightly/latest_build.json", "r") as f:
+    if os.path.exists(os.path.join("QATCH", "nightly", "latest_build.json")):
+        with open(os.path.join("QATCH", "nightly", "latest_build.json"), "r") as f:
             import json
 
             data = json.load(f)
@@ -495,13 +536,20 @@ class Constants:
     @staticmethod
     def windll_is_caps_lock_on() -> bool:
         """
-        WINDOWS ONLY: Checks the state of the Caps Lock key and returns True
-        if Caps Lock is on or False if Caps Lock is off.
+        Checks the state of the Caps Lock key and returns True if Caps Lock
+        is on or False if Caps Lock is off.
+
+        Windows only: queries `user32.GetKeyState` directly, since Qt has no
+        cross-platform API for lock-key state. Always returns False on other
+        platforms (the caps-lock hint just never lights up there, rather than
+        crashing - `ctypes.windll` doesn't exist outside Windows).
 
         Returns:
             bool: The state of the Caps Lock; True if Caps Lock is on, False
-                if Caps Lock is off.
+                if Caps Lock is off (or if not running on Windows).
         """
+        if Architecture.get_os() is not OSType.windows:
+            return False
         VK_CAPITAL = 0x14
         # GetKeyState returns a short, where the low-order bit is 1 if the key is toggled.
         return bool(ctypes.windll.user32.GetKeyState(VK_CAPITAL) & 0x0001)
