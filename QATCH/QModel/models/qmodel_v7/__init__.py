@@ -7,8 +7,8 @@ so both model generations can be imported side by side):
     from QATCH.QModel.models.qmodel_v7 import QModelV7, QModelV7Config
 """
 
-__version__ = "7.1.1"
-__release__ = "2026-08-25"
+__version__ = "7.1.2"
+__release__ = "2026-10-26"
 
 try:
     from .v7_yolo import (
