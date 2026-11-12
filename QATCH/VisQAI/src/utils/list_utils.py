@@ -25,9 +25,12 @@ Version:
 try:
     from src.controller.ingredient_controller import IngredientController
     from src.models.ingredient import ProteinClass
+    class Constants:
+        app_version = "v2.7r13"
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.models.ingredient import ProteinClass
+    from QATCH.core.constants import Constants
 
 
 class ListUtils:
@@ -83,10 +86,27 @@ class ListUtils:
 
         ingredients = ing_ctrl.get_all_ingredients()
 
+        core_proteins = ['poly-hIgG', 'BSA', 'BGG', 'Adalimumab', 'Bevacizumab', 
+                        'Pembrolizumab', 'Ibalizumab', 'Trastuzumab', 
+                        'Belatacept', 'Etanercept', 'Vudalimab', 'Nivolumab']
+        
+        if 'r' not in Constants.app_version:
+            # debug builds can see all proteins (including core)
+            core_proteins.clear()
+        else:
+            # release builds can only see user proteins and "mAB"
+            proteins.append("mAB")
+        
+        
         for i in ingredients:
             if i is None or i.name.casefold() == "none":
                 continue  # skip "none"
-            if i.type == "Protein" and i.is_user:
+
+            if (
+                i.type == "Protein" and 
+                i.is_user and 
+                i.name not in core_proteins
+            ):
                 proteins.append(i.name)  # only show user proteins, hide core
                 # NOTE: If multiple proteins of the same name have conflicting
                 # class types, this lookup table will contain the same protein

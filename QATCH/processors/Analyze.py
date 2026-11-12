@@ -36,7 +36,9 @@ from QATCH.core.constants import Constants
 from QATCH.models.ModelData import ModelData
 from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,
-    DropEffectCorrection,
+    DropEffectCorrectionV1,
+    DropEffectCorrectionV2,
+    DropEffectCorrectionV3,
 )
 from QATCH.QModel.models.qmodel_v7.v7_yolo import QModelV7
 from QATCH.QModel.models.static_v4_fusion.v4_fusion import QModelV4Fusion
@@ -964,6 +966,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
         self.gridLayout.addWidget(self.difference_factor_optimizer_checkbox, 3, 5, 1, 3)
 
+        drop_effect_layout = QtWidgets.QHBoxLayout()
         self.drop_effect_cancelation_checkbox = QtWidgets.QCheckBox(
             "Drop effect correction"
         )
@@ -971,7 +974,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.drop_effect_cancelation_checkbox.clicked.connect(
             self.use_drop_effect_cancelation
         )
-        self.gridLayout.addWidget(self.drop_effect_cancelation_checkbox, 4, 5, 1, 3)
+        drop_effect_layout.addWidget(self.drop_effect_cancelation_checkbox)
+        self.drop_effect_cancelation_combobox = QtWidgets.QComboBox()
+        self.drop_effect_cancelation_combobox.addItems(["1", "2", "3"])
+        self.drop_effect_cancelation_combobox.currentIndexChanged.connect(
+            self.use_drop_effect_cancelation
+        )
+        drop_effect_layout.addWidget(self.drop_effect_cancelation_combobox)
+        self.gridLayout.addLayout(drop_effect_layout, 4, 5, 1, 3)
 
         self.partial_fills_checkbox = QtWidgets.QCheckBox("Enable Partial-Fills")
         self.partial_fills_checkbox.setChecked(False)
@@ -7190,12 +7200,28 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     f"Performing drop effect cancelation with difference factor {diff_factor}.",
                 )
 
-                dec = DropEffectCorrection(
-                    file_path=file_path,
-                    file_buffer=file_buffer,
-                    initial_diff_factor=diff_factor,
-                    bounds=poi_vals,
-                )
+                drop_effect_correction_version = self.drop_effect_cancelation_combobox.currentIndex() + 1
+                if drop_effect_correction_version == 1:
+                    dec = DropEffectCorrectionV1(
+                        file_path=file_path,
+                        file_buffer=file_buffer,
+                        initial_diff_factor=diff_factor,
+                        bounds=poi_vals,
+                    )
+                if drop_effect_correction_version == 2:
+                    dec = DropEffectCorrectionV2(
+                        file_path=file_path,
+                        file_buffer=file_buffer,
+                        initial_diff_factor=diff_factor,
+                        bounds=poi_vals,
+                    )
+                if drop_effect_correction_version == 3:
+                    dec = DropEffectCorrectionV3(
+                        file_path=file_path,
+                        file_buffer=file_buffer,
+                        initial_diff_factor=diff_factor,
+                        bounds=poi_vals,
+                    )
                 corrected_data = dec.correct_drop_effects(
                     save_corrections=True if context == "worker" else False
                 )
