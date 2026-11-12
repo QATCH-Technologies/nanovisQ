@@ -1418,7 +1418,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
             #                                buttons=QtWidgets.QMessageBox.Ok)
 
         Log.info("Install finished.")
-        os._exit(0)
+        
+        if elevated_install_settings is not None:
+            os._exit(0)
 
     def update_progress(self, label_str: str = None, progress_pct: int = None):
 

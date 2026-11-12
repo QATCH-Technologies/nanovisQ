@@ -36,6 +36,7 @@ class UserConstants:
     # DevMode will remain active across multiple SW versions, without requiring re-activation
     DEV_PERSIST_VER = True
     REQ_ADMIN_UPDATES = False  # set dynamically as well
+    UAC_USER_ACCOUNTS = False  # set dynamically as well
 
     try:
         if os.path.isfile(Constants.user_constants_path):
@@ -44,6 +45,7 @@ class UserConstants:
             uc_settings = {}
             exec(uc_file_contents, uc_settings)
             REQ_ADMIN_UPDATES = uc_settings['REQ_ADMIN_UPDATES']
+            UAC_USER_ACCOUNTS = uc_settings['UAC_USER_ACCOUNTS']
     except:
         Log.e("Failed to import user constants file. Using defaults.")
 
@@ -180,6 +182,12 @@ class UserProfilesManager(QtWidgets.QWidget):
         self.reqAdminUpd_chkbox.stateChanged.connect(
             self.toggleReqAdminUpdates)
 
+        self.uacUserAccounts_chkbox = QtWidgets.QCheckBox(
+            "Use Windows UAC for User Accounts")
+        self.uacUserAccounts_chkbox.setChecked(UserConstants.REQ_ADMIN_UPDATES)
+        self.uacUserAccounts_chkbox.stateChanged.connect(
+            self.toggleUacUserAccounts)
+        
         self.sortNow.pressed.connect(self.sort_user_table)
         self.sort_user_table()  # sort once now at load
 
@@ -188,6 +196,7 @@ class UserProfilesManager(QtWidgets.QWidget):
         self.layout_r.addLayout(self.sorting)
         self.layout_r.addLayout(self.developerLayout)
         self.layout_r.addWidget(self.reqAdminUpd_chkbox)
+        self.layout_r.addWidget(self.uacUserAccounts_chkbox)
 
         # Add widgets to layout
         self.layout.addLayout(self.buttons)
@@ -258,10 +267,26 @@ class UserProfilesManager(QtWidgets.QWidget):
                     Constants.user_constants_path)[0], exist_ok=True)
             with open(Constants.user_constants_path, 'w') as uc:
                 UserConstants.REQ_ADMIN_UPDATES = self.reqAdminUpd_chkbox.isChecked()
-                uc_state = str(UserConstants.REQ_ADMIN_UPDATES)
-                uc.write(f"REQ_ADMIN_UPDATES = {uc_state}")
+                req_state = str(UserConstants.REQ_ADMIN_UPDATES)
+                uac_state = str(UserConstants.UAC_USER_ACCOUNTS)
+                uc.write(f"REQ_ADMIN_UPDATES = {req_state}\n")
+                uc.write(f"UAC_USER_ACCOUNTS = {uac_state}\n")
         except:
             Log.e("Failed to save user constants settings.")
+
+    def toggleUacUserAccounts(self, arg):
+            try:
+                if not os.path.isfile(Constants.user_constants_path):
+                    os.makedirs(os.path.split(
+                        Constants.user_constants_path)[0], exist_ok=True)
+                with open(Constants.user_constants_path, 'w') as uc:
+                    UserConstants.UAC_USER_ACCOUNTS = self.uacUserAccounts_chkbox.isChecked()
+                    req_state = str(UserConstants.REQ_ADMIN_UPDATES)
+                    uac_state = str(UserConstants.UAC_USER_ACCOUNTS)
+                    uc.write(f"REQ_ADMIN_UPDATES = {req_state}\n")
+                    uc.write(f"UAC_USER_ACCOUNTS = {uac_state}\n")
+            except:
+                Log.e("Failed to save user constants settings.")
 
     def add_user(self):
         action = "Add User"
@@ -906,7 +931,7 @@ class UserProfiles:
         else:
             return [None, None, None, None, None, None]
 
-    def create_new_user(role):
+    def create_new_user(role, uac_control = False):
         Log.w(f"Prompting to create new {role.name.lower()} user...")
         title = f"Create {role.name.title()} User"
 
@@ -918,16 +943,17 @@ class UserProfiles:
 
         ok = False
         name = QtCore.QDir().home().dirName()
-        while not ok:
-            name, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                      "Full name:", QtWidgets.QLineEdit.Normal,
-                                                      name)
-            if not ok:
-                return
-            name = name.title()
-            if name.find(" ") < 0 or len(name) < 4:
-                Log.w("Please enter your First and Last name.")
-                ok = False
+        if not uac_control:
+            while not ok:
+                name, ok = QtWidgets.QInputDialog.getText(None, title,
+                                                        "Full name:", QtWidgets.QLineEdit.Normal,
+                                                        name)
+                if not ok:
+                    return
+                name = name.title()
+                if name.find(" ") < 0 or len(name) < 4:
+                    Log.w("Please enter your First and Last name.")
+                    ok = False
 
         ok = False
         initials = "".join([c for c in name if c.isupper()])

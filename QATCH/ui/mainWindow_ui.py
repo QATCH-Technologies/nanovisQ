@@ -441,6 +441,23 @@ class Ui_Main(object):
         # self.splitter.replaceWidget(0, self.userview)
         self._force_splitter_mode_set = True
         if UserProfiles.count() > 0:
+            # re-import each time to update settings from file
+            from QATCH.common.userProfiles import UserConstants
+
+            if UserConstants.UAC_USER_ACCOUNTS:
+                user_files, user_info = UserProfiles.get_all_user_info()
+                uac_name = QtCore.QDir().home().dirName()
+                user_exists = False
+                for ui in user_info:
+                    if uac_name == ui[0]:
+                        user_exists = True
+                        break
+                if not user_exists:
+                    QtCore.QTimer.singleShot(
+                        1000,
+                        lambda: UserProfiles.create_new_user(UserRoles.OPERATE, uac_control=True)
+                    )
+
             self.setNoUserMode(self.mode_mode)
         else:
             # TODO: implement user sign in widget (show accordingly)
