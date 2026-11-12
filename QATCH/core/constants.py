@@ -116,8 +116,8 @@ class Constants:
     - Higher: Triggers "dry" earlier, even if the signal is still slightly trending.
     - Lower: Requires a near-perfectly flat line; ensures drying is 100% complete.
     """
-    DRYING_FLAT_SLOPE_EPS_FREQUENCY = 2.7e-2
-    DRYING_FLAT_SLOPE_EPS_DISSIPATION = 5e-10
+    DRYING_FLAT_SLOPE_EPS_FREQUENCY = 2.9e-2
+    DRYING_FLAT_SLOPE_EPS_DISSIPATION = 6e-10
 
     ###########################
     # FW FILTERING parameters #
