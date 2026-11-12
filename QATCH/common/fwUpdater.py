@@ -77,7 +77,12 @@ class HW_TYPE(IntEnum):
 ###############################################################################
 # Handles checking and updating an QATCH device firmware on Teensy 3.6 boards
 ###############################################################################
-class FW_Updater:
+class FW_Updater(QtCore.QObject):
+
+    # Emitted after each checkUpdate() call: (port, FW_UPDATE int value).
+    # Listeners use this to update the firmware status icon without waiting
+    # for a blocking popup.
+    fw_status_changed = QtCore.pyqtSignal(str, int)
 
     _check = True
     _serial = serial.Serial()
@@ -91,10 +96,26 @@ class FW_Updater:
     # Errors are suppressed in error popup but collected for Device Info.
     transient_err_cnt = 0
 
+    def __init__(self) -> None:
+        super().__init__()
+
+    ###########################################################################
+    # Show the update dialog on demand (called when the user clicks the icon).
+    ###########################################################################
+    def request_update_dialog(self, parent) -> bool:
+        """Re-run the firmware check and show the update dialog for all ports.
+
+        Resets the internal check flag so the version query runs again, then
+        delegates to :meth:`run` with the popup enabled. Called when the user
+        explicitly clicks the firmware-status icon.
+        """
+        self.checkAgain()
+        return self.run(parent, askPermission=True, suppress_optional_popup=False)
+
     ###########################################################################
     # Check for firmware update and (if user agrees) push update to the device
     ###########################################################################
-    def run(self, parent, askPermission=True):
+    def run(self, parent, askPermission=True, suppress_optional_popup=False):
         """
         :param port: Serial port name :type port: str.
         """
@@ -123,6 +144,23 @@ class FW_Updater:
                     return FW_UPDATE.RESULT_FAILED
 
                 result, version, target, written, abort = self.checkUpdate(parent, port)
+
+                # Notify UI icon of the current firmware state for this port.
+                if result != FW_UPDATE.RESULT_FAILED:
+                    self.fw_status_changed.emit(str(port), int(result))
+
+                # Skip the optional-update dialog when the caller requested it.
+                # RESULT_REQUIRED is never suppressed - it must block.
+                if suppress_optional_popup and result in (
+                    FW_UPDATE.RESULT_OUTDATED,
+                    FW_UPDATE.RESULT_UNKNOWN,
+                ):
+                    self.close()
+                    if written:
+                        parent._refresh_ports()
+                    if abort:
+                        return False
+                    continue
 
                 if not result == FW_UPDATE.RESULT_FAILED:
                     if not result == FW_UPDATE.RESULT_UPTODATE:
@@ -211,6 +249,15 @@ class FW_Updater:
                             self.progressBar.setFixedSize(
                                 int(self.progressBar.width() * 1.5),
                                 int(self.progressBar.height() * 1.1),
+                            )
+
+                            # Re-center over the parent window's current
+                            # position so the dialog appears on whichever
+                            # display the app is currently on, rather than
+                            # wherever it last was.
+                            self.progressBar.move(
+                                parent.frameGeometry().center()
+                                - self.progressBar.rect().center()
                             )
 
                             self.upd_thread = QtCore.QThread()

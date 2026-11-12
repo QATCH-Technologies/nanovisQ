@@ -441,6 +441,23 @@ class Ui_Main(object):
         # self.splitter.replaceWidget(0, self.userview)
         self._force_splitter_mode_set = True
         if UserProfiles.count() > 0:
+            # re-import each time to update settings from file
+            from QATCH.common.userProfiles import UserConstants
+
+            if UserConstants.UAC_USER_ACCOUNTS:
+                user_files, user_info = UserProfiles.get_all_user_info()
+                uac_name = QtCore.QDir().home().dirName()
+                user_exists = False
+                for ui in user_info:
+                    if uac_name == ui[0]:
+                        user_exists = True
+                        break
+                if not user_exists:
+                    QtCore.QTimer.singleShot(
+                        1000,
+                        lambda: UserProfiles.create_new_user(UserRoles.OPERATE, uac_control=True)
+                    )
+
             self.setNoUserMode(self.mode_mode)
         else:
             # TODO: implement user sign in widget (show accordingly)
@@ -511,14 +528,25 @@ class Ui_Main(object):
                     list(creds.keys()) == ["username", "password", "ignore"]
                     and not creds["ignore"]
                 ):
-                    Log.w("Auto-login sending stored user credentials...")
-                    from time import sleep
+                    Log.w("Auto-login queued send of stored user credentials...")
 
-                    sleep(1)  # wait for app launch
-                    pyautogui.typewrite(creds["username"])
-                    pyautogui.press("enter")
-                    pyautogui.typewrite(creds["password"])
-                    pyautogui.press("enter")
+                    def auto_signin_as():
+                        if (
+                            self.parent.LoginWin.ui5.user_initials.hasFocus() and
+                            self.parent.LoginWin.ui5.user_initials.isVisible()
+                        ):    
+                            Log.w("Auto-login sending stored user credentials...")
+                            pyautogui.typewrite(creds["username"])
+                            pyautogui.press("enter")
+                            pyautogui.typewrite(creds["password"])
+                            pyautogui.press("enter")
+                        else:
+                            QtCore.QTimer.singleShot(100, auto_signin_as)        
+
+                    QtCore.QTimer.singleShot(100, auto_signin_as)
+                else:
+                    Log.w("Auto-login stored user credentials are missing...")
+
         except (ModuleNotFoundError, ImportError) as e:
             Log.e(f"Auto-login error: {e.msg} (missing dependency)")
         except Exception as e:
@@ -884,9 +912,7 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            check_result = self.parent.ControlsWin.user_has_permission(
-                UserRoles.ANY
-            )
+            check_result = self.parent.ControlsWin.user_has_permission(UserRoles.ANY)
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
@@ -963,9 +989,7 @@ class Ui_Main(object):
             or self.splitter.widget(0) == self.donnan_ui
             or self.splitter.widget(0) == self.injection_ui
         ):
-            check_result = self.parent.ControlsWin.user_has_permission(
-                UserRoles.ANY
-            )
+            check_result = self.parent.ControlsWin.user_has_permission(UserRoles.ANY)
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
