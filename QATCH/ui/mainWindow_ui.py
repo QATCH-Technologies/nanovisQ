@@ -448,11 +448,20 @@ class Ui_Main(object):
                 user_files, user_info = UserProfiles.get_all_user_info()
                 uac_name = QtCore.QDir().home().dirName()
                 user_exists = False
+                user_initials = None
                 for ui in user_info:
                     if uac_name == ui[0]:
                         user_exists = True
+                        user_initials = ui[1]
                         break
-                if not user_exists:
+                if user_exists:
+                    # enter initials in sign in mode
+                    self.parent.LoginWin.ui5.user_initials.setText(user_initials)
+                    QtCore.QTimer.singleShot(
+                        1000, self.parent.LoginWin.ui5.user_password.setFocus
+                    )
+                else:
+                    # prompt creation of new UAC user profile
                     QtCore.QTimer.singleShot(
                         1000,
                         lambda: UserProfiles.create_new_user(UserRoles.OPERATE, uac_control=True)
