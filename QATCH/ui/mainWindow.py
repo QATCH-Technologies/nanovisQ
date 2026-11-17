@@ -588,7 +588,9 @@ class ControlsWindow(QtWidgets.QMainWindow):
         else:
             Log.w("Working directory not changed.")
 
-    def user_has_permission(self, action_role: UserRoles = UserRoles.ANY, silent_check = False) -> bool:
+    def user_has_permission(
+        self, action_role: UserRoles = UserRoles.ANY, silent_check=False
+    ) -> bool:
         action_role_name = "ANY" if action_role.name == "NONE" else action_role.name
         check_result = UserProfiles().check(self.userrole, action_role)
         if check_result is None:  # user check required, but no user signed in
@@ -1246,17 +1248,20 @@ class Rename_Output_Files(QtCore.QObject):
                 )
 
                 try:
-                    # Attempt to rename temporary files to the new run path.
-                    os.rename(old_path, new_run_path)
+                    # Attempt to rename temporary files to the new run path,
+                    # but copy first so captures can be saved across volumes
+                    copied_path = shutil.copy(old_path, new_run_path)
+                    if not os.path.isfile(copied_path):
+                        raise OSError(f"Copied file was not found: {copied_path}")
+                    copy_file = copied_path
+                    os.remove(old_path)  # delete only on copy success
                     Log.i(
                         ' Renamed "{}" ->\n         "{}"'.format(old_path, new_run_path)
                     )
-                    copy_file = new_run_path
-                except Exception:
-                    # Log and raise any errors terminating early if rename fails.
+                except OSError as e:
                     Log.e(
-                        ' ERROR: Failed to rename "{}" to "{}"!!!'.format(
-                            old_path, new_run_path
+                        ' ERROR: Failed to copy "{}" to "{}": {}'.format(
+                            old_path, new_run_path, e
                         )
                     )
                     self.finished.connect(self.indicate_error)
@@ -1329,7 +1334,8 @@ class Rename_Output_Files(QtCore.QObject):
                                 crc_file, str(hex(zf.getinfo(archive_file).CRC))
                             )
 
-                    os.remove(copy_file)
+                    if copy_file != old_path:
+                        os.remove(copy_file)
 
                 if ask_for_info:
                     ask_for_info = False
@@ -5862,11 +5868,16 @@ class MainWindow(QtWidgets.QMainWindow):
             5. Triggers the visual status label for
               drop detection.
         """
-        # Cache the slices to prevent redundant array operations per tick
-        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)
-        slice_resonance_frequency = self.worker.get_d1_buffer(i)
-        slice_time_dissipation = self.worker.get_t2_buffer(i)
-        slice_dissipation = self.worker.get_d2_buffer(i)
+        # Cache the slices to prevent redundant array operations per tick.
+        # Truncated to the display limit 'n' - a no-op today since 'n'
+        # (Constants._NUM_DISPLAY_POINTS) equals the ring buffer's own fixed
+        # capacity, but keeps this method honoring its documented contract
+        # and matches the [:n] idiom used elsewhere in this file for the
+        # same constant (see _update_pre_drop_label).
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[:n]
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)[:n]
+        slice_time_dissipation = self.worker.get_t2_buffer(i)[:n]
+        slice_dissipation = self.worker.get_d2_buffer(i)[:n]
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 
@@ -7830,6 +7841,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     Log.d(
                         "Looking for updated bundled resources to unpack in local working directory..."
                     )
+                    # This check will block files where `working_dir == bundled_dir`
+                    # and these checks that files will only update ONCE per bundle,
+                    # as both files will exist and the `st_size`s will be the same.
                     if (
                         os.path.exists(working_file_compare) == False
                         or os.stat(working_file_compare).st_size
@@ -7857,7 +7871,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                     Log.d(
                                         f"Extracting {file}... to {working_resource_path}"
                                     )
-                                    os.rename(
+                                    # Copy file, leaving original untouched for protected bundled directories (All users)
+                                    # Use `copy2` to update filesystem metadata (Modified time) for update checks to work
+                                    # as intended; otherwise, it will get stuck in a circular loop of continuous updates.
+                                    shutil.copy2(
                                         bundled_resource_path_file,
                                         working_resource_path_file,
                                     )

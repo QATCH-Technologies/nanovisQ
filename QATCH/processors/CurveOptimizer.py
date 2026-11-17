@@ -894,6 +894,9 @@ class DropEffectCorrection(CurveOptimizer):
 
     TAG = "[DropEffectCorrection]"
 
+
+class DropEffectCorrectionV1(DropEffectCorrection):
+
     def __init__(
         self,
         file_path: str,
@@ -1774,6 +1777,1478 @@ class DropEffectCorrection(CurveOptimizer):
             color="dimgray",
             fontsize=8,
         )
+
+        if save:
+            # export figure to pdf
+            export_path = self.loaded_datapath
+            export_path = export_path.replace(".csv", Constants.export_file_format)
+            export_path = export_path.replace("_fundamental", "")
+            export_path = export_path.replace("_3rd", "")
+            export_path = export_path.replace(".csv", "_0.pdf")
+            Log.i(self.TAG, f"Exporting Figure to:\n\t{export_path}")
+            fig.savefig(export_path)
+
+        if show:
+            fig.show()
+
+        # Zoom out to the entire view for shown plot
+        # axs[0].set_xlim(0, relative_time[-1])
+        # axs[0].set_ylim(min(original_diss), max(original_diss))
+        # axs[1].set_xlim(0, relative_time[-1])
+        # axs[1].set_ylim(min(original_rf), max(original_rf))
+
+
+class DropEffectCorrectionV2(DropEffectCorrection):
+    """
+    Class to mitigate drop effects in dissipation and resonance frequency curves
+    by detecting and correcting anomalies independently.
+
+    Attributes:
+        file_buffer: Input buffer containing the dataset.
+        initial_diff_factor (float): Initial difference factor for curve computation.
+
+    Methods:
+        correct_drop_effects(): Detects and corrects drop effects in both curves independently.
+    """
+
+    def __init__(
+        self,
+        file_path: str,
+        file_buffer,
+        initial_diff_factor: float = Constants.default_diff_factor,
+        bounds: list = [],
+    ):
+        """
+        Initializes the DropEffectCorrection with the provided file buffer and difference factor.
+
+        Args:
+            file_path (str): The path to the loaded data file. Same folder used for saving figures.
+            file_buffer: The data buffer containing dissipation data.
+            initial_diff_factor (float): The initial factor for calculating the difference curve.
+            bounds (list, optional): POI values from QModel or user-input.
+
+        Raises:
+            ValueError: If required columns are missing or bounds are not properly defined.
+        """
+        super().__init__(
+            file_path=file_path,
+            file_buffer=file_buffer,
+            initial_diff_factor=initial_diff_factor,
+            bounds=bounds,
+        )
+
+        self.loaded_datapath = file_path
+        self.bounds = bounds
+
+        if "Dissipation" not in self._dataframe.columns:
+            Log.e(self.TAG, "The dataframe does not contain a 'Dissipation' column.")
+            raise ValueError("The dataframe does not contain a 'Dissipation' column.")
+
+        if "Resonance_Frequency" not in self._dataframe.columns:
+            Log.e(self.TAG, "The dataframe does not contain a 'Resonance_Frequency' column.")
+            raise ValueError("The dataframe does not contain a 'Resonance_Frequency' column.")
+
+        if not ("index" in self._left_bound and "index" in self._right_bound):
+            Log.e(self.TAG, "Bounds must be properly defined with 'index' keys.")
+            raise ValueError("Bounds must be properly defined with 'index' keys.")
+
+        if self._left_bound["index"] < 0 or self._right_bound["index"] >= len(self._dataframe):
+            Log.e(
+                self.TAG,
+                f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}.",
+            )
+            raise ValueError(
+                f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}."
+            )
+
+        if "Difference" not in self._dataframe.columns:
+            Log.d(
+                self.TAG,
+                f"'Difference' column not found. Computing difference curve with factor {initial_diff_factor}.",
+            )
+            self._generate_curve(initial_diff_factor)
+
+    def _detect_drop_effects_for_column(
+        self, col_name: str, diff_offset: int = 2, starting_threshold_factor: float = 2
+    ) -> tuple[list, list]:
+        """
+        Detects drop effects for a given column within the defined bounds by computing
+        differences (with an offset) and flagging those points with a difference that
+        deviates strongly from a robust baseline.
+
+        Args:
+            col_name (str): The column name to process (e.g., "Dissipation" or "Resonance_Frequency").
+            diff_offset (int): The number of points to offset when computing differences.
+            starting_threshold_factor (float): Sensitivity factor to begin outlier detection at.
+
+        Returns:
+            list: list of indices where drop effects need to be corrected.
+        """
+        left_idx = self._left_bound["index"]
+        right_idx = self._right_bound["index"]
+
+        if right_idx - left_idx < diff_offset + 1:
+            Log.e(
+                self.TAG,
+                f"Not enough points in the specified region to compute differences with offset {diff_offset}.",
+            )
+            raise ValueError("Not enough points in the specified region to compute differences.")
+
+        region_slice = slice(left_idx, right_idx + 1)
+        values = self._dataframe[col_name].values[region_slice]
+        values = savgol_filter(
+            values, window_length=self._safe_savgol_win(len(values), 11, 3), polyorder=3
+        )
+
+        # Compute differences with the specified offset to smooth out noise.
+        local_indices = np.arange(diff_offset, len(values))
+        diffs = values[local_indices] - values[local_indices - diff_offset]
+
+        first_region_found = []
+        contiguous_region_found = False
+        last_region_size = 0
+
+        while True:
+            # Compute robust statistics: median and MAD.
+            median_diff = np.median(diffs)
+            mad_diff = np.median(np.abs(diffs - median_diff))
+            # Use the MAD if positive; otherwise fall back to standard deviation.
+            threshold = starting_threshold_factor * (mad_diff if mad_diff > 0 else np.std(diffs))
+
+            drop_effects = []
+            for local_idx in local_indices:
+                current_diff = values[local_idx] - values[local_idx - diff_offset]
+
+                # Flag points with a difference that deviates too much from the median.
+                if np.abs(current_diff - median_diff) > threshold:
+                    drop_effects.append(local_idx)
+
+            current_streak = []
+            for idx in drop_effects:
+                if current_streak and idx == current_streak[-1] + 1:
+                    current_streak.append(idx)
+                else:
+                    current_streak = [idx]
+
+                # Check if we have reached at least 3 contiguous points.
+                if len(current_streak) > max(3, last_region_size):
+                    if not first_region_found:
+                        first_region_found = current_streak
+                    contiguous_region_found = True
+                    break
+
+            if contiguous_region_found:
+                if last_region_size == len(current_streak) or col_name == "Resonance_Frequency":
+                    break  # wait for stable result; but skip this delay for rf data
+            last_region_size = len(current_streak)
+            starting_threshold_factor -= 1
+            if starting_threshold_factor <= 0:
+                Log.d(self.TAG, "Reverting to initial region. Reached min threshold factor.")
+                current_streak = first_region_found
+                break
+        if diff_offset in current_streak:
+            Log.d(self.TAG, "Reverting to initial region. Returned min diff offset.")
+            current_streak = first_region_found
+
+        # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
+        if not current_streak:
+            Log.d(self.TAG, f"No drop effects detected in {col_name}.")
+            return ([], values, 0)
+        min_count = len(current_streak)
+        min_drop = min(current_streak)
+        sign = 1 if col_name == "Dissipation" else -1
+        if sign == 1:
+            argidx = np.argmax(values[:min_drop])
+        else:
+            argidx = np.argmin(values[:min_drop])
+        base_slope = (values[argidx] - values[0]) / min_drop
+        window_size = 3
+
+        # Floor for the leftward scan.
+        ONSET_FLOOR = 4 + GUARD_SAMPLES + 5
+        while True:
+            min_drop = min_drop - 1
+            current_streak.append(min_drop)
+            min_drop = min_drop - 1
+            # Pretend this step never happened if it fails to find an acceptable edge before the left bound.
+            if min_drop <= ONSET_FLOOR:
+                Log.d(
+                    self.TAG,
+                    "Drop effect using original bounds, scanning left reached the "
+                    "start-of-fill floor without finding an acceptable edge.",
+                )
+                current_streak = current_streak[:min_count]
+                break
+            # Check if this index's value contains an acceptable edge.
+            if sign == 1:
+                if values[min_drop] - values[min_drop - window_size] > base_slope:
+                    break
+            else:
+                if values[min_drop] - values[min_drop - window_size] < base_slope:
+                    break
+            # If unacceptable, add it to the list for correction.
+            current_streak.append(min_drop)
+
+        # Extend the drop region rightward until the raw signal reconverges with the
+        # smooth signal.
+        NUM_PTS = diff_offset
+        max_drop = max(current_streak)
+        if max_drop + 1 < len(values) - 1:
+            # Estimate pre-drop variability from the smooth signal before the anomaly.
+            pre_end = min(current_streak)
+            pre_start = max(0, diff_offset)
+            pre_slice = (
+                values[pre_start:pre_end] if pre_end > pre_start else values[: max(1, pre_end)]
+            )
+            pre_std = np.std(pre_slice) if len(pre_slice) > 1 else np.std(values) * 0.05
+            tolerance = max(2.0 * pre_std, 1e-12)  # guard against near-zero std
+
+            raw_full = self._dataframe[col_name].values[region_slice]
+            recovery_count = 0
+            total_dist = 0
+            max_total_dist = max(35, 2 * min_count)
+            while True:
+                total_dist += 1
+                if max_drop + 1 >= len(values) - 1:
+                    break
+                max_drop += 1
+                if abs(raw_full[max_drop] - values[max_drop]) < tolerance:
+                    recovery_count += 1
+                else:
+                    recovery_count = 0
+                if recovery_count > NUM_PTS or total_dist > max_total_dist:
+                    break
+                current_streak.append(max_drop)
+
+        Log.d(
+            self.TAG,
+            f"Detected drop effects in {col_name} at indices {[int(str(de)) for de in current_streak]}",
+        )
+
+        # Map back to the full dataframe index.
+        global_idx = [local_idx + left_idx for local_idx in current_streak]
+        # min_count is the initial streak size BEFORE any left/right expansion.
+        # Callers use it so the skip guard threshold is independent of how far
+        # the region was subsequently expanded.
+        return (global_idx, values, min_count)
+
+    def _middle_slice_list(self, whole: list, fraction: float = 0.5) -> list:
+        n = len(whole)
+        count = int(n * fraction)
+        start = (n - count) // 2
+        end = start + count
+        middle = whole[start:end]
+        return middle
+
+    def _safe_savgol_win(self, n: int, preferred: int, poly: int) -> int:
+        """
+        Choose robust window lengths (odd, <= series length, > polyorder)
+        """
+        # best odd <= n
+        best = n if n % 2 == 1 else n - 1
+        w = min(preferred, max(3, best))
+        min_odd = (poly + 2) if ((poly + 2) % 2 == 1) else (poly + 3)
+        if w < min_odd:
+            w = min(min_odd, best)
+        return min(n, max(w, poly + 1))  # ensure > poly and < n
+
+    def correct_drop_effects(
+        self,
+        baseline_diss: list = None,
+        baseline_rf: list = None,
+        show_corrections: bool = False,  # Default to True for debug ONLY
+        save_corrections: bool = False,
+        export_corrections_csv: bool = False,
+    ) -> tuple:
+        """
+        Corrects drop effects in dissipation and resonance frequency data.
+
+        This method detects sudden drop effects in the 'Dissipation' column of the internal
+        dataframe and applies corresponding offset corrections to both 'Dissipation' and
+        'Resonance_Frequency' columns. A drop effect is defined as a sudden decrease in the value
+        compared to the previous (good) data point. The correction adjusts the subsequent segment
+        of data so that the drop point matches the preceding value. Optionally, the method can
+        plot the original and corrected data for visualization.
+
+        Args:
+            baseline_diss (float, optional): The baseline dissipation region to use for correction.
+                If not provided, the baseline is determined by taking the standard deviation of the
+                dissipation values prior to index `self._left_bound['index']` from the original data.
+                Defaults to None.
+            baseline_rf (float, optional): The baseline resonance region to use for correction.
+                If not provided, the baseline is determined by taking the standard deviation of the
+                resonance values prior to index `self._left_bound['index']` from the original data.
+                Defaults to None.
+            show_corrections (bool, optional): If True, the method will generate a plot and show it
+                 to visualize the corrections applied. Defaults to False.
+            save_corrections (bool, optional): If True, the method will generate a plot and save it
+                 to visualize the corrections applied. Defaults to False. NOTE: If this argument and
+                 `show_corrections` are True, the same plot generation will be used for both actions.
+            export_corrections_csv (bool, optional): If True, the method will export the corrected
+                 dataframes for dissipation and rf to a CSV file with a file name of the format:
+                 `{RUNNAME}_corrected.csv` to the working directory. Defaults to False.
+
+        Returns:
+            tuple: A tuple containing two numpy arrays:
+                - The first array contains the corrected dissipation values.
+                - The second array contains the corrected resonance frequency values.
+
+        Example:
+            >>> corrected_diss, corrected_rf = instance.correct_drop_effects(show_corrections=True)
+        """
+        # Save original data for plotting.
+        relative_time = self._dataframe["Relative_time"].values.copy()
+        original_diss = self._dataframe["Dissipation"].values.copy()
+        original_rf = self._dataframe["Resonance_Frequency"].values.copy()
+
+        # Determine baselines if not provided.
+        if baseline_diss is None:
+            baseline_diss = original_diss[: self._left_bound["index"]]
+        base_diss_middle = self._middle_slice_list(baseline_diss)
+        # base_diss_avg = np.average(base_diss_middle)
+        base_diss_std = np.std(base_diss_middle)
+        if baseline_rf is None:
+            baseline_rf = original_rf[: self._left_bound["index"]]
+        base_rf_middle = self._middle_slice_list(baseline_rf)
+        # base_rf_avg = np.average(base_rf_middle)
+        base_rf_std = np.std(base_rf_middle)
+
+        # Make working copies.
+        corrected_diss = original_diss.copy()
+        corrected_rf = original_rf.copy()
+
+        # Detect drop effects independently for each curve.
+        drop_effects_diss, smooth_diss, init_count_diss = self._detect_drop_effects_for_column(
+            "Dissipation", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
+        )
+        drop_effects_rf, smooth_rf, init_count_rf = self._detect_drop_effects_for_column(
+            "Resonance_Frequency", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
+        )
+        drop_effects = list(set(drop_effects_diss + drop_effects_rf))
+
+        # Sort detected regions by ascending time index.
+        drop_effects_diss.sort()
+        drop_effects_rf.sort()
+        drop_effects.sort()
+
+        # List to store the continuous regions of correction.
+        # May be two discreet regions if diss and rf indicate differently.
+        contiguous_regions = []
+
+        # List to store the starting indices of corrections.
+        correction_indices = []
+
+        # If multiple regions found (separate for diss and rf) correct both.
+        for idx in drop_effects:
+            if contiguous_regions and idx - 1 in contiguous_regions[-1]:
+                contiguous_regions[-1].append(idx)
+            else:
+                contiguous_regions.append([idx])
+
+        # Check if two zones got merged into one; where one would get skipped but not the other
+        if len(contiguous_regions) == 1:
+            region = contiguous_regions[0]
+            idx = region[0]
+            if idx - self._left_bound["index"] < len(region) // 2:
+                Log.d(self.TAG, "Trimming the left region to prevent it from being skipped.")
+                start_at = max(drop_effects_diss[0], drop_effects_rf[0])
+                end_at = max(drop_effects_diss[-1], drop_effects_rf[-1])
+                contiguous_regions = [np.arange(start_at, end_at + 1, 1, dtype=int).tolist()]
+                # if len(drop_effects_diss) < len(drop_effects_rf):
+                #     contiguous_regions = [drop_effects_diss]
+                # else:
+                #     contiguous_regions = [drop_effects_rf]
+        else:
+            # Merge nearby correction regions when the gap between them is this small.
+            merged_regions = []
+            for region in contiguous_regions:
+                if not merged_regions:
+                    merged_regions.append(region)
+                    continue
+
+                prev_region = merged_regions[-1]
+                gap = region[0] - prev_region[-1] - 1
+                allowed_gap = max(len(prev_region), len(region)) + REGION_GAP_MERGE_TOLERANCE
+                if gap <= allowed_gap:
+                    merged_region = list(range(prev_region[0], region[-1] + 1))
+                    merged_regions[-1] = merged_region
+                    Log.d(
+                        self.TAG,
+                        f"Merged nearby correction regions separated by {gap} sample(s): "
+                        f"[{prev_region[0]}, {prev_region[-1]}] and [{region[0]}, {region[-1]}].",
+                    )
+                else:
+                    merged_regions.append(region)
+            contiguous_regions = merged_regions
+
+        init_count = max(
+            1,
+            min(
+                init_count_diss if init_count_diss else len(drop_effects_diss),
+                init_count_rf if init_count_rf else len(drop_effects_rf),
+            ),
+        )
+
+        # Expand the correction region(s) by the given timestep offsets
+        for i, region in enumerate(contiguous_regions):
+            region_lo = region[0] - REGION_EXPAND_LEFT_BY
+            region_hi = region[-1] + REGION_EXPAND_RIGHT_BY
+
+            if region_lo - self._left_bound["index"] < init_count // 2:
+                Log.d(
+                    self.TAG, 
+                    "No left expansion of region to prevent it being skipped."
+                )
+                region_lo = region[0]
+
+            if self._right_bound["index"] - region_hi < init_count // 2:
+                Log.d(
+                    self.TAG,
+                    "No right expansion of region to prevent it being skipped.",
+                )
+                region_hi = region[-1]
+
+            contiguous_regions[i] = list(range(region_lo, region_hi + 1))
+
+        Log.d(
+            self.TAG,
+            f"Found {len(contiguous_regions)} contiguous drop effect region(s) to correct.",
+        )
+        Log.d(
+            self.TAG,
+            f"Raw drop effect regions: {[[int(i) for i in np.array(idx, dtype=int)] for idx in contiguous_regions]}",
+        )
+
+        if len(contiguous_regions) > 1:
+            Log.d(
+                self.TAG,
+                "Processing regions in reverse order. Starting with the last region, working left.",
+            )
+
+            # Start with right-most, working left, to avoid baseline shift offsets.
+            contiguous_regions.reverse()
+
+        smooth_diss_full = savgol_filter(
+            original_diss,
+            window_length=self._safe_savgol_win(len(original_diss), 11, 3),
+            polyorder=3,
+        )
+        super_smooth_diss_full = savgol_filter(
+            original_diss,
+            window_length=self._safe_savgol_win(len(original_diss), 69, 3),
+            polyorder=3,
+        )
+        super_smooth_rf_full = savgol_filter(
+            original_rf, window_length=self._safe_savgol_win(len(original_rf), 69, 3), polyorder=3
+        )
+
+        # Process each detected drop effect region for Dissipation and Resonance Frequency.
+        # Skip guard threshold: use the pre-expansion initial streak size so that the
+        # guard does not grow with the region and incorrectly reject legitimate mid-run drops.
+        SKIP_ON_WARNINGS = True
+        ALLOW_SMOOTH_OVERRIDE = False
+        for region in contiguous_regions:
+
+            # Skip regions with no meaningful upward excursion in
+            # dissipation.  Compare the peak within the region against the lower of the two
+            # endpoints rather than comparing endpoints directly.  This is robust to the
+            # right expansion having extended the region past the spike peak into recovery
+            # (where the endpoint value can drop below the start value even for a genuine
+            # upward spike, causing the old endpoint comparison to wrongly skip the region).
+            # Significance check: skip regions whose dissipation excursion is not
+            # meaningful. The excursion is compared against the LOCAL noise scale
+            # measured just before the region, not against the full-run dissipation
+            # range.
+            # The peak is compared against the lower of the two endpoints rather
+            # than the endpoints against each other, which stays robust to the
+            # right expansion having extended the region past the spike peak into
+            # recovery (where the end value can fall below the start value even for
+            # a genuine upward spike).
+            region_diss_smooth = smooth_diss_full[region[0] : region[-1] + 1]
+            peak_diss = float(np.max(region_diss_smooth))
+            baseline_diss = min(float(region_diss_smooth[0]), float(region_diss_smooth[-1]))
+            excursion = peak_diss - baseline_diss
+
+            noise_hi = max(region[0] - GUARD_SAMPLES, 0)
+            noise_lo = max(self._left_bound["index"], noise_hi - DIRECTIONALITY_NOISE_WINDOW)
+            if noise_hi - noise_lo >= 6:
+                seg_t = relative_time[noise_lo:noise_hi]
+                seg_v = original_diss[noise_lo:noise_hi]
+                detrended = seg_v - np.polyval(np.polyfit(seg_t, seg_v, 1), seg_t)
+                local_sigma = float(np.std(detrended))
+            else:
+                # Not enough clean signal ahead of the region to characterise the
+                # noise.
+                local_sigma = 0.0
+
+            if local_sigma > 0 and excursion < DIRECTIONALITY_SIGMA * local_sigma:
+                Log.d(
+                    self.TAG,
+                    f"Skipping region {relative_time[region[0]]:.3f}-{relative_time[region[-1]]:.3f}: "
+                    f"dissipation excursion {excursion:.3e} is only "
+                    f"{excursion / local_sigma:.1f} sigma above local noise "
+                    f"{local_sigma:.3e} (need {DIRECTIONALITY_SIGMA:.1f}).",
+                )
+                if SKIP_ON_WARNINGS:
+                    continue
+                else:
+                    pass
+
+            # Skip if the drop starts too close to the start-of-fill boundary.
+            idx = region[0]
+            if idx - self._left_bound["index"] < init_count // 2:
+                Log.d(
+                    self.TAG,
+                    "Skipped correcting an early region that was too close to start-of-fill.",
+                )
+                if SKIP_ON_WARNINGS:
+                    continue
+                else:
+                    pass
+
+            # Record the indices where the correction is applied.
+            correction_indices.extend(region)
+
+            # Tight detected core of the transient
+            core_start, core_end = region[0], region[-1]
+            anchor_idx = max(0, core_start - 1)
+
+            # Only if end-of-fill is contained in the core
+            used_smooth_override = (
+                ALLOW_SMOOTH_OVERRIDE  # if False, never use smooth override
+                and len(self.bounds) > 1
+                and isinstance(self.bounds[1], int)
+                and core_start < self.bounds[1] < core_end
+            )  # indices, not timestamps
+            if used_smooth_override:
+                Log.d(
+                    self.TAG,
+                    "Correcting drop with smoothed data due to region conflicts with end-of-fill",
+                )
+                insert_diss = super_smooth_diss_full[core_start : core_end + 1].copy()
+                insert_rf = super_smooth_rf_full[core_start : core_end + 1].copy()
+
+                # Align the smoothed fallback data to our anchor point to prevent disjoint jumps
+                insert_diss += corrected_diss[anchor_idx] - insert_diss[0]
+                insert_rf += corrected_rf[anchor_idx] - insert_rf[0]
+
+                # Add jitter based on the baseline stdev since the super-smooth
+                # fallback carries no noise texture of its own.
+                rng = np.random.default_rng()
+                insert_diss = insert_diss + rng.normal(
+                    0.0, 0.5 * base_diss_std, size=len(insert_diss)
+                )
+                insert_rf = insert_rf + rng.normal(0.0, 0.5 * base_rf_std, size=len(insert_rf))
+
+                corrected_diss[core_start : core_end + 1] = insert_diss
+                corrected_rf[core_start : core_end + 1] = insert_rf
+
+                Log.d(
+                    self.TAG,
+                    f"Smoothed drop region [{core_start}, {core_end}] "
+                    "(no permanent step shift; overlaps end-of-fill).",
+                )
+                if SKIP_ON_WARNINGS:
+                    self._region_cores.append((core_start, core_end))
+                    self._region_cores.append((core_start, core_end))  # yes, do this twice
+                    self._pre_slopes.append(np.nan)
+                    self._pre_slopes.append(np.nan)
+                    self._post_slopes.append(np.nan)
+                    self._post_slopes.append(np.nan) 
+                    continue
+                else:
+                    pass
+
+            win = self._safe_savgol_win(len(corrected_diss), 11, 3)
+            ysm_diss = savgol_filter(corrected_diss, win, 3)
+            ysm_rf = savgol_filter(corrected_rf, win, 3)
+
+            rng = np.random.default_rng()
+            delta_diss, pre_slope_diss, post_slope_diss = remove_drop_step(
+                relative_time,
+                original_diss,
+                corrected_diss,
+                ysm_diss,
+                core_start,
+                core_end,
+                rng=rng,
+                left_bound=self._left_bound["index"],
+            )
+            delta_rf, pre_slope_rf, post_slope_rf = remove_drop_step(
+                relative_time,
+                original_rf,
+                corrected_rf,
+                ysm_rf,
+                core_start,
+                core_end,
+                rng=rng,
+                left_bound=self._left_bound["index"],
+            )
+
+            self._region_cores.append((core_start, core_end))
+            self._region_cores.append((core_start, core_end))  # yes, do this twice
+            self._pre_slopes.append(pre_slope_diss)
+            self._pre_slopes.append(pre_slope_rf)
+            self._post_slopes.append(post_slope_diss)
+            self._post_slopes.append(post_slope_rf)            
+
+            Log.d(
+                self.TAG,
+                f"Step-removed drop region [{core_start}, {core_end}]: "
+                f"delta_diss={delta_diss:.4e}, delta_rf={delta_rf:.2f} Hz",
+            )
+
+        if show_corrections or save_corrections:
+            self._plot_corrections(
+                show_corrections,
+                save_corrections,
+                correction_indices,
+                relative_time,
+                original_diss,
+                original_rf,
+                corrected_diss,
+                corrected_rf,
+                smooth_diss,
+                smooth_rf,
+            )
+
+        # DEBUG: Write out corrected datas to file for external review.
+        if export_corrections_csv:
+            with open(f"{self._strip_filename(self._file_path)}_corrected.csv", "w") as f:
+                f.write("corrected_diss,corrected_rf\n")
+                for i in range(corrected_diss.size):
+                    f.write(f"{corrected_diss[i]},{corrected_rf[i]}\n")
+
+        return (corrected_diss, corrected_rf)
+
+    def _plot_corrections(
+        self,
+        show,
+        save,
+        correction_indices,
+        relative_time,
+        original_diss,
+        original_rf,
+        corrected_diss,
+        corrected_rf,
+        smooth_diss,
+        smooth_rf,
+    ):
+        """
+        Plots the original and corrected data for Dissipation and Resonance Frequency,
+        and marks the indices where corrections occurred.
+        """
+
+        runname = splitext(basename(self._file_path))[0]
+        indices = np.arange(len(original_diss))
+        subplots: tuple[plt.Figure, tuple[plt.Axes, plt.Axes]] = plt.subplots(2, 1, figsize=(10, 8))
+        fig, axs = subplots
+
+        # zoom_xid = min(correction_indices) - 2*len(correction_indices)
+        # zoom_yid = max(correction_indices) + 2*len(correction_indices)
+        zoom_xid = self._left_bound["index"]
+        zoom_yid = self._right_bound["index"]
+
+        # Plot for Dissipation.
+        axs[0].plot(
+            relative_time[indices], original_diss, label="Original Dissipation", color="blue"
+        )
+        axs[0].plot(
+            relative_time[indices],
+            corrected_diss,
+            label="Corrected Dissipation",
+            color="red",
+            linestyle="--",
+        )
+        axs[0].plot(
+            relative_time[indices][zoom_xid : zoom_yid + 1],
+            smooth_diss,
+            label="Smoothed Dissipation",
+            color="yellow",
+            linestyle="--",
+        )
+        axs[0].axvline(relative_time[self._left_bound["index"]], color="gray", linestyle=":")
+        axs[0].axvline(relative_time[self._right_bound["index"]], color="gray", linestyle=":")
+
+        axs[0].set_title(f"{runname}: Dissipation Correction")
+        axs[0].set_xlabel("Relative Time (sec)")
+        axs[0].set_ylabel("Dissipation")
+        axs[0].legend()
+
+        # # Zoom to the region of interest around the correction.
+        axs[0].set_xlim(relative_time[zoom_xid], relative_time[zoom_yid])
+        axs[0].set_ylim(
+            min(min(original_diss[zoom_xid:zoom_yid]), min(corrected_diss[zoom_xid:zoom_yid])),
+            max(max(original_diss[zoom_xid:zoom_yid]), max(corrected_diss[zoom_xid:zoom_yid])),
+        )
+
+        # Plot for Resonance Frequency.
+        axs[1].plot(
+            relative_time[indices], original_rf, label="Original Resonance Frequency", color="blue"
+        )
+        axs[1].plot(
+            relative_time[indices],
+            corrected_rf,
+            label="Corrected Resonance Frequency",
+            color="red",
+            linestyle="--",
+        )
+        axs[1].plot(
+            relative_time[indices][zoom_xid : zoom_yid + 1],
+            smooth_rf,
+            label="Smoothed Resonance Frequency",
+            color="yellow",
+            linestyle="--",
+        )
+        axs[1].axvline(relative_time[self._left_bound["index"]], color="gray", linestyle=":")
+        axs[1].axvline(relative_time[self._right_bound["index"]], color="gray", linestyle=":")
+
+        axs[1].set_title(f"{runname}: Resonance Frequency Correction")
+        axs[1].set_xlabel("Relative Time (sec)")
+        axs[1].set_ylabel("Resonance Frequency (Hz)")
+        axs[1].legend()
+
+        # Zoom to the region of interest around the correction
+        axs[1].set_xlim(relative_time[zoom_xid], relative_time[zoom_yid])
+        axs[1].set_ylim(
+            min(min(original_rf[zoom_xid:zoom_yid]), min(corrected_rf[zoom_xid:zoom_yid])),
+            max(max(original_rf[zoom_xid:zoom_yid]), max(corrected_rf[zoom_xid:zoom_yid])),
+        )
+
+        # Mark the correction regions with green background.
+        for i, core in enumerate(self._region_cores):
+            idx = i % 2  # maps to `axs` index 
+            axs[idx].axvspan(xmin=relative_time[core[0]], xmax=relative_time[core[1]], 
+                             color="green", alpha=0.3)
+
+        # Plot debug metrics (pre/post slope)
+        for i, slope in enumerate(self._pre_slopes):
+            idx = i % 2  # maps to `axs` index
+            core_boundary = self._region_cores[i][0]  # 0 = pre (start)
+            signal = corrected_rf if idx else corrected_diss
+            x_boundary = relative_time[core_boundary]
+            y_boundary = signal[core_boundary]
+            x_min, x_max = axs[idx].get_xlim()
+            y_min = y_boundary + slope * (x_min - x_boundary)
+            y_max = y_boundary + slope * (x_max - x_boundary)
+            if idx < len(axs):
+                axs[idx].plot([x_min, x_boundary], [y_min, y_boundary], 
+                              color='black', linestyle='-', alpha=0.5)
+                axs[idx].plot([x_boundary, x_max], [y_boundary, y_max], 
+                              color='black', linestyle=':', alpha=0.5)
+            else:
+                Log.d(CurveOptimizer.TAG, f"Cannot plot pre-slope intercepts for non-existent axis {idx}.")
+
+        for i, slope in enumerate(self._post_slopes):
+            idx = i % 2  # maps to `axs` index
+            core_boundary = self._region_cores[i][1]  # 1 = post (end)
+            signal = corrected_rf if idx else corrected_diss
+            x_boundary = relative_time[core_boundary]
+            y_boundary = signal[core_boundary]
+            x_min, x_max = axs[idx].get_xlim()
+            y_min = y_boundary + slope * (x_min - x_boundary)
+            y_max = y_boundary + slope * (x_max - x_boundary)
+            if idx < len(axs):
+                axs[idx].plot([x_min, x_boundary], [y_min, y_boundary], 
+                              color='black', linestyle=':', alpha=0.5)
+                axs[idx].plot([x_boundary, x_max], [y_boundary, y_max], 
+                              color='black', linestyle='-', alpha=0.5)
+            else:
+                Log.d(CurveOptimizer.TAG, f"Cannot plot post-slope intercepts for non-existent axis {idx}.")
+
+        fig.tight_layout()
+
+        # Add a footnote below and to the right side of the chart
+        footnote = "Generated by {} {} ({}) at {}."
+        axs[-1].annotate(
+            footnote.format(
+                Constants.app_title,
+                Constants.app_version,
+                Constants.app_date,
+                strftime("%Y-%m-%d %I:%M:%S %p", localtime()),
+            ),
+            xy=(0.5, 1),
+            xycoords=("figure fraction", "figure pixels"),
+            ha="center",
+            va="bottom",
+            color="dimgray",
+            fontsize=8,
+        )
+
+        if save:
+            # export figure to pdf
+            export_path = self.loaded_datapath
+            export_path = export_path.replace(".csv", Constants.export_file_format)
+            export_path = export_path.replace("_fundamental", "")
+            export_path = export_path.replace("_3rd", "")
+            export_path = export_path.replace(".csv", "_0.pdf")
+            Log.i(self.TAG, f"Exporting Figure to:\n\t{export_path}")
+            fig.savefig(export_path)
+
+        if show:
+            fig.show()
+
+        # Zoom out to the entire view for shown plot
+        # axs[0].set_xlim(0, relative_time[-1])
+        # axs[0].set_ylim(min(original_diss), max(original_diss))
+        # axs[1].set_xlim(0, relative_time[-1])
+        # axs[1].set_ylim(min(original_rf), max(original_rf))
+
+
+class DropEffectCorrectionV3(DropEffectCorrection):
+    """
+    Class to mitigate drop effects in dissipation and resonance frequency curves
+    by detecting and correcting anomalies independently.
+
+    Attributes:
+        file_buffer: Input buffer containing the dataset.
+        initial_diff_factor (float): Initial difference factor for curve computation.
+
+    Methods:
+        correct_drop_effects(): Detects and corrects drop effects in both curves independently.
+    """
+
+    def __init__(
+        self,
+        file_path: str,
+        file_buffer,
+        initial_diff_factor: float = Constants.default_diff_factor,
+        bounds: list = [],
+    ):
+        """
+        Initializes the DropEffectCorrection with the provided file buffer and difference factor.
+
+        Args:
+            file_path (str): The path to the loaded data file. Same folder used for saving figures.
+            file_buffer: The data buffer containing dissipation data.
+            initial_diff_factor (float): The initial factor for calculating the difference curve.
+            bounds (list, optional): POI values from QModel or user-input.
+
+        Raises:
+            ValueError: If required columns are missing or bounds are not properly defined.
+        """
+        super().__init__(
+            file_path=file_path,
+            file_buffer=file_buffer,
+            initial_diff_factor=initial_diff_factor,
+            bounds=bounds,
+        )
+
+        self.loaded_datapath = file_path
+        self.bounds = bounds
+
+        if "Dissipation" not in self._dataframe.columns:
+            Log.e(self.TAG, "The dataframe does not contain a 'Dissipation' column.")
+            raise ValueError("The dataframe does not contain a 'Dissipation' column.")
+
+        if "Resonance_Frequency" not in self._dataframe.columns:
+            Log.e(self.TAG, "The dataframe does not contain a 'Resonance_Frequency' column.")
+            raise ValueError("The dataframe does not contain a 'Resonance_Frequency' column.")
+
+        if not ("index" in self._left_bound and "index" in self._right_bound):
+            Log.e(self.TAG, "Bounds must be properly defined with 'index' keys.")
+            raise ValueError("Bounds must be properly defined with 'index' keys.")
+
+        if self._left_bound["index"] < 0 or self._right_bound["index"] >= len(self._dataframe):
+            Log.e(
+                self.TAG,
+                f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}.",
+            )
+            raise ValueError(
+                f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}."
+            )
+
+        if "Difference" not in self._dataframe.columns:
+            Log.d(
+                self.TAG,
+                f"'Difference' column not found. Computing difference curve with factor {initial_diff_factor}.",
+            )
+            self._generate_curve(initial_diff_factor)
+
+    def _detect_drop_effects_for_column(
+        self, col_name: str, diff_offset: int = 2, starting_threshold_factor: float = 2
+    ) -> tuple[list, list]:
+        """
+        Detects drop effects for a given column within the defined bounds by computing
+        differences (with an offset) and flagging those points with a difference that
+        deviates strongly from a robust baseline.
+
+        Args:
+            col_name (str): The column name to process (e.g., "Dissipation" or "Resonance_Frequency").
+            diff_offset (int): The number of points to offset when computing differences.
+            starting_threshold_factor (float): Sensitivity factor to begin outlier detection at.
+
+        Returns:
+            list: list of indices where drop effects need to be corrected.
+        """
+        left_idx = self._left_bound["index"]
+        right_idx = self._right_bound["index"]
+
+        if right_idx - left_idx < diff_offset + 1:
+            Log.e(
+                self.TAG,
+                f"Not enough points in the specified region to compute differences with offset {diff_offset}.",
+            )
+            raise ValueError("Not enough points in the specified region to compute differences.")
+
+        region_slice = slice(left_idx, right_idx + 1)
+        values = self._dataframe[col_name].values[region_slice]
+        values = savgol_filter(
+            values, window_length=self._safe_savgol_win(len(values), 11, 3), polyorder=3
+        )
+
+        # Compute differences with the specified offset to smooth out noise.
+        local_indices = np.arange(diff_offset, len(values))
+        diffs = values[local_indices] - values[local_indices - diff_offset]
+
+        first_region_found = []
+        contiguous_region_found = False
+        last_region_size = 0
+
+        while True:
+            # Compute robust statistics: median and MAD.
+            median_diff = np.median(diffs)
+            mad_diff = np.median(np.abs(diffs - median_diff))
+            # Use the MAD if positive; otherwise fall back to standard deviation.
+            threshold = starting_threshold_factor * (mad_diff if mad_diff > 0 else np.std(diffs))
+
+            drop_effects = []
+            for local_idx in local_indices:
+                current_diff = values[local_idx] - values[local_idx - diff_offset]
+
+                # Flag points with a difference that deviates too much from the median.
+                if np.abs(current_diff - median_diff) > threshold:
+                    drop_effects.append(local_idx)
+
+            current_streak = []
+            for idx in drop_effects:
+                if current_streak and idx == current_streak[-1] + 1:
+                    current_streak.append(idx)
+                else:
+                    current_streak = [idx]
+
+                # Check if we have reached at least 3 contiguous points.
+                if len(current_streak) > max(3, last_region_size):
+                    if not first_region_found:
+                        first_region_found = current_streak
+                    contiguous_region_found = True
+                    break
+
+            if contiguous_region_found:
+                if last_region_size == len(current_streak) or col_name == "Resonance_Frequency":
+                    break  # wait for stable result; but skip this delay for rf data
+            last_region_size = len(current_streak)
+            starting_threshold_factor -= 1
+            if starting_threshold_factor <= 0:
+                Log.d(self.TAG, "Reverting to initial region. Reached min threshold factor.")
+                current_streak = first_region_found
+                break
+        if diff_offset in current_streak:
+            Log.d(self.TAG, "Reverting to initial region. Returned min diff offset.")
+            current_streak = first_region_found
+
+        # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
+        if not current_streak:
+            Log.d(self.TAG, f"No drop effects detected in {col_name}.")
+            return ([], values, 0)
+        min_count = len(current_streak)
+        min_drop = min(current_streak)
+        sign = 1 if col_name == "Dissipation" else -1
+        if sign == 1:
+            argidx = np.argmax(values[:min_drop])
+        else:
+            argidx = np.argmin(values[:min_drop])
+        base_slope = (values[argidx] - values[0]) / min_drop
+        window_size = 3
+
+        # Floor for the leftward scan.
+        ONSET_FLOOR = 4 + GUARD_SAMPLES + 5
+        while True:
+            min_drop = min_drop - 1
+            current_streak.append(min_drop)
+            min_drop = min_drop - 1
+            # Pretend this step never happened if it fails to find an acceptable edge before the left bound.
+            if min_drop <= ONSET_FLOOR:
+                Log.d(
+                    self.TAG,
+                    "Drop effect using original bounds, scanning left reached the "
+                    "start-of-fill floor without finding an acceptable edge.",
+                )
+                current_streak = current_streak[:min_count]
+                break
+            # Check if this index's value contains an acceptable edge.
+            if sign == 1:
+                if values[min_drop] - values[min_drop - window_size] > base_slope:
+                    break
+            else:
+                if values[min_drop] - values[min_drop - window_size] < base_slope:
+                    break
+            # If unacceptable, add it to the list for correction.
+            current_streak.append(min_drop)
+
+        # Extend the drop region rightward until the raw signal reconverges with the
+        # smooth signal.
+        NUM_PTS = diff_offset
+        max_drop = max(current_streak)
+        if max_drop + 1 < len(values) - 1:
+            # Estimate pre-drop variability from the smooth signal before the anomaly.
+            pre_end = min(current_streak)
+            pre_start = max(0, diff_offset)
+            pre_slice = (
+                values[pre_start:pre_end] if pre_end > pre_start else values[: max(1, pre_end)]
+            )
+            pre_std = np.std(pre_slice) if len(pre_slice) > 1 else np.std(values) * 0.05
+            tolerance = max(2.0 * pre_std, 1e-12)  # guard against near-zero std
+
+            raw_full = self._dataframe[col_name].values[region_slice]
+            recovery_count = 0
+            total_dist = 0
+            max_total_dist = max(35, 2 * min_count)
+            while True:
+                total_dist += 1
+                if max_drop + 1 >= len(values) - 1:
+                    break
+                max_drop += 1
+                if abs(raw_full[max_drop] - values[max_drop]) < tolerance:
+                    recovery_count += 1
+                else:
+                    recovery_count = 0
+                if recovery_count > NUM_PTS or total_dist > max_total_dist:
+                    break
+                current_streak.append(max_drop)
+
+        Log.d(
+            self.TAG,
+            f"Detected drop effects in {col_name} at indices {[int(str(de)) for de in current_streak]}",
+        )
+
+        # Map back to the full dataframe index.
+        global_idx = [local_idx + left_idx for local_idx in current_streak]
+        # min_count is the initial streak size BEFORE any left/right expansion.
+        # Callers use it so the skip guard threshold is independent of how far
+        # the region was subsequently expanded.
+        return (global_idx, values, min_count)
+
+    def _middle_slice_list(self, whole: list, fraction: float = 0.5) -> list:
+        n = len(whole)
+        count = int(n * fraction)
+        start = (n - count) // 2
+        end = start + count
+        middle = whole[start:end]
+        return middle
+
+    def _safe_savgol_win(self, n: int, preferred: int, poly: int) -> int:
+        """
+        Choose robust window lengths (odd, <= series length, > polyorder)
+        """
+        # best odd <= n
+        best = n if n % 2 == 1 else n - 1
+        w = min(preferred, max(3, best))
+        min_odd = (poly + 2) if ((poly + 2) % 2 == 1) else (poly + 3)
+        if w < min_odd:
+            w = min(min_odd, best)
+        return min(n, max(w, poly + 1))  # ensure > poly and < n
+
+    def correct_drop_effects(
+        self,
+        baseline_diss: list = None,
+        baseline_rf: list = None,
+        show_corrections: bool = False,  # Default to True for debug ONLY
+        save_corrections: bool = False,
+        export_corrections_csv: bool = False,
+    ) -> tuple:
+        """
+        Corrects drop effects in dissipation and resonance frequency data.
+
+        This method detects sudden drop effects in the 'Dissipation' column of the internal
+        dataframe and applies corresponding offset corrections to both 'Dissipation' and
+        'Resonance_Frequency' columns. A drop effect is defined as a sudden decrease in the value
+        compared to the previous (good) data point. The correction adjusts the subsequent segment
+        of data so that the drop point matches the preceding value. Optionally, the method can
+        plot the original and corrected data for visualization.
+
+        Args:
+            baseline_diss (float, optional): The baseline dissipation region to use for correction.
+                If not provided, the baseline is determined by taking the standard deviation of the
+                dissipation values prior to index `self._left_bound['index']` from the original data.
+                Defaults to None.
+            baseline_rf (float, optional): The baseline resonance region to use for correction.
+                If not provided, the baseline is determined by taking the standard deviation of the
+                resonance values prior to index `self._left_bound['index']` from the original data.
+                Defaults to None.
+            show_corrections (bool, optional): If True, the method will generate a plot and show it
+                 to visualize the corrections applied. Defaults to False.
+            save_corrections (bool, optional): If True, the method will generate a plot and save it
+                 to visualize the corrections applied. Defaults to False. NOTE: If this argument and
+                 `show_corrections` are True, the same plot generation will be used for both actions.
+            export_corrections_csv (bool, optional): If True, the method will export the corrected
+                 dataframes for dissipation and rf to a CSV file with a file name of the format:
+                 `{RUNNAME}_corrected.csv` to the working directory. Defaults to False.
+
+        Returns:
+            tuple: A tuple containing two numpy arrays:
+                - The first array contains the corrected dissipation values.
+                - The second array contains the corrected resonance frequency values.
+
+        Example:
+            >>> corrected_diss, corrected_rf = instance.correct_drop_effects(show_corrections=True)
+        """
+        # Save original data for plotting.
+        relative_time = self._dataframe["Relative_time"].values.copy()
+        original_diss = self._dataframe["Dissipation"].values.copy()
+        original_rf = self._dataframe["Resonance_Frequency"].values.copy()
+
+        # Determine baselines if not provided.
+        if baseline_diss is None:
+            baseline_diss = original_diss[: self._left_bound["index"]]
+        base_diss_middle = self._middle_slice_list(baseline_diss)
+        # base_diss_avg = np.average(base_diss_middle)
+        base_diss_std = np.std(base_diss_middle)
+        if baseline_rf is None:
+            baseline_rf = original_rf[: self._left_bound["index"]]
+        base_rf_middle = self._middle_slice_list(baseline_rf)
+        # base_rf_avg = np.average(base_rf_middle)
+        base_rf_std = np.std(base_rf_middle)
+
+        # Make working copies.
+        corrected_diss = original_diss.copy()
+        corrected_rf = original_rf.copy()
+
+        # Detect drop effects independently for each curve.
+        drop_effects_diss, smooth_diss, init_count_diss = self._detect_drop_effects_for_column(
+            "Dissipation", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
+        )
+        drop_effects_rf, smooth_rf, init_count_rf = self._detect_drop_effects_for_column(
+            "Resonance_Frequency", starting_threshold_factor=STARTING_THRESHOLD_FACTOR
+        )
+        drop_effects = list(set(drop_effects_diss + drop_effects_rf))
+
+        # Sort detected regions by ascending time index.
+        drop_effects_diss.sort()
+        drop_effects_rf.sort()
+        drop_effects.sort()
+
+        # List to store the continuous regions of correction.
+        # May be two discreet regions if diss and rf indicate differently.
+        contiguous_regions = []
+
+        # List to store the starting indices of corrections.
+        correction_indices = []
+
+        # If multiple regions found (separate for diss and rf) correct both.
+        for idx in drop_effects:
+            if contiguous_regions and idx - 1 in contiguous_regions[-1]:
+                contiguous_regions[-1].append(idx)
+            else:
+                contiguous_regions.append([idx])
+
+        # Check if two zones got merged into one; where one would get skipped but not the other
+        if len(contiguous_regions) == 1:
+            region = contiguous_regions[0]
+            idx = region[0]
+            if idx - self._left_bound["index"] < len(region) // 2:
+                Log.d(self.TAG, "Trimming the left region to prevent it from being skipped.")
+                start_at = max(drop_effects_diss[0], drop_effects_rf[0])
+                end_at = max(drop_effects_diss[-1], drop_effects_rf[-1])
+                contiguous_regions = [np.arange(start_at, end_at + 1, 1, dtype=int).tolist()]
+                # if len(drop_effects_diss) < len(drop_effects_rf):
+                #     contiguous_regions = [drop_effects_diss]
+                # else:
+                #     contiguous_regions = [drop_effects_rf]
+
+        Log.d(
+            self.TAG,
+            f"Found {len(contiguous_regions)} contiguous drop effect region(s) to correct.",
+        )
+        Log.d(
+            self.TAG,
+            f"Raw drop effect regions: {[[int(i) for i in np.array(idx, dtype=int)] for idx in contiguous_regions]}",
+        )
+
+        if len(contiguous_regions) > 1:
+            Log.d(
+                self.TAG,
+                "Processing regions in reverse order. Starting with the last region, working left.",
+            )
+
+            # Start with right-most, working left, to avoid baseline shift offsets.
+            contiguous_regions.reverse()
+
+        smooth_diss_full = savgol_filter(
+            original_diss,
+            window_length=self._safe_savgol_win(len(original_diss), 11, 3),
+            polyorder=3,
+        )
+        super_smooth_diss_full = savgol_filter(
+            original_diss,
+            window_length=self._safe_savgol_win(len(original_diss), 69, 3),
+            polyorder=3,
+        )
+        super_smooth_rf_full = savgol_filter(
+            original_rf, window_length=self._safe_savgol_win(len(original_rf), 69, 3), polyorder=3
+        )
+
+        # Process each detected drop effect region for Dissipation and Resonance Frequency.
+        # Skip guard threshold: use the pre-expansion initial streak size so that the
+        # guard does not grow with the region and incorrectly reject legitimate mid-run drops.
+        init_count = max(
+            1,
+            min(
+                init_count_diss if init_count_diss else len(drop_effects_diss),
+                init_count_rf if init_count_rf else len(drop_effects_rf),
+            ),
+        )
+        for region in contiguous_regions:
+
+            # Skip regions with no meaningful upward excursion in
+            # dissipation.  Compare the peak within the region against the lower of the two
+            # endpoints rather than comparing endpoints directly.  This is robust to the
+            # right expansion having extended the region past the spike peak into recovery
+            # (where the endpoint value can drop below the start value even for a genuine
+            # upward spike, causing the old endpoint comparison to wrongly skip the region).
+            # Significance check: skip regions whose dissipation excursion is not
+            # meaningful. The excursion is compared against the LOCAL noise scale
+            # measured just before the region, not against the full-run dissipation
+            # range.
+            # The peak is compared against the lower of the two endpoints rather
+            # than the endpoints against each other, which stays robust to the
+            # right expansion having extended the region past the spike peak into
+            # recovery (where the end value can fall below the start value even for
+            # a genuine upward spike).
+            region_diss_smooth = smooth_diss_full[region[0] : region[-1] + 1]
+            peak_diss = float(np.max(region_diss_smooth))
+            baseline_diss = min(float(region_diss_smooth[0]), float(region_diss_smooth[-1]))
+            excursion = peak_diss - baseline_diss
+
+            noise_hi = max(region[0] - GUARD_SAMPLES, 0)
+            noise_lo = max(self._left_bound["index"], noise_hi - DIRECTIONALITY_NOISE_WINDOW)
+            if noise_hi - noise_lo >= 6:
+                seg_t = relative_time[noise_lo:noise_hi]
+                seg_v = original_diss[noise_lo:noise_hi]
+                detrended = seg_v - np.polyval(np.polyfit(seg_t, seg_v, 1), seg_t)
+                local_sigma = float(np.std(detrended))
+            else:
+                # Not enough clean signal ahead of the region to characterise the
+                # noise.
+                local_sigma = 0.0
+
+            if local_sigma > 0 and excursion < DIRECTIONALITY_SIGMA * local_sigma:
+                Log.d(
+                    self.TAG,
+                    f"Skipping region {relative_time[region[0]]:.3f}-{relative_time[region[-1]]:.3f}: "
+                    f"dissipation excursion {excursion:.3e} is only "
+                    f"{excursion / local_sigma:.1f} sigma above local noise "
+                    f"{local_sigma:.3e} (need {DIRECTIONALITY_SIGMA:.1f}).",
+                )
+                continue
+
+            # Skip if the drop starts too close to the start-of-fill boundary.
+            idx = region[0]
+            if idx - self._left_bound["index"] < init_count // 2:
+                Log.d(
+                    self.TAG,
+                    "Skipped correcting an early region that was too close to start-of-fill.",
+                )
+                continue
+
+            # Record the indices where the correction is applied.
+            correction_indices.extend(region)
+
+            # Tight detected core of the transient
+            core_start, core_end = region[0], region[-1]
+            anchor_idx = max(0, core_start - 1)
+
+            # Only if end-of-fill is contained in the core
+            used_smooth_override = (
+                len(self.bounds) > 1
+                and isinstance(self.bounds[1], int)
+                and core_start < self.bounds[1] < core_end
+            )  # indices, not timestamps
+            if used_smooth_override:
+                Log.d(
+                    self.TAG,
+                    "Correcting drop with smoothed data due to region conflicts with end-of-fill",
+                )
+                insert_diss = super_smooth_diss_full[core_start : core_end + 1].copy()
+                insert_rf = super_smooth_rf_full[core_start : core_end + 1].copy()
+
+                # Align the smoothed fallback data to our anchor point to prevent disjoint jumps
+                insert_diss += corrected_diss[anchor_idx] - insert_diss[0]
+                insert_rf += corrected_rf[anchor_idx] - insert_rf[0]
+
+                # Add jitter based on the baseline stdev since the super-smooth
+                # fallback carries no noise texture of its own.
+                rng = np.random.default_rng()
+                insert_diss = insert_diss + rng.normal(
+                    0.0, 0.5 * base_diss_std, size=len(insert_diss)
+                )
+                insert_rf = insert_rf + rng.normal(0.0, 0.5 * base_rf_std, size=len(insert_rf))
+
+                corrected_diss[core_start : core_end + 1] = insert_diss
+                corrected_rf[core_start : core_end + 1] = insert_rf
+
+                Log.d(
+                    self.TAG,
+                    f"Smoothed drop region [{core_start}, {core_end}] "
+                    "(no permanent step shift; overlaps end-of-fill).",
+                )
+                continue
+            win = self._safe_savgol_win(len(corrected_diss), 11, 3)
+            ysm_diss = savgol_filter(corrected_diss, win, 3)
+            ysm_rf = savgol_filter(corrected_rf, win, 3)
+
+            rng = np.random.default_rng()
+            delta_diss = remove_drop_step(
+                relative_time,
+                original_diss,
+                corrected_diss,
+                ysm_diss,
+                core_start,
+                core_end,
+                rng=rng,
+                left_bound=self._left_bound["index"],
+            )
+            delta_rf = remove_drop_step(
+                relative_time,
+                original_rf,
+                corrected_rf,
+                ysm_rf,
+                core_start,
+                core_end,
+                rng=rng,
+                left_bound=self._left_bound["index"],
+            )
+
+            if isinstance(delta_diss, tuple):
+                delta_diss = np.max(np.abs(delta_diss))
+            if isinstance(delta_rf, tuple):
+                delta_rf = np.max(np.abs(delta_rf))
+
+            Log.d(
+                self.TAG,
+                f"Step-removed drop region [{core_start}, {core_end}]: "
+                f"delta_diss={delta_diss:.4e}, delta_rf={delta_rf:.2f} Hz",
+            )
+
+        if show_corrections or save_corrections:
+            self._plot_corrections(
+                show_corrections,
+                save_corrections,
+                correction_indices,
+                relative_time,
+                original_diss,
+                original_rf,
+                corrected_diss,
+                corrected_rf,
+                smooth_diss,
+                smooth_rf,
+            )
+
+        # DEBUG: Write out corrected datas to file for external review.
+        if export_corrections_csv:
+            with open(f"{self._strip_filename(self._file_path)}_corrected.csv", "w") as f:
+                f.write("corrected_diss,corrected_rf\n")
+                for i in range(corrected_diss.size):
+                    f.write(f"{corrected_diss[i]},{corrected_rf[i]}\n")
+
+        return (corrected_diss, corrected_rf)
+
+    def _plot_corrections(
+        self,
+        show,
+        save,
+        correction_indices,
+        relative_time,
+        original_diss,
+        original_rf,
+        corrected_diss,
+        corrected_rf,
+        smooth_diss,
+        smooth_rf,
+    ):
+        """
+        Plots the original and corrected data for Dissipation and Resonance Frequency,
+        and marks the indices where corrections occurred.
+        """
+
+        indices = np.arange(len(original_diss))
+        subplots: tuple[plt.Figure, tuple[plt.Axes, plt.Axes]] = plt.subplots(2, 1, figsize=(10, 8))
+        fig, axs = subplots
+
+        # zoom_xid = min(correction_indices) - 2*len(correction_indices)
+        # zoom_yid = max(correction_indices) + 2*len(correction_indices)
+        zoom_xid = self._left_bound["index"]
+        zoom_yid = self._right_bound["index"]
+
+        # Plot for Dissipation.
+        axs[0].plot(
+            relative_time[indices], original_diss, label="Original Dissipation", color="blue"
+        )
+        axs[0].plot(
+            relative_time[indices],
+            corrected_diss,
+            label="Corrected Dissipation",
+            color="red",
+            linestyle="--",
+        )
+        axs[0].plot(
+            relative_time[indices][zoom_xid : zoom_yid + 1],
+            smooth_diss,
+            label="Smoothed Dissipation",
+            color="yellow",
+            linestyle="--",
+        )
+        axs[0].axvline(relative_time[self._left_bound["index"]], color="gray", linestyle=":")
+        axs[0].axvline(relative_time[self._right_bound["index"]], color="gray", linestyle=":")
+
+        # Mark the indices where corrections were applied.
+        for idx in correction_indices:
+            axs[0].axvline(relative_time[idx], color="green", linestyle=":", alpha=0.7)
+        axs[0].set_title("Dissipation Correction")
+        axs[0].set_xlabel("Relative Time (sec)")
+        axs[0].set_ylabel("Dissipation")
+        axs[0].legend()
+
+        # # Zoom to the region of interest around the correction.
+        axs[0].set_xlim(relative_time[zoom_xid], relative_time[zoom_yid])
+        axs[0].set_ylim(
+            min(original_diss[zoom_xid:zoom_yid]), max(original_diss[zoom_xid:zoom_yid])
+        )
+
+        # Plot for Resonance Frequency.
+        axs[1].plot(
+            relative_time[indices], original_rf, label="Original Resonance Frequency", color="blue"
+        )
+        axs[1].plot(
+            relative_time[indices],
+            corrected_rf,
+            label="Corrected Resonance Frequency",
+            color="red",
+            linestyle="--",
+        )
+        axs[1].plot(
+            relative_time[indices][zoom_xid : zoom_yid + 1],
+            smooth_rf,
+            label="Smoothed Resonance Frequency",
+            color="yellow",
+            linestyle="--",
+        )
+        axs[1].axvline(relative_time[self._left_bound["index"]], color="gray", linestyle=":")
+        axs[1].axvline(relative_time[self._right_bound["index"]], color="gray", linestyle=":")
+
+        # Mark the same correction indices on the RF plot.
+        for idx in correction_indices:
+            axs[1].axvline(relative_time[idx], color="green", linestyle=":", alpha=0.7)
+        axs[1].set_title("Resonance Frequency Correction")
+        axs[1].set_xlabel("Relative Time (sec)")
+        axs[1].set_ylabel("Resonance Frequency (Hz)")
+        axs[1].legend()
+
+        # # Zoom to the region of interest around the correction.
+        axs[1].set_xlim(relative_time[zoom_xid], relative_time[zoom_yid])
+        axs[1].set_ylim(min(original_rf[zoom_xid:zoom_yid]), max(original_rf[zoom_xid:zoom_yid]))
+
+        fig.tight_layout()
 
         if save:
             # export figure to pdf

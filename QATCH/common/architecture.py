@@ -72,12 +72,24 @@ class Architecture:
         Returns:
             str: Path of the current working directory or bundle extraction directory.
         """
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             # we are running in a bundle from an EXE
             bundle_dir = sys._MEIPASS
         else:
             # we are running in a normal Python environment
             bundle_dir = os.getcwd()
+        return bundle_dir
+
+    @staticmethod
+    def install_path():
+        if getattr(sys, "frozen", False):
+            # 1 levels up from normal `bundle_dir`
+            bundle_dir = os.path.dirname(sys._MEIPASS)
+        else:
+            # 2 levels up from normal `bundle_dir`
+            bundle_dir = os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            )
         return bundle_dir
 
     ###########################################################################
@@ -112,6 +124,7 @@ class Architecture:
             return True
         return False
 
+
 ###############################################################################
 # Enum for OS types
 ###############################################################################
@@ -121,6 +134,7 @@ class OSType(Enum):
     """
     Enum representing supported operating system types.
     """
+
     unknown = 0
     linux = 1
     macosx = 2

@@ -57,7 +57,7 @@ class Ui_Export(QtWidgets.QWidget):
         self.csv_report_path = None
         self.parent = parent
 
-        USE_FULLSCREEN = QDesktopWidget().availableGeometry().width() == 2880
+        USE_FULLSCREEN = False  # QDesktopWidget().availableGeometry().width() == 2880
         self.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
         self.setMinimumSize(750, 600)
         # self.move(500, 50)

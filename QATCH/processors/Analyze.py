@@ -36,7 +36,9 @@ from QATCH.core.constants import Constants
 from QATCH.models.ModelData import ModelData
 from QATCH.processors.CurveOptimizer import (
     DifferenceFactorOptimizer,
-    DropEffectCorrection,
+    DropEffectCorrectionV1,
+    DropEffectCorrectionV2,
+    DropEffectCorrectionV3,
 )
 # from QATCH.QModel.models.qmodel_v7.v7_yolo import QModelV7
 from QATCH.QModel.models.qmodel_onyx.onyx import QModelOnyx
@@ -463,8 +465,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # QModel Onyx Constants
         self.QModel_v7_modules_loaded = False
         self.QModel_v7_predictor = None
+
+        USE_FULLSCREEN = False  # screen.width() == 2880
+        
         screen = QtWidgets.QDesktopWidget().availableGeometry()
-        USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
         pct_height = 75
         self.resize(
@@ -963,6 +967,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
         self.gridLayout.addWidget(self.difference_factor_optimizer_checkbox, 3, 5, 1, 3)
 
+        drop_effect_layout = QtWidgets.QHBoxLayout()
         self.drop_effect_cancelation_checkbox = QtWidgets.QCheckBox(
             "Drop effect correction"
         )
@@ -970,7 +975,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.drop_effect_cancelation_checkbox.clicked.connect(
             self.use_drop_effect_cancelation
         )
-        self.gridLayout.addWidget(self.drop_effect_cancelation_checkbox, 4, 5, 1, 3)
+        drop_effect_layout.addWidget(self.drop_effect_cancelation_checkbox)
+        self.drop_effect_cancelation_combobox = QtWidgets.QComboBox()
+        self.drop_effect_cancelation_combobox.addItems(["1", "2", "3"])
+        self.drop_effect_cancelation_combobox.currentIndexChanged.connect(
+            self.use_drop_effect_cancelation
+        )
+        drop_effect_layout.addWidget(self.drop_effect_cancelation_combobox)
+        self.gridLayout.addLayout(drop_effect_layout, 4, 5, 1, 3)
 
         self.partial_fills_checkbox = QtWidgets.QCheckBox("Enable Partial-Fills")
         self.partial_fills_checkbox.setChecked(False)
@@ -1984,12 +1996,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.signForm.hide()
                 self.signedInAs.setText(self.username)
                 self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
+
                 screen = QtWidgets.QDesktopWidget().availableGeometry()
                 left = int((screen.width() - self.signForm.sizeHint().width()) / 2) + 50
                 top = (
                     int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
                 )
                 self.signForm.move(left, top)
+
                 self.signForm.setVisible(True)
                 self.sign.setFocus()
                 return
@@ -2158,7 +2172,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def use_drop_effect_cancelation(self, object):
         try:
-            self.action_cancel()  # ask if they mean it if there are unsaved changes
+            if self.hasUnsavedChanges():
+                if not PopUp.question(
+                    self,
+                    Constants.app_title,
+                    "You have unsaved changes!\n\nAre you sure you want to refresh without saving?",
+                ):
+                    return
+                else:
+                    self.unsaved_changes = False
+
             if not self.hasUnsavedChanges():  # only proceed if they say yes
                 try:
                     self.diff_factor = round(float(self.tbox_diff_factor.text()), 3)
@@ -2169,7 +2192,44 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.diff_factor
                         )  # unset to revert to default auto-calc value
                         Log.d("Difference Factor deleted")
-                self.load_run()  # refresh plots to show new diff factor
+                try:
+                    # try to update curves dynamically without a full reload
+                    relative_time = self.data_time
+                    resonance_frequency = self.data_freq
+                    dissipation = self.data_diss
+                    poi_vals = []
+
+                    for pm in self.poi_markers:  # already sorted
+                        cur_val = pm.value()
+                        cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
+                        poi_vals.append(cur_idx)
+
+                    dissipation, resonance_frequency = self._apply_signal_corrections(
+                        dissipation, resonance_frequency, poi_vals
+                    )
+
+                    curves, start_stop = self._compute_signal_curves(
+                        relative_time,
+                        resonance_frequency,
+                        dissipation,
+                        poi_vals,
+                        savgol_filter,
+                        argrelextrema,
+                    )
+
+                    curves = self._recover_missing_curves(
+                        curves, relative_time, resonance_frequency, dissipation, savgol_filter
+                    )
+
+                    self._render_analysis_plots(curves, poi_vals, start_stop, 
+                                                render_inplace=True)
+                    self._save_analysis_state(
+                        curves, relative_time, resonance_frequency, dissipation
+                    )
+                except Exception as e:
+                    Log.e(f"ERROR: Unable to update curves dynamically, {e}")
+                    self.action_cancel()  # ask if they mean it if there are unsaved changes
+                    self.load_run()  # refresh plots to show new diff factor
         except:
             Log.e("Failed to set new difference factor!")
 
@@ -5755,7 +5815,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             )
             self._wait_for_progress_bar()
 
-        self._render_analysis_plots(curves, poi_vals, start_stop)
+        self._render_analysis_plots(curves, poi_vals, start_stop,
+                                    render_inplace=False)
         self._save_analysis_state(
             curves, relative_time, resonance_frequency, dissipation
         )
@@ -6728,7 +6789,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
 
     def _render_analysis_plots(
-        self, curves: Dict[str, Any], poi_vals: List[int], start_stop: Tuple[int, int]
+        self, curves: Dict[str, Any], poi_vals: List[int], start_stop: Tuple[int, int],
+        render_inplace: bool
     ) -> None:
         """Coordinates the rendering of signal data and analysis markers.
 
@@ -6744,11 +6806,31 @@ class AnalyzeProcess(QtWidgets.QWidget):
             start_stop: A tuple of (start_index, stop_index) defining the active
                 analysis window.
         """
-        self._setup_graph_axes(curves)
+        self._setup_graph_axes(curves, render_inplace)
         self._plot_signal_curves(curves)
         self._add_poi_markers(curves["xs"], poi_vals, start_stop)
 
-    def _setup_graph_axes(self, curves: Dict[str, Any]) -> None:
+        if render_inplace and self.stateStep in [1, 2]:
+            self.fit_1.setAlpha(0, False)
+            self.fit_2.setAlpha(0, False)
+            self.fit_3.setAlpha(0, False)
+
+            px = self._current_visible_poi_index()
+            if px < 0 or px >= len(self.poi_markers):
+                return
+            
+            tt1 = self.poi_markers[px].value()
+            tx1 = next(x for x, y in enumerate(self.xs) if y >= tt1)
+
+            pos1 = np.column_stack((self.xs[tx1], self.ys_freq[tx1]))
+            pos2 = np.column_stack((self.xs[tx1], self.ys_diff[tx1]))
+            pos3 = np.column_stack((self.xs[tx1], self.ys[tx1]))
+            
+            self.star1.setData(pos=pos1)
+            self.star2.setData(pos=pos2)
+            self.star3.setData(pos=pos3)
+
+    def _setup_graph_axes(self, curves: Dict[str, Any], render_inplace: bool) -> None:
         """Configures titles, labels, ranges, grids, and legends for all four axes.
 
         This method clears existing plots, initializes the progress UI, sets specific
@@ -6769,47 +6851,51 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.graphWidget2,
             self.graphWidget3,
         )
-        xs = curves["xs"]
-        ys = curves["ys"]
-        ys_freq = curves["ys_freq"]
-        ys_diff = curves["ys_diff"]
 
         ax.clear()
         ax1.clear()
         ax2.clear()
         ax3.clear()
 
-        self._update_progress_value(1, "Step 1 of 6: Select Begin and End Points")
-        self.setDotStepMarkers(1)
+        if render_inplace and self.stateStep in [1, 2]:
+            pass  # do nothing
+        else:
+            xs = curves["xs"]
+            ys = curves["ys"]
+            ys_freq = curves["ys_freq"]
+            ys_diff = curves["ys_diff"]
 
-        ax.setTitle(None)
-        ax.addLegend()
-        ax1.setTitle("Resonance", color="green")
-        ax2.setTitle("Difference", color="blue")
-        ax3.setTitle("Dissipation", color="red")
+            self._update_progress_value(1, "Step 1 of 6: Select Begin and End Points")
+            self.setDotStepMarkers(1)
 
-        style = {"color": "b", "font-size": "12px"}
-        ax.showAxis("left")
-        ax.setLabel("left", "Frequency (Hz)", **style)
-        ax.showAxis("bottom")
-        ax.setLabel("bottom", "Time (secs)", **style)
+            ax.setTitle(None)
+            ax.addLegend()
+            ax1.setTitle("Resonance", color="green")
+            ax2.setTitle("Difference", color="blue")
+            ax3.setTitle("Dissipation", color="red")
 
-        ax.showButtons()
-        ax1.hideButtons()
-        ax2.hideButtons()
-        ax3.hideButtons()
+            style = {"color": "b", "font-size": "12px"}
+            ax.showAxis("left")
+            ax.setLabel("left", "Frequency (Hz)", **style)
+            ax.showAxis("bottom")
+            ax.setLabel("bottom", "Time (secs)", **style)
 
-        ax.showGrid(x=True, y=True)
-        ax1.showGrid(x=True, y=True)
-        ax2.showGrid(x=True, y=True)
-        ax3.showGrid(x=True, y=True)
+            ax.showButtons()
+            ax1.hideButtons()
+            ax2.hideButtons()
+            ax3.hideButtons()
 
-        ax.setXRange(0, xs[-1], padding=0.05)
-        ax.setYRange(
-            0, max(np.amax(ys_freq), np.amax(ys), np.amax(ys_diff)), padding=0.05
-        )
+            ax.showGrid(x=True, y=True)
+            ax1.showGrid(x=True, y=True)
+            ax2.showGrid(x=True, y=True)
+            ax3.showGrid(x=True, y=True)
 
-        self.lowerGraphs.setVisible(False)
+            ax.setXRange(0, xs[-1], padding=0.05)
+            ax.setYRange(
+                0, max(np.amax(ys_freq), np.amax(ys), np.amax(ys_diff)), padding=0.05
+            )
+
+            self.lowerGraphs.setVisible(False)
 
     def _plot_signal_curves(self, curves: Dict[str, np.ndarray]) -> None:
         """Adds fit lines, scatter dots, and star highlights to all graph widgets.
@@ -7187,12 +7273,28 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     f"Performing drop effect cancelation with difference factor {diff_factor}.",
                 )
 
-                dec = DropEffectCorrection(
-                    file_path=file_path,
-                    file_buffer=file_buffer,
-                    initial_diff_factor=diff_factor,
-                    bounds=poi_vals,
-                )
+                drop_effect_correction_version = self.drop_effect_cancelation_combobox.currentIndex() + 1
+                if drop_effect_correction_version == 1:
+                    dec = DropEffectCorrectionV1(
+                        file_path=file_path,
+                        file_buffer=file_buffer,
+                        initial_diff_factor=diff_factor,
+                        bounds=poi_vals,
+                    )
+                if drop_effect_correction_version == 2:
+                    dec = DropEffectCorrectionV2(
+                        file_path=file_path,
+                        file_buffer=file_buffer,
+                        initial_diff_factor=diff_factor,
+                        bounds=poi_vals,
+                    )
+                if drop_effect_correction_version == 3:
+                    dec = DropEffectCorrectionV3(
+                        file_path=file_path,
+                        file_buffer=file_buffer,
+                        initial_diff_factor=diff_factor,
+                        bounds=poi_vals,
+                    )
                 corrected_data = dec.correct_drop_effects(
                     save_corrections=True if context == "worker" else False
                 )
