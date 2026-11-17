@@ -5868,11 +5868,16 @@ class MainWindow(QtWidgets.QMainWindow):
             5. Triggers the visual status label for
               drop detection.
         """
-        # Cache the slices to prevent redundant array operations per tick
-        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)
-        slice_resonance_frequency = self.worker.get_d1_buffer(i)
-        slice_time_dissipation = self.worker.get_t2_buffer(i)
-        slice_dissipation = self.worker.get_d2_buffer(i)
+        # Cache the slices to prevent redundant array operations per tick.
+        # Truncated to the display limit 'n' - a no-op today since 'n'
+        # (Constants._NUM_DISPLAY_POINTS) equals the ring buffer's own fixed
+        # capacity, but keeps this method honoring its documented contract
+        # and matches the [:n] idiom used elsewhere in this file for the
+        # same constant (see _update_pre_drop_label).
+        slice_time_resonance_frequency = self.worker.get_t1_buffer(i)[:n]
+        slice_resonance_frequency = self.worker.get_d1_buffer(i)[:n]
+        slice_time_dissipation = self.worker.get_t2_buffer(i)[:n]
+        slice_dissipation = self.worker.get_d2_buffer(i)[:n]
 
         ci_freq, ci_diss = self._ci_freq[i], self._ci_diss[i]
 
