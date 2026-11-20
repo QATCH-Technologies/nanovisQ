@@ -39,7 +39,7 @@ if ELEVATED_INSTALL_FLAG in sys.argv:
     del sys.argv[elevated_arg_index : elevated_arg_index + 2]
 
 # NOTE: When changing version, also modify `version.rc` file
-INSTALLER_VERSION = "v1.0.2.3"
+INSTALLER_VERSION = "v1.0.3.0"
 
 CHECKSUM_METHOD = "hashlib"  # enter 'hashlib' or 'certutil'
 
