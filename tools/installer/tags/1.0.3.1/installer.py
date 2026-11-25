@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import QApplication
 import win32api
 import win32con
 import win32com.client
-import win32process
+import win32event
 
 ELEVATED_INSTALL_FLAG = "--qatch-elevated-install"
 elevated_install_settings = None
@@ -191,25 +191,26 @@ class QatchInstaller(QtWidgets.QMessageBox):
         while True:
 
             if self.is_finished:
-                # spin your wheels forever until the main QATCH app is closed,
-                # then this installer will close too
                 handle = win32api.OpenProcess(
-                    win32con.PROCESS_QUERY_INFORMATION, False, self.app_pid
+                    win32con.SYNCHRONIZE, False, self.app_pid
                 )
 
-                # Wait for process to exit (blocking)
                 Log.warning(
                     "Waiting for main app to close before closing the installer..."
                 )
-                while True:
-                    exit_code = win32process.GetExitCodeProcess(handle)
-                    # STILL_ACTIVE = 259
-                    if exit_code != 259:
-                        break  # app closed
+                try:
+                    wait_result = win32event.WaitForSingleObject(
+                        handle, win32event.INFINITE
+                    )
+                    if wait_result != win32event.WAIT_OBJECT_0:
+                        raise RuntimeError(
+                            f"Unexpected process wait result: {wait_result}"
+                        )
+                finally:
+                    win32api.CloseHandle(handle)
+
                 Log.warning("Process has closed; installer closing...")
 
-                # Close installer, now that application has closed
-                win32api.CloseHandle(handle)
                 os._exit(0)
 
             self.response = None
