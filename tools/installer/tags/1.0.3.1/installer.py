@@ -1517,10 +1517,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
             self.elapsed_timer = QtCore.QElapsedTimer()
             self.elapsed_timer.start()
         elif self.elapsed_timer.elapsed() > 1000:
-            if self.progressBar.value() < self.progressBar.maximum():
+            if self.progressBar.value() < self.progressBar.maximum() - 1:
                 self.progressBar.setValue(self.progressBar.value() + 1)
             else:
-                self.progressBar.setRange(0, 0)  # indeterminate
                 self.progressBar.setLabelText("This is taking longer than usual...")
             need_repaint = True
         # elif self.progressBar.value() >= 51 and self.progressBar.value() < 99:
