@@ -2304,6 +2304,7 @@ class InstallWorker(QtCore.QThread):
         self.progress.emit(str, pct)
 
     def run(self):
+        checksum_verified = False
         try:
             proceed = self.proceed
             copy_src = self.copy_src
@@ -2321,7 +2322,6 @@ class InstallWorker(QtCore.QThread):
                 Log.info("Copying new application files...")
                 shutil.unpack_archive(copy_src, copy_dst)
                 # shutil.copytree(copy_src, copy_dst, dirs_exist_ok=True)
-                self.success = True
 
             # abort early if cancel pending
             if self._cancel:
@@ -2330,7 +2330,8 @@ class InstallWorker(QtCore.QThread):
             # if not errors up to this point
             exe_path = os.path.join(copy_dst, "QATCH nanovisQ.exe")
             if (
-                self.success
+                proceed
+                and not self._cancel
                 and os.path.exists(exe_path)
                 and log_stream.getvalue() == ""
             ):
@@ -2392,6 +2393,7 @@ class InstallWorker(QtCore.QThread):
                         os.remove(checksum_path)
                         if CHECKSUM_METHOD == "certutil":
                             os.remove(calculated_path)
+                        checksum_verified = True
                     else:
                         self.success = False
                         Log.error("App checksum mismatch!")
@@ -2423,6 +2425,8 @@ class InstallWorker(QtCore.QThread):
                 raise FileNotFoundError(
                     "The application executable could not be found after unpacking bundle. Unable to verify build checksum. Installation failed."
                 )
+            if checksum_verified and not self._cancel:
+                self.success = True
 
         except Exception as e:
             # Log.error("An unhandled exception occurred:")
