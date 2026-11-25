@@ -10,6 +10,7 @@ import json
 import ctypes
 import subprocess
 import traceback
+import tempfile
 from typing import Optional
 
 # from datetime import date
@@ -365,6 +366,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     entry
                     for entry in os.listdir(self.cu_install_root)
                     if os.path.isdir(os.path.join(self.cu_install_root, entry))
+                    and not entry.startswith(".qatch-install-")
                 ]
             )
 
@@ -374,6 +376,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     f"{entry} (All Users)"
                     for entry in os.listdir(self.au_install_root)
                     if os.path.isdir(os.path.join(self.au_install_root, entry))
+                    and not entry.startswith(".qatch-install-")
                 ]
             )
 
@@ -1516,7 +1519,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         elif self.progressBar.value() < 50:
             # self.timer.setInterval(50) # one speed for copy phase
             try:
-                path = self.worker.copy_dst
+                path = self.worker.staging_dst or self.worker.copy_dst
                 actual = sum(
                     os.path.getsize(os.path.join(path, f))
                     for f in os.listdir(path)
@@ -2296,6 +2299,7 @@ class InstallWorker(QtCore.QThread):
 
         self.success = False
         self._cancel = False
+        self.staging_dst = None
 
     def cancel(self):
         self._cancel = True
@@ -2303,24 +2307,84 @@ class InstallWorker(QtCore.QThread):
     def update_progress(self, str, pct):
         self.progress.emit(str, pct)
 
+    @staticmethod
+    def _promote_staged_install(staging_path, destination_path):
+        destination_parent = os.path.dirname(destination_path)
+        backup_container = None
+        backup_path = None
+
+        if os.path.exists(destination_path):
+            backup_container = tempfile.mkdtemp(
+                prefix=".qatch-install-backup-", dir=destination_parent
+            )
+            backup_path = os.path.join(
+                backup_container, os.path.basename(destination_path)
+            )
+            try:
+                os.replace(destination_path, backup_path)
+            except OSError:
+                try:
+                    shutil.rmtree(backup_container)
+                except OSError as cleanup_error:
+                    Log.warning(
+                        f"Could not remove empty install backup folder "
+                        f"{backup_container}: {cleanup_error}"
+                    )
+                raise
+
+        try:
+            os.replace(staging_path, destination_path)
+        except OSError as promotion_error:
+            if backup_path is not None:
+                try:
+                    os.replace(backup_path, destination_path)
+                except OSError as rollback_error:
+                    raise RuntimeError(
+                        f"Could not promote the verified installation: "
+                        f"{promotion_error}. The previous version could not be "
+                        f"restored and remains at {backup_path}: {rollback_error}"
+                    ) from rollback_error
+
+                try:
+                    shutil.rmtree(backup_container)
+                except OSError as cleanup_error:
+                    Log.warning(
+                        f"Could not remove empty install backup folder "
+                        f"{backup_container}: {cleanup_error}"
+                    )
+            raise
+
+        if backup_container is not None:
+            try:
+                shutil.rmtree(backup_container)
+            except OSError as cleanup_error:
+                Log.warning(
+                    f"New version installed, but the previous version backup "
+                    f"could not be removed from {backup_path}: {cleanup_error}"
+                )
+
     def run(self):
         checksum_verified = False
         try:
             proceed = self.proceed
             copy_src = self.copy_src
             copy_dst = self.copy_dst
+            working_dst = copy_dst
 
             self.success = False
             if proceed:
                 self.update_progress("Preparing installation...", 1)
 
-                Log.debug(f"Copying from {copy_src} to {copy_dst}...")
-                # we already have permission to blow away any existing installation
-                if os.path.isdir(copy_dst):
-                    QatchInstaller.recursive_remove(copy_dst)
+                destination_parent = os.path.dirname(copy_dst)
+                os.makedirs(destination_parent, exist_ok=True)
+                self.staging_dst = tempfile.mkdtemp(
+                    prefix=".qatch-install-stage-", dir=destination_parent
+                )
+                working_dst = self.staging_dst
+                Log.debug(f"Extracting from {copy_src} to staging folder {working_dst}...")
                 self.update_progress("Copying application files...", 2)
                 Log.info("Copying new application files...")
-                shutil.unpack_archive(copy_src, copy_dst)
+                shutil.unpack_archive(copy_src, working_dst)
                 # shutil.copytree(copy_src, copy_dst, dirs_exist_ok=True)
 
             # abort early if cancel pending
@@ -2328,7 +2392,7 @@ class InstallWorker(QtCore.QThread):
                 self.success = False
 
             # if not errors up to this point
-            exe_path = os.path.join(copy_dst, "QATCH nanovisQ.exe")
+            exe_path = os.path.join(working_dst, "QATCH nanovisQ.exe")
             if (
                 proceed
                 and not self._cancel
@@ -2336,15 +2400,12 @@ class InstallWorker(QtCore.QThread):
             ):
                 self.update_progress("Verifying application checksum...", 51)
                 Log.info("Verifying application checksum...")
-                checksum_path = os.path.join(copy_dst, "app.checksum")
+                checksum_path = os.path.join(working_dst, "app.checksum")
                 if not os.path.exists(checksum_path):
                     self.success = False
                     Log.error("No app.checksum file provided. Unable to verify EXE.")
-                    Log.error(
-                        "Per security best practives, this version will now be uninstalled."
-                    )
+                    Log.error("The staged version will not be installed.")
                     Log.error("Please contact support if this problem persists.")
-                    QatchInstaller.recursive_remove(copy_dst)
                     return
                 else:
                     # app.checksum file exists, check it
@@ -2396,11 +2457,8 @@ class InstallWorker(QtCore.QThread):
                     else:
                         self.success = False
                         Log.error("App checksum mismatch!")
-                        Log.error(
-                            "Per security best practives, this version will now be uninstalled."
-                        )
+                        Log.error("The staged version will not be installed.")
                         Log.error("Please contact support if this problem persists.")
-                        QatchInstaller.recursive_remove(copy_dst)
                         return
 
             missing = False
@@ -2413,19 +2471,23 @@ class InstallWorker(QtCore.QThread):
                     "Is the application in a subfolder of the bundled ZIP file?"
                 )
 
-            if self._cancel:
-                self.update_progress("Canceling installation...", 99)
-                QatchInstaller.recursive_remove(copy_dst)
-                self.update_progress("Install canceled.", 100)
-            else:
-                self.update_progress("Install finished and verified!", 100)
-
             if missing:
                 raise FileNotFoundError(
-                    "The application executable could not be found after unpacking bundle. Unable to verify build checksum. Installation failed."
+                    "The application executable could not be found after unpacking "
+                    "bundle. Unable to verify build checksum. Installation failed."
                 )
-            if checksum_verified and not self._cancel:
-                self.success = True
+            if self._cancel:
+                self.update_progress("Canceling installation...", 99)
+                self.update_progress("Install canceled.", 100)
+            else:
+                if checksum_verified:
+                    if self.staging_dst is None:
+                        raise RuntimeError(
+                            "Verified installation has no staging directory."
+                        )
+                    self._promote_staged_install(self.staging_dst, copy_dst)
+                    self.success = True
+                self.update_progress("Install finished and verified!", 100)
 
         except Exception as e:
             # Log.error("An unhandled exception occurred:")
@@ -2444,6 +2506,14 @@ class InstallWorker(QtCore.QThread):
             # show exception message box
             self.exception.emit(f"{t.__name__}: {str(v)}")
         finally:
+            if self.staging_dst and os.path.isdir(self.staging_dst):
+                try:
+                    shutil.rmtree(self.staging_dst)
+                except OSError as cleanup_error:
+                    Log.error(
+                        f"Could not remove install staging folder "
+                        f"{self.staging_dst}: {cleanup_error}"
+                    )
             self.finished.emit()
 
 
