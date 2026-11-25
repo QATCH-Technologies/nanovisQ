@@ -358,29 +358,27 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 log_stream.seek(0)
 
     def get_installed_versions(self):
+        return list(self.get_installed_version_paths())
+
+    def get_installed_version_paths(self):
         entries = []
 
-        if os.path.isdir(self.cu_install_root):
-            entries.extend(
-                [
-                    entry
-                    for entry in os.listdir(self.cu_install_root)
-                    if os.path.isdir(os.path.join(self.cu_install_root, entry))
+        for install_root, label_suffix in (
+            (self.cu_install_root, ""),
+            (self.au_install_root, " (All Users)"),
+        ):
+            if os.path.isdir(install_root):
+                entries.extend(
+                    (
+                        f"{entry}{label_suffix}",
+                        os.path.join(install_root, entry),
+                    )
+                    for entry in os.listdir(install_root)
+                    if os.path.isdir(os.path.join(install_root, entry))
                     and not entry.startswith(".qatch-install-")
-                ]
-            )
+                )
 
-        if os.path.isdir(self.au_install_root):
-            entries.extend(
-                [
-                    f"{entry} (All Users)"
-                    for entry in os.listdir(self.au_install_root)
-                    if os.path.isdir(os.path.join(self.au_install_root, entry))
-                    and not entry.startswith(".qatch-install-")
-                ]
-            )
-
-        return entries
+        return dict(entries)
 
     def choose_installation_action(self):
         dialog = QtWidgets.QMessageBox(self)
@@ -639,7 +637,30 @@ class QatchInstaller(QtWidgets.QMessageBox):
             install_at_widget.setText(
                 os.path.join(os.path.expandvars("%USERPROFILE%"), "QATCH nanovisQ")
             )
-            if os.path.expandvars("%PROGRAMDATA%") in app_data_widget.text():
+            current_app_data_path = os.path.normcase(
+                os.path.normpath(app_data_widget.text())
+            )
+            all_users_app_data_paths = {
+                os.path.normcase(
+                    os.path.normpath(
+                        os.path.join(
+                            os.path.expandvars("%PROGRAMDATA%"),
+                            "QATCH",
+                            "nanovisQ",
+                        )
+                    )
+                ),
+                os.path.normcase(
+                    os.path.normpath(
+                        os.path.join(
+                            os.path.expandvars("%APPDATA%"),
+                            "QATCH",
+                            "nanovisQ",
+                        )
+                    )
+                ),
+            }
+            if current_app_data_path in all_users_app_data_paths:
                 app_data_widget.setText(
                     os.path.join(
                         os.path.expandvars("%LOCALAPPDATA%"), "QATCH", "nanovisQ"
@@ -651,10 +672,19 @@ class QatchInstaller(QtWidgets.QMessageBox):
             install_at_widget.setText(
                 os.path.join(os.path.expandvars("%PROGRAMFILES%"), "QATCH nanovisQ")
             )
-            if (
-                os.path.dirname(os.path.expandvars("%LOCALAPPDATA%"))
-                in app_data_widget.text()
-            ):
+            current_app_data_path = os.path.normcase(
+                os.path.normpath(app_data_widget.text())
+            )
+            current_user_app_data_path = os.path.normcase(
+                os.path.normpath(
+                    os.path.join(
+                        os.path.expandvars("%LOCALAPPDATA%"),
+                        "QATCH",
+                        "nanovisQ",
+                    )
+                )
+            )
+            if current_app_data_path == current_user_app_data_path:
                 app_data_widget.setText(
                     os.path.join(
                         os.path.expandvars("%PROGRAMDATA%"), "QATCH", "nanovisQ"
@@ -827,6 +857,15 @@ class QatchInstaller(QtWidgets.QMessageBox):
         run_offline_installer = True
         selected_bundle_path = None
 
+        def abort_no_eligible_releases():
+            self.progressBar.reset()
+            QtWidgets.QMessageBox.warning(
+                self,
+                "QATCH nanovisQ | Install",
+                "No eligible releases are available.",
+            )
+            raise UserWarning(False)
+
         try:
             GIT_ROOT = "https://github.com/QATCH-Technologies/nanovisQ/releases"
             SHOW_BETA = False
@@ -878,6 +917,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
                         if tag.find("r") == -1 or not tag.startswith("v"):
                             releases.remove(tag)
 
+                if not releases:
+                    abort_no_eligible_releases()
+
                 # Get the list of targets available for the latest release
                 response = self._get_request_response(
                     url=f"{GIT_ROOT}/download/{releases[0]}/targets.csv"
@@ -888,6 +930,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     Log.debug(
                         f'Disabling tag "{releases[0]}" in available releases. Not available to all targets.'
                     )
+                    if len(releases) == 1:
+                        abort_no_eligible_releases()
                     latest_pre_release = True
             else:
                 raise requests.HTTPError("Latest tag is not a valid version.")
@@ -1374,7 +1418,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     os.makedirs(shortcut.WorkingDirectory)
                 if elevated_install_settings is not None:
                     QtWidgets.QMessageBox.information(
-                        "Use the desktop link to launch the application."
+                        None,
+                        "QATCH nanovisQ | Launch",
+                        "Use the desktop link to launch the application.",
                     )
                 elif (
                     QtWidgets.QMessageBox.question(
@@ -1611,7 +1657,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
     def uninstall(self):
 
-        installed_versions = self.get_installed_versions()
+        installed_version_paths = self.get_installed_version_paths()
+        installed_versions = list(installed_version_paths)
         uninstall_failed_paths = []
         number_of_builds_installed = len(installed_versions)
         au_versions_installed = any(
@@ -2013,15 +2060,16 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 Log.debug("User skipped or did not make a selection.")
             else:
                 Log.info(f"Selected version for shortcut launch: {selected_version}")
-                _cu_install_root = os.path.join(
-                    self.cu_install_root, selected_version, "QATCH nanovisQ.exe"
+                shortcut_executable_path = os.path.join(
+                    installed_version_paths[selected_version],
+                    "QATCH nanovisQ.exe",
                 )
-                shortcut.TargetPath = _cu_install_root
+                shortcut.TargetPath = shortcut_executable_path
                 shortcut.Arguments = (
                     ""  # explicity remove '-m QATCH' if upgrading PY install to EXE
                 )
                 shortcut.Description = selected_version  # f"(C) {date.today().year} QATCH Technologies LLC"
-                shortcut.IconLocation = f"{_cu_install_root},0"
+                shortcut.IconLocation = f"{shortcut_executable_path},0"
                 shortcut.WorkingDirectory = os.path.join(
                     os.path.dirname(desktop), "Documents", "QATCH nanovisQ"
                 )
