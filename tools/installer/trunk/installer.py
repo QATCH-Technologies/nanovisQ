@@ -39,7 +39,7 @@ if ELEVATED_INSTALL_FLAG in sys.argv:
     del sys.argv[elevated_arg_index : elevated_arg_index + 2]
 
 # NOTE: When changing version, also modify `version.rc` file
-INSTALLER_VERSION = "v1.0.3.0"
+INSTALLER_VERSION = "v1.0.3.1"
 
 CHECKSUM_METHOD = "hashlib"  # enter 'hashlib' or 'certutil'
 
@@ -485,7 +485,13 @@ class QatchInstaller(QtWidgets.QMessageBox):
         expanded_path = os.path.abspath(os.path.expandvars(path))
         normalized_path = os.path.normcase(expanded_path)
 
-        for variable in ("LOCALAPPDATA", "APPDATA", "USERPROFILE"):
+        for variable in (
+            "LOCALAPPDATA",
+            "APPDATA",
+            "USERPROFILE",
+            "PROGRAMFILES",
+            "PROGRAMDATA",
+        ):
             variable_path = os.environ.get(variable)
             if not variable_path:
                 continue
@@ -603,7 +609,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             install_at_widget.setText(
                 os.path.join(os.path.expandvars("%USERPROFILE%"), "QATCH nanovisQ")
             )
-            if os.path.expandvars("%APPDATA%") in app_data_widget.text():
+            if os.path.expandvars("%PROGRAMDATA%") in app_data_widget.text():
                 app_data_widget.setText(
                     os.path.join(
                         os.path.expandvars("%LOCALAPPDATA%"), "QATCH", "nanovisQ"
@@ -615,9 +621,14 @@ class QatchInstaller(QtWidgets.QMessageBox):
             install_at_widget.setText(
                 os.path.join(os.path.expandvars("%PROGRAMFILES%"), "QATCH nanovisQ")
             )
-            if os.path.expandvars("%LOCALAPPDATA%") in app_data_widget.text():
+            if (
+                os.path.dirname(os.path.expandvars("%LOCALAPPDATA%"))
+                in app_data_widget.text()
+            ):
                 app_data_widget.setText(
-                    os.path.join(os.path.expandvars("%APPDATA%"), "QATCH", "nanovisQ")
+                    os.path.join(
+                        os.path.expandvars("%PROGRAMDATA%"), "QATCH", "nanovisQ"
+                    )
                 )
 
         if self.ok_button:
@@ -1418,7 +1429,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             #                                buttons=QtWidgets.QMessageBox.Ok)
 
         Log.info("Install finished.")
-        
+
         if elevated_install_settings is not None:
             os._exit(0)
 
