@@ -519,6 +519,20 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
         return expanded_path
 
+    @staticmethod
+    def _paths_overlap(first_path, second_path):
+        resolved_paths = [
+            os.path.normcase(
+                os.path.realpath(os.path.abspath(os.path.expandvars(path)))
+            )
+            for path in (first_path, second_path)
+        ]
+        try:
+            common_path = os.path.commonpath(resolved_paths)
+            return common_path in resolved_paths
+        except ValueError:
+            return False
+
     def save_install_preferences(self, preferences=None):
         install_root = (
             self.au_install_root if self.install_type else self.cu_install_root
@@ -1765,8 +1779,23 @@ class QatchInstaller(QtWidgets.QMessageBox):
             # Uninstall application data (if exists, and requested)
             if os.path.exists(self.app_data_path):
                 if uninstall_data:
-                    QatchInstaller.recursive_remove(self.app_data_path)
-                    Log.info("Uninstalled application data.")
+                    if QatchInstaller._paths_overlap(
+                        self.logged_data_path, self.app_data_path
+                    ):
+                        Log.warning(
+                            "Skipped application-data cleanup because the logged "
+                            "data directory overlaps the application-data directory."
+                        )
+                        QtWidgets.QMessageBox.warning(
+                            self,
+                            "QATCH nanovisQ | Application Data Retained",
+                            "Application-data cleanup was skipped because the logged "
+                            "data directory overlaps it. Your logged data has been "
+                            "preserved.",
+                        )
+                    else:
+                        QatchInstaller.recursive_remove(self.app_data_path)
+                        Log.info("Uninstalled application data.")
                 else:
                     Log.info("Retaining application data, per user request.")
             else:
