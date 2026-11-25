@@ -675,14 +675,26 @@ class QatchInstaller(QtWidgets.QMessageBox):
             path_input.setText(selected_path)
 
     def on_request_response(self, response):
+        if self.worker._cancel:
+            response.close()
+            self.on_request_cancelled()
+            return
         self.response = response
+        self.worker_finished = True
+
+    def on_request_cancelled(self):
+        self.response = None
+        self.request_cancelled = True
         self.worker_finished = True
 
     def _get_request_response(self, **kwargs) -> requests.Response:
         self.response = None
         self.exception = None
+        self.request_cancelled = False
+        kwargs.setdefault("timeout", (10, 30))
         self.worker = RequestWorker(**kwargs)
         self.worker.finished.connect(self.on_request_response)
+        self.worker.cancelled.connect(self.on_request_cancelled)
         self.worker.exception.connect(self.show_exception)
         self.worker.progress.connect(self.on_request_progress)
 
@@ -690,7 +702,10 @@ class QatchInstaller(QtWidgets.QMessageBox):
         self.worker.start()
         while not self.worker_finished:
             QApplication.processEvents()
+        self.worker.wait()
 
+        if self.request_cancelled:
+            raise UserWarning(False)
         if self.exception is not None:
             raise requests.RequestException(self.exception)
         if self.response is None:
@@ -2146,6 +2161,7 @@ class ElevatedProcessMonitor:
 
 class RequestWorker(QtCore.QThread):
     finished = QtCore.pyqtSignal(requests.Response)
+    cancelled = QtCore.pyqtSignal()
     exception = QtCore.pyqtSignal(str)
     progress = QtCore.pyqtSignal(str, int)
     download_finished = QtCore.pyqtSignal(str, str)
@@ -2223,10 +2239,19 @@ class RequestWorker(QtCore.QThread):
                 # self.finished.emit(response)
             else:
                 self.update_progress("Checking online software bundles...", -1)
-                self.finished.emit(requests.get(**self.kwargs))
+                response = requests.get(**self.kwargs)
+                if self._cancel:
+                    response.close()
+                    self.cancelled.emit()
+                else:
+                    self.finished.emit(response)
                 self._success = True
 
         except Exception as e:
+            if self._cancel and partial_file is None:
+                self.cancelled.emit()
+                return
+
             # Log.error("An unhandled exception occurred:")
             # Log.error(f"{e.__class__.__name__}: {e}")
 
@@ -2248,7 +2273,10 @@ class RequestWorker(QtCore.QThread):
                         f"\nCould not remove partial download {partial_file}: "
                         f"{cleanup_error}"
                     )
-                self.download_finished.emit("failed", error_message)
+                if self._cancel and not cleanup_error:
+                    self.download_finished.emit("cancelled", "")
+                else:
+                    self.download_finished.emit("failed", error_message)
             else:
                 self.exception.emit(error_message)
 
