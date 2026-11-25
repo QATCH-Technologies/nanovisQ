@@ -464,6 +464,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
+        self.change_install_type(install_for, form)
         dialog.exec_()
 
         if dialog.result() == QtWidgets.QDialog.Accepted:
