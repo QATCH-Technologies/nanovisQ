@@ -1663,8 +1663,10 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     folders.append(os.path.join(root, name))
             for name in folders:
                 # removedirs handles nested directories
-                dups = len([True for i in folders if i.startswith(name)])
-                if not dups == 1:  # skip parent dirs (with dups)
+                has_descendants = any(
+                    candidate.startswith(name + os.sep) for candidate in folders
+                )
+                if has_descendants:
                     Log.debug(f"Skip folder: {name} - it will be deleted later")
                 else:
                     Log.info(f"Remove folder: {name}")
