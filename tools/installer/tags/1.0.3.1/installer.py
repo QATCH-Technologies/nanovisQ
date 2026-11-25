@@ -659,6 +659,25 @@ class QatchInstaller(QtWidgets.QMessageBox):
         self.response = response
         self.worker_finished = True
 
+    def _get_request_response(self, **kwargs) -> requests.Response:
+        self.response = None
+        self.exception = None
+        self.worker = RequestWorker(**kwargs)
+        self.worker.finished.connect(self.on_request_response)
+        self.worker.exception.connect(self.show_exception)
+        self.worker.progress.connect(self.on_request_progress)
+
+        self.worker_finished = False
+        self.worker.start()
+        while not self.worker_finished:
+            QApplication.processEvents()
+
+        if self.exception is not None:
+            raise requests.RequestException(self.exception)
+        if self.response is None:
+            raise requests.RequestException("Request finished without a response.")
+        return self.response
+
     def on_request_progress(self, message, percentage):
         self.progressBar.setLabelText(message)
         if 0 <= percentage <= 100:
@@ -786,20 +805,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
             )
             self.progressBar.show()
 
-            # Get list of versions from server (read "tags.txt" from "latest" url)
-            self.worker = RequestWorker(url=f"{GIT_ROOT}/latest", allow_redirects=True)
-            self.worker.finished.connect(self.on_request_response)
-            # self.worker.finished.connect(self.worker.deleteLater)
-            self.worker.exception.connect(self.show_exception)
-            self.worker.progress.connect(self.on_request_progress)
-
-            self.worker_finished = False
-            self.worker.start()
-            while not self.worker_finished:
-                # wait here until finished querying
-                QApplication.processEvents()
-
-            response = self.response
+            response = self._get_request_response(
+                url=f"{GIT_ROOT}/latest", allow_redirects=True
+            )
             response.raise_for_status()
 
             latest_tag = None
@@ -813,21 +821,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
             latest_pre_release = False
             if latest_tag and latest_tag.startswith("v"):
                 # Get the list of tags available for the latest release
-                self.worker = RequestWorker(
+                response = self._get_request_response(
                     url=f"{GIT_ROOT}/download/{latest_tag}/tags.txt"
                 )
-                self.worker.finished.connect(self.on_request_response)
-                # self.worker.finished.connect(self.worker.deleteLater)
-                self.worker.exception.connect(self.show_exception)
-                self.worker.progress.connect(self.on_request_progress)
-
-                self.worker_finished = False
-                self.worker.start()
-                while not self.worker_finished:
-                    # wait here until finished querying
-                    QApplication.processEvents()
-
-                response = self.response
                 response.raise_for_status()
 
                 releases = response.content.decode().splitlines()
@@ -839,21 +835,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
                             releases.remove(tag)
 
                 # Get the list of targets available for the latest release
-                self.worker = RequestWorker(
+                response = self._get_request_response(
                     url=f"{GIT_ROOT}/download/{releases[0]}/targets.csv"
                 )
-                self.worker.finished.connect(self.on_request_response)
-                # self.worker.finished.connect(self.worker.deleteLater)
-                self.worker.exception.connect(self.show_exception)
-                self.worker.progress.connect(self.on_request_progress)
-
-                self.worker_finished = False
-                self.worker.start()
-                while not self.worker_finished:
-                    # wait here until finished querying
-                    QApplication.processEvents()
-
-                response = self.response
                 response.raise_for_status()
 
                 if response.content.decode().strip().upper() != "ALL":
@@ -1026,7 +1010,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             else:
                 raise requests.HTTPError("Selected version to install not specified.")
 
-        except requests.HTTPError as http:
+        except requests.RequestException as http:
             Log.error(f"Requests error: {http}")
             run_offline_installer = False
 
@@ -1258,6 +1242,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         self.worker.cancel()
 
     def show_exception(self, except_str: str = None):
+        self.exception = except_str
         self.worker_finished = True
 
         box = QtWidgets.QMessageBox(None)
