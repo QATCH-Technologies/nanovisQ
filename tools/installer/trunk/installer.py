@@ -40,6 +40,19 @@ if ELEVATED_INSTALL_FLAG in sys.argv:
     elevated_install_settings = json.loads(sys.argv[elevated_arg_index + 1])
     del sys.argv[elevated_arg_index : elevated_arg_index + 2]
 
+ELEVATED_UNINSTALL_FLAG = "--qatch-elevated-uninstall"
+elevated_uninstall_settings = None
+if ELEVATED_UNINSTALL_FLAG in sys.argv:
+    ctypes.windll.kernel32.SetConsoleTitleW(
+        "QATCH nanovisQ SW Uninstaller - command line"
+    )
+    print("Preparing to uninstall...")
+    elevated_arg_index = sys.argv.index(ELEVATED_UNINSTALL_FLAG)
+    if elevated_arg_index + 1 >= len(sys.argv):
+        raise ValueError(f"{ELEVATED_UNINSTALL_FLAG} requires a JSON payload.")
+    elevated_uninstall_settings = json.loads(sys.argv[elevated_arg_index + 1])
+    del sys.argv[elevated_arg_index : elevated_arg_index + 2]
+
 # NOTE: When changing version, also modify `version.rc` file
 INSTALLER_VERSION = "v1.0.3.1"
 
@@ -199,12 +212,28 @@ class QatchInstaller(QtWidgets.QMessageBox):
             finally:
                 return
 
+        if elevated_uninstall_settings is not None:
+            try:
+                self.uninstall(elevated_settings=elevated_uninstall_settings)
+                Log.info("Elevated uninstall process finished.")
+            except Exception:
+                Log.exception("Elevated uninstall failed.")
+                self.setIcon(QtWidgets.QMessageBox.Critical)
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
+                self.setWindowTitle("QATCH nanovisQ | Uninstall Error")
+                self.setText(
+                    "Elevated uninstall failed. See details for more information."
+                )
+                self.setDetailedText(log_stream.getvalue())
+                self.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                self.exec_()
+            finally:
+                return
+
         while True:
 
             if self.is_finished:
-                handle = win32api.OpenProcess(
-                    win32con.SYNCHRONIZE, False, self.app_pid
-                )
+                handle = win32api.OpenProcess(win32con.SYNCHRONIZE, False, self.app_pid)
 
                 Log.warning(
                     "Waiting for main app to close before closing the installer..."
@@ -594,11 +623,12 @@ class QatchInstaller(QtWidgets.QMessageBox):
         self.relaunch_started = True
         return True
 
-    def launch_elevated_uninstall(self):
+    def launch_elevated_uninstall(self, uninstall_settings):
         try:
             arguments = []
             if not getattr(sys, "frozen", False):
                 arguments.append(os.path.abspath(sys.argv[0]))
+            arguments.extend((ELEVATED_UNINSTALL_FLAG, json.dumps(uninstall_settings)))
 
             self.elevated_process = ElevatedProcessMonitor(
                 arguments, callback=self.on_elevated_process_finished, parent=self
@@ -612,8 +642,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
             QtWidgets.QMessageBox.warning(
                 self,
                 "QATCH nanovisQ | Administrator privileges required",
-                "Administrator privileges were not granted. No installation "
-                "settings were applied.",
+                "Administrator privileges were not granted. The uninstall "
+                "could not continue.",
             )
             return False
 
@@ -1300,9 +1330,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             proceed = True  # silent admin install
 
         if self.install_type == 1 and not self.is_running_as_admin():
-            if not self.launch_elevated_install(
-                install=True, bundle_path=copy_src
-            ):
+            if not self.launch_elevated_install(install=True, bundle_path=copy_src):
                 return
             return
 
@@ -1620,9 +1648,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         elif self.elapsed_timer.elapsed() > self.COPY_PROGRESS_DELAY:
             current_progress = self.progressBar.value()
             if current_progress <= self.COPY_PROGRESS_LIMIT:
-                next_progress = min(
-                    current_progress + 1, self.COPY_PROGRESS_LIMIT
-                )
+                next_progress = min(current_progress + 1, self.COPY_PROGRESS_LIMIT)
             elif current_progress < progress_max - 1:
                 next_progress = current_progress + 1
             else:
@@ -1697,7 +1723,48 @@ class QatchInstaller(QtWidgets.QMessageBox):
             for line in a_list:
                 Log.error(line)
 
-    def uninstall(self):
+    def uninstall(self, elevated_settings=None):
+        elevated_uninstall = elevated_settings is not None
+        if elevated_uninstall:
+            for setting_name, attribute_name in (
+                ("current_user_root", "cu_install_root"),
+                ("all_users_root", "au_install_root"),
+            ):
+                root = os.path.abspath(elevated_settings[setting_name])
+                if os.path.basename(root).casefold() != "qatch nanovisq":
+                    raise ValueError(f"Invalid uninstall root: {root}")
+                setattr(self, attribute_name, root)
+            profiles_root = os.path.dirname(
+                os.path.abspath(os.path.expandvars("%PUBLIC%"))
+            )
+            current_user_profile = os.path.dirname(self.cu_install_root)
+            profile_parent = os.path.normcase(os.path.dirname(current_user_profile))
+            expected_profiles_root = os.path.normcase(profiles_root)
+            if profile_parent != expected_profiles_root:
+                raise ValueError(
+                    f"Invalid current-user uninstall root: {self.cu_install_root}"
+                )
+            if os.path.normcase(self.au_install_root) != os.path.normcase(
+                os.path.abspath(
+                    os.path.join(
+                        os.path.expandvars("%PROGRAMFILES%"),
+                        "QATCH nanovisQ",
+                    )
+                )
+            ):
+                raise ValueError(
+                    f"Invalid all-users uninstall root: {self.au_install_root}"
+                )
+            self.app_data_path = elevated_settings["app_data_path"]
+            self.logged_data_path = elevated_settings["logged_data_path"]
+            uninstall_data = elevated_settings["uninstall_data"]
+            if not isinstance(uninstall_data, bool):
+                raise ValueError("Invalid application-data uninstall setting.")
+            selected_version = elevated_settings.get("selected_version")
+            selected_version_path = elevated_settings.get("selected_version_path")
+        else:
+            selected_version = None
+            selected_version_path = None
 
         installed_version_paths = self.get_installed_version_paths()
         installed_versions = list(installed_version_paths)
@@ -1709,8 +1776,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
         Log.info(f"Number of builds found: {number_of_builds_installed}")
         Log.info(f"Admin rights needed: {au_versions_installed}")
 
-        ask_for_specific_version = False
-        if number_of_builds_installed > 1:
+        ask_for_specific_version = selected_version is not None
+        if not elevated_uninstall and number_of_builds_installed > 1:
             ans = QtWidgets.QMessageBox.question(
                 None,
                 "QATCH nanovisQ | Uninstall All",
@@ -1744,7 +1811,28 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
                 return
 
-        if ask_for_specific_version:
+        if ask_for_specific_version and elevated_uninstall:
+            selected_path = os.path.abspath(selected_version_path)
+            valid_roots = {
+                os.path.normcase(os.path.abspath(self.cu_install_root)),
+                os.path.normcase(os.path.abspath(self.au_install_root)),
+            }
+            if os.path.normcase(os.path.dirname(selected_path)) not in valid_roots:
+                raise ValueError(
+                    f"Selected version is outside the uninstall roots: {selected_path}"
+                )
+            expected_version_name = selected_version.split(" (", 1)[0]
+            if os.path.basename(selected_path) != expected_version_name:
+                raise ValueError(
+                    f"Selected version path does not match {selected_version}."
+                )
+            _cu_install_root = selected_path
+            if selected_version not in installed_versions and os.path.isdir(
+                selected_path
+            ):
+                installed_versions.append(selected_version)
+            ans = QtWidgets.QMessageBox.No
+        elif ask_for_specific_version:
 
             def is_all_users_version(index):
                 admin = "(All Users)" in self.comboBox.currentText()
@@ -1815,73 +1903,77 @@ class QatchInstaller(QtWidgets.QMessageBox):
         else:
             _cu_install_root = self.cu_install_root
 
-            ans = QtWidgets.QMessageBox.question(
-                None,
-                "QATCH nanovisQ | Uninstall",
-                "<b>Would you like to delete all application data too?</b><br/>"
-                + "If you plan to re-install, you probably want to select 'No'.<br/><br/>"
-                + "This data includes any user profiles, configs, and/or saved preferences.<br/>"
-                + "This data does <B>NOT</B> include any previously logged data or results.",
-                buttons=QtWidgets.QMessageBox.Yes
-                | QtWidgets.QMessageBox.No
-                | QtWidgets.QMessageBox.Cancel,
-                defaultButton=QtWidgets.QMessageBox.No,
-            )
+            if not elevated_uninstall:
+                ans = QtWidgets.QMessageBox.question(
+                    None,
+                    "QATCH nanovisQ | Uninstall",
+                    "<b>Would you like to delete all application data too?</b><br/>"
+                    + "If you plan to re-install, you probably want to select 'No'.<br/><br/>"
+                    + "This data includes any user profiles, configs, and/or saved preferences.<br/>"
+                    + "This data does <B>NOT</B> include any previously logged data or results.",
+                    buttons=QtWidgets.QMessageBox.Yes
+                    | QtWidgets.QMessageBox.No
+                    | QtWidgets.QMessageBox.Cancel,
+                    defaultButton=QtWidgets.QMessageBox.No,
+                )
 
-        if ans == QtWidgets.QMessageBox.Yes:
-            uninstall_data = True
-        if ans == QtWidgets.QMessageBox.No:
-            uninstall_data = False
-        if ans == QtWidgets.QMessageBox.Cancel:
-            Log.warning("Uninstall canceled. No changes were made.")
+        if not elevated_uninstall:
+            if ans == QtWidgets.QMessageBox.Yes:
+                uninstall_data = True
+            if ans == QtWidgets.QMessageBox.No:
+                uninstall_data = False
+            if ans == QtWidgets.QMessageBox.Cancel:
+                Log.warning("Uninstall canceled. No changes were made.")
 
-            # box = QtWidgets.QMessageBox(None)
-            self.setIcon(QtWidgets.QMessageBox.Critical)
+                # box = QtWidgets.QMessageBox(None)
+                self.setIcon(QtWidgets.QMessageBox.Critical)
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
+                self.setWindowTitle("QATCH nanovisQ | Abort")
+                self.setText("User canceled uninstall. Uninstall aborted.")
+                self.setDetailedText(log_stream.getvalue())
+                self.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                self.exec_()
+                return
+
             self.setWindowIcon(QtGui.QIcon(bundle_icon))
-            self.setWindowTitle("QATCH nanovisQ | Abort")
-            self.setText("User canceled uninstall. Uninstall aborted.")
-            self.setDetailedText(log_stream.getvalue())
-            self.setStandardButtons(QtWidgets.QMessageBox.Ok)
-            self.exec_()
-            return
-
-        self.setWindowIcon(QtGui.QIcon(bundle_icon))
-        self.setWindowTitle("QATCH nanovisQ | Confirm Uninstall")
-        if ask_for_specific_version:
-            self.setText(
-                f"Are you sure you want to uninstall version:\n{selected_version}?"
+            self.setWindowTitle("QATCH nanovisQ | Confirm Uninstall")
+            if ask_for_specific_version:
+                self.setText(
+                    f"Are you sure you want to uninstall version:\n{selected_version}?"
+                )
+            elif number_of_builds_installed == 1:
+                self.setText(
+                    f"Are you sure you want to uninstall version:\n{installed_versions[0]}?"
+                )
+            else:
+                self.setText(
+                    f"Are you sure you want to uninstall {number_of_builds_installed} versions:\n"
+                    + "\n".join(installed_versions)
+                    + "?"
+                )
+            self.setIcon(QtWidgets.QMessageBox.Question)
+            self.setStandardButtons(
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
             )
-        elif number_of_builds_installed == 1:
-            self.setText(
-                f"Are you sure you want to uninstall version:\n{installed_versions[0]}?"
-            )
-        else:
-            self.setText(
-                f"Are you sure you want to uninstall {number_of_builds_installed} versions:\n"
-                + "\n".join(installed_versions)
-                + "?"
-            )
-        self.setIcon(QtWidgets.QMessageBox.Question)
-        self.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-        self.setDefaultButton(QtWidgets.QMessageBox.Yes)
-        uninstall_confirmed = self.button(QtWidgets.QMessageBox.Yes)
-        self.exec_()
-
-        if self.clickedButton() != uninstall_confirmed:
-            Log.warning(
-                "User did not consent to confirmation request. No changes made."
-            )
-
-            # box = QtWidgets.QMessageBox(None)
-            self.setIcon(QtWidgets.QMessageBox.Critical)
-            self.setWindowIcon(QtGui.QIcon(bundle_icon))
-            self.setWindowTitle("QATCH nanovisQ | Abort")
-            self.setText("User canceled uninstall. Uninstall aborted.")
-            self.setDetailedText(log_stream.getvalue())
-            self.setStandardButtons(QtWidgets.QMessageBox.Ok)
+            self.setDefaultButton(QtWidgets.QMessageBox.Yes)
+            uninstall_confirmed = self.button(QtWidgets.QMessageBox.Yes)
             self.exec_()
 
-            return
+            if self.clickedButton() != uninstall_confirmed:
+                Log.warning(
+                    "User did not consent to confirmation request. No changes made."
+                )
+
+                # box = QtWidgets.QMessageBox(None)
+                self.setIcon(QtWidgets.QMessageBox.Critical)
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
+                self.setWindowTitle("QATCH nanovisQ | Abort")
+                self.setText("User canceled uninstall. Uninstall aborted.")
+                self.setDetailedText(log_stream.getvalue())
+                self.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                self.exec_()
+
+                return
 
         try:
             # Uninstall application data (if exists, and requested)
@@ -1952,18 +2044,22 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     if os.path.exists(self.au_install_root):
                         uninstall_failed_paths.append(self.au_install_root)
                 else:
-                    # specify software path as normal to write desktop.ini file (if exists)
-                    win32api.SetFileAttributes(
-                        _cu_install_root, win32con.FILE_ATTRIBUTE_NORMAL
-                    )
-                    QatchInstaller.recursive_remove(_cu_install_root)
                     if os.path.exists(_cu_install_root):
-                        uninstall_failed_paths.append(_cu_install_root)
+                        # specify software path as normal to write desktop.ini file (if exists)
+                        win32api.SetFileAttributes(
+                            _cu_install_root, win32con.FILE_ATTRIBUTE_NORMAL
+                        )
+                        QatchInstaller.recursive_remove(_cu_install_root)
+                        if os.path.exists(_cu_install_root):
+                            uninstall_failed_paths.append(_cu_install_root)
                 Log.info("Uninstalled software files.")
             else:
                 Log.warning("No software files found. Nothing to uninstall here.")
 
         except Exception as e:
+            if elevated_uninstall:
+                raise
+
             if "Access is denied" in str(e) or True:
 
                 # box = QtWidgets.QMessageBox(None)
@@ -1988,7 +2084,20 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 self.exec_()  # wait for user interaction
 
                 if self.clickedButton() == button1:
-                    self.launch_elevated_uninstall()
+                    uninstall_settings = {
+                        "current_user_root": self.cu_install_root,
+                        "all_users_root": self.au_install_root,
+                        "app_data_path": self.app_data_path,
+                        "logged_data_path": self.logged_data_path,
+                        "uninstall_data": uninstall_data,
+                        "selected_version": (
+                            selected_version if ask_for_specific_version else None
+                        ),
+                        "selected_version_path": (
+                            _cu_install_root if ask_for_specific_version else None
+                        ),
+                    }
+                    self.launch_elevated_uninstall(uninstall_settings)
                     if self.relaunch_started:
                         # Wait for exit, this app will close when child does
                         # See `self.on_elevated_process_finished(exit_code)`
@@ -2014,8 +2123,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
         # Update cached version info
         if ask_for_specific_version:
-            installed_versions.remove(selected_version)
-            number_of_builds_installed -= 1
+            if selected_version in installed_versions:
+                installed_versions.remove(selected_version)
+                number_of_builds_installed -= 1
         else:
             installed_versions = []
             number_of_builds_installed = 0
@@ -2119,11 +2229,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 Log.info(f"Created desktop link for {selected_version}!")
 
         remaining_paths = sorted(
-            {
-                path
-                for path in uninstall_failed_paths
-                if os.path.exists(path)
-            }
+            {path for path in uninstall_failed_paths if os.path.exists(path)}
         )
         if not remaining_paths:
             # box = QtWidgets.QMessageBox(None)
@@ -2471,7 +2577,9 @@ class InstallWorker(QtCore.QThread):
                     prefix=".qatch-install-stage-", dir=destination_parent
                 )
                 working_dst = self.staging_dst
-                Log.debug(f"Extracting from {copy_src} to staging folder {working_dst}...")
+                Log.debug(
+                    f"Extracting from {copy_src} to staging folder {working_dst}..."
+                )
                 self.update_progress("Copying application files...", 2)
                 Log.info("Copying new application files...")
                 shutil.unpack_archive(copy_src, working_dst)
@@ -2483,11 +2591,7 @@ class InstallWorker(QtCore.QThread):
 
             # if not errors up to this point
             exe_path = os.path.join(working_dst, "QATCH nanovisQ.exe")
-            if (
-                proceed
-                and not self._cancel
-                and os.path.exists(exe_path)
-            ):
+            if proceed and not self._cancel and os.path.exists(exe_path):
                 self.update_progress("Verifying application checksum...", 51)
                 Log.info("Verifying application checksum...")
                 checksum_path = os.path.join(working_dst, "app.checksum")
