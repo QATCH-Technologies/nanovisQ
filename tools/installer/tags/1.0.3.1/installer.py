@@ -10,6 +10,7 @@ import json
 import ctypes
 import subprocess
 import traceback
+from typing import Optional
 
 # from datetime import date
 from io import StringIO, open
@@ -181,7 +182,12 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 self.app_data_path = elevated_install_settings["temp_data"]
                 self.save_install_preferences(elevated_install_settings["preferences"])
                 if elevated_install_settings["install"]:
-                    self.install_offline(search_for_bundles=True, skip_settings=True)
+                    bundle_path = elevated_install_settings.get("bundle_path")
+                    self.install_offline(
+                        search_for_bundles=bundle_path is None,
+                        skip_settings=True,
+                        bundle_path=bundle_path,
+                    )
                 Log.info("Elevated install process finished.")
             except Exception as e:
                 Log.error("[ADMIN] ERROR:", e)
@@ -396,7 +402,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
             return "Remove"
         return None
 
-    def show_installation_settings(self, on_modify: bool = False):
+    def show_installation_settings(
+        self, on_modify: bool = False, bundle_path: Optional[str] = None
+    ):
         dialog = QtWidgets.QDialog(self)
         dialog.setWindowIcon(QtGui.QIcon(bundle_icon))
         dialog.setWindowTitle("QATCH nanovisQ | Installation Settings")
@@ -463,7 +471,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
             needs_elevation = self.install_type == 1 and not self.is_running_as_admin()
             if needs_elevation:
                 self.launch_elevated_install(
-                    install=not on_modify or install_type_changed
+                    install=not on_modify or install_type_changed,
+                    bundle_path=bundle_path,
                 )
                 return False
 
@@ -521,7 +530,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             preferences_file.write("\n")
         Log.info(f"Saved installation preferences to {preferences_path}")
 
-    def launch_elevated_install(self, install):
+    def launch_elevated_install(self, install, bundle_path: Optional[str] = None):
         try:
             settings = {
                 "install_type": self.install_type,
@@ -532,6 +541,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     "logged_data": self.portable_preference_path(self.logged_data_path),
                 },
                 "install": install,
+                "bundle_path": bundle_path,
             }
             arguments = []
             if not getattr(sys, "frozen", False):
@@ -1033,7 +1043,10 @@ class QatchInstaller(QtWidgets.QMessageBox):
             self.install_offline(search_for_bundles=True, skip_settings=False)
 
     def install_offline(
-        self, search_for_bundles: bool = False, skip_settings: bool = False
+        self,
+        search_for_bundles: bool = False,
+        skip_settings: bool = False,
+        bundle_path: Optional[str] = None,
     ):
 
         # if not skip_settings:
@@ -1050,7 +1063,17 @@ class QatchInstaller(QtWidgets.QMessageBox):
         copy_dst = copy_root
         found = False
 
-        if search_for_bundles:
+        if bundle_path is not None:
+            copy_src = os.path.abspath(bundle_path)
+            file = os.path.basename(copy_src)
+            if (
+                os.path.isfile(copy_src)
+                and file.find("nanovisQ") >= 0
+                and file.endswith("_exe.zip")
+            ):
+                copy_dst = os.path.join(copy_root, file[0:-4])  # drop '.zip'
+                found = True
+        elif search_for_bundles:
             most_recent = 0
             for file in os.listdir(copy_src):
                 if (
@@ -1065,7 +1088,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                         copy_dst = os.path.join(copy_root, file[0:-4])  # drop '.zip'
                         found = True
 
-        if not found:
+        if not found and bundle_path is None:
             fname = QtWidgets.QFileDialog.getOpenFileName(
                 None,
                 "Select QATCH software ZIP package...",
@@ -1143,23 +1166,33 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 proceed = True  # silent admin install
 
         else:
-            Log.error("No software bundle found. Cannot install.")
-
             # box = QtWidgets.QMessageBox(None)
             self.setIcon(QtWidgets.QMessageBox.Critical)
             self.setWindowIcon(QtGui.QIcon(bundle_icon))
-            self.setWindowTitle("QATCH nanovisQ | No Build Found")
-            self.setText("No software bundle found. Cannot install.")
-            self.setDetailedText(
-                'Could not find a valid ZIP file containing "nanovisQ" in the filename. Please try again.'
-            )
+            if bundle_path is not None:
+                Log.error(f"Selected software bundle is unavailable: {bundle_path}")
+                self.setWindowTitle("QATCH nanovisQ | Selected Bundle Unavailable")
+                self.setText(
+                    "The selected software bundle is unavailable. Install aborted."
+                )
+                self.setDetailedText(
+                    "The selected ZIP is no longer available or is not a valid "
+                    f'nanovisQ bundle: "{bundle_path}"'
+                )
+            else:
+                Log.error("No software bundle found. Cannot install.")
+                self.setWindowTitle("QATCH nanovisQ | No Build Found")
+                self.setText("No software bundle found. Cannot install.")
+                self.setDetailedText(
+                    'Could not find a valid ZIP file containing "nanovisQ" in the filename. Please try again.'
+                )
             self.setStandardButtons(QtWidgets.QMessageBox.Ok)
             self.exec_()
 
             return
 
         if not skip_settings:
-            if not self.show_installation_settings():
+            if not self.show_installation_settings(bundle_path=copy_src):
                 return  # user cancel
 
         if self.install_type:
