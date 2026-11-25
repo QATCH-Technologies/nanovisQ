@@ -788,6 +788,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
         # Flag to skip offline install step if online step fails or is canceled.
         run_offline_installer = True
+        selected_bundle_path = None
 
         try:
             GIT_ROOT = "https://github.com/QATCH-Technologies/nanovisQ/releases"
@@ -931,6 +932,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 file_local = os.path.join(
                     os.getcwd(), f"nanovisQ_SW_{selected_version}_exe.zip"
                 )
+                selected_bundle_path = file_local
                 size = int(response.headers["Content-Length"])
                 if os.path.exists(file_local):
                     # Check if the file size matches; if so, ask if they want to download again.
@@ -1022,7 +1024,15 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
         # Call offline installer to install downloaded bundle
         if run_offline_installer:
-            self.install_offline(search_for_bundles=True, skip_settings=False)
+            if selected_bundle_path is None:
+                raise RuntimeError(
+                    "Online install selected no bundle path. Install aborted."
+                )
+            self.install_offline(
+                search_for_bundles=False,
+                skip_settings=False,
+                bundle_path=selected_bundle_path,
+            )
 
     def install_offline(
         self,
