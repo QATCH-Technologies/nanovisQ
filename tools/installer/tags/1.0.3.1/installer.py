@@ -1594,6 +1594,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
     def uninstall(self):
 
         installed_versions = self.get_installed_versions()
+        uninstall_failed_paths = []
         number_of_builds_installed = len(installed_versions)
         au_versions_installed = any(
             ["(All Users)" in ver for ver in installed_versions]
@@ -1782,6 +1783,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     if QatchInstaller._paths_overlap(
                         self.logged_data_path, self.app_data_path
                     ):
+                        uninstall_failed_paths.append(self.app_data_path)
                         Log.warning(
                             "Skipped application-data cleanup because the logged "
                             "data directory overlaps the application-data directory."
@@ -1795,6 +1797,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
                         )
                     else:
                         QatchInstaller.recursive_remove(self.app_data_path)
+                        if os.path.exists(self.app_data_path):
+                            uninstall_failed_paths.append(self.app_data_path)
                         Log.info("Uninstalled application data.")
                 else:
                     Log.info("Retaining application data, per user request.")
@@ -1815,10 +1819,14 @@ class QatchInstaller(QtWidgets.QMessageBox):
                         ver for ver in installed_versions if "(All Users)" not in ver
                     ]
                     if len(cu_installed_versions) > 0:
-                        self.uninstall_versions_with_progress(
-                            self.cu_install_root, cu_installed_versions
+                        uninstall_failed_paths.extend(
+                            self.uninstall_versions_with_progress(
+                                self.cu_install_root, cu_installed_versions
+                            )
                         )
                     QatchInstaller.recursive_remove(self.cu_install_root)
+                    if os.path.exists(self.cu_install_root):
+                        uninstall_failed_paths.append(self.cu_install_root)
                     if os.path.exists(self.au_install_root):
                         # specify software path as normal to write desktop.ini file (if exists)
                         win32api.SetFileAttributes(
@@ -1828,16 +1836,22 @@ class QatchInstaller(QtWidgets.QMessageBox):
                         ver for ver in installed_versions if "(All Users)" in ver
                     ]
                     if len(au_installed_versions) > 0:
-                        self.uninstall_versions_with_progress(
-                            self.au_install_root, au_installed_versions
+                        uninstall_failed_paths.extend(
+                            self.uninstall_versions_with_progress(
+                                self.au_install_root, au_installed_versions
+                            )
                         )
                     QatchInstaller.recursive_remove(self.au_install_root)
+                    if os.path.exists(self.au_install_root):
+                        uninstall_failed_paths.append(self.au_install_root)
                 else:
                     # specify software path as normal to write desktop.ini file (if exists)
                     win32api.SetFileAttributes(
                         _cu_install_root, win32con.FILE_ATTRIBUTE_NORMAL
                     )
                     QatchInstaller.recursive_remove(_cu_install_root)
+                    if os.path.exists(_cu_install_root):
+                        uninstall_failed_paths.append(_cu_install_root)
                 Log.info("Uninstalled software files.")
             else:
                 Log.warning("No software files found. Nothing to uninstall here.")
@@ -1996,7 +2010,14 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 shortcut.save()
                 Log.info(f"Created desktop link for {selected_version}!")
 
-        if len(log_stream.getvalue().strip()) > 0:  # success, no warnings or errors
+        remaining_paths = sorted(
+            {
+                path
+                for path in uninstall_failed_paths
+                if os.path.exists(path)
+            }
+        )
+        if not remaining_paths:
             # box = QtWidgets.QMessageBox(None)
             self.setIcon(QtWidgets.QMessageBox.Information)
             self.setWindowIcon(QtGui.QIcon(bundle_icon))
@@ -2010,9 +2031,15 @@ class QatchInstaller(QtWidgets.QMessageBox):
             self.setWindowIcon(QtGui.QIcon(bundle_icon))
             self.setWindowTitle("QATCH nanovisQ | Uninstall Error")
             self.setText(
-                "Uninstaller was not successful.\nSee details for more information."
+                "Uninstaller was not successful.\nSome requested paths remain."
             )
-            self.setDetailedText(log_stream.getvalue())
+            details = log_stream.getvalue().strip()
+            remaining_paths_text = "Paths that remain after uninstall:\n" + "\n".join(
+                remaining_paths
+            )
+            if details:
+                details += "\n\n"
+            self.setDetailedText(details + remaining_paths_text)
             self.setStandardButtons(QtWidgets.QMessageBox.Ok)
             self.exec_()
         # QtWidgets.QMessageBox.information(None,
@@ -2046,6 +2073,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
         for failed_path in worker.failed_paths:
             Log.error(f"Could not completely remove installed version: {failed_path}")
+        return worker.failed_paths
 
 
 class ElevatedProcessMonitor:
