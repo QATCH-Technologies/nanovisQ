@@ -403,7 +403,10 @@ class QatchInstaller(QtWidgets.QMessageBox):
         return None
 
     def show_installation_settings(
-        self, on_modify: bool = False, bundle_path: Optional[str] = None
+        self,
+        on_modify: bool = False,
+        bundle_path: Optional[str] = None,
+        defer_elevation: bool = False,
     ):
         dialog = QtWidgets.QDialog(self)
         dialog.setWindowIcon(QtGui.QIcon(bundle_icon))
@@ -470,6 +473,8 @@ class QatchInstaller(QtWidgets.QMessageBox):
             self.app_data_path = folder_paths[2].text()
             needs_elevation = self.install_type == 1 and not self.is_running_as_admin()
             if needs_elevation:
+                if defer_elevation:
+                    return True
                 self.launch_elevated_install(
                     install=not on_modify or install_type_changed,
                     bundle_path=bundle_path,
@@ -1050,20 +1055,18 @@ class QatchInstaller(QtWidgets.QMessageBox):
         # else:
         #     self.create_current_user_environment()
 
-        copy_root = self.au_install_root if self.install_type else self.cu_install_root
         copy_src = os.getcwd()
-        copy_dst = copy_root
+        bundle_filename = None
         found = False
 
         if bundle_path is not None:
             copy_src = os.path.abspath(bundle_path)
-            file = os.path.basename(copy_src)
+            bundle_filename = os.path.basename(copy_src)
             if (
                 os.path.isfile(copy_src)
-                and file.find("nanovisQ") >= 0
-                and file.endswith("_exe.zip")
+                and bundle_filename.find("nanovisQ") >= 0
+                and bundle_filename.endswith("_exe.zip")
             ):
-                copy_dst = os.path.join(copy_root, file[0:-4])  # drop '.zip'
                 found = True
         elif search_for_bundles:
             most_recent = 0
@@ -1077,7 +1080,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     if modified_at > most_recent:
                         most_recent = modified_at
                         copy_src = os.path.join(os.getcwd(), file)
-                        copy_dst = os.path.join(copy_root, file[0:-4])  # drop '.zip'
+                        bundle_filename = file
                         found = True
 
         if not found and bundle_path is None:
@@ -1097,67 +1100,10 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 and file.endswith("_exe.zip")
             ):
                 copy_src = fullfile  # already conformed to abspath() format
-                copy_dst = os.path.join(copy_root, file[0:-4])  # drop '.zip'
+                bundle_filename = file
                 found = True
 
-        proceed = False
-        if found:
-            version = os.path.split(copy_dst)[1]
-            if elevated_install_settings is None:
-                if os.path.exists(copy_dst):
-                    ans = QtWidgets.QMessageBox.question(
-                        None,
-                        "QATCH nanovisQ | Re-Install",
-                        f"This software version is already installed:\n{version}\n\nDo you want to re-install it?",
-                        buttons=QtWidgets.QMessageBox.Yes
-                        | QtWidgets.QMessageBox.No
-                        | QtWidgets.QMessageBox.Cancel,
-                        defaultButton=QtWidgets.QMessageBox.No,
-                    )
-                else:
-                    ans = QtWidgets.QMessageBox.question(
-                        None,
-                        "QATCH nanovisQ | Install",
-                        f"The following software version is ready to install:\n{version}\n\nDo you want to install it?",
-                        buttons=QtWidgets.QMessageBox.Yes
-                        | QtWidgets.QMessageBox.No
-                        | QtWidgets.QMessageBox.Cancel,
-                        defaultButton=QtWidgets.QMessageBox.Yes,
-                    )
-
-                if ans == QtWidgets.QMessageBox.Yes:
-                    proceed = True
-
-                if ans == QtWidgets.QMessageBox.No:
-                    Log.warning("User declined install.")
-
-                    # box = QtWidgets.QMessageBox(None)
-                    self.setIcon(QtWidgets.QMessageBox.Critical)
-                    self.setWindowIcon(QtGui.QIcon(bundle_icon))
-                    self.setWindowTitle("QATCH nanovisQ | Abort")
-                    self.setText("User declined install. Install aborted.")
-                    self.setDetailedText(log_stream.getvalue())
-                    self.setStandardButtons(QtWidgets.QMessageBox.Ok)
-                    self.exec_()
-
-                if ans == QtWidgets.QMessageBox.Cancel:
-                    Log.warning("User aborted install.")
-
-                    # box = QtWidgets.QMessageBox(None)
-                    self.setIcon(QtWidgets.QMessageBox.Critical)
-                    self.setWindowIcon(QtGui.QIcon(bundle_icon))
-                    self.setWindowTitle("QATCH nanovisQ | Abort")
-                    self.setText("User aborted install. Install aborted.")
-                    self.setDetailedText(log_stream.getvalue())
-                    self.setStandardButtons(QtWidgets.QMessageBox.Ok)
-                    self.exec_()
-
-                if not proceed:
-                    return
-            else:
-                proceed = True  # silent admin install
-
-        else:
+        if not found:
             # box = QtWidgets.QMessageBox(None)
             self.setIcon(QtWidgets.QMessageBox.Critical)
             self.setWindowIcon(QtGui.QIcon(bundle_icon))
@@ -1184,8 +1130,76 @@ class QatchInstaller(QtWidgets.QMessageBox):
             return
 
         if not skip_settings:
-            if not self.show_installation_settings(bundle_path=copy_src):
+            if not self.show_installation_settings(
+                bundle_path=copy_src, defer_elevation=True
+            ):
                 return  # user cancel
+
+        copy_root = self.au_install_root if self.install_type else self.cu_install_root
+        version = bundle_filename[:-4]
+        copy_dst = os.path.join(copy_root, version)
+
+        proceed = False
+        if elevated_install_settings is None:
+            if os.path.exists(copy_dst):
+                ans = QtWidgets.QMessageBox.question(
+                    None,
+                    "QATCH nanovisQ | Re-Install",
+                    f"This software version is already installed:\n{version}\n\nDo you want to re-install it?",
+                    buttons=QtWidgets.QMessageBox.Yes
+                    | QtWidgets.QMessageBox.No
+                    | QtWidgets.QMessageBox.Cancel,
+                    defaultButton=QtWidgets.QMessageBox.No,
+                )
+            else:
+                ans = QtWidgets.QMessageBox.question(
+                    None,
+                    "QATCH nanovisQ | Install",
+                    f"The following software version is ready to install:\n{version}\n\nDo you want to install it?",
+                    buttons=QtWidgets.QMessageBox.Yes
+                    | QtWidgets.QMessageBox.No
+                    | QtWidgets.QMessageBox.Cancel,
+                    defaultButton=QtWidgets.QMessageBox.Yes,
+                )
+
+            if ans == QtWidgets.QMessageBox.Yes:
+                proceed = True
+
+            if ans == QtWidgets.QMessageBox.No:
+                Log.warning("User declined install.")
+
+                # box = QtWidgets.QMessageBox(None)
+                self.setIcon(QtWidgets.QMessageBox.Critical)
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
+                self.setWindowTitle("QATCH nanovisQ | Abort")
+                self.setText("User declined install. Install aborted.")
+                self.setDetailedText(log_stream.getvalue())
+                self.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                self.exec_()
+
+            if ans == QtWidgets.QMessageBox.Cancel:
+                Log.warning("User aborted install.")
+
+                # box = QtWidgets.QMessageBox(None)
+                self.setIcon(QtWidgets.QMessageBox.Critical)
+                self.setWindowIcon(QtGui.QIcon(bundle_icon))
+                self.setWindowTitle("QATCH nanovisQ | Abort")
+                self.setText("User aborted install. Install aborted.")
+                self.setDetailedText(log_stream.getvalue())
+                self.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                self.exec_()
+
+            if not proceed:
+                return
+        else:
+            proceed = True  # silent admin install
+
+        if self.install_type == 1 and not self.is_running_as_admin():
+            if not self.launch_elevated_install(
+                install=True, bundle_path=copy_src
+            ):
+                return
+            return
 
         if self.install_type:
             self.create_all_users_environment()
