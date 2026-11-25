@@ -2443,8 +2443,8 @@ class InstallWorker(QtCore.QThread):
 
             # show exception message box
             self.exception.emit(f"{t.__name__}: {str(v)}")
-
-        self.finished.emit()
+        finally:
+            self.finished.emit()
 
 
 class UninstallWorker(QtCore.QThread):
