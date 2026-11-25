@@ -687,6 +687,12 @@ class QatchInstaller(QtWidgets.QMessageBox):
             self.progressBar.setRange(0, 0)
             self.progressBar.setValue(0)
 
+    def on_download_finished(self, status, error_message):
+        self.download_status = status
+        if status == "failed":
+            self.show_exception(error_message)
+        self.progressBar.reset()
+
     def on_launcher_finish(self, success, pid):
         Log.info(f"PID: {pid}")
         self.app_pid = pid
@@ -916,22 +922,10 @@ class QatchInstaller(QtWidgets.QMessageBox):
 
             if selected_version:
                 # Download bundle to CWD
-                self.worker = RequestWorker(
+                response = self._get_request_response(
                     url=f"{GIT_ROOT}/download/{selected_version}/nanovisQ_SW_{selected_version}_exe.zip",
                     stream=True,
                 )
-                self.worker.finished.connect(self.on_request_response)
-                # self.worker.finished.connect(self.worker.deleteLater)
-                self.worker.exception.connect(self.show_exception)
-                self.worker.progress.connect(self.on_request_progress)
-
-                self.worker_finished = False
-                self.worker.start()
-                while not self.worker_finished:
-                    # wait here until finished querying
-                    QApplication.processEvents()
-
-                response = self.response
                 response.raise_for_status()
 
                 file_local = os.path.join(
@@ -980,21 +974,17 @@ class QatchInstaller(QtWidgets.QMessageBox):
                             self.exec_()
 
                             raise UserWarning(False)  # skip download and install
-                        # Show progress dialog for version query progress
-                        self.progressBar.show()
-                    Log.debug(f"Deleting {file_local}...")
-                    os.remove(file_local)
+                    self.progressBar.show()
 
                 self.worker = RequestWorker(response=response, file_local=file_local)
-                # self.worker.finished.connect(self.on_request_response)
-                # self.worker.finished.connect(self.worker.deleteLater)
-                self.worker.exception.connect(self.show_exception)
+                self.download_status = None
+                self.worker.download_finished.connect(self.on_download_finished)
                 self.worker.progress.connect(self.on_request_progress)
 
                 self.worker.start()
                 self.progressBar.exec_()  # wait here until finished downloading
 
-                if "cancel" in self.progressBar.labelText().lower():
+                if self.download_status == "cancelled":
                     Log.debug("User hit cancel on the download progress bar.")
 
                     # box = QtWidgets.QMessageBox(None)
@@ -1007,6 +997,14 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     self.exec_()
 
                     raise UserWarning(False)  # skip download and install
+                if self.download_status == "failed":
+                    run_offline_installer = False
+                elif self.download_status != "success":
+                    Log.error("Download worker ended without a terminal result.")
+                    self.show_exception(
+                        "Download did not complete successfully. Install aborted."
+                    )
+                    run_offline_installer = False
             else:
                 raise requests.HTTPError("Selected version to install not specified.")
 
@@ -2070,6 +2068,7 @@ class RequestWorker(QtCore.QThread):
     finished = QtCore.pyqtSignal(requests.Response)
     exception = QtCore.pyqtSignal(str)
     progress = QtCore.pyqtSignal(str, int)
+    download_finished = QtCore.pyqtSignal(str, str)
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -2084,15 +2083,29 @@ class RequestWorker(QtCore.QThread):
     def update_progress(self, str, pct):
         self.progress.emit(str, pct)
 
+    @staticmethod
+    def _remove_partial_download(path):
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            os.remove(path)
+        except OSError as error:
+            Log.error(f"Could not remove partial download {path}: {error}")
+            return str(error)
+        return None
+
     def run(self):
+        file_local = self.kwargs.get("file_local")
+        partial_file = f"{file_local}.part" if file_local else None
         try:
             if self.kwargs.get("response") and self.kwargs.get("file_local"):
                 response: requests.Response = self.kwargs.pop("response")
                 file_local: str = self.kwargs.pop("file_local")
+                partial_file = f"{file_local}.part"
                 last_pct = -1
                 size = int(response.headers["Content-Length"])
-                with open(file_local, "wb") as f:
-                    Log.debug(f"Writing {file_local}...")
+                with open(partial_file, "wb") as f:
+                    Log.debug(f"Writing {partial_file}...")
                     curr_size = 0
                     for chunk in response.iter_content(chunk_size=65536):
                         if self._cancel:
@@ -2101,7 +2114,7 @@ class RequestWorker(QtCore.QThread):
                             f.write(chunk)
 
                             curr_size += len(chunk)
-                            pct = int(100 * curr_size / size)
+                            pct = min(99, int(100 * curr_size / size))
                             if pct != last_pct or curr_size == size:
                                 status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
                                 Log.debug(status_str)
@@ -2113,12 +2126,20 @@ class RequestWorker(QtCore.QThread):
                 if self._cancel:
                     Log.warning("User canceled software bundle download.")
                     self.update_progress("Canceling download...", 99)
-                    os.remove(file_local)
-                    self.update_progress("Download canceled.", 100)
+                    cleanup_error = self._remove_partial_download(partial_file)
+                    if cleanup_error:
+                        self.download_finished.emit(
+                            "failed",
+                            f"Download was canceled, but its partial file could not "
+                            f"be removed: {cleanup_error}",
+                        )
+                    else:
+                        self.download_finished.emit("cancelled", "")
                 else:
+                    os.replace(partial_file, file_local)
                     Log.info(f"Downloaded {os.path.basename(file_local)}")
-                    self.update_progress("Download finished.", 100)
-                    self._success = True
+                    self.success = True
+                    self.download_finished.emit("success", "")
                 # self.finished.emit(response)
             else:
                 self.update_progress("Checking online software bundles...", -1)
@@ -2139,8 +2160,17 @@ class RequestWorker(QtCore.QThread):
             for line in a_list:
                 Log.error(line)
 
-            # show exception message box
-            self.exception.emit(f"{t.__name__}: {str(v)}")
+            error_message = f"{t.__name__}: {str(v)}"
+            if partial_file is not None:
+                cleanup_error = self._remove_partial_download(partial_file)
+                if cleanup_error:
+                    error_message += (
+                        f"\nCould not remove partial download {partial_file}: "
+                        f"{cleanup_error}"
+                    )
+                self.download_finished.emit("failed", error_message)
+            else:
+                self.exception.emit(error_message)
 
 
 class InstallWorker(QtCore.QThread):
