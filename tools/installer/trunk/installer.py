@@ -67,6 +67,7 @@ Log = logging.getLogger(__name__)
 
 class QatchInstaller(QtWidgets.QMessageBox):
 
+    COPY_PROGRESS_DELAY = 250
     COPY_PROGRESS_LIMIT = 49
     SLOW_PROGRESS_WARNING_MS = 7000
 
@@ -1616,9 +1617,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
             # Create the timer and start it immediately
             self.elapsed_timer = QtCore.QElapsedTimer()
             self.elapsed_timer.start()
-        elif self.elapsed_timer.elapsed() > 1000:
+        elif self.elapsed_timer.elapsed() > self.COPY_PROGRESS_DELAY:
             current_progress = self.progressBar.value()
-            if current_progress < 50:
+            if current_progress <= self.COPY_PROGRESS_LIMIT:
                 next_progress = min(
                     current_progress + 1, self.COPY_PROGRESS_LIMIT
                 )
