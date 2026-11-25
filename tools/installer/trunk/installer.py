@@ -1331,11 +1331,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
         self.timer.start()
 
         self.worker = InstallWorker(proceed, copy_src, copy_dst)
-        self.worker.finished.connect(self.progressBar.reset)
-        self.worker.finished.connect(self.post_install_check)
-        self.worker.finished.connect(self.timer.stop)
-        self.worker.finished.connect(self.close)
-        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker.finished.connect(self.on_install_worker_finished)
         self.worker.exception.connect(self.show_exception)
         self.worker.progress.connect(self.update_progress)
 
@@ -1381,13 +1377,32 @@ class QatchInstaller(QtWidgets.QMessageBox):
         box.setStandardButtons(QtWidgets.QMessageBox.Ok)
         box.exec_()
 
+    def on_install_worker_finished(self):
+        self.timer.stop()
+        self.progressBar.reset()
+        self.worker.wait()
+        try:
+            Log.info("Install worker finished; running post-install checks.")
+            self.post_install_check()
+        except Exception as error:
+            Log.exception("Post-install checks failed.")
+            self.show_exception(f"Post-install checks failed: {error}")
+        finally:
+            self.close()
+            self.worker.deleteLater()
+
     def post_install_check(self):
 
         success = self.worker.success
         copy_dst = self.worker.copy_dst
         version = os.path.split(copy_dst)[1]
+        destination_exists = os.path.exists(copy_dst)
+        Log.info(
+            f"Post-install check reached: success={success}, "
+            f"destination_exists={destination_exists}."
+        )
 
-        if success and os.path.exists(copy_dst):  # and log_stream.getvalue() == "":
+        if success and destination_exists:  # and log_stream.getvalue() == "":
             QtWidgets.QMessageBox.information(
                 None,
                 "QATCH nanovisQ | Install",
@@ -1442,6 +1457,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     Log.info(f"Working Directory: {shortcut.WorkingDirectory}")
                     os.makedirs(shortcut.WorkingDirectory)
                 if elevated_install_settings is not None:
+                    Log.info("Showing elevated-install desktop launch instructions.")
                     QtWidgets.QMessageBox.information(
                         None,
                         "QATCH nanovisQ | Launch",
