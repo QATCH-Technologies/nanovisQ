@@ -2333,7 +2333,6 @@ class InstallWorker(QtCore.QThread):
                 proceed
                 and not self._cancel
                 and os.path.exists(exe_path)
-                and log_stream.getvalue() == ""
             ):
                 self.update_progress("Verifying application checksum...", 51)
                 Log.info("Verifying application checksum...")
