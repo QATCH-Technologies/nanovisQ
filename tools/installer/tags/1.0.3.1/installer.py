@@ -103,9 +103,6 @@ class QatchInstaller(QtWidgets.QMessageBox):
         # On error: silently use the default path already defined
         pass
 
-    app_data_icon = os.path.join(app_data_path, "favicon.ico")
-    iconresc = app_data_icon.replace("\\", "/")
-
     def __init__(self):
 
         super(QtWidgets.QDialog, self).__init__()
@@ -678,7 +675,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
         os.makedirs(self.app_data_path, exist_ok=True)
 
         ### move favicon.ico to data path
-        shutil.copy(bundle_icon, self.app_data_icon)
+        app_data_icon = os.path.join(self.app_data_path, "favicon.ico")
+        iconresc = app_data_icon.replace("\\", "/")
+        shutil.copy(bundle_icon, app_data_icon)
 
         ### create software directory in user's home path
         os.makedirs(self.cu_install_root, exist_ok=True)
@@ -692,7 +691,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             ### create desktop.ini for custom icon
             with open(self.cu_ini_file, "w") as dini:
                 dini.write("[.ShellClassInfo]\n")
-                dini.write(f"IconResource={self.iconresc},0")
+                dini.write(f"IconResource={iconresc},0")
 
             ### specify path as read-only to tell windows to read desktop.ini file
             win32api.SetFileAttributes(
@@ -711,7 +710,9 @@ class QatchInstaller(QtWidgets.QMessageBox):
         os.makedirs(self.app_data_path, exist_ok=True)
 
         ### move favicon.ico to data path
-        shutil.copy(bundle_icon, self.app_data_icon)
+        app_data_icon = os.path.join(self.app_data_path, "favicon.ico")
+        iconresc = app_data_icon.replace("\\", "/")
+        shutil.copy(bundle_icon, app_data_icon)
 
         ### create software directory in user's home path
         os.makedirs(self.au_install_root, exist_ok=True)
@@ -725,7 +726,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
             ### create desktop.ini for custom icon
             with open(self.au_ini_file, "w") as dini:
                 dini.write("[.ShellClassInfo]\n")
-                dini.write(f"IconResource={self.iconresc},0")
+                dini.write(f"IconResource={iconresc},0")
 
             ### specify path as read-only to tell windows to read desktop.ini file
             win32api.SetFileAttributes(
