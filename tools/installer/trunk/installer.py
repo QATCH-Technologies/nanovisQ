@@ -710,6 +710,30 @@ class QatchInstaller(QtWidgets.QMessageBox):
         ### create application data directory
         os.makedirs(self.app_data_path, exist_ok=True)
 
+        acl_result = subprocess.run(
+            [
+                "icacls",
+                self.app_data_path,
+                "/grant",
+                "*S-1-5-32-545:(OI)(CI)M",
+                "/T",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if acl_result.returncode:
+            detail = acl_result.stderr.strip() or (
+                f"icacls exited with code {acl_result.returncode}"
+            )
+            raise RuntimeError(
+                "Could not grant standard-user write access to the All Users "
+                f"application data folder: {detail}"
+            )
+        Log.info(
+            "Granted standard users modify access to the All Users application data folder."
+        )
+
         ### move favicon.ico to data path
         shutil.copy(bundle_icon, self.app_data_icon)
 
