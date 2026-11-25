@@ -67,6 +67,9 @@ Log = logging.getLogger(__name__)
 
 class QatchInstaller(QtWidgets.QMessageBox):
 
+    COPY_PROGRESS_LIMIT = 49
+    SLOW_PROGRESS_WARNING_MS = 7000
+
     # Current user installation paths
     cu_install_root = os.path.expandvars("%USERPROFILE%")
     cu_install_root = os.path.join(cu_install_root, "QATCH nanovisQ")
@@ -1448,14 +1451,19 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 )
                 shortcut.Description = version  # "(C) QATCH Technologies LLC"
                 shortcut.IconLocation = f"{_cu_install_root},0"
-                shortcut.WorkingDirectory = r"%USERPROFILE%\Documents\QATCH nanovisQ"  # os.path.join(os.path.dirname(desktop), "Documents", "QATCH nanovisQ")
+                working_directory = os.path.expandvars(
+                    r"%USERPROFILE%\Documents\QATCH nanovisQ"
+                )
+                if working_directory.startswith("%USERPROFILE%"):
+                    raise EnvironmentError(
+                        "The USERPROFILE environment variable is not set."
+                    )
+                os.makedirs(working_directory, exist_ok=True)
+                shortcut.WorkingDirectory = working_directory
                 shortcut.save()  # create shortcut link
                 shutil.copy(linkpath, copy_dst)  # copy to local build directory too
                 os.remove(launcher)  # delete launch.bat
-                if not os.path.exists(shortcut.WorkingDirectory):
-                    Log.info("Working Directory does not exist. Creating now.")
-                    Log.info(f"Working Directory: {shortcut.WorkingDirectory}")
-                    os.makedirs(shortcut.WorkingDirectory)
+                Log.info(f"Shortcut working directory: {working_directory}")
                 if elevated_install_settings is not None:
                     Log.info("Showing elevated-install desktop launch instructions.")
                     QtWidgets.QMessageBox.information(
@@ -1597,56 +1605,46 @@ class QatchInstaller(QtWidgets.QMessageBox):
     def update_progress(self, label_str: str = None, progress_pct: int = None):
 
         need_repaint = False
+        progress_max = self.progressBar.maximum()
         if label_str != None and self.worker._cancel == False:
             need_repaint = True
             self.progressBar.setLabelText(label_str)
         if progress_pct != None:
             need_repaint = True
             self.progressBar.setValue(progress_pct)
-        elif self.progressBar.value() < 50:
-            # self.timer.setInterval(50) # one speed for copy phase
-            try:
-                path = self.worker.staging_dst or self.worker.copy_dst
-                actual = sum(
-                    os.path.getsize(os.path.join(path, f))
-                    for f in os.listdir(path)
-                    if os.path.isfile(os.path.join(path, f))
-                )
-                expected = os.path.getsize(self.worker.copy_src)
-                pct = max(
-                    self.progressBar.minimum(),
-                    min(
-                        self.progressBar.maximum() - 1,
-                        int(((100 * actual) / expected) / 2),
-                    ),
-                )
-                self.progressBar.setValue(pct)  # self.progressBar.value() + 1)
-                need_repaint = True
-                # Log.info(f"Copy dest: {path}")
-                # Log.info(f"Actual size: {actual}b")
-                # Log.info(f"Expected size: {expected}b")
-                # Log.info(f"Percent: {pct}%")
-            except Exception as e:
-                # Log.info(f"Exception: {e}")
-                pass
-            # if self.progressBar.value() == 50:
-            #     self.progressBar.setLabelText(self.progressBar.labelText() + " (takes a few seconds)")
         if not hasattr(self, "elapsed_timer"):
             # Create the timer and start it immediately
             self.elapsed_timer = QtCore.QElapsedTimer()
             self.elapsed_timer.start()
         elif self.elapsed_timer.elapsed() > 1000:
-            if self.progressBar.value() < self.progressBar.maximum() - 1:
-                self.progressBar.setValue(self.progressBar.value() + 1)
+            current_progress = self.progressBar.value()
+            if current_progress < 50:
+                next_progress = min(
+                    current_progress + 1, self.COPY_PROGRESS_LIMIT
+                )
+            elif current_progress < progress_max - 1:
+                next_progress = current_progress + 1
             else:
+                next_progress = current_progress
+            if next_progress != current_progress:
+                self.progressBar.setValue(next_progress)
+                need_repaint = True
+
+        if self.progressBar.value() == progress_max - 1:
+            slow_progress_timer = getattr(self, "slow_progress_timer", None)
+            if slow_progress_timer is None:
+                self.slow_progress_timer = QtCore.QElapsedTimer()
+                self.slow_progress_timer.start()
+            elif (
+                slow_progress_timer.elapsed() >= self.SLOW_PROGRESS_WARNING_MS
+                and self.progressBar.labelText()
+                != "This is taking longer than usual..."
+            ):
                 self.progressBar.setLabelText("This is taking longer than usual...")
-            need_repaint = True
-        # elif self.progressBar.value() >= 51 and self.progressBar.value() < 99:
-        #     need_repaint = True
-        #     # self.timer.setInterval(200) # another speed for checksum
-        #     self.progressBar.setValue(self.progressBar.value() + 1)
-        #     if self.progressBar.value() == 99:
-        #         self.progressBar.setLabelText(self.progressBar.labelText() + " (takes a minute)")
+                need_repaint = True
+        else:
+            self.slow_progress_timer = None
+
         if need_repaint:
             self.elapsed_timer.restart()
             self.progressBar.repaint()
@@ -2526,7 +2524,9 @@ class InstallWorker(QtCore.QThread):
                             while chunk := f.read(8192):
                                 this_step += 1
                                 if this_step % upd_inter == 1:
-                                    percentage = 50 + int(step_size * this_step)
+                                    percentage = min(
+                                        99, 50 + int(step_size * this_step)
+                                    )
                                     self.update_progress(
                                         "Verifying application checksum...", percentage
                                     )
@@ -2574,6 +2574,7 @@ class InstallWorker(QtCore.QThread):
                         raise RuntimeError(
                             "Verified installation has no staging directory."
                         )
+                    self.update_progress("Finalizing installation...", 99)
                     self._promote_staged_install(self.staging_dst, copy_dst)
                     self.success = True
                 self.update_progress("Install finished and verified!", 100)
