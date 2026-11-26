@@ -87,10 +87,14 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         self.expired_label.setStyleSheet("font-size: 24px;")
 
         self.expired_subscribe = QtWidgets.QPushButton("Subscribe")
-        self.expired_subscribe.clicked.connect(lambda: webbrowser.open("https://qatchtech.com"))
+        self.expired_subscribe.clicked.connect(
+            lambda: webbrowser.open("https://qatchtech.com")
+        )
 
         self.expired_learnmore = QtWidgets.QPushButton("Learn more...")
-        self.expired_learnmore.clicked.connect(lambda: webbrowser.open("https://qatchtech.com"))
+        self.expired_learnmore.clicked.connect(
+            lambda: webbrowser.open("https://qatchtech.com")
+        )
 
         self.expired_buttons = QtWidgets.QHBoxLayout()
         self.expired_buttons.addStretch(3)
@@ -112,10 +116,14 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         self.trial_label.setStyleSheet("font-size: 24px;")
 
         self.trial_subscribe = QtWidgets.QPushButton("Subscribe")
-        self.trial_subscribe.clicked.connect(lambda: webbrowser.open("https://qatchtech.com"))
+        self.trial_subscribe.clicked.connect(
+            lambda: webbrowser.open("https://qatchtech.com")
+        )
 
         self.trial_dismiss = QtWidgets.QPushButton("Dismiss")
-        self.trial_dismiss.clicked.connect(lambda: self.setCentralWidget(self.tab_widget))
+        self.trial_dismiss.clicked.connect(
+            lambda: self.setCentralWidget(self.tab_widget)
+        )
 
         self.trial_buttons = QtWidgets.QHBoxLayout()
         self.trial_buttons.addStretch(3)
@@ -155,7 +163,9 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         license_data = {}
         if license_manager is not None:
             try:
-                is_valid_license, message, license_data = license_manager.validate_license()
+                is_valid_license, message, license_data = (
+                    license_manager.validate_license()
+                )
                 status_raw = license_data.get("status", LicenseStatus.INACTIVE)
                 if isinstance(status_raw, str):
                     try:
@@ -164,18 +174,21 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                         status = LicenseStatus.INACTIVE
                 else:
                     status = status_raw
+
                 expiration_str: str = license_data.get("expiration", "")
-                if is_valid_license and expiration_str and status != LicenseStatus.ADMIN:
+                if (
+                    is_valid_license
+                    and expiration_str
+                    and status != LicenseStatus.ADMIN
+                ):
                     try:
                         iso = expiration_str.replace("Z", "+00:00")
                         expiration_date = dt.datetime.fromisoformat(iso)
-                        now = dt.datetime.now()
-                        days_remaining = (expiration_date - now).days
+                        days_remaining = (expiration_date - dt.datetime.now()).days
                         if days_remaining <= 7:
-                            message += f"License expires soon!"
+                            message += "License expires soon!"
                         elif days_remaining <= 30:
-                            message += f"Consider renewal"
-
+                            message += "Consider renewal"
                     except (ValueError, TypeError):
                         pass
                 if license_manager.cache_enabled:
@@ -184,20 +197,16 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                         Log.d(
                             f"Cache expired, background refresh: {cache_status.get('refresh_thread_active', False)}"
                         )
-
             except Exception as e:
                 Log.e(f"License validation error: {e}")
                 is_valid_license = False
-                message = f"License check failed: {str(e)}"
+                message = f"License check failed: {e}"
                 license_data = {}
         else:
-            is_valid_license = False
             message = "License manager not initialized!"
-            license_data = {}
-        Log.i(f"{message}")
+        Log.i(message)
         # Handle valid license
         if is_valid_license:
-            status = license_data.get("status", "unknown")
             if status == LicenseStatus.ADMIN:
                 self.setCentralWidget(self.tab_widget)
                 self._update_status_bar("Licensed: Administrator", permanent=True)
@@ -240,7 +249,9 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                         self._update_status_bar("Trial: Active", permanent=True)
             else:
                 self.setCentralWidget(self.tab_widget)
-                status_text = status.value if isinstance(status, LicenseStatus) else str(status)
+                status_text = (
+                    status.value if isinstance(status, LicenseStatus) else str(status)
+                )
                 self._update_status_bar(f"Licensed: {status_text}", permanent=True)
 
             return True
@@ -248,7 +259,9 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         if not os.path.exists(DB_PATH):
             Log.e(f"No license found and no database exists. {message}")
             self.setCentralWidget(self._expired_widget)
-            self._update_status_bar("License Required", permanent=True, style="color: red;")
+            self._update_status_bar(
+                "License Required", permanent=True, style="color: red;"
+            )
             return False
         try:
             creation_ts = os.stat(DB_PATH).st_ctime
@@ -299,19 +312,27 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
                 if hasattr(self, "trial_label"):
                     if "{}" in TRIAL_LABEL_TEXT:
-                        self.trial_label.setText(TRIAL_LABEL_TEXT.format(self.trial_left))
+                        self.trial_label.setText(
+                            TRIAL_LABEL_TEXT.format(self.trial_left)
+                        )
                     else:
-                        self.trial_label.setText(f"Free Preview: {self.trial_left} days remaining")
+                        self.trial_label.setText(
+                            f"Free Preview: {self.trial_left} days remaining"
+                        )
 
         except Exception as e:
             Log.e(f"Error calculating preview period: {e}")
             self.setCentralWidget(self._expired_widget)
-            self._update_status_bar("License Error", permanent=True, style="color: red;")
+            self._update_status_bar(
+                "License Error", permanent=True, style="color: red;"
+            )
             return False
 
         return False
 
-    def _update_status_bar(self, message: str, permanent: bool = False, style: str = None):
+    def _update_status_bar(
+        self, message: str, permanent: bool = False, style: str = None
+    ):
         if hasattr(self, "statusBar"):
             status_bar = self.statusBar()
             if permanent:
@@ -332,7 +353,9 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         def check_callback():
             try:
                 # Update UI in main thread
-                QtCore.QTimer.singleShot(0, lambda lm=license_manager: self.check_license(lm))
+                QtCore.QTimer.singleShot(
+                    0, lambda lm=license_manager: self.check_license(lm)
+                )
 
             except Exception as e:
                 Log.e(f"Background license refresh failed: {e}")
@@ -387,11 +410,14 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.predict_formulation: Formulation = Formulation()
         self.init_ui()
         self.init_sign()
-        self.check_license(self.parent._license_manager)
+        if not self.parent._requires_user_login:
+            self.check_license(self.parent._license_manager)
         self.timer = QtCore.QTimer()
         self.timer.setSingleShot(False)  # repeat until stopped
         self.timer.setInterval(1000 * 60 * 60)  # once an hour
-        self.timer.timeout.connect(lambda: self.check_license_async(self.parent._license_manager))
+        self.timer.timeout.connect(
+            lambda: self.check_license_async(self.parent._license_manager)
+        )
         if self.timer.isActive():  # only start on mode `enable` (focus)
             self.timer.stop()
         self._unsaved_changes = False
@@ -422,7 +448,9 @@ class VisQAIWindow(BaseVisQAIWindow):
         # self.tab_widget.addTab(
         #     FrameStep1(self, 5), "\u2465 Predict"
         # )  # unicode circled 6
-        self.tab_widget.addTab(DashboardUI(self), "\u2460 Dashboard")  # unicode circled 6
+        self.tab_widget.addTab(
+            DashboardUI(self), "\u2460 Dashboard"
+        )  # unicode circled 6
         # self.tab_widget.addTab(
         #     OptimizationUI(self), "\u2466 Optimize"
         # )  # unicode circled 7
@@ -448,7 +476,9 @@ class VisQAIWindow(BaseVisQAIWindow):
         # There is duplicated logic code within the submit button handler: 'self.save_run_infos'
         # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'
         self.signForm = QtWidgets.QDialog()
-        self.signForm.setWindowFlags(QtCore.Qt.Dialog)  # | QtCore.Qt.WindowStaysOnTopHint)
+        self.signForm.setWindowFlags(
+            QtCore.Qt.Dialog
+        )  # | QtCore.Qt.WindowStaysOnTopHint)
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/sign.png")
         self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.signForm.setWindowTitle("Signature")
@@ -514,7 +544,11 @@ class VisQAIWindow(BaseVisQAIWindow):
 
     def eventFilter(self, obj, event):
         # Key press on user audit sign form
-        if event.type() == QtCore.QEvent.KeyPress and obj is self.sign and self.sign.hasFocus():
+        if (
+            event.type() == QtCore.QEvent.KeyPress
+            and obj is self.sign
+            and self.sign.hasFocus()
+        ):
             if event.key() in [
                 QtCore.Qt.Key_Enter,
                 QtCore.Qt.Key_Return,
@@ -525,7 +559,10 @@ class VisQAIWindow(BaseVisQAIWindow):
             if event.key() == QtCore.Qt.Key_Escape:
                 self.sign_cancel.clicked.emit()
         # Mouse click on tab widget tab bar
-        if event.type() == QtCore.QEvent.MouseButtonPress and obj == self.tab_widget.tabBar():
+        if (
+            event.type() == QtCore.QEvent.MouseButtonPress
+            and obj == self.tab_widget.tabBar()
+        ):
             # Disallow tab change if learning in-progress
             if self.isBusy():
                 PopUp.warning(
@@ -566,7 +603,10 @@ class VisQAIWindow(BaseVisQAIWindow):
                     # do not click next when user is going backwards
                     # (or nowhere) from the currently selected step.
                     pass
-                elif hasattr(self.tab_widget.currentWidget(), "btn_next") and widget.run_file_run:
+                elif (
+                    hasattr(self.tab_widget.currentWidget(), "btn_next")
+                    and widget.run_file_run
+                ):
                     # still perform click action
                     self.tab_widget.currentWidget().btn_next.click()
         return super().eventFilter(obj, event)
@@ -598,7 +638,9 @@ class VisQAIWindow(BaseVisQAIWindow):
             self.parent.signature_required = False
 
     def switch_user_at_sign_time(self):
-        new_username, new_initials, new_userrole = UserProfiles.change(UserRoles.ANALYZE)
+        new_username, new_initials, new_userrole = UserProfiles.change(
+            UserRoles.ANALYZE
+        )
         if UserProfiles.check(UserRoles(new_userrole), UserRoles.ANALYZE):
             if self.username != new_username:
                 self.username = new_username
@@ -620,7 +662,9 @@ class VisQAIWindow(BaseVisQAIWindow):
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
                     self.parent.ControlsWin.manage.setText("&Change Password...")
             else:
-                Log.d("User switched users to the same user profile. Nothing to change.")
+                Log.d(
+                    "User switched users to the same user profile. Nothing to change."
+                )
             # PopUp.warning(self, Constants.app_title, "User has been switched.\n\nPlease sign now.")
         # elif new_username == None and new_initials == None and new_userrole == 0:
         else:
@@ -681,7 +725,9 @@ class VisQAIWindow(BaseVisQAIWindow):
 
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
-        if hasattr(current_widget, "on_tab_selected") and callable(current_widget.on_tab_selected):
+        if hasattr(current_widget, "on_tab_selected") and callable(
+            current_widget.on_tab_selected
+        ):
             current_widget.on_tab_selected()
 
     def stop_all_predictions(self) -> None:
@@ -694,9 +740,14 @@ class VisQAIWindow(BaseVisQAIWindow):
                     drain()
                 except RuntimeError as e:
                     # Thread object reaped mid-drain; safe to ignore.
-                    Log.d(tag=self.TAG, msg=f"Tab {index} thread already finalized: {e}")
+                    Log.d(
+                        tag=self.TAG, msg=f"Tab {index} thread already finalized: {e}"
+                    )
                 except Exception as e:
-                    Log.e(tag=self.TAG, msg=f"Failed to drain predictions on tab {index}: {e}")
+                    Log.e(
+                        tag=self.TAG,
+                        msg=f"Failed to drain predictions on tab {index}: {e}",
+                    )
 
     def clear(self) -> None:
         self._unsaved_changes = False
@@ -892,8 +943,13 @@ class VisQAIWindow(BaseVisQAIWindow):
 
         # Get audit signature from authorized user.
         if self.parent.signature_required and self._unsaved_changes:
-            if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
-                Log.w(f"Signing ANALYZE with initials {self.initials} (not asking again)")
+            if (
+                self.parent.signature_received == False
+                and self.sign_do_not_ask.isChecked()
+            ):
+                Log.w(
+                    f"Signing ANALYZE with initials {self.initials} (not asking again)"
+                )
                 self.parent.signed_at = dt.datetime.now().isoformat()
                 self.parent.signature_received = True  # Do not ask again this session
             if not self.parent.signature_received:
@@ -903,7 +959,9 @@ class VisQAIWindow(BaseVisQAIWindow):
                 self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
                 screen = QtWidgets.QDesktopWidget().availableGeometry()
                 left = int((screen.width() - self.signForm.sizeHint().width()) / 2) + 50
-                top = int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
+                top = (
+                    int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
+                )
                 self.signForm.move(left, top)
                 self.signForm.setVisible(True)
                 self.sign.setFocus()

@@ -311,18 +311,53 @@ class LicenseCache:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_duration = timedelta(hours=cache_duration_hours)
 
-    def _get_cache_filepath(self, device_key: str) -> Path:
+    def _get_cache_filepath(self, device_key: str, flexible_suffix: bool) -> Path:
         """Generate cache file path for a device key.
 
         Args:
             device_key (str): Unique device identifier.
+            flexible_suffix (bool): Flexible suffix flag (.cert or .json).
+                When ``True`` check for .cert file existence; otherwise .json.
+                When ``False`` always return a file path with .cert extension.
 
         Returns:
             Path: Path to the cache file for the given device.
         """
         # Hash the device key for privacy in local cache
         key_hash = hashlib.sha256(device_key.encode()).hexdigest()[:16]
-        return self.cache_dir / f"license_cache_{key_hash}.json"
+        cert_path = self.cache_dir / f"license_cache_{key_hash}.cert"
+        json_path = cert_path.with_suffix(".json")
+
+        if flexible_suffix:
+            if not cert_path.exists():
+                return json_path
+
+        elif json_path.exists():
+            json_path.unlink()
+
+        return cert_path
+
+    def _parse_cache_data(self, cache_filepath: Path):
+        try:
+            with open(cache_filepath, "r") as f:
+                if cache_filepath.suffix == ".cert":
+                    # Read encoded file; drop first and last lines
+                    # "-----BEGIN/END CERTIFICATE-----"
+                    encoded_data = f.readlines()[1:-1]
+                    json_data = base64.b64decode(
+                        "".join(encoded_data).encode()
+                    ).decode()
+
+                    cache_data: dict = json.loads(json_data)
+
+                else:
+                    cache_data: dict = json.load(f)
+
+        except Exception as e:
+            Log.e(TAG, f"Failed to parse cache data: {e}")
+            cache_data = {}
+
+        return cache_data
 
     def save(self, device_key: str, license_data: Dict) -> bool:
         """Save license data to cache.
@@ -335,7 +370,7 @@ class LicenseCache:
             bool: True if successfully cached, False otherwise.
         """
         try:
-            cache_filepath = self._get_cache_filepath(device_key)
+            cache_filepath = self._get_cache_filepath(device_key, flexible_suffix=False)
             cache_data = {
                 "license_data": license_data,
                 "cached_at": datetime.now().isoformat(),
@@ -345,7 +380,23 @@ class LicenseCache:
             cache_data["signature"] = hashlib.sha256(cache_string.encode()).hexdigest()
 
             with open(cache_filepath, "w") as f:
-                json.dump(cache_data, f, indent=2)
+                if cache_filepath.suffix == ".cert":
+                    # Write encoded file; add first and last lines
+                    # "-----BEGIN/END CERTIFICATE-----"
+                    json_data = json.dumps(cache_data, indent=2)
+                    encoded_data = base64.b64encode(json_data.encode()).decode()
+                    max_len = 76  # useful for MIME
+                    encoded_lines = [
+                        encoded_data[i : i + max_len]
+                        for i in range(0, len(encoded_data), max_len)
+                    ]
+
+                    f.write("-----BEGIN CERTIFICATE-----\n")
+                    f.write("\n".join(encoded_lines))
+                    f.write("\n-----END CERTIFICATE-----")
+
+                else:
+                    json.dump(cache_data, f, indent=2)
 
             Log.i(TAG, f"License cached locally at {cache_filepath}")
             return True
@@ -371,14 +422,14 @@ class LicenseCache:
                 - is_expired: True if cache exists but is expired
         """
         try:
-            cache_filepath = self._get_cache_filepath(device_key)
+            cache_filepath = self._get_cache_filepath(device_key, flexible_suffix=True)
 
             if not cache_filepath.exists():
                 Log.i(TAG, "No cached license found")
                 return None, False
 
-            with open(cache_filepath, "r") as f:
-                cache_data: dict = json.load(f)
+            # Parse cache data from file path
+            cache_data: dict = self._parse_cache_data(cache_filepath)
 
             # Check signature
             signature = cache_data.pop("signature", None)
@@ -415,12 +466,12 @@ class LicenseCache:
             Optional[timedelta]: Age of cached data or None if cache doesn't exist.
         """
         try:
-            cache_filepath = self._get_cache_filepath(device_key)
+            cache_filepath = self._get_cache_filepath(device_key, flexible_suffix=True)
             if not cache_filepath.exists():
                 return None
 
-            with open(cache_filepath, "r") as f:
-                cache_data = json.load(f)
+            # Parse cache data from file path
+            cache_data: dict = self._parse_cache_data(cache_filepath)
 
             cached_at = datetime.fromisoformat(cache_data["cached_at"])
             return datetime.now() - cached_at
@@ -438,7 +489,7 @@ class LicenseCache:
             bool: True if successfully cleared, False otherwise.
         """
         try:
-            cache_filepath = self._get_cache_filepath(device_key)
+            cache_filepath = self._get_cache_filepath(device_key, flexible_suffix=True)
             if cache_filepath.exists():
                 cache_filepath.unlink()
                 Log.i(TAG, "Cache cleared")
@@ -1025,6 +1076,7 @@ class LicenseManager:
         Returns:
             Dict: Cache status information including:
                 - enabled: Whether caching is enabled
+                - error: Whether an exception caused response (if not enabled)
                 - cache_exists: Whether cache file exists (if enabled)
                 - cache_path: Path to cache file (if enabled)
                 - background_refresh: Whether background refresh is enabled
@@ -1033,30 +1085,37 @@ class LicenseManager:
                 - cache_age_hours: Age of cache in hours (if exists)
                 - cache_expired: Whether cache is expired (if exists)
         """
-        if not self.cache_enabled:
-            return {"enabled": False}
+        try:
+            if not self.cache_enabled:
+                return {"enabled": False, "error": False}
 
-        cache_filepath = self.cache._get_cache_filepath(self.device_key)
-        status = {
-            "enabled": True,
-            "cache_exists": cache_filepath.exists(),
-            "cache_path": str(cache_filepath),
-            "background_refresh": self.background_refresh,
-            "refresh_thread_active": self._refresh_thread is not None,
-            "last_refresh_attempt": (
-                self._last_refresh_attempt.isoformat()
-                if self._last_refresh_attempt
-                else None
-            ),
-        }
+            cache_filepath = self.cache._get_cache_filepath(
+                self.device_key, flexible_suffix=True
+            )
+            status = {
+                "enabled": True,
+                "cache_exists": cache_filepath.exists(),
+                "cache_path": str(cache_filepath),
+                "background_refresh": self.background_refresh,
+                "refresh_thread_active": self._refresh_thread is not None,
+                "last_refresh_attempt": (
+                    self._last_refresh_attempt.isoformat()
+                    if self._last_refresh_attempt
+                    else None
+                ),
+            }
 
-        # Get cache age
-        cache_age = self.cache.get_cache_age(self.device_key)
-        if cache_age:
-            status["cache_age_hours"] = cache_age.total_seconds() / 3600
-            status["cache_expired"] = cache_age > self.cache.cache_duration
+            # Get cache age
+            cache_age = self.cache.get_cache_age(self.device_key)
+            if cache_age:
+                status["cache_age_hours"] = cache_age.total_seconds() / 3600
+                status["cache_expired"] = cache_age > self.cache.cache_duration
 
-        return status
+            return status
+
+        except Exception as e:
+            Log.e(TAG, f"Failed to get cache status: {e}")
+            return {"enabled": False, "error": True}
 
     def wait_for_background_refresh(self, timeout: float = 5.0) -> bool:
         """Wait for background refresh to complete.
