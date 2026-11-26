@@ -273,7 +273,7 @@ class QatchTagger:
             # CREATE THE INSTALLER CODE ZIP USING INSTALLER FROM DEV TOOLS
             try:
                 logging.info("Making ZIP of installer code... (may take a while)")
-                installer_version = "1.0.3.0"
+                installer_version = "1.0.3.1"
                 # archive_name = os.path.join(path_to_tag, "dist", os.path.basename(path_to_tag).split()[0]) + "_installer"
                 installer_src = os.path.join(
                     path_to_trunk,

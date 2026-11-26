@@ -75,8 +75,11 @@ _TOP_CLEARANCE = (
 _WORDMARK_COLOR_HEX = "#0d3d55"
 _WORDMARK_FONT_PX = 25
 _WORDMARK_LETTER_SPACING_EM = 0.14
-_WORDMARK_MARGIN_TOP = 26
+_WORDMARK_MARGIN_TOP = 18
 _WORDMARK_LIGHT_OPACITY = 0.85
+
+# nanovisQ line
+_NANOVISQ_MARGIN_TOP = 6
 
 # Version/build caption
 _BUILD_FONT_PX = 11
@@ -210,8 +213,17 @@ class QatchSplashScreen(QtWidgets.QWidget):
             QtGui.QFont.AbsoluteSpacing, _BUILD_FONT_PX * _BUILD_LETTER_SPACING_EM
         )
 
+        self._nanovisq_document = QtGui.QTextDocument(self)
+        self._nanovisq_document.setDocumentMargin(0)
+        self._nanovisq_document.setDefaultFont(self._wordmark_bold_font)
+        self._nanovisq_document.setHtml(
+            f'<p style="margin: 0px; color: {_WORDMARK_COLOR_HEX};">'
+            "nanovisQ<sup>TM</sup></p>"
+        )
+        self._nanovisq_document.adjustSize()
+
     def _compute_layout(self) -> types.SimpleNamespace:
-        """Lays out the wordmark + version/build caption beneath the logo.
+        """Lays out the wordmark, nanovisQ label, and build caption beneath the logo.
 
         Computed from live QFontMetrics rather than hard-coded pixel widths so the window
         sizes itself correctly regardless of the actual build string's length or platform
@@ -231,6 +243,8 @@ class QatchSplashScreen(QtWidgets.QWidget):
         light_width = fm_light.horizontalAdvance(wordmark_light_text)
         wordmark_width = bold_width + light_width
         wordmark_height = max(fm_bold.height(), fm_light.height())
+        nanovisq_width = self._nanovisq_document.idealWidth()
+        nanovisq_height = self._nanovisq_document.size().height()
 
         build_type = "exe" if getattr(sys, "frozen", False) else "py"
         version = f"{Constants.app_version}_{build_type}"
@@ -242,7 +256,13 @@ class QatchSplashScreen(QtWidgets.QWidget):
         build_line_height = fm_build.height()
 
         content_width = (
-            max(_GLOW_SIZE, wordmark_width, build_line1_width, build_line2_width)
+            max(
+                _GLOW_SIZE,
+                wordmark_width,
+                nanovisq_width,
+                build_line1_width,
+                build_line2_width,
+            )
             + _SIDE_PADDING * 2
         )
         width = max(_MIN_WINDOW_SIZE, content_width)
@@ -254,7 +274,8 @@ class QatchSplashScreen(QtWidgets.QWidget):
         wordmark_baseline_y = wordmark_top + fm_bold.ascent()
         wordmark_bottom = wordmark_top + wordmark_height
 
-        build_top = wordmark_bottom + _BUILD_MARGIN_TOP
+        nanovisq_top = wordmark_bottom + _NANOVISQ_MARGIN_TOP
+        build_top = nanovisq_top + nanovisq_height + _BUILD_MARGIN_TOP
         build_line1_baseline_y = build_top + fm_build.ascent()
         build_line2_baseline_y = (
             build_line1_baseline_y + build_line_height + _BUILD_LINE_GAP
@@ -276,6 +297,8 @@ class QatchSplashScreen(QtWidgets.QWidget):
             wordmark_bold_x=cx - wordmark_width / 2.0,
             wordmark_light_x=cx - wordmark_width / 2.0 + bold_width,
             wordmark_baseline_y=wordmark_baseline_y,
+            nanovisq_x=cx - nanovisq_width / 2.0,
+            nanovisq_top=nanovisq_top,
             build_line1=build_line1,
             build_line1_x=cx - build_line1_width / 2.0,
             build_line1_baseline_y=build_line1_baseline_y,
@@ -359,10 +382,10 @@ class QatchSplashScreen(QtWidgets.QWidget):
         painter.drawRect(rect)
 
     def _paint_text(self, painter: QtGui.QPainter) -> None:
-        """Paints the wordmark and version/build caption.
+        """Paints the wordmark, nanovisQ label, and version/build caption.
 
-        Draws the "QATCH" bold text, "TECHNOLOGIES" light text, and the restyled version/build
-        caption beneath the logo.
+        Draws the "QATCH" bold text, "TECHNOLOGIES" light text, the rich-text nanovisQ label,
+        and the version/build caption beneath the logo.
 
         Args:
             painter (QtGui.QPainter): The active painter instance used for drawing.
@@ -385,6 +408,11 @@ class QatchSplashScreen(QtWidgets.QWidget):
             QtCore.QPointF(layout.wordmark_light_x, layout.wordmark_baseline_y),
             "TECHNOLOGIES",
         )
+
+        painter.save()
+        painter.translate(layout.nanovisq_x, layout.nanovisq_top)
+        self._nanovisq_document.drawContents(painter)
+        painter.restore()
 
         build_color = QtGui.QColor(_WORDMARK_COLOR_HEX)
         build_color.setAlphaF(_BUILD_OPACITY)
